@@ -125,7 +125,7 @@ export function Sidebar() {
                                     <li key={subItem.title} role="none">
                                       <MenuItem
                                         as="link"
-                                        href={subItem.url}
+                                        href={subItem.url!}
                                         isActive={pathname === subItem.url}
                                         className="block"
                                       >
@@ -139,8 +139,8 @@ export function Sidebar() {
                         ) : (
                           (() => {
                             const href =
-                              item.url && typeof item.url === "string" && item.url.length > 0
-                                ? item.url
+                              (item as any).url && typeof (item as any).url === "string" && (item as any).url.length > 0
+                                ? (item as any).url
                                 : "/" + item.title.toLowerCase().replace(/\s+/g, "-");
 
                             return (
