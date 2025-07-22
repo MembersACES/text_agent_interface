@@ -2,6 +2,7 @@
 import InfoToolPage from "@/components/InfoToolPage";
 import { useSearchParams } from "next/navigation";
 import { useRef } from "react";
+import { getApiBaseUrl } from "@/lib/utils";
 
 const requestTypes = [
   "Supplier Data", "Signed Agreement", "Other"
@@ -20,7 +21,7 @@ export default function DataRequestPage() {
     <InfoToolPage
       title="Data Request"
       description={"Request data from a supplier or client. Select business, request type, and enter any additional details."}
-      endpoint="http://localhost:8000/api/data-request"
+      endpoint={`${getApiBaseUrl()}/api/data-request`}
       extraFields={[
         { name: "supplier_name", label: "Supplier Name" },
         { name: "request_type", label: "Request Type", type: "select", options: requestTypes },

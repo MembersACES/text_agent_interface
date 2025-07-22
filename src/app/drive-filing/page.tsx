@@ -2,6 +2,7 @@
 import InfoToolPage from "@/components/InfoToolPage";
 import { useSearchParams } from "next/navigation";
 import { useRef } from "react";
+import { getApiBaseUrl } from "@/lib/utils";
 
 const filingTypes = [
   "LOA",
@@ -31,7 +32,7 @@ export default function DriveFilingPage() {
     <InfoToolPage
       title="Drive Filing"
       description={"Upload a document to file it in the client’s Google Drive. Select business, filing type, and upload file."}
-      endpoint="http://localhost:8000/api/drive-filing"
+      endpoint={`${getApiBaseUrl()}/api/drive-filing`}
       extraFields={[{ name: "filing_type", label: "Filing Type", type: "text" }]}
       isFileUpload={true}
       initialBusinessName={businessName}

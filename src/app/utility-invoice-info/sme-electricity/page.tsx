@@ -2,6 +2,7 @@
 import InfoToolPage from "@/components/InfoToolPage";
 import { useSearchParams } from "next/navigation";
 import { useRef } from "react";
+import { getApiBaseUrl } from "@/lib/utils";
 
 export default function SMEElectricityInvoiceInfoPage() {
   const searchParams = useSearchParams();
@@ -14,7 +15,7 @@ export default function SMEElectricityInvoiceInfoPage() {
     <InfoToolPage
       title="SME Electricity Invoice Information"
       description={"Enter a business name or NMI to retrieve the latest SME electricity invoice details."}
-      endpoint="http://localhost:8000/api/get-electricity-sme-info"
+      endpoint={`${getApiBaseUrl()}/api/get-electricity-sme-info`}
       secondaryField={{ name: "nmi", label: "NMI" }}
       initialBusinessName={businessName}
       initialSecondaryValue={nmi}

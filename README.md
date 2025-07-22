@@ -76,7 +76,7 @@ Use `uvicorn` to start the application.
 uvicorn main:app --reload
 ```
 
-The backend server will now be running at `http://localhost:8000`.
+The backend server will now be running at `http://localhost:8000` (or the URL specified in your environment variables).
 
 ---
 
@@ -106,6 +106,9 @@ GOOGLE_CLIENT_SECRET="YOUR_GOOGLE_CLIENT_SECRET_HERE"
 # Run `openssl rand -base64 32` in your terminal to get a new secret
 NEXTAUTH_SECRET="YOUR_NEXTAUTH_SECRET_HERE"
 NEXTAUTH_URL="http://localhost:3000"
+
+# API Configuration
+NEXT_PUBLIC_API_BASE_URL="http://localhost:8000"
 ```
 
 **Step 3: Run the Frontend Development Server**

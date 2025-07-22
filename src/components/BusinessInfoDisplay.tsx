@@ -1,5 +1,6 @@
 // LOGO USAGE: To use a logo from Google Drive, you must first download it and place it in the /public/images/logo/ or /src/assets/logos/ directory. You cannot reference a Google Drive file ID directly in <Image> or <img> tags. For best results, use a local file path (e.g., /images/logo/logo.svg).
 import React, { useState } from "react";
+import { getApiBaseUrl } from "@/lib/utils";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 
@@ -398,7 +399,7 @@ export default function BusinessInfoDisplay({ info }: { info: any }) {
                     formData.append('gdrive_url', info.gdrive.folder_url);
                   }
                   try {
-                    const res = await fetch(`http://localhost:8000/api/drive-filing?token=${encodeURIComponent(token)}`, {
+                    const res = await fetch(`${getApiBaseUrl()}/api/drive-filing?token=${encodeURIComponent(token)}`, {
                       method: 'POST',
                       body: formData,
                     });
