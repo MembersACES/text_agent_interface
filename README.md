@@ -105,7 +105,7 @@ GOOGLE_CLIENT_SECRET="YOUR_GOOGLE_CLIENT_SECRET_HERE"
 # You also need to generate a secret for NextAuth
 # Run `openssl rand -base64 32` in your terminal to get a new secret
 NEXTAUTH_SECRET="YOUR_NEXTAUTH_SECRET_HERE"
-NEXTAUTH_URL="http://localhost:3000"
+NEXTAUTH_URL="http://localhost:8080"
 
 # API Configuration
 NEXT_PUBLIC_API_BASE_URL="http://localhost:8000"
@@ -117,14 +117,22 @@ NEXT_PUBLIC_API_BASE_URL="http://localhost:8000"
 npm run dev
 ```
 
-The frontend application will now be running at `http://localhost:3000`.
+The frontend application will now be running at `http://localhost:8080`.
 
 ---
 
 ## Testing the Application
 
 1.  Ensure both the backend and frontend servers are running.
-2.  Open your browser and navigate to `http://localhost:3000`.
+2.  Open your browser and navigate to `http://localhost:8080`.
 3.  You will be prompted to sign in with your Google account.
 4.  Once authenticated, you can use the Business Info tool, retrieve invoices, and test the Drive Filing functionality.
 5.  Check the terminal windows for both projects for logs and error messages.
+
+
+
+#building 
+docker build -t acesagentinterface .
+
+#run
+docker run -p 8080:8080 --env-file .env.local acesagentinterface
