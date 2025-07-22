@@ -17,11 +17,24 @@ gcloud config set project $PROJECT_ID
 
 # Build the Docker image
 echo "🔨 Building Docker image..."
-docker build -t $IMAGE_NAME .
+if ! docker build -t $IMAGE_NAME .; then
+    echo "❌ Docker build failed!"
+    exit 1
+fi
 
 # Push the image to Google Container Registry
 echo "📤 Pushing image to Google Container Registry..."
-docker push $IMAGE_NAME
+if ! docker push $IMAGE_NAME; then
+    echo "❌ Docker push failed!"
+    exit 1
+fi
+
+# Verify the image exists in the registry
+echo "🔍 Verifying image in registry..."
+if ! gcloud container images describe $IMAGE_NAME > /dev/null 2>&1; then
+    echo "❌ Image not found in registry after push!"
+    exit 1
+fi
 
 # Deploy to Cloud Run
 echo "🚀 Deploying to Cloud Run..."
@@ -33,18 +46,14 @@ gcloud run deploy $SERVICE_NAME \
   --port 3000 \
   --memory 1Gi \
   --cpu 1 \
-  --max-instances 10 \
-  --set-env-vars "NODE_ENV=production" \
-  --set-env-vars "NEXTAUTH_URL=https://$SERVICE_NAME-$REGION.a.run.app" \
-  --set-env-vars "NEXT_PUBLIC_API_BASE_URL=https://your-backend-url.com" \
-  --set-env-vars "GOOGLE_CLIENT_ID=your-google-client-id" \
-  --set-env-vars "GOOGLE_CLIENT_SECRET=your-google-client-secret" \
-  --set-env-vars "NEXTAUTH_SECRET=your-nextauth-secret"
+  --max-instances 10
 
 echo "✅ Deployment completed!"
 echo "🌐 Your app is available at: https://$SERVICE_NAME-$REGION.a.run.app"
 echo ""
 echo "📝 Important notes:"
-echo "1. Update the environment variables above with your actual values"
+echo "1. Set up environment variables in Google Cloud Console:"
+echo "   - Go to Cloud Run → $SERVICE_NAME → Edit & Deploy New Revision"
+echo "   - Add environment variables in the Variables tab"
 echo "2. Make sure your Google OAuth redirect URI includes: https://$SERVICE_NAME-$REGION.a.run.app/api/auth/callback/google"
-echo "3. Update your backend URL in NEXT_PUBLIC_API_BASE_URL" 
+echo "3. For sensitive data, consider using Google Secret Manager" 
