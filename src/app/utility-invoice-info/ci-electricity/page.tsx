@@ -2,6 +2,7 @@
 import InfoToolPage from "@/components/InfoToolPage";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useRef } from "react";
+import { getApiBaseUrl } from "@/lib/utils";
 
 export default function CIElectricityInvoiceInfoPage() {
   const searchParams = useSearchParams();
@@ -15,7 +16,7 @@ export default function CIElectricityInvoiceInfoPage() {
     <InfoToolPage
       title="C&I Electricity Invoice Information"
       description={"Enter a business name or NMI to retrieve the latest C&I electricity invoice details."}
-      endpoint="http://localhost:8000/api/get-electricity-ci-info"
+      endpoint={`${getApiBaseUrl()}/api/get-electricity-ci-info`}
       secondaryField={{ name: "nmi", label: "NMI" }}
       initialBusinessName={businessName}
       initialSecondaryValue={nmi}

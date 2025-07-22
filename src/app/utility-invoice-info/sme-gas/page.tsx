@@ -2,6 +2,7 @@
 import InfoToolPage from "@/components/InfoToolPage";
 import { useSearchParams } from "next/navigation";
 import { useRef } from "react";
+import { getApiBaseUrl } from "@/lib/utils";
 
 export default function SMEGasInvoiceInfoPage() {
   const searchParams = useSearchParams();
@@ -14,7 +15,7 @@ export default function SMEGasInvoiceInfoPage() {
     <InfoToolPage
       title="SME Gas Invoice Information"
       description={"Enter a business name or MRIN to retrieve the latest SME gas invoice details."}
-      endpoint="http://localhost:8000/api/get-gas-sme-info"
+      endpoint={`${getApiBaseUrl()}/api/get-gas-sme-info`}
       secondaryField={{ name: "mrin", label: "MRIN" }}
       initialBusinessName={businessName}
       initialSecondaryValue={mrin}

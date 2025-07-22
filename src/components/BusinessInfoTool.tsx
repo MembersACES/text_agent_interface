@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import BusinessInfoDisplay from "./BusinessInfoDisplay";
+import { getApiBaseUrl } from "@/lib/utils";
 
 export default function BusinessInfoTool({ token }: { token: string }) {
   const [businessName, setBusinessName] = useState("Frankston RSL");
@@ -13,7 +14,7 @@ export default function BusinessInfoTool({ token }: { token: string }) {
     setLoading(true);
     try {
       const res = await fetch(
-        `http://localhost:8000/api/get-business-info?token=${token}`,
+        `${getApiBaseUrl()}/api/get-business-info?token=${token}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },

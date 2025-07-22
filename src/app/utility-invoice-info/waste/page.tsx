@@ -2,6 +2,7 @@
 import InfoToolPage from "@/components/InfoToolPage";
 import { useSearchParams } from "next/navigation";
 import { useRef } from "react";
+import { getApiBaseUrl } from "@/lib/utils";
 
 export default function WasteInvoiceInfoPage() {
   const searchParams = useSearchParams();
@@ -14,7 +15,7 @@ export default function WasteInvoiceInfoPage() {
     <InfoToolPage
       title="Waste Invoice Information"
       description={"Enter a business name or Account Number to retrieve the latest waste invoice details."}
-      endpoint="http://localhost:8000/api/get-waste-info"
+      endpoint={`${getApiBaseUrl()}/api/get-waste-info`}
       secondaryField={{ name: "account_number", label: "Account Number" }}
       initialBusinessName={businessName}
       initialSecondaryValue={accountNumber}

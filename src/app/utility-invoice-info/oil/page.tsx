@@ -2,6 +2,7 @@
 import InfoToolPage from "@/components/InfoToolPage";
 import { useSearchParams } from "next/navigation";
 import { useRef } from "react";
+import { getApiBaseUrl } from "@/lib/utils";
 
 export default function OilInvoiceInfoPage() {
   const searchParams = useSearchParams();
@@ -13,7 +14,7 @@ export default function OilInvoiceInfoPage() {
     <InfoToolPage
       title="Oil Invoice Information"
       description={"Enter a business name to retrieve the latest oil invoice details."}
-      endpoint="http://localhost:8000/api/get-oil-info"
+      endpoint={`${getApiBaseUrl()}/api/get-oil-info`}
       initialBusinessName={businessName}
       autoSubmit={autoSubmit}
       formRef={formRef}
