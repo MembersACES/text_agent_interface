@@ -1,4 +1,4 @@
-# Google Cloud Run Deployment Guide
+git s# Google Cloud Run Deployment Guide
 
 This guide will help you deploy your Next.js application to Google Cloud Run.
 
@@ -87,7 +87,7 @@ gcloud run deploy aces-text-agent-interface \
   --platform managed \
   --region us-central1 \
   --allow-unauthenticated \
-  --port 3000 \
+  --port 8080 \
   --memory 1Gi \
   --cpu 1 \
   --max-instances 10 \
