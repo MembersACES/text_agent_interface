@@ -128,3 +128,11 @@ The frontend application will now be running at `http://localhost:3000`.
 3.  You will be prompted to sign in with your Google account.
 4.  Once authenticated, you can use the Business Info tool, retrieve invoices, and test the Drive Filing functionality.
 5.  Check the terminal windows for both projects for logs and error messages.
+
+
+
+#building 
+docker build -t acesagentinterface .
+
+#run
+docker run -p 3000:3000 --env-file .env.local acesagentinterface
