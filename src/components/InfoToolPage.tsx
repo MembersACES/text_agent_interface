@@ -179,8 +179,8 @@ export default function InfoToolPage({ title, description, endpoint, extraFields
     if (e) e.preventDefault();
     setError(null);
     setResult(null);
-    if (!businessName && !secondaryValue) {
-      setError("Please enter either a business name or " + (secondaryField?.label || "the secondary field") + ".");
+    if (!businessName || (secondaryField && !secondaryValue)) {
+      setError("Please fill out all required fields before submitting.");
       return;
     }
     setLoading(true);
