@@ -214,7 +214,11 @@ export default function InfoToolPage({ title, description, endpoint, extraFields
       clearTimeout(timeoutId);
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.detail || "Unknown error");
+        throw new Error(
+          typeof err.detail === 'string'
+            ? err.detail
+            : JSON.stringify(err.detail || err)
+        );
       }
       const data = await res.json();
       setResult(data);
