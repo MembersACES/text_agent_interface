@@ -195,20 +195,23 @@ export default function InfoToolPage({ title, description, endpoint, extraFields
         if (secondaryField) formData.append(secondaryField.name, secondaryValue);
         extraFields.forEach((f) => formData.append(f.name, fields[f.name] || ""));
         formData.append("file", file);
-        res = await fetch(`${endpoint}?token=${token}`, {
+        res = await fetch(endpoint, {
           method: "POST",
-          body: formData,
-          signal: controller.signal,
-        });
+          headers: {
+            ...(isFileUpload ? {} : { "Content-Type": "application/json" }),
+            "Authorization": `Bearer ${token}`,
+          },
+      });
       } else {
         const body: any = { business_name: businessName };
         if (secondaryField) body[secondaryField.name] = secondaryValue;
         extraFields.forEach((f) => (body[f.name] = fields[f.name]));
-        res = await fetch(`${endpoint}?token=${token}`, {
+        res = await fetch(endpoint, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-          signal: controller.signal,
+          headers: {
+            "Authorization": `Bearer ${token}`,
+          },
+          body: formData,
         });
       }
       clearTimeout(timeoutId);
