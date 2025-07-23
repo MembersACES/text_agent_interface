@@ -2,6 +2,7 @@ options:
   logging: CLOUD_LOGGING_ONLY
 
 steps:
+  # Build Docker image with the API base URL
   - name: 'gcr.io/cloud-builders/docker'
     args:
       [
@@ -12,5 +13,27 @@ steps:
         'gcr.io/$PROJECT_ID/github.com/membersaces/text_agent_interface:$COMMIT_SHA',
         '.'
       ]
+
+  # Push image to Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      [
+        'push',
+        'gcr.io/$PROJECT_ID/github.com/membersaces/text_agent_interface:$COMMIT_SHA'
+      ]
+
+  # Deploy to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      [
+        'run', 'deploy', 'acesagentinterface',
+        '--image', 'gcr.io/$PROJECT_ID/github.com/membersaces/text_agent_interface:$COMMIT_SHA',
+        '--region', 'australia-southeast2',
+        '--platform', 'managed',
+        '--allow-unauthenticated',
+        '--project', '$PROJECT_ID'
+      ]
+
 images:
   - 'gcr.io/$PROJECT_ID/github.com/membersaces/text_agent_interface:$COMMIT_SHA'
