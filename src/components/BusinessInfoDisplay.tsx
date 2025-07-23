@@ -393,14 +393,17 @@ export default function BusinessInfoDisplay({ info }: { info: any }) {
                   const formData = new FormData();
                   formData.append('business_name', driveModalBusinessName);
                   formData.append('filing_type', driveModalFilingType);
+                  formData.append("gdrive_url", info?.gdrive?.folder_url || "");
                   formData.append('file', driveModalFile);
-                  // Add Google Drive URL
-                  if (info.gdrive && info.gdrive.folder_url) {
-                    formData.append('gdrive_url', info.gdrive.folder_url);
+                  for (const [k, v] of formData.entries()) {
+                    console.log(k, v);
                   }
                   try {
                     const res = await fetch(`${getApiBaseUrl()}/api/drive-filing?token=${encodeURIComponent(token)}`, {
                       method: 'POST',
+                      headers: {
+                        Authorization: `Bearer ${token}`,
+                      },
                       body: formData,
                     });
                     let data;
