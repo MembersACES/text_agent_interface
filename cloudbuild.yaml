@@ -1,0 +1,13 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      [
+        'build',
+        '--build-arg',
+        'NEXT_PUBLIC_API_BASE_URL=https://text-agent-backend-672026052958.australia-southeast2.run.app',
+        '-t',
+        'gcr.io/$PROJECT_ID/github.com/membersaces/text_agent_interface:$COMMIT_SHA',
+        '.'
+      ]
+images:
+  - 'gcr.io/$PROJECT_ID/github.com/membersaces/text_agent_interface:$COMMIT_SHA'
