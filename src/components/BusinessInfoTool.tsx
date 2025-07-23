@@ -14,10 +14,13 @@ export default function BusinessInfoTool({ token }: { token: string }) {
     setLoading(true);
     try {
       const res = await fetch(
-        `${getApiBaseUrl()}/api/get-business-info?token=${token}`,
+        `${getApiBaseUrl()}/api/get-business-info`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`, 
+          },
           body: JSON.stringify({ business_name: businessName }),
         }
       );
