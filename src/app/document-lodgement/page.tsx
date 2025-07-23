@@ -28,7 +28,7 @@ const API_ENDPOINTS: Record<string, string> = {
 
 export default function UtilityInvoiceLodgementPage() {
   const { data: session } = useSession();
-  const token = session?.id_token;
+  const token = (session as any)?.id_token;
   const [file, setFile] = useState<File | null>(null);
   const [docType, setDocType] = useState('WASTE');
   const [result, setResult] = useState<string | null>(null);
