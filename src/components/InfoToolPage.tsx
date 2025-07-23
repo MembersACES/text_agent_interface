@@ -179,55 +179,65 @@ export default function InfoToolPage({ title, description, endpoint, extraFields
     if (e) e.preventDefault();
     setError(null);
     setResult(null);
+  
     if (!businessName || (secondaryField && !secondaryValue)) {
       setError("Please fill out all required fields before submitting.");
       return;
     }
+  
     setLoading(true);
     try {
       let res;
-      // Add AbortController for timeout
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 seconds
+      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s
+  
       if (isFileUpload && file) {
         const formData = new FormData();
         formData.append("business_name", businessName);
         if (secondaryField) formData.append(secondaryField.name, secondaryValue);
         extraFields.forEach((f) => formData.append(f.name, fields[f.name] || ""));
         formData.append("file", file);
-        res = await fetch(endpoint, {
-          method: "POST",
-          headers: {
-            ...(isFileUpload ? {} : { "Content-Type": "application/json" }),
-            "Authorization": `Bearer ${token}`,
-          },
-      });
-      } else {
-        const body: any = { business_name: businessName };
-        if (secondaryField) body[secondaryField.name] = secondaryValue;
-        extraFields.forEach((f) => (body[f.name] = fields[f.name]));
+  
         res = await fetch(endpoint, {
           method: "POST",
           headers: {
             "Authorization": `Bearer ${token}`,
           },
           body: formData,
+          signal: controller.signal,
+        });
+      } else {
+        const body: any = { business_name: businessName };
+        if (secondaryField) body[secondaryField.name] = secondaryValue;
+        extraFields.forEach((f) => (body[f.name] = fields[f.name]));
+  
+        res = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`,
+          },
+          body: JSON.stringify(body),
+          signal: controller.signal,
         });
       }
+  
       clearTimeout(timeoutId);
+  
       if (!res.ok) {
         const err = await res.json();
         throw new Error(
-          typeof err.detail === 'string'
+          typeof err.detail === "string"
             ? err.detail
             : JSON.stringify(err.detail || err)
         );
       }
+  
       const data = await res.json();
       setResult(data);
     } catch (err: any) {
-      if (err.name === 'AbortError') {
-        setError('The request is taking longer than expected. Please wait or check the backend logs.');
+      if (err.name === "AbortError") {
+        setError("The request is taking longer than expected. Please wait or check the backend logs.");
       } else {
         setError(err.message);
       }
