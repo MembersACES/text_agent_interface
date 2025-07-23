@@ -5,20 +5,20 @@ import { useRef } from "react";
 import { getApiBaseUrl } from "@/lib/utils";
 
 const filingTypes = [
-  "LOA",
-  "Savings",
-  "Revenue",
-  "Site Profiling",
-  "Signed Contract - C&I Electricity",
-  "Signed Contract - SME Electricity",
-  "Signed Contract - C&I Gas",
-  "Signed Contract - SME Gas",
-  "Signed Contract - Waste",
-  "Signed Contract - Oil",
-  "Signed Contract - DMA",
-  "Cleaning Invoice Upload",
-  "Telecommunication Invoice Upload",
-  "Site Map Upload"
+  "loa",
+  "savings",
+  "revenue",
+  "site_profiling",
+  "cleaning_invoice_upload",
+  "telecommunication_invoice_upload",
+  "site_map_upload",
+  "signed_CI_E",
+  "signed_SME_E",
+  "signed_CI_G",
+  "signed_SME_G",
+  "signed_WASTE",
+  "signed_OIL",
+  "signed_DMA"
 ];
 
 export default function DriveFilingPage() {
@@ -31,9 +31,17 @@ export default function DriveFilingPage() {
   return (
     <InfoToolPage
       title="Drive Filing"
-      description={"Upload a document to file it in the client’s Google Drive. Select business, filing type, and upload file."}
+      description="Upload a document to file it in the client’s Google Drive. Select business, filing type, and upload file."
       endpoint={`${getApiBaseUrl()}/api/drive-filing`}
-      extraFields={[{ name: "filing_type", label: "Filing Type", type: "text" }]}
+      extraFields={[
+        {
+          name: "filing_type",
+          label: "Filing Type",
+          type: "select",
+          options: filingTypes,
+          required: true,
+        },
+      ]}
       isFileUpload={true}
       initialBusinessName={businessName}
       initialExtraFields={filingType ? { filing_type: filingType } : {}}
@@ -41,4 +49,4 @@ export default function DriveFilingPage() {
       formRef={formRef}
     />
   );
-} 
+}
