@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useSession } from 'next-auth/react'; 
 import { Alert } from '../../components/ui-elements/alert';
 
 const UTILITY_TYPES = [
@@ -26,6 +27,8 @@ const API_ENDPOINTS: Record<string, string> = {
 };
 
 export default function UtilityInvoiceLodgementPage() {
+  const { data: session } = useSession();
+  const token = session?.id_token;
   const [file, setFile] = useState<File | null>(null);
   const [docType, setDocType] = useState('WASTE');
   const [result, setResult] = useState<string | null>(null);
@@ -41,29 +44,39 @@ export default function UtilityInvoiceLodgementPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!file) return;
-
+  
+    if (!token) {
+      setAuthError(true);
+      setResult("Session expired. Please log in again.");
+      return;
+    }
+  
     setLoading(true);
     setResult(null);
     setAuthError(false);
-
+  
     const endpoint = API_ENDPOINTS[docType];
     if (!endpoint) {
       setResult('Invalid document type selected.');
       setLoading(false);
       return;
     }
-
+  
     const formData = new FormData();
     formData.append('file', file);
     formData.append('utility_type', docType);
-
+  
     try {
       const res = await fetch(endpoint, {
         method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
         body: formData,
       });
+  
       const data = await res.json();
-
+  
       if (data.message && /invalid token|token expired|expired token/i.test(data.message)) {
         setAuthError(true);
         setResult(null);
