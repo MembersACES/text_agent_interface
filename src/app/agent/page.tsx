@@ -5,7 +5,7 @@ import { useSession } from "next-auth/react";
 const AGENT_BASE_URL =
   process.env.NODE_ENV === "development"
     ? "http://localhost:3005/"
-    : "https://aces-text-agent-2-672026052958.australia-southeast2.run.app/";
+    : "https://aces-text-agent-dev-672026052958.australia-southeast2.run.app";
 
 const AgentPage = () => {
   const { data: session } = useSession();
@@ -15,7 +15,7 @@ const AgentPage = () => {
   // Memoize the iframe src to avoid unnecessary rerenders
   const iframeSrc = useMemo(() => {
     if (token) {
-      return `${AGENT_BASE_URL}?token=${encodeURIComponent(token)}`;
+      return `${AGENT_BASE_URL}?auth_token=${encodeURIComponent(token)}`;
     }
     return AGENT_BASE_URL;
   }, [token]);
