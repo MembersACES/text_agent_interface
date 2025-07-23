@@ -2,7 +2,10 @@
 import React, { useMemo } from "react";
 import { useSession } from "next-auth/react";
 
-const AGENT_BASE_URL = "https://aces-text-agent-2-672026052958.australia-southeast2.run.app/";
+const AGENT_BASE_URL =
+  process.env.NODE_ENV === "development"
+    ? "http://localhost:3005/"
+    : "https://aces-text-agent-2-672026052958.australia-southeast2.run.app/";
 
 const AgentPage = () => {
   const { data: session } = useSession();
