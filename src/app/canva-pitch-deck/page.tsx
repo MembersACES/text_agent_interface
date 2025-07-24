@@ -6,7 +6,7 @@ import { useSearchParams } from "next/navigation";
 
 export default function CanvaPitchDeckPage() {
   const { data: session } = useSession();
-  const token = session?.id_token || session?.accessToken;
+  const token = session?.user?.accessToken || "";
 
   const searchParams = useSearchParams();
   const code = searchParams.get("code");
