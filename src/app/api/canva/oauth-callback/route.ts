@@ -15,19 +15,18 @@ export async function GET(req: NextRequest) {
   }
 
   const clientId = process.env.CANVA_CLIENT_ID!;
-  const clientSecret = process.env.CANVA_CLIENT_SECRET!;
   const redirectUri = process.env.CANVA_REDIRECT_URI!;
 
-  const tokenRes = await fetch("https://api.canva.com/auth/token", {
+  const tokenRes = await fetch("https://api.canva.com/oauth/token", {
     method: "POST",
     headers: {
-      Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
       grant_type: "authorization_code",
       code,
       code_verifier: codeVerifier,
+      client_id: clientId,
       redirect_uri: redirectUri,
     }),
   });
@@ -39,8 +38,8 @@ export async function GET(req: NextRequest) {
   }
 
   const tokenData = await tokenRes.json();
-  console.log("Canva tokens:", tokenData);
+  console.log("✅ Canva tokens:", tokenData);
 
-  // Store access_token & refresh_token securely (e.g., DB or encrypted cookie)
-  return NextResponse.redirect("/"); // or wherever you want the user to land
+  // Store securely if needed (DB, encrypted cookie, etc.)
+  return NextResponse.redirect("/");
 }
