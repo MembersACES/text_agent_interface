@@ -1,13 +1,9 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import CanvaPitchDeckTool from "@/components/CanvaPitchDeckTool";
-import { useSession } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
 
 export default function CanvaPitchDeckPage() {
-  const { data: session } = useSession();
-  const token = session?.user?.accessToken || "";
-
   const searchParams = useSearchParams();
   const code = searchParams.get("code");
   const [codeVerifier, setCodeVerifier] = useState<string | null>(null);
@@ -19,9 +15,8 @@ export default function CanvaPitchDeckPage() {
     if (code) {
       console.log("🔐 OAuth Code from URL:", code);
       console.log("🔐 PKCE Code Verifier from sessionStorage:", storedVerifier);
-      console.log("🪪 Session token:", token);
     }
-  }, [code, token]);
+  }, [code]);
 
   const handleConnect = async () => {
     const verifier = generateCodeVerifier();
@@ -50,7 +45,7 @@ export default function CanvaPitchDeckPage() {
         </button>
       ) : (
         <CanvaPitchDeckTool
-          token={token || ""}
+          token="" // Not using a session token here
           canvaAuthCode={code}
           codeVerifier={codeVerifier}
         />
