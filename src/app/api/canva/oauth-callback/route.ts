@@ -6,9 +6,9 @@ export async function GET(req: NextRequest) {
   const code = url.searchParams.get("code");
   const returnedState = url.searchParams.get("state");
 
-  const storedCookies = cookies();
-  const codeVerifier = storedCookies.get("canva_code_verifier")?.value;
-  const expectedState = storedCookies.get("canva_state")?.value;
+  const cookieStore = await cookies(); // ✅ correct usage
+  const codeVerifier = cookieStore.get("canva_code_verifier")?.value; 
+  const expectedState = cookieStore.get("canva_state")?.value; 
 
   if (!code || !codeVerifier || returnedState !== expectedState) {
     return NextResponse.json({ error: "Invalid OAuth state or code" }, { status: 400 });
@@ -33,13 +33,14 @@ export async function GET(req: NextRequest) {
 
   if (!tokenRes.ok) {
     const errText = await tokenRes.text();
-    console.error("Token exchange failed:", errText);
+    console.error("❌ Token exchange failed:", errText);
     return NextResponse.json({ error: "Failed to exchange code for token" }, { status: 500 });
   }
 
   const tokenData = await tokenRes.json();
   console.log("✅ Canva tokens:", tokenData);
 
-  // Store securely if needed (DB, encrypted cookie, etc.)
+  // TODO: Store securely if needed
+
   return NextResponse.redirect("/");
 }
