@@ -4,14 +4,25 @@ import crypto from "crypto";
 export async function GET() {
   const clientId = process.env.CANVA_CLIENT_ID!;
   const redirectUri = process.env.CANVA_REDIRECT_URI!;
+  
+  // Add this debug logging
+  console.log("🚀 OAuth Start Debug:", {
+    clientId: clientId || "MISSING",
+    redirectUri: redirectUri || "MISSING",
+    allCanvaVars: Object.keys(process.env).filter(key => key.includes('CANVA')),
+    nodeEnv: process.env.NODE_ENV,
+    totalEnvCount: Object.keys(process.env).length
+  });
+
   const scopes = [
     "asset:read",
-    "asset:write",
+    "asset:write", 
     "design:meta:read",
     "design:write",
     "folder:read",
     "comment:write",
   ].join(" ");
+
 
   const codeVerifier = crypto.randomBytes(64).toString("base64url");
   const codeChallenge = crypto
