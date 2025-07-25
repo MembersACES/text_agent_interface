@@ -17,6 +17,16 @@ export async function GET(req: NextRequest) {
   const clientId = process.env.CANVA_CLIENT_ID!;
   const redirectUri = process.env.CANVA_REDIRECT_URI!;
 
+  console.log("🔍 Debug env vars:", {
+    clientId: clientId || "MISSING",
+    redirectUri: redirectUri || "MISSING",
+    allEnv: Object.keys(process.env).filter(key => key.includes('CANVA')),
+    // Add these lines:
+    allEnvKeys: Object.keys(process.env).sort(),
+    nodeEnv: process.env.NODE_ENV,
+    totalEnvCount: Object.keys(process.env).length
+  });
+
   const tokenRes = await fetch("https://api.canva.com/oauth/token", {
     method: "POST",
     headers: {
