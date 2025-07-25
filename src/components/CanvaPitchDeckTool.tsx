@@ -58,6 +58,11 @@ export default function CanvaPitchDeckTool({
   };
 
   const getBusinessInfo = async () => {
+    // Add these debug lines at the start
+    console.log("🔍 API Base URL:", getApiBaseUrl());
+    console.log("🔍 Full URL:", `${getApiBaseUrl()}/api/get-business-info`);
+    console.log("🔍 Environment:", process.env.NEXT_PUBLIC_API_BASE_URL);
+    
     setFetchingInfo(true);
     setBusinessInfo(null);
     setDeckUrl(null);
