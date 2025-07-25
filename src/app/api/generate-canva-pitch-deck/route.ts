@@ -15,10 +15,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing Canva auth code" }, { status: 400 });
     }
 
-    const tokenRes = await fetch("https://api.canva.com/oauth/token", {
+    const tokenRes = await fetch("https://api.canva.com/rest/v1/oauth/token", { // Fixed URL
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+      headers: { "Content-Type": "application/x-www-form-urlencoded" }, // Fixed content type
+      body: new URLSearchParams({ // Fixed body format
         grant_type: "authorization_code",
         code,
         client_id: process.env.CANVA_CLIENT_ID!,
