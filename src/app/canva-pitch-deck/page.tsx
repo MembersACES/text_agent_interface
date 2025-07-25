@@ -19,24 +19,8 @@ export default function CanvaPitchDeckPage() {
   }, [code]);
 
   const handleConnect = async () => {
-    const verifier = generateCodeVerifier();
-    const challenge = await generateCodeChallenge(verifier);
-    sessionStorage.setItem("canva_code_verifier", verifier);
-
-    const clientId = process.env.NEXT_PUBLIC_CANVA_CLIENT_ID!;
-    const redirectUri = process.env.NEXT_PUBLIC_CANVA_REDIRECT_URI!;
-    const scope = "data_autofill";
-
-    console.log("🌐 Canva ENV Vars:", {
-      clientId: process.env.NEXT_PUBLIC_CANVA_CLIENT_ID,
-      redirectUri: process.env.NEXT_PUBLIC_CANVA_REDIRECT_URI,
-    });
-    
-    const authUrl = `https://www.canva.com/oauth/authorize?client_id=${clientId}&response_type=code&redirect_uri=${encodeURIComponent(
-      redirectUri
-    )}&scope=${scope}&code_challenge=${challenge}&code_challenge_method=S256`;
-
-    window.location.href = authUrl;
+    // Skip all the manual OAuth setup, use your server endpoint instead
+    window.location.href = "/api/canva/oauth-start";
   };
 
   return (
