@@ -14,7 +14,7 @@ export async function GET() {
     totalEnvCount: Object.keys(process.env).length
   });
 
-  const scopes = "";
+  const scopes = "asset:read asset:write design:meta:read";
 
 
   const codeVerifier = crypto.randomBytes(64).toString("base64url");
