@@ -9,6 +9,9 @@ export default function BusinessInfoTool({ token }: { token: string }) {
   const [loading, setLoading] = useState(false);
 
   const getBusinessInfo = async () => {
+    console.log("🔍 API Base URL:", getApiBaseUrl());
+    console.log("🔍 Full URL:", `${getApiBaseUrl()}/api/get-business-info`);
+    console.log("🔍 Environment:", process.env.NEXT_PUBLIC_API_BASE_URL);
     setError(null);
     setBusinessInfo(null);
     setLoading(true);
