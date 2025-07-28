@@ -110,7 +110,6 @@ export default function CanvaPitchDeckTool({
           month: now.toLocaleString('default', { month: 'long' }),
           year: now.getFullYear().toString(),
         },
-        canva_auth_code: canvaToken,
       };
   
       console.log("📦 Canva payload:", payload);
@@ -120,6 +119,7 @@ export default function CanvaPitchDeckTool({
         headers: {
           "Content-Type": "application/json",
         },
+        credentials: 'include',
         body: JSON.stringify(payload),
       });
   
