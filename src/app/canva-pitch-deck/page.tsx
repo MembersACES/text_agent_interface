@@ -13,6 +13,17 @@ function getCookie(name: string): string | null {
   return null;
 }
 
+// Debug function to log all cookies
+function debugAllCookies() {
+  if (typeof document === 'undefined') return {};
+  const cookies: Record<string, string> = {};
+  document.cookie.split(';').forEach(cookie => {
+    const [name, value] = cookie.split('=').map(c => c.trim());
+    if (name) cookies[name] = value || '';
+  });
+  return cookies;
+}
+
 export default function CanvaPitchDeckPage() {
   const { data: session } = useSession();
   const searchParams = useSearchParams();
@@ -32,10 +43,17 @@ export default function CanvaPitchDeckPage() {
     console.log("🔍 Page loaded, checking for Canva auth...");
     console.log("🔍 Current URL:", window.location.href);
     console.log("🔍 Search params:", Object.fromEntries(searchParams.entries()));
+    console.log("🔍 All cookies:", debugAllCookies());
+    console.log("🔍 Raw document.cookie:", document.cookie);
     
     // Check for Canva token in cookies (this is where it's actually stored!)
     const cookieToken = getCookie('canva_access_token');
-    console.log("🔍 Cookie token:", cookieToken?.substring(0, 20) + "...");
+    console.log("🔍 Cookie token (canva_access_token):", cookieToken?.substring(0, 20) + "...");
+    
+    // Also try alternative cookie names
+    const altToken1 = getCookie('canva_token');
+    const altToken2 = getCookie('canvaToken');
+    console.log("🔍 Alternative cookie names:", { altToken1: altToken1?.substring(0, 20), altToken2: altToken2?.substring(0, 20) });
     
     // Check for Canva auth code in URL params (after OAuth redirect)
     const code = searchParams.get('code');
@@ -44,9 +62,12 @@ export default function CanvaPitchDeckPage() {
     console.log("🔍 Code from URL:", code);
     console.log("🔍 State from URL:", state);
     
-    if (cookieToken) {
+    // Use any valid token we find
+    const validToken = cookieToken || altToken1 || altToken2;
+    
+    if (validToken) {
       console.log("✅ Found Canva token in cookies!");
-      setCanvaToken(cookieToken);
+      setCanvaToken(validToken);
       setIsConnected(true);
     } else if (code) {
       console.log("✅ Found auth code in URL, storing...");
@@ -99,6 +120,8 @@ export default function CanvaPitchDeckPage() {
     canvaTokenLength: canvaToken?.length || 0,
     hasCookieToken: mounted ? !!getCookie('canva_access_token') : 'checking...',
     hasStoredToken: mounted ? !!localStorage.getItem('canva_auth_code') : 'checking...',
+    allCookies: mounted ? Object.keys(debugAllCookies()) : 'checking...',
+    rawCookieString: mounted ? document.cookie.substring(0, 200) + "..." : 'checking...',
     urlParams: Object.fromEntries(searchParams.entries())
   };
 
