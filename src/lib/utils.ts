@@ -12,5 +12,5 @@ export function getApiBaseUrl(): string {
 export function getCanvaApiBaseUrl() {
   return process.env.NODE_ENV === "development"
     ? "http://localhost:3000"
-    : "https://text-agent-backend-672026052958.australia-southeast2.run.app";
+    : "";
 }
