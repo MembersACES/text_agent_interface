@@ -25,10 +25,6 @@ export default async function DashboardPage({ searchParams }: PropsType) {
     <>
       <Breadcrumb pageName="Dashboard" />
 
-      <Suspense fallback={<OverviewCardsSkeleton />}>
-        <OverviewCardsGroup />
-      </Suspense>
-
       <div className="mt-4 grid grid-cols-12 gap-4 md:mt-6 md:gap-6 2xl:mt-9 2xl:gap-7.5">
         <PaymentsOverview
           className="col-span-12 xl:col-span-7"
@@ -47,18 +43,6 @@ export default async function DashboardPage({ searchParams }: PropsType) {
           key={extractTimeFrame("used_devices")}
           timeFrame={extractTimeFrame("used_devices")?.split(":")[1]}
         />
-
-        <RegionLabels />
-
-        <div className="col-span-12 grid xl:col-span-8">
-          <Suspense fallback={<TopChannelsSkeleton />}>
-            <TopChannels />
-          </Suspense>
-        </div>
-
-        <Suspense fallback={null}>
-          <ChatsCard />
-        </Suspense>
       </div>
     </>
   );
