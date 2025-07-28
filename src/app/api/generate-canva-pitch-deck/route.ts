@@ -10,10 +10,9 @@ export async function POST(req: NextRequest) {
       business_info,
       selected_templates,
       placeholders,
-      canva_token, // <-- from frontend
+      canva_token,
     } = body;
 
-    // ✅ Prefer token from request body; fallback to cookie
     const cookieStore = await cookies();
     const accessToken = canva_token || cookieStore.get("canva_access_token")?.value;
 
@@ -28,6 +27,23 @@ export async function POST(req: NextRequest) {
 
     const templateId = selected_templates[0];
 
+    // ✅ Flatten the business info safely
+    const businessDetails = business_info?.business_details || {};
+    const representativeDetails = business_info?.representative_details || {};
+
+    const flattenedData = {
+      business_name,
+      abn: businessDetails.abn,
+      trading_name: businessDetails.trading_name,
+      contact_name: representativeDetails.contact_name,
+      ...placeholders,
+    };
+
+    console.log("📦 Sending to Canva:", JSON.stringify({
+      data: flattenedData,
+      pages: selected_templates,
+    }, null, 2));
+
     const designRes = await fetch(
       `https://api.canva.com/v1/data_autofill/brand_templates/${templateId}/create_design`,
       {
@@ -37,11 +53,7 @@ export async function POST(req: NextRequest) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          data: {
-            business_name,
-            ...business_info,
-            ...placeholders,
-          },
+          data: flattenedData,
           pages: selected_templates,
         }),
       }
