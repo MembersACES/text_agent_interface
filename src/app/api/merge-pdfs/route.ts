@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PdfMerger } from "pdf-merger-js";
+import PdfMerger from "pdf-merger-js";
 import fetch from "node-fetch";
 
 export async function POST(req: NextRequest) {
