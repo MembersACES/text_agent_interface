@@ -80,6 +80,20 @@ export async function GET(req: NextRequest) {
   const tokenData = await tokenRes.json();
   console.log("✅ Canva tokens:", tokenData);
 
-  const baseUrl = new URL(req.url).origin;
+  const forwardedHost = req.headers.get("x-forwarded-host");
+  const forwardedProto = req.headers.get("x-forwarded-proto") || "https";
+
+  const baseUrl =
+  forwardedHost && forwardedProto
+    ? `${forwardedProto}://${forwardedHost}`
+    : process.env.NEXT_PUBLIC_AGENT_DEV_API_URL || new URL(req.url).origin;
+
+  console.log("🔁 Canva OAuth redirect log:", {
+    redirected_to: `${baseUrl}/`,
+    from_url: req.url,
+    resolved_host: forwardedHost,
+    resolved_proto: forwardedProto,
+  });
+
   return NextResponse.redirect(`${baseUrl}/`);
 }
