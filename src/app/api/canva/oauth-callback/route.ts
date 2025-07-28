@@ -80,5 +80,6 @@ export async function GET(req: NextRequest) {
   const tokenData = await tokenRes.json();
   console.log("✅ Canva tokens:", tokenData);
 
-  return NextResponse.redirect("/");
+  const baseUrl = new URL(req.url).origin;
+  return NextResponse.redirect(`${baseUrl}/`);
 }
