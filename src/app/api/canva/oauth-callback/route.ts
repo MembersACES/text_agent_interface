@@ -76,7 +76,7 @@ export async function GET(req: NextRequest) {
   const response = NextResponse.redirect(`${baseUrl}/canva-pitch-deck`);
   
   response.cookies.set("canva_access_token", tokenData.access_token, {
-    httpOnly: true,
+    httpOnly: false,
     secure: process.env.NODE_ENV === "production",
     maxAge: tokenData.expires_in || 14400, // 4 hours default
     path: "/",
