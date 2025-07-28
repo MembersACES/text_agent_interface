@@ -43,8 +43,26 @@ export async function GET(req: NextRequest) {
 
   if (!tokenRes.ok) {
     const errText = await tokenRes.text();
-    console.error("❌ Token exchange failed:", errText);
-    return NextResponse.json({ error: "Failed to exchange code for token" }, { status: 500 });
+    console.error("❌ Token exchange failed:", {
+      status: tokenRes.status,
+      statusText: tokenRes.statusText,
+      headers: Object.fromEntries(tokenRes.headers.entries()),
+      body: errText
+    });
+    
+    // Try to parse as JSON if possible
+    try {
+      const errJson = JSON.parse(errText);
+      console.error("❌ Parsed error:", errJson);
+    } catch {
+      console.error("❌ Raw error text:", errText);
+    }
+    
+    return NextResponse.json({ 
+      error: "Failed to exchange code for token",
+      details: errText,
+      status: tokenRes.status 
+    }, { status: 500 });
   }
 
   const tokenData = await tokenRes.json();
