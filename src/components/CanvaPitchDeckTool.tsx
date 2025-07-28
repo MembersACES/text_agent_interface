@@ -1,13 +1,13 @@
 import React, { useState } from "react";
 import { getCanvaApiBaseUrl, getApiBaseUrl } from "@/lib/utils";
 
-const COVER_PAGE_ID = "DAGuCqKd5EY";
+const COVER_PAGE_ID = "EAGubwPi5xA";
 
 const PITCH_DECK_TEMPLATES = [
   {
     category: "Test Templates",
     options: [
-      { label: "Test Template 1", templateId: "DAGeGhhx5IE" },
+      { label: "Test Template 1", templateId: "EAGubwdp7rQ" },
       { label: "Solar Car Park", templateId: "DAGeGvaQLD4" },
     ],
   },
