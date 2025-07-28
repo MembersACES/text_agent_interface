@@ -13,11 +13,19 @@ export default function CanvaPitchDeckPage() {
   const token = (session as any)?.id_token || (session as any)?.accessToken;
 
   useEffect(() => {
+    console.log("🔍 Page loaded, checking for Canva auth...");
+    console.log("🔍 Current URL:", window.location.href);
+    console.log("🔍 Search params:", Object.fromEntries(searchParams.entries()));
+    
     // Check for Canva auth code in URL params (after OAuth redirect)
     const code = searchParams.get('code');
     const state = searchParams.get('state');
     
+    console.log("🔍 Code from URL:", code);
+    console.log("🔍 State from URL:", state);
+    
     if (code) {
+      console.log("✅ Found auth code in URL, storing...");
       // Store the Canva auth code
       localStorage.setItem('canva_auth_code', code);
       setCanvaToken(code);
@@ -26,25 +34,41 @@ export default function CanvaPitchDeckPage() {
       // Clean up URL
       window.history.replaceState({}, document.title, window.location.pathname);
     } else {
+      console.log("🔍 No code in URL, checking localStorage...");
       // Check if we have a stored Canva token
       const storedCanvaToken = localStorage.getItem('canva_auth_code') || 
                                localStorage.getItem('canva_access_token');
+      console.log("🔍 Stored token:", storedCanvaToken?.substring(0, 20) + "...");
+      
       if (storedCanvaToken) {
+        console.log("✅ Found stored token, setting connected state");
         setCanvaToken(storedCanvaToken);
         setIsConnected(true);
+      } else {
+        console.log("❌ No stored token found");
       }
     }
   }, [searchParams]);
 
   const handleConnect = async () => {
+    console.log("🚀 Connecting to Canva...");
     window.location.href = "/api/canva/oauth-start";
   };
 
   const handleDisconnect = () => {
+    console.log("🔌 Disconnecting from Canva...");
     localStorage.removeItem('canva_auth_code');
     localStorage.removeItem('canva_access_token');
     setCanvaToken("");
     setIsConnected(false);
+  };
+
+  // Add debugging info to the UI
+  const debugInfo = {
+    isConnected,
+    canvaTokenLength: canvaToken?.length || 0,
+    hasStoredToken: !!localStorage.getItem('canva_auth_code'),
+    urlParams: Object.fromEntries(searchParams.entries())
   };
 
   if (!token) {
@@ -59,6 +83,12 @@ export default function CanvaPitchDeckPage() {
 
   return (
     <div className="p-6">
+      {/* Debug info */}
+      <div className="mb-4 p-3 bg-gray-100 rounded text-sm">
+        <strong>Debug Info:</strong>
+        <pre>{JSON.stringify(debugInfo, null, 2)}</pre>
+      </div>
+
       <div className="mb-4 flex gap-2">
         {!isConnected ? (
           <button
