@@ -25,8 +25,6 @@ export async function POST(req: NextRequest) {
 
     console.log("🎨 Using Canva token for design generation");
 
-    const templateId = selected_templates[0];
-
     // ✅ Flatten the business info safely
     const businessDetails = business_info?.business_details || {};
     const representativeDetails = business_info?.representative_details || {};
@@ -39,51 +37,53 @@ export async function POST(req: NextRequest) {
       ...placeholders,
     };
 
-    console.log("📦 Sending to Canva:", JSON.stringify({
-      data: flattenedData,
-      pages: selected_templates,
-    }, null, 2));
+    const generatedUrls: string[] = [];
 
-    const designRes = await fetch(
-      `https://api.canva.com/v1/data_autofill/brand_templates/${templateId}/create_design`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          data: flattenedData,
-          pages: selected_templates,
-        }),
-      }
-    );
+    for (const templateId of selected_templates) {
+      console.log(`📦 Creating design from template: ${templateId}`);
 
-    let designData: any = {};
-    try {
-      designData = await designRes.json();
-    } catch (parseErr) {
-      const raw = await designRes.text();
-      console.error("❌ Failed to parse Canva response as JSON. Raw body:", raw);
-      throw new Error("Invalid response from Canva API");
-    }
+      const res = await fetch(
+        `https://api.canva.com/v1/data_autofill/brand_templates/${templateId}/create_design`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            data: flattenedData,
+          }),
+        }
+      );
 
-    if (!designRes.ok) {
-      console.error("Design creation error", designData);
-
-      if (designRes.status === 401) {
-        const response = NextResponse.json(
-          { error: "Canva token expired. Please reconnect to Canva." },
-          { status: 401 }
-        );
-        response.cookies.delete("canva_access_token");
-        return response;
+      let designData: any = {};
+      try {
+        designData = await res.json();
+      } catch (parseErr) {
+        const raw = await res.text();
+        console.error("❌ Failed to parse Canva response as JSON. Raw body:", raw);
+        throw new Error("Invalid response from Canva API");
       }
 
-      throw new Error(designData?.error || "Failed to generate Canva design");
+      if (!res.ok) {
+        console.error("Design creation error", designData);
+
+        if (res.status === 401) {
+          const response = NextResponse.json(
+            { error: "Canva token expired. Please reconnect to Canva." },
+            { status: 401 }
+          );
+          response.cookies.delete("canva_access_token");
+          return response;
+        }
+
+        throw new Error(designData?.error || "Failed to generate Canva design");
+      }
+
+      generatedUrls.push(designData.design_url);
     }
 
-    return NextResponse.json({ canva_url: designData.design_url });
+    return NextResponse.json({ canva_urls: generatedUrls });
   } catch (err: any) {
     console.error("Unhandled error:", err.message);
     return NextResponse.json({ error: err.message || "Unknown error" }, { status: 500 });

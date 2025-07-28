@@ -42,7 +42,7 @@ export default function CanvaPitchDeckTool({
   const [businessName, setBusinessName] = useState("Frankston RSL");
   const [businessInfo, setBusinessInfo] = useState<any>(null);
   const [selectedTemplateIds, setSelectedTemplateIds] = useState<string[]>([]);
-  const [deckUrl, setDeckUrl] = useState<string | null>(null);
+  const [mergedPdfUrl, setMergedPdfUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fetchingInfo, setFetchingInfo] = useState(false);
@@ -56,39 +56,22 @@ export default function CanvaPitchDeckTool({
   };
 
   const getBusinessInfo = async () => {
-    // Add these debug lines at the start
-    console.log("🔍 API Base URL:", getApiBaseUrl());
-    console.log("🔍 Full URL:", `${getApiBaseUrl()}/api/get-business-info`);
-    console.log("🔍 Environment:", process.env.NEXT_PUBLIC_API_BASE_URL);
-    console.log("🔍 Token (first 20 chars):", token?.substring(0, 20) + "...");
-    console.log("🔍 Token type:", typeof token);
-    console.log("🔍 Token length:", token?.length);
-    
     setFetchingInfo(true);
     setBusinessInfo(null);
-    setDeckUrl(null);
+    setMergedPdfUrl(null);
     setError(null);
     try {
       const res = await fetch(`${getApiBaseUrl()}/api/get-business-info`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ business_name: businessName }),
       });
-      console.log("📬 Response status:", res.status);
-      console.log("📬 Response headers:", Object.fromEntries(res.headers.entries()));
-      if (!res.ok) {
-        const err = await res.json();
-        console.log("❌ Error response:", err);
-        throw new Error(err.detail || err.message || "Failed to fetch business info");
-      }
-      const data = await res.json();
-      console.log("✅ Success response:", data);
-      setBusinessInfo(data);
+      if (!res.ok) throw new Error((await res.json()).message || "Failed to fetch business info");
+      setBusinessInfo(await res.json());
     } catch (err: any) {
-      console.error("❌ Full error:", err);
       setError(err.message);
     } finally {
       setFetchingInfo(false);
@@ -97,7 +80,7 @@ export default function CanvaPitchDeckTool({
 
   const generateDeck = async () => {
     setLoading(true);
-    setDeckUrl(null);
+    setMergedPdfUrl(null);
     setError(null);
     try {
       const now = new Date();
@@ -107,40 +90,36 @@ export default function CanvaPitchDeckTool({
         selected_templates: [COVER_PAGE_ID, ...selectedTemplateIds],
         placeholders: {
           business_name: businessInfo?.business_details?.trading_name || businessName,
-          month: now.toLocaleString('default', { month: 'long' }),
+          month: now.toLocaleString("default", { month: "long" }),
           year: now.getFullYear().toString(),
         },
       };
-  
-      console.log("📦 Canva payload:", payload);
-  
+
       const res = await fetch(`${getCanvaApiBaseUrl()}/api/generate-canva-pitch-deck`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          ...payload,
-          canva_token: canvaToken,
-        }),
-      });      
-  
-      console.log("📬 Canva response status:", res.status);
-  
+        body: JSON.stringify({ ...payload, canva_token: canvaToken }),
+      });
+
       const result = await res.json();
-      console.log("📨 Canva response body:", result);
-  
-      if (!res.ok) {
-        if (res.status === 401) {
-          setError("Canva connection expired. Please reconnect to Canva.");
-          return;
-        }
-        throw new Error(result.error || "Failed to generate deck");
+      if (!res.ok) throw new Error(result.error || "Failed to generate deck");
+
+      if (Array.isArray(result.pdf_urls)) {
+        const mergeRes = await fetch("/api/merge-pdfs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pdf_urls: result.pdf_urls }),
+        });
+
+        if (!mergeRes.ok) throw new Error("Failed to merge PDFs");
+        const blob = await mergeRes.blob();
+        setMergedPdfUrl(URL.createObjectURL(blob));
+      } else {
+        throw new Error("Missing PDF URLs in Canva response");
       }
-  
-      setDeckUrl(result.canva_url);
     } catch (err: any) {
-      console.error("❌ Deck generation error:", err.message);
       setError(err.message);
     } finally {
       setLoading(false);
@@ -165,9 +144,8 @@ export default function CanvaPitchDeckTool({
           style={{ marginLeft: 8, padding: 8, minWidth: 280 }}
         />
         <button onClick={getBusinessInfo} style={{ marginLeft: 10 }}>
-        {fetchingInfo ? "Fetching..." : "Fetch Info"}
+          {fetchingInfo ? "Fetching..." : "Fetch Info"}
         </button>
-        {fetchingInfo && <div style={{ marginTop: 8 }}>Retrieving business info...</div>}
       </div>
 
       {error && <div style={{ color: "red", marginBottom: 10 }}>{error}</div>}
@@ -192,8 +170,7 @@ export default function CanvaPitchDeckTool({
                     type="checkbox"
                     checked={selectedTemplateIds.includes(option.templateId)}
                     onChange={() => toggleTemplate(option.templateId)}
-                  />{" "}
-                  {option.label}
+                  /> {option.label}
                 </label>
               ))}
             </div>
@@ -209,11 +186,11 @@ export default function CanvaPitchDeckTool({
         </>
       )}
 
-      {deckUrl && (
+      {mergedPdfUrl && (
         <div style={{ marginTop: 30 }}>
-          <h3>Generated Strategy:</h3>
+          <h3>Merged Strategy PDF:</h3>
           <a
-            href={deckUrl}
+            href={mergedPdfUrl}
             target="_blank"
             rel="noopener noreferrer"
             style={{
@@ -226,7 +203,7 @@ export default function CanvaPitchDeckTool({
               fontWeight: 600,
             }}
           >
-            Open Strategy in Canva
+            Open Merged PDF
           </a>
         </div>
       )}
