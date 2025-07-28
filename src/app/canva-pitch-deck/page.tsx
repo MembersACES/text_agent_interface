@@ -4,18 +4,38 @@ import { useSession } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
 import CanvaPitchDeckTool from "@/components/CanvaPitchDeckTool";
 
+// Helper function to get cookie value
+function getCookie(name: string): string | null {
+  if (typeof document === 'undefined') return null;
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; ${name}=`);
+  if (parts.length === 2) return parts.pop()?.split(';').shift() || null;
+  return null;
+}
+
 export default function CanvaPitchDeckPage() {
   const { data: session } = useSession();
   const searchParams = useSearchParams();
   const [canvaToken, setCanvaToken] = useState<string>("");
   const [isConnected, setIsConnected] = useState(false);
+  const [mounted, setMounted] = useState(false);
   
   const token = (session as any)?.id_token || (session as any)?.accessToken;
 
   useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!mounted) return; // Don't run on server
+    
     console.log("🔍 Page loaded, checking for Canva auth...");
     console.log("🔍 Current URL:", window.location.href);
     console.log("🔍 Search params:", Object.fromEntries(searchParams.entries()));
+    
+    // Check for Canva token in cookies (this is where it's actually stored!)
+    const cookieToken = getCookie('canva_access_token');
+    console.log("🔍 Cookie token:", cookieToken?.substring(0, 20) + "...");
     
     // Check for Canva auth code in URL params (after OAuth redirect)
     const code = searchParams.get('code');
@@ -24,9 +44,13 @@ export default function CanvaPitchDeckPage() {
     console.log("🔍 Code from URL:", code);
     console.log("🔍 State from URL:", state);
     
-    if (code) {
+    if (cookieToken) {
+      console.log("✅ Found Canva token in cookies!");
+      setCanvaToken(cookieToken);
+      setIsConnected(true);
+    } else if (code) {
       console.log("✅ Found auth code in URL, storing...");
-      // Store the Canva auth code
+      // Store the Canva auth code in localStorage as backup
       localStorage.setItem('canva_auth_code', code);
       setCanvaToken(code);
       setIsConnected(true);
@@ -34,7 +58,7 @@ export default function CanvaPitchDeckPage() {
       // Clean up URL
       window.history.replaceState({}, document.title, window.location.pathname);
     } else {
-      console.log("🔍 No code in URL, checking localStorage...");
+      console.log("🔍 No cookie token, checking localStorage...");
       // Check if we have a stored Canva token
       const storedCanvaToken = localStorage.getItem('canva_auth_code') || 
                                localStorage.getItem('canva_access_token');
@@ -45,10 +69,10 @@ export default function CanvaPitchDeckPage() {
         setCanvaToken(storedCanvaToken);
         setIsConnected(true);
       } else {
-        console.log("❌ No stored token found");
+        console.log("❌ No token found anywhere");
       }
     }
-  }, [searchParams]);
+  }, [searchParams, mounted]);
 
   const handleConnect = async () => {
     console.log("🚀 Connecting to Canva...");
@@ -57,17 +81,24 @@ export default function CanvaPitchDeckPage() {
 
   const handleDisconnect = () => {
     console.log("🔌 Disconnecting from Canva...");
-    localStorage.removeItem('canva_auth_code');
-    localStorage.removeItem('canva_access_token');
+    // Clear both localStorage and cookie
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('canva_auth_code');
+      localStorage.removeItem('canva_access_token');
+      // Clear cookie
+      document.cookie = 'canva_access_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+    }
     setCanvaToken("");
     setIsConnected(false);
   };
 
   // Add debugging info to the UI
   const debugInfo = {
+    mounted,
     isConnected,
     canvaTokenLength: canvaToken?.length || 0,
-    hasStoredToken: !!localStorage.getItem('canva_auth_code'),
+    hasCookieToken: mounted ? !!getCookie('canva_access_token') : 'checking...',
+    hasStoredToken: mounted ? !!localStorage.getItem('canva_auth_code') : 'checking...',
     urlParams: Object.fromEntries(searchParams.entries())
   };
 
