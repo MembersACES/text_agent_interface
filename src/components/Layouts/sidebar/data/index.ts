@@ -25,7 +25,7 @@ export const NAV_DATA = [
       {
         title: "MAIN MENU",
         items: [
-          { title: "Dashboard", icon: Icons.HomeIcon, items: [{ title: "eCommerce", url: "/" }] },
+          { title: "Dashboard", url: "/dashboard", icon: Icons.HomeIcon, items: [] },
           { title: "Calendar", url: "/calendar", icon: Icons.Calendar, items: [] },
           { title: "Profile", url: "/profile", icon: Icons.User, items: [] },
           {

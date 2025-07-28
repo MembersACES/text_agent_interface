@@ -79,11 +79,6 @@ export function Sidebar() {
             </button>
           )}
 
-          {/* Dynamic user greeting */}
-          <div className="mb-6 px-1 text-sm text-gray-500 dark:text-gray-400">
-            👋 Welcome, Morgan
-          </div>
-
           {/* Navigation */}
           <div className="custom-scrollbar flex-1 overflow-y-auto pr-3 min-[850px]:mt-6">
             {NAV_DATA.map((section) => (
