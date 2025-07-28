@@ -34,12 +34,8 @@ const PITCH_DECK_TEMPLATES = [
 
 export default function CanvaPitchDeckTool({
   token,
-  canvaAuthCode,
-  codeVerifier,
 }: {
   token: string;
-  canvaAuthCode?: string | null;
-  codeVerifier?: string | null;
 }) {
   const [businessName, setBusinessName] = useState("Frankston RSL");
   const [businessInfo, setBusinessInfo] = useState<any>(null);
@@ -93,8 +89,6 @@ export default function CanvaPitchDeckTool({
     try {
       const now = new Date();
       const payload = {
-        code: canvaAuthCode,
-        code_verifier: codeVerifier,
         business_name: businessName,
         business_info: businessInfo,
         selected_templates: [COVER_PAGE_ID, ...selectedTemplateIds],
@@ -120,7 +114,13 @@ export default function CanvaPitchDeckTool({
       const result = await res.json();
       console.log("📨 Canva response body:", result);
   
-      if (!res.ok) throw new Error(result.error || "Failed to generate deck");
+      if (!res.ok) {
+        if (res.status === 401) {
+          setError("Canva connection expired. Please reconnect to Canva.");
+          return;
+        }
+        throw new Error(result.error || "Failed to generate deck");
+      }
   
       setDeckUrl(result.canva_url);
     } catch (err: any) {

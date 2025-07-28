@@ -10,7 +10,6 @@ export async function GET(req: NextRequest) {
   const codeVerifier = cookieStore.get("canva_code_verifier")?.value; 
   const expectedState = cookieStore.get("canva_state")?.value; 
 
-  // ⭐ Add this debugging
   console.log("🔍 Cookie/State Debug:", {
     code: code ? "PRESENT" : "MISSING",
     codeVerifier: codeVerifier ? "PRESENT" : "MISSING", 
@@ -34,21 +33,6 @@ export async function GET(req: NextRequest) {
     client_id: clientId,
     client_secret: clientSecret,
     redirect_uri: redirectUri,
-  });
-
-  // ⭐ Log the exact request
-  console.log("📤 Exact token request:", {
-    url: "https://api.canva.com/rest/v1/oauth/token",
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    bodyParams: {
-      grant_type: "authorization_code",
-      code: code.substring(0, 50) + "...", // Only log first 50 chars
-      code_verifier: codeVerifier.substring(0, 20) + "...",
-      client_id: clientId,
-      client_secret: clientSecret.substring(0, 5) + "...", // Only first 5 chars
-      redirect_uri: redirectUri,
-    }
   });
 
   const tokenRes = await fetch("https://api.canva.com/rest/v1/oauth/token", {
@@ -84,16 +68,30 @@ export async function GET(req: NextRequest) {
   const forwardedProto = req.headers.get("x-forwarded-proto") || "https";
 
   const baseUrl =
-  forwardedHost && forwardedProto
-    ? `${forwardedProto}://${forwardedHost}`
-    : process.env.NEXT_PUBLIC_AGENT_DEV_API_URL || new URL(req.url).origin;
+    forwardedHost && forwardedProto
+      ? `${forwardedProto}://${forwardedHost}`
+      : process.env.NEXT_PUBLIC_AGENT_DEV_API_URL || new URL(req.url).origin;
 
-  console.log("🔁 Canva OAuth redirect log:", {
-    redirected_to: `${baseUrl}/`,
-    from_url: req.url,
-    resolved_host: forwardedHost,
-    resolved_proto: forwardedProto,
+  // ⭐ Store the access token and redirect to pitch deck page
+  const response = NextResponse.redirect(`${baseUrl}/canva-pitch-deck`);
+  
+  response.cookies.set("canva_access_token", tokenData.access_token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    maxAge: tokenData.expires_in || 14400, // 4 hours default
+    path: "/",
+    sameSite: "lax"
   });
 
-  return NextResponse.redirect(`${baseUrl}/`);
+  // Clean up the OAuth cookies since we don't need them anymore
+  response.cookies.delete("canva_code_verifier");
+  response.cookies.delete("canva_state");
+
+  console.log("🔁 Canva OAuth redirect log:", {
+    redirected_to: `${baseUrl}/canva-pitch-deck`,
+    token_stored: "YES",
+    expires_in: tokenData.expires_in
+  });
+
+  return response;
 }
