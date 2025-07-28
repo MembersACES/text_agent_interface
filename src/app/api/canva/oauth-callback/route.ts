@@ -6,7 +6,7 @@ export async function GET(req: NextRequest) {
   const code = url.searchParams.get("code");
   const returnedState = url.searchParams.get("state");
 
-  const cookieStore = await cookies(); 
+  const cookieStore = await cookies();
   const codeVerifier = cookieStore.get("canva_code_verifier")?.value; 
   const expectedState = cookieStore.get("canva_state")?.value; 
 
