@@ -9,11 +9,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No PDF URLs provided." }, { status: 400 });
     }
 
-    const merger = new (require("pdf-merger-js"))();
-    for (const url of pdf_urls) {
-      const res = await fetch(url);
-      const buf = await res.buffer();
-      await merger.add(buf);
+    const merger = new PdfMerger();
+
+    for (let i = 0; i < pdf_urls.length; i++) {
+      const res = await fetch(pdf_urls[i]);
+      if (!res.ok) {
+        return NextResponse.json({ error: `Failed to fetch PDF at index ${i}` }, { status: 500 });
+      }
+      const buffer = await res.buffer();
+      await merger.add(buffer);
     }
 
     const mergedBuffer = await merger.saveAsBuffer();
@@ -24,7 +28,6 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (err: any) {
-    console.error("❌ Merge error:", err.message);
-    return NextResponse.json({ error: "Failed to merge PDFs" }, { status: 500 });
+    return NextResponse.json({ error: err.message || "Server error" }, { status: 500 });
   }
 }
