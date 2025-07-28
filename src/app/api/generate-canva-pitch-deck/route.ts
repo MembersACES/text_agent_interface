@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
       placeholder_keys: Object.keys(placeholders || {}),
     });
 
-    const cookieStore = cookies(); // ❗ DO NOT use `await` here
+    const cookieStore = await cookies();
     const accessToken = canva_token || cookieStore.get("canva_access_token")?.value;
 
     if (!accessToken) {
