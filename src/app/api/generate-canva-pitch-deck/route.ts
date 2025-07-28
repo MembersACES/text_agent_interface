@@ -1,40 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
+import { cookies } from "next/headers";
 
 export async function POST(req: NextRequest) {
   try {
+    const body = await req.json();
+
     const {
-      code,
-      code_verifier,
       business_name,
       business_info,
       selected_templates,
       placeholders,
-    } = await req.json();
+      canva_token, // <-- from frontend
+    } = body;
 
-    if (!code || !code_verifier) {
-      return NextResponse.json({ error: "Missing Canva auth code" }, { status: 400 });
+    // ✅ Prefer token from request body; fallback to cookie
+    const cookieStore = cookies();
+    const accessToken = canva_token || cookieStore.get("canva_access_token")?.value;
+
+    if (!accessToken) {
+      return NextResponse.json(
+        { error: "No Canva access token found. Please reconnect to Canva." },
+        { status: 401 }
+      );
     }
 
-    const tokenRes = await fetch("https://api.canva.com/rest/v1/oauth/token", { // Fixed URL
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" }, // Fixed content type
-      body: new URLSearchParams({ // Fixed body format
-        grant_type: "authorization_code",
-        code,
-        client_id: process.env.CANVA_CLIENT_ID!,
-        client_secret: process.env.CANVA_CLIENT_SECRET!,
-        redirect_uri: process.env.CANVA_REDIRECT_URI!,
-        code_verifier,
-      }),
-    });
+    console.log("🎨 Using Canva token for design generation");
 
-    const tokenData = await tokenRes.json();
-    if (!tokenRes.ok) {
-      console.error("Token error", tokenData);
-      throw new Error(tokenData?.error_description || "Failed to fetch Canva token");
-    }
-
-    const accessToken = tokenData.access_token;
     const templateId = selected_templates[0];
 
     const designRes = await fetch(
@@ -57,8 +48,19 @@ export async function POST(req: NextRequest) {
     );
 
     const designData = await designRes.json();
+
     if (!designRes.ok) {
       console.error("Design creation error", designData);
+
+      if (designRes.status === 401) {
+        const response = NextResponse.json(
+          { error: "Canva token expired. Please reconnect to Canva." },
+          { status: 401 }
+        );
+        response.cookies.delete("canva_access_token");
+        return response;
+      }
+
       throw new Error(designData?.error || "Failed to generate Canva design");
     }
 
