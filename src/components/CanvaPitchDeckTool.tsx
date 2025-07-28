@@ -34,8 +34,10 @@ const PITCH_DECK_TEMPLATES = [
 
 export default function CanvaPitchDeckTool({
   token,
+  canvaToken,
 }: {
   token: string;
+  canvaToken: string;
 }) {
   const [businessName, setBusinessName] = useState("Frankston RSL");
   const [businessInfo, setBusinessInfo] = useState<any>(null);
@@ -108,6 +110,7 @@ export default function CanvaPitchDeckTool({
           month: now.toLocaleString('default', { month: 'long' }),
           year: now.getFullYear().toString(),
         },
+        canva_auth_code: canvaToken,
       };
   
       console.log("📦 Canva payload:", payload);
