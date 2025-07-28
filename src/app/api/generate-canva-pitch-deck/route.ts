@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
     } = body;
 
     // ✅ Prefer token from request body; fallback to cookie
-    const cookieStore = cookies();
+    const cookieStore = await cookies();
     const accessToken = canva_token || cookieStore.get("canva_access_token")?.value;
 
     if (!accessToken) {
