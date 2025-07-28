@@ -58,6 +58,9 @@ export default function CanvaPitchDeckTool({
     console.log("🔍 API Base URL:", getApiBaseUrl());
     console.log("🔍 Full URL:", `${getApiBaseUrl()}/api/get-business-info`);
     console.log("🔍 Environment:", process.env.NEXT_PUBLIC_API_BASE_URL);
+    console.log("🔍 Token (first 20 chars):", token?.substring(0, 20) + "...");
+    console.log("🔍 Token type:", typeof token);
+    console.log("🔍 Token length:", token?.length);
     
     setFetchingInfo(true);
     setBusinessInfo(null);
@@ -68,14 +71,22 @@ export default function CanvaPitchDeckTool({
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+          "Authorization": `Bearer ${token}`,
         },
         body: JSON.stringify({ business_name: businessName }),
       });
-      if (!res.ok) throw new Error("Failed to fetch business info");
+      console.log("📬 Response status:", res.status);
+      console.log("📬 Response headers:", Object.fromEntries(res.headers.entries()));
+      if (!res.ok) {
+        const err = await res.json();
+        console.log("❌ Error response:", err);
+        throw new Error(err.detail || err.message || "Failed to fetch business info");
+      }
       const data = await res.json();
+      console.log("✅ Success response:", data);
       setBusinessInfo(data);
     } catch (err: any) {
+      console.error("❌ Full error:", err);
       setError(err.message);
     } finally {
       setFetchingInfo(false);
