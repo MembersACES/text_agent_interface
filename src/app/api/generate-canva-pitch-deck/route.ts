@@ -47,7 +47,14 @@ export async function POST(req: NextRequest) {
       }
     );
 
-    const designData = await designRes.json();
+    let designData: any = {};
+    try {
+      designData = await designRes.json();
+    } catch (parseErr) {
+      const raw = await designRes.text();
+      console.error("❌ Failed to parse Canva response as JSON. Raw body:", raw);
+      throw new Error("Invalid response from Canva API");
+    }
 
     if (!designRes.ok) {
       console.error("Design creation error", designData);
