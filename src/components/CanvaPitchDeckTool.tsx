@@ -5,9 +5,9 @@ const COVER_PAGE_ID = "DAGuCqKd5EY";
 
 const PITCH_DECK_TEMPLATES = [
   {
-    category: "Renewable Energy",
+    category: "Test Templates",
     options: [
-      { label: "Solar Farm", templateId: "DAGeGhhx5IE" },
+      { label: "Test Template 1", templateId: "DAGeGhhx5IE" },
       { label: "Solar Car Park", templateId: "DAGeGvaQLD4" },
     ],
   },
