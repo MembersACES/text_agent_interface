@@ -10,6 +10,15 @@ export async function GET(req: NextRequest) {
   const codeVerifier = cookieStore.get("canva_code_verifier")?.value; 
   const expectedState = cookieStore.get("canva_state")?.value; 
 
+  // ⭐ Add this debugging
+  console.log("🔍 Cookie/State Debug:", {
+    code: code ? "PRESENT" : "MISSING",
+    codeVerifier: codeVerifier ? "PRESENT" : "MISSING", 
+    returnedState: returnedState || "MISSING",
+    expectedState: expectedState || "MISSING",
+    stateMatch: returnedState === expectedState
+  });
+
   if (!code || !codeVerifier || returnedState !== expectedState) {
     return NextResponse.json({ error: "Invalid OAuth state or code" }, { status: 400 });
   }
@@ -17,16 +26,6 @@ export async function GET(req: NextRequest) {
   const clientId = process.env.CANVA_CLIENT_ID!;
   const clientSecret = process.env.CANVA_CLIENT_SECRET!;
   const redirectUri = process.env.CANVA_REDIRECT_URI!;
-
-  console.log("🔍 Debug env vars:", {
-    clientId: clientId || "MISSING",
-    clientSecret: clientSecret ? "PRESENT" : "MISSING",
-    redirectUri: redirectUri || "MISSING",
-    allEnv: Object.keys(process.env).filter(key => key.includes('CANVA')),
-    allEnvKeys: Object.keys(process.env).sort(),
-    nodeEnv: process.env.NODE_ENV,
-    totalEnvCount: Object.keys(process.env).length
-  });
 
   const tokenBody = new URLSearchParams({
     grant_type: "authorization_code",
@@ -36,23 +35,38 @@ export async function GET(req: NextRequest) {
     client_secret: clientSecret,
     redirect_uri: redirectUri,
   });
-  
-  const tokenRes = await fetch("https://api.canva.com/oauth/token", {
+
+  // ⭐ Log the exact request
+  console.log("📤 Exact token request:", {
+    url: "https://api.canva.com/rest/v1/oauth/token",
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    bodyParams: {
+      grant_type: "authorization_code",
+      code: code.substring(0, 50) + "...", // Only log first 50 chars
+      code_verifier: codeVerifier.substring(0, 20) + "...",
+      client_id: clientId,
+      client_secret: clientSecret.substring(0, 5) + "...", // Only first 5 chars
+      redirect_uri: redirectUri,
+    }
+  });
+
+  const tokenRes = await fetch("https://api.canva.com/rest/v1/oauth/token", {
     method: "POST",
     headers: {
-      "Content-Type": "application/x-www-form-urlencoded", 
+      "Content-Type": "application/x-www-form-urlencoded",
     },
-    body: tokenBody, 
+    body: tokenBody,
   });
 
   if (!tokenRes.ok) {
     const errText = await tokenRes.text();
-    
     const cleanError = errText.replace(/^.*?{/, '{');
     
     console.error("❌ Token exchange failed:", {
       status: tokenRes.status,
       statusText: tokenRes.statusText,
+      responseHeaders: Object.fromEntries(tokenRes.headers.entries()),
       body: cleanError
     });
     
