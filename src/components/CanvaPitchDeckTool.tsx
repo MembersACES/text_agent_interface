@@ -119,9 +119,11 @@ export default function CanvaPitchDeckTool({
         headers: {
           "Content-Type": "application/json",
         },
-        credentials: 'include',
-        body: JSON.stringify(payload),
-      });
+        body: JSON.stringify({
+          ...payload,
+          canva_token: canvaToken,
+        }),
+      });      
   
       console.log("📬 Canva response status:", res.status);
   
