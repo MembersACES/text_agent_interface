@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 🔧 Convert to Canva's expected format
-    const canvaFormattedData = {};
+    const canvaFormattedData: Record<string, { type: string; text: string }> = {};
     for (const [key, value] of Object.entries(flattenedData)) {
       if (value !== undefined && value !== null && value !== "") {
         canvaFormattedData[key] = {
@@ -97,7 +97,7 @@ export async function POST(req: NextRequest) {
 
       console.log(`📬 Canva responded with status: ${res.status}`);
 
-      let designData = {};
+      let designData: any = {};
       try {
         designData = await res.json();
         console.log(`📄 Canva JSON response for template ${templateId}:`, JSON.stringify(designData, null, 2));
@@ -154,7 +154,7 @@ export async function POST(req: NextRequest) {
     console.log("🎉 All templates processed. Returning URLs:", generatedUrls);
 
     return NextResponse.json({ canva_urls: generatedUrls });
-  } catch (err) {
+        } catch (err: any) {
     console.error("🔥 Unhandled error in Canva pitch deck route:", err.message);
     return NextResponse.json(
       { error: err.message || "Unknown error" },
@@ -164,7 +164,7 @@ export async function POST(req: NextRequest) {
 }
 
 // 🔧 Helper function to poll job completion
-async function pollJobCompletion(accessToken, jobId, maxAttempts = 30, delayMs = 2000) {
+async function pollJobCompletion(accessToken: string, jobId: string, maxAttempts = 30, delayMs = 2000): Promise<string> {
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       console.log(`🔄 Polling attempt ${attempt}/${maxAttempts} for job ${jobId}`);
@@ -185,7 +185,7 @@ async function pollJobCompletion(accessToken, jobId, maxAttempts = 30, delayMs =
         continue;
       }
 
-      const jobData = await response.json();
+      const jobData: any = await response.json();
       const status = jobData.job?.status;
 
       console.log(`📊 Job ${jobId} status: ${status}`);
@@ -203,8 +203,8 @@ async function pollJobCompletion(accessToken, jobId, maxAttempts = 30, delayMs =
       if (attempt < maxAttempts) {
         await new Promise(resolve => setTimeout(resolve, delayMs));
       }
-    } catch (error) {
-      console.error(`❌ Error polling job ${jobId}:`, error.message);
+    } catch (error: unknown) {
+      console.error(`❌ Error polling job ${jobId}:`, (error as Error).message);
       if (attempt === maxAttempts) throw error;
     }
   }
@@ -213,7 +213,7 @@ async function pollJobCompletion(accessToken, jobId, maxAttempts = 30, delayMs =
 }
 
 // 🔍 Debug helper to check template fields
-async function debugCanvaTemplate(accessToken, templateId) {
+async function debugCanvaTemplate(accessToken: string, templateId: string) {
   console.log(`🔍 Debugging template: ${templateId}`);
   
   try {
@@ -230,12 +230,12 @@ async function debugCanvaTemplate(accessToken, templateId) {
     );
 
     if (!datasetResponse.ok) {
-      const errorData = await datasetResponse.json();
+      const errorData: any = await datasetResponse.json();
       console.error(`❌ Failed to get dataset for ${templateId}:`, errorData);
       return null;
     }
 
-    const dataset = await datasetResponse.json();
+    const dataset: any = await datasetResponse.json();
     console.log(`📊 Dataset for template ${templateId}:`, JSON.stringify(dataset, null, 2));
 
     // Extract available field names
@@ -246,7 +246,8 @@ async function debugCanvaTemplate(accessToken, templateId) {
     
     // Show field types
     for (const [fieldName, fieldInfo] of Object.entries(availableFields)) {
-      console.log(`  - ${fieldName}: ${fieldInfo.type} ${fieldInfo.required ? '(required)' : '(optional)'}`);
+      const info = fieldInfo as any;
+      console.log(`  - ${fieldName}: ${info.type} ${info.required ? '(required)' : '(optional)'}`);
     }
 
     return {
@@ -255,8 +256,8 @@ async function debugCanvaTemplate(accessToken, templateId) {
       fieldDetails: availableFields
     };
 
-  } catch (error) {
-    console.error(`❌ Error debugging template ${templateId}:`, error.message);
+  } catch (error: unknown) {
+    console.error(`❌ Error debugging template ${templateId}:`, (error as Error).message);
     return null;
   }
 }
