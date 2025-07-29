@@ -48,58 +48,65 @@ export async function POST(req: NextRequest) {
     // Step 1: Export each template as PDF
     const templatePdfs: Array<{ templateId: string; title: string; exportUrl: string; pages: number }> = [];
 
+    if (!Array.isArray(selected_templates) || selected_templates.length === 0) {
+      console.error("❌ selected_templates is missing or empty:", selected_templates);
+      return NextResponse.json({ error: "No templates selected." }, { status: 400 });
+    }
+
     for (const requestedTemplateId of selected_templates) {
       const actualTemplateId = actualTemplates[requestedTemplateId] || requestedTemplateId;
-      
-      console.log(`📄 Exporting template: ${requestedTemplateId} -> ${actualTemplateId}`);
+
+      console.log(`📄 Processing template → requested: ${requestedTemplateId}, actual: ${actualTemplateId}`);
+
+      if (!actualTemplateId || typeof actualTemplateId !== "string") {
+        console.error(`❌ Invalid template ID resolved:`, actualTemplateId);
+        continue;
+      }
 
       try {
-        // First, get template info
-        const templateResponse = await fetch(`https://api.canva.com/rest/v1/designs/${actualTemplateId}`, {
-          headers: { Authorization: `Bearer ${accessToken}` }
-        });
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout
+
+        const templateResponse = await fetch(
+          `https://api.canva.com/rest/v1/designs/${actualTemplateId}`,
+          {
+            headers: { Authorization: `Bearer ${accessToken}` },
+            signal: controller.signal,
+          }
+        );
+
+        clearTimeout(timeoutId);
 
         if (!templateResponse.ok) {
-          console.log(`❌ Cannot access template ${actualTemplateId}`);
+          const responseText = await templateResponse.text();
+          console.error(`❌ Failed to fetch template ${actualTemplateId} → Status: ${templateResponse.status}`);
+          console.error(`❌ Response body: ${responseText}`);
           continue;
         }
 
         const templateData = await templateResponse.json();
-        console.log(`✅ Found template: ${templateData.title || 'Untitled'} (${templateData.page_count || 1} pages)`);
-        console.log(`🔗 Template URLs:`, templateData.urls);
+        console.log(`✅ Template loaded: ${templateData.title || 'Untitled'} (${templateData.page_count || 1} pages)`);
 
-        // Teams accounts can't export - skip export attempts and go straight to edit URLs
-        console.log(`ℹ️ Teams account detected - using edit URLs instead of export`);
-        
-        const editUrl = templateData.urls?.edit_url;
-        console.log(`📝 Edit URL found: ${editUrl ? 'YES' : 'NO'}`);
-        
-        if (editUrl) {
-          templatePdfs.push({
-            templateId: actualTemplateId,
-            title: templateData.title || 'Untitled Template',
-            exportUrl: editUrl, // Use edit URL instead of export URL
-            pages: templateData.page_count || 1
-          });
-          console.log(`📝 Added edit URL for: ${templateData.title}`);
+        const editUrl = templateData.urls?.edit_url || `https://www.canva.com/design/${actualTemplateId}/edit`;
+
+        templatePdfs.push({
+          templateId: actualTemplateId,
+          title: templateData.title || 'Untitled Template',
+          exportUrl: editUrl,
+          pages: templateData.page_count || 1,
+        });
+
+        console.log(`📝 Template added to list: ${templateData.title}`);
+
+      } catch (error: unknown) {
+        if ((error as any).name === 'AbortError') {
+          console.error(`⏱️ Fetch for template ${actualTemplateId} timed out.`);
         } else {
-          console.log(`❌ No edit URL found for template ${actualTemplateId}`);
-          // Add it anyway with a fallback URL
-          templatePdfs.push({
-            templateId: actualTemplateId,
-            title: templateData.title || 'Untitled Template',
-            exportUrl: `https://www.canva.com/design/${actualTemplateId}/edit`,
-            pages: templateData.page_count || 1
-          });
-          console.log(`🔄 Using fallback edit URL for: ${templateData.title}`);
+          console.error(`❌ Error processing template ${actualTemplateId}:`, (error as Error).message);
+          console.error(`❌ Full error:`, error);
         }
-
-      } catch (error) {
-        console.error(`❌ Error processing template ${actualTemplateId}:`, (error as Error).message);
-        console.error(`❌ Full error:`, error);
       }
     }
-
     console.log(`📊 Final templatePdfs array:`, templatePdfs);
     console.log(`📊 templatePdfs.length: ${templatePdfs.length}`);
 
