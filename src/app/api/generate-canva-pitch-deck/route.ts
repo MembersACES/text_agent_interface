@@ -65,71 +65,20 @@ export async function POST(req: NextRequest) {
         }
 
         const templateData = await templateResponse.json();
-        console.log(`✅ Found template: ${templateData.title} (${templateData.page_count} pages)`);
+        console.log(`✅ Found template: ${templateData.title || 'Untitled'} (${templateData.page_count || 1} pages)`);
 
-        // Try to export as PDF
-        const exportResponse = await fetch(`https://api.canva.com/rest/v1/designs/${actualTemplateId}/export`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            format: "pdf",
-            quality: "standard"
-          })
-        });
-
-        if (exportResponse.ok) {
-          const exportData = await exportResponse.json();
-          console.log(`✅ Export job created for ${templateData.title}`);
-          
-          // Poll for export completion
-          const exportJob = exportData.job;
-          if (exportJob) {
-            const finalExportUrl = await pollExportJob(accessToken, exportJob.id);
-            if (finalExportUrl) {
-              templatePdfs.push({
-                templateId: actualTemplateId,
-                title: templateData.title,
-                exportUrl: finalExportUrl,
-                pages: templateData.page_count || 1
-              });
-              console.log(`📥 Template exported: ${templateData.title}`);
-            }
-          }
-        } else {
-          console.log(`❌ Export failed for template ${actualTemplateId}`);
-          
-          // If export fails, try to get high-res images instead
-          const imageExportResponse = await fetch(`https://api.canva.com/rest/v1/designs/${actualTemplateId}/export`, {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-              "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-              format: "png",
-              quality: "high"
-            })
+        // Teams accounts can't export - skip export attempts and go straight to edit URLs
+        console.log(`ℹ️ Teams account detected - using edit URLs instead of export`);
+        
+        const editUrl = templateData.urls?.edit_url;
+        if (editUrl) {
+          templatePdfs.push({
+            templateId: actualTemplateId,
+            title: templateData.title || 'Untitled Template',
+            exportUrl: editUrl, // Use edit URL instead of export URL
+            pages: templateData.page_count || 1
           });
-
-          if (imageExportResponse.ok) {
-            const imageExportData = await imageExportResponse.json();
-            const imageJob = imageExportData.job;
-            if (imageJob) {
-              const imageUrl = await pollExportJob(accessToken, imageJob.id);
-              if (imageUrl) {
-                templatePdfs.push({
-                  templateId: actualTemplateId,
-                  title: templateData.title,
-                  exportUrl: imageUrl,
-                  pages: templateData.page_count || 1
-                });
-                console.log(`🖼️ Template exported as image: ${templateData.title}`);
-              }
-            }
-          }
+          console.log(`📝 Added edit URL for: ${templateData.title}`);
         }
 
       } catch (error) {
@@ -139,40 +88,44 @@ export async function POST(req: NextRequest) {
 
     if (templatePdfs.length === 0) {
       return NextResponse.json({
-        error: "Could not export any templates",
-        note: "Teams accounts may have limited export capabilities",
-        fallback_solution: {
-          message: "Opening templates for manual combination",
-          edit_urls: await getTemplateEditUrls(accessToken, selected_templates, actualTemplates),
-          instructions: [
-            "1. Open each template link above",
-            "2. Download each as PDF individually", 
-            "3. Use a PDF merger tool to combine them",
-            "4. Or copy pages from one template to another in Canva"
-          ]
-        }
+        error: "Could not access any templates",
+        note: "Teams accounts have limited API access",
+        available_templates: await getAvailableTemplates(accessToken),
+        suggestion: "Try using the template IDs from available_templates above"
       }, { status: 400 });
     }
 
-    // Step 2: Create combined PDF with business data overlay
-    const combinedPdfUrl = await createCombinedPdf(templatePdfs, businessData);
-
+    // Since Teams can't export, provide manual combination workflow
     return NextResponse.json({
       success: true,
-      message: `✅ Created combined strategy document with ${templatePdfs.length} sections`,
-      combined_pdf_url: combinedPdfUrl,
-      sections_included: templatePdfs.map(t => ({
+      message: `✅ Found ${templatePdfs.length} templates - Manual combination workflow ready`,
+      workflow: {
+        step1: "Open templates in order",
+        step2: "Copy content from subsequent templates into the first one",
+        step3: "Replace placeholder text with your business data",
+        step4: "Download final combined document"
+      },
+      templates: templatePdfs.map((t, index) => ({
+        order: index + 1,
         title: t.title,
-        pages: t.pages
+        pages: t.pages,
+        edit_url: t.exportUrl,
+        action: index === 0 ? "🎯 Main template - edit this one" : "📋 Copy content from this template"
       })),
-      business_data_applied: businessData,
-      total_pages: templatePdfs.reduce((sum, t) => sum + t.pages, 0),
-      instructions: [
-        "Your combined strategy document is ready!",
-        "All your selected templates have been merged into one PDF",
-        "Business data has been overlaid where possible",
-        "Download the PDF using the link above"
-      ]
+      business_data: businessData,
+      detailed_instructions: [
+        `1. 🎯 Open the main template: ${templatePdfs[0]?.title}`,
+        "2. 📋 Open other templates in new tabs",
+        "3. 🔄 Copy pages/content from additional templates into the main one",
+        "4. ✏️ Replace all placeholder text with your business information:",
+        ...Object.entries(businessData).map(([key, value]) => 
+          value ? `   • ${key}: "${value}"` : null
+        ).filter(Boolean),
+        "5. 🎨 Customize colors, fonts, and layout as needed",
+        "6. 📥 Download as PDF: Share → Download → PDF Standard",
+        "7. ✅ Your combined strategy document is ready!"
+      ],
+      tip: "💡 Since Teams accounts can't auto-export, this manual workflow combines your templates into one professional document."
     });
 
   } catch (error: unknown) {
@@ -248,27 +201,23 @@ async function getTemplateEditUrls(accessToken: string, requestedTemplates: stri
   return editUrls;
 }
 
-// Helper function to create combined PDF (simplified for now)
-async function createCombinedPdf(templatePdfs: any[], businessData: any): Promise<string> {
-  console.log("📄 Creating combined PDF from templates...");
-  
-  // For now, return instructions on how to combine
-  // In a full implementation, you'd:
-  // 1. Download each PDF/image
-  // 2. Use a PDF library to combine them
-  // 3. Overlay business data on each page
-  // 4. Upload combined result and return URL
-  
-  const combinationInstructions = {
-    message: "Templates ready for combination",
-    templates: templatePdfs,
-    next_steps: [
-      "Download each template PDF from the URLs provided",
-      "Use PDF merger tool or manually combine in Canva",
-      "Replace placeholder text with your business data"
-    ]
-  };
-  
-  // Return a placeholder URL for now
-  return `data:text/json;base64,${Buffer.from(JSON.stringify(combinationInstructions)).toString('base64')}`;
+// Helper function to get available templates
+async function getAvailableTemplates(accessToken: string): Promise<any[]> {
+  try {
+    const response = await fetch("https://api.canva.com/rest/v1/designs", {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      return (data.items || []).slice(0, 10).map((d: any) => ({
+        id: d.id,
+        title: d.title,
+        pages: d.page_count
+      }));
+    }
+  } catch (error) {
+    console.error("Error fetching available templates");
+  }
+  return [];
 }
