@@ -141,9 +141,9 @@ export default function CanvaPitchDeckPage() {
       console.log("🔍 Canva capabilities result:", result);
       setTestResults(result);
       
-    } catch (error) {
+    } catch (error: unknown) {
       console.error("Error testing capabilities:", error);
-      setTestResults({ error: error.message });
+      setTestResults({ error: (error as Error).message });
     } finally {
       setTesting(false);
     }
