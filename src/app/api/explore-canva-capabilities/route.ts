@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
+// Helper function to safely get error message
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'string') return error;
+  return String(error);
+}
+
 export async function POST(req: NextRequest) {
   console.log("🔍 Exploring Canva capabilities with Teams account...");
 
@@ -15,7 +22,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No Canva access token found." }, { status: 401 });
     }
 
-    const results = {
+    const results: {
+      user_info: any;
+      templates_accessible: any[];
+      designs_creatable: boolean;
+      export_options: string[];
+      errors: string[];
+    } = {
       user_info: null,
       templates_accessible: [],
       designs_creatable: false,
@@ -34,11 +47,11 @@ export async function POST(req: NextRequest) {
         results.user_info = await userResponse.json();
         console.log("✅ User info accessible");
       } else {
-        const error = await userResponse.json();
+        const error: any = await userResponse.json();
         results.errors.push(`User info: ${error.message}`);
       }
-    } catch (err) {
-      results.errors.push(`User info error: ${err.message}`);
+    } catch (err: unknown) {
+      results.errors.push(`User info error: ${getErrorMessage(err)}`);
     }
 
     // 2. Check if we can access designs/templates
@@ -53,11 +66,11 @@ export async function POST(req: NextRequest) {
         results.templates_accessible = designs.items || [];
         console.log(`✅ Found ${results.templates_accessible.length} accessible designs`);
       } else {
-        const error = await designsResponse.json();
+        const error: any = await designsResponse.json();
         results.errors.push(`Designs access: ${error.message}`);
       }
-    } catch (err) {
-      results.errors.push(`Designs error: ${err.message}`);
+    } catch (err: unknown) {
+      results.errors.push(`Designs error: ${getErrorMessage(err)}`);
     }
 
     // 3. Test creating a basic design
@@ -104,21 +117,21 @@ export async function POST(req: NextRequest) {
                 results.export_options.push(format);
                 console.log(`✅ Export format ${format} works`);
               } else {
-                const exportError = await exportResponse.json();
+                const exportError: any = await exportResponse.json();
                 console.log(`❌ Export format ${format} failed: ${exportError.message}`);
               }
-            } catch (exportErr) {
-              console.log(`❌ Export format ${format} error: ${exportErr.message}`);
+            } catch (exportErr: unknown) {
+              console.log(`❌ Export format ${format} error: ${getErrorMessage(exportErr)}`);
             }
           }
         }
         
       } else {
-        const error = await createResponse.json();
+        const error: any = await createResponse.json();
         results.errors.push(`Design creation: ${error.message}`);
       }
-    } catch (err) {
-      results.errors.push(`Design creation error: ${err.message}`);
+    } catch (err: unknown) {
+      results.errors.push(`Design creation error: ${getErrorMessage(err)}`);
     }
 
     // 5. Check specific template access if IDs provided
@@ -163,23 +176,23 @@ export async function POST(req: NextRequest) {
                   error: "Export failed"
                 });
               }
-            } catch (exportErr) {
+            } catch (exportErr: unknown) {
               console.log(`❌ Template ${templateId} export error:`, exportErr);
               results.templates_accessible.push({
                 id: templateId,
                 exportable: false,
-                error: `Export error: ${(exportErr as Error).message}`
+                error: `Export error: ${getErrorMessage(exportErr)}`
               });
             }
             
           } else {
-            const errorData = await templateResponse.json();
+            const errorData: any = await templateResponse.json();
             console.log(`❌ Template ${templateId} not accessible:`, errorData);
             results.errors.push(`Template ${templateId}: ${errorData.message || 'Access denied'}`);
           }
-        } catch (err) {
+        } catch (err: unknown) {
           console.log(`❌ Template ${templateId} error:`, err);
-          results.errors.push(`Template ${templateId}: ${(err as Error).message}`);
+          results.errors.push(`Template ${templateId}: ${getErrorMessage(err)}`);
         }
       }
     } else {
@@ -197,8 +210,8 @@ export async function POST(req: NextRequest) {
         "❌ Limited API access. May need alternative approach."
     });
 
-  } catch (err: any) {
-    console.error("🔥 Exploration error:", err.message);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (err: unknown) {
+    console.error("🔥 Exploration error:", getErrorMessage(err));
+    return NextResponse.json({ error: getErrorMessage(err) }, { status: 500 });
   }
 }
