@@ -6,7 +6,9 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function getApiBaseUrl(): string {
-  return "https://text-agent-backend-672026052958.australia-southeast2.run.app";
+  return process.env.NODE_ENV === "development"
+    ? "http://localhost:8000"  // Your local FastAPI server
+    : "https://text-agent-backend-672026052958.australia-southeast2.run.app";
 }
 
 export function getCanvaApiBaseUrl() {
