@@ -180,8 +180,8 @@ export default function InfoToolPage({ title, description, endpoint, extraFields
     setError(null);
     setResult(null);
   
-    if (!businessName || (secondaryField && !secondaryValue)) {
-      setError("Please fill out all required fields before submitting.");
+    if (!businessName && !secondaryValue) {
+      setError("Please provide at least a Business Name or a Secondary Field value.");
       return;
     }
   
@@ -193,7 +193,8 @@ export default function InfoToolPage({ title, description, endpoint, extraFields
   
       if (isFileUpload && file) {
         const formData = new FormData();
-        formData.append("business_name", businessName);
+        if (businessName) formData.append("business_name", businessName);
+        if (secondaryField && secondaryValue) formData.append(secondaryField.name, secondaryValue);
         if (secondaryField) formData.append(secondaryField.name, secondaryValue);
         extraFields.forEach((f) => formData.append(f.name, fields[f.name] || ""));
         formData.append("file", file);
@@ -207,8 +208,9 @@ export default function InfoToolPage({ title, description, endpoint, extraFields
           signal: controller.signal,
         });
       } else {
-        const body: any = { business_name: businessName };
-        if (secondaryField) body[secondaryField.name] = secondaryValue;
+        const body: any = {};
+        if (businessName) body.business_name = businessName;
+        if (secondaryField && secondaryValue) body[secondaryField.name] = secondaryValue;
         extraFields.forEach((f) => (body[f.name] = fields[f.name]));
   
         res = await fetch(endpoint, {
