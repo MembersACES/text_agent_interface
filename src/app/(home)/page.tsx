@@ -1,62 +1,43 @@
-import { PaymentsOverview } from "@/components/Charts/payments-overview";
-import { UsedDevices } from "@/components/Charts/used-devices";
-import { WeeksProfit } from "@/components/Charts/weeks-profit";
-import { TopChannels } from "@/components/Tables/top-channels";
-import { TopChannelsSkeleton } from "@/components/Tables/top-channels/skeleton";
-import { createTimeFrameExtractor } from "@/utils/timeframe-extractor";
-import { Suspense } from "react";
-import { ChatsCard } from "./_components/chats-card";
-import { OverviewCardsGroup } from "./_components/overview-cards";
-import { OverviewCardsSkeleton } from "./_components/overview-cards/skeleton";
-import { RegionLabels } from "./_components/region-labels";
+import Link from "next/link";
+import Image from "next/image";
+import ACESLogo from "@/../public/images/logo/ACES Logo.png";
 
-type PropsType = {
-  searchParams: Promise<{
-    selected_time_frame?: string;
-  }>;
-};
-
-export default async function Home({ searchParams }: PropsType) {
-  const { selected_time_frame } = await searchParams;
-  const extractTimeFrame = createTimeFrameExtractor(selected_time_frame);
-
+export default function Home() {
   return (
-    <>
-      <Suspense fallback={<OverviewCardsSkeleton />}>
-        <OverviewCardsGroup />
-      </Suspense>
-
-      <div className="mt-4 grid grid-cols-12 gap-4 md:mt-6 md:gap-6 2xl:mt-9 2xl:gap-7.5">
-        <PaymentsOverview
-          className="col-span-12 xl:col-span-7"
-          key={extractTimeFrame("payments_overview")}
-          timeFrame={extractTimeFrame("payments_overview")?.split(":")[1]}
-        />
-
-        <WeeksProfit
-          key={extractTimeFrame("weeks_profit")}
-          timeFrame={extractTimeFrame("weeks_profit")?.split(":")[1]}
-          className="col-span-12 xl:col-span-5"
-        />
-
-        <UsedDevices
-          className="col-span-12 xl:col-span-5"
-          key={extractTimeFrame("used_devices")}
-          timeFrame={extractTimeFrame("used_devices")?.split(":")[1]}
-        />
-
-        <RegionLabels />
-
-        <div className="col-span-12 grid xl:col-span-8">
-          <Suspense fallback={<TopChannelsSkeleton />}>
-            <TopChannels />
-          </Suspense>
-        </div>
-
-        <Suspense fallback={null}>
-          <ChatsCard />
-        </Suspense>
+    <div className="flex min-h-screen flex-col items-center justify-center bg-white px-4 text-center dark:bg-gray-900">
+      <div className="mb-6">
+        <Image src={ACESLogo} alt="ACES Logo" width={100} height={100} priority />
       </div>
-    </>
+
+      <h1 className="text-4xl font-bold text-gray-800 dark:text-white">Welcome to the ACES Portal</h1>
+      <p className="mt-3 max-w-xl text-lg text-gray-600 dark:text-gray-300">
+        Your internal command center — access tools, upload documents, and manage your leads, all in one place.
+      </p>
+
+      <div className="mt-8 flex flex-wrap justify-center gap-4">
+        <Link
+          href="/dashboard"
+          className="rounded-xl bg-primary px-6 py-3 text-white shadow-lg transition hover:bg-primary-dark"
+        >
+          Go to Dashboard
+        </Link>
+        <Link
+          href="/agent"
+          className="rounded-xl border border-gray-300 px-6 py-3 text-gray-700 transition hover:border-gray-500 hover:text-black dark:text-white dark:border-gray-600"
+        >
+          Launch Agent
+        </Link>
+        <Link
+          href="/loa-upload"
+          className="rounded-xl border border-gray-300 px-6 py-3 text-gray-700 transition hover:border-gray-500 hover:text-black dark:text-white dark:border-gray-600"
+        >
+          Upload LOA
+        </Link>
+      </div>
+
+      <p className="mt-10 text-sm text-gray-400 dark:text-gray-500">
+        ACES Solutions • Internal Platform
+      </p>
+    </div>
   );
 }

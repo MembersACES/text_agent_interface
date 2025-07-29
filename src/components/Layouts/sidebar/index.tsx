@@ -1,6 +1,5 @@
 "use client";
 
-import { Logo } from "@/components/logo";
 import { cn } from "@/lib/utils";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -55,37 +54,38 @@ export function Sidebar() {
         inert={!isOpen}
       >
         <div className="flex h-full flex-col py-10 pl-[25px] pr-[7px]">
-          {/* ACES Logo Branding */}
+          {/* ACES Logo + Name */}
           <div className="flex flex-col items-center mb-6">
-            <a href="/" onClick={() => isMobile && toggleSidebar()} className="block">
+            <a href="/" onClick={() => isMobile && toggleSidebar()} className="block text-center">
               <img
                 src={typeof ACES_BRAND.logo === "string" ? ACES_BRAND.logo : ACES_BRAND.logo.src}
                 alt="ACES Logo"
-                className="h-12 w-auto mb-2"
+                className="h-12 w-auto mb-1"
               />
+              <span className="text-base font-semibold text-gray-900 dark:text-white">
+                ACES Portal
+              </span>
             </a>
           </div>
-          <div className="relative pr-4.5">
-            <a href="/" onClick={() => isMobile && toggleSidebar()} className="px-0 py-2.5 min-[850px]:py-0 block">
-              <Logo />
-            </a>
 
-            {isMobile && (
-              <button
-                onClick={toggleSidebar}
-                className="absolute left-3/4 right-4.5 top-1/2 -translate-y-1/2 text-right"
-                aria-label="Close Menu"
-              >
-                <ArrowLeftIcon className="ml-auto size-7" />
-              </button>
-            )}
-          </div>
+          {/* Optional mobile close button */}
+          {isMobile && (
+            <button
+              onClick={toggleSidebar}
+              className="absolute left-3/4 right-4.5 top-1/2 -translate-y-1/2 text-right"
+              aria-label="Close Menu"
+            >
+              <ArrowLeftIcon className="ml-auto size-7" />
+            </button>
+          )}
 
           {/* Navigation */}
-          <div className="custom-scrollbar mt-6 flex-1 overflow-y-auto pr-3 min-[850px]:mt-10">
+          <div className="custom-scrollbar flex-1 overflow-y-auto pr-3 min-[850px]:mt-6">
             {NAV_DATA.map((section) => (
               <div key={section.label} className="mb-6">
-                <h2 className="mb-5 text-sm font-medium text-dark-4 dark:text-dark-6">{section.label}</h2>
+                <h2 className="mb-5 text-sm font-medium text-dark-4 dark:text-dark-6">
+                  {section.label}
+                </h2>
 
                 <nav role="navigation" aria-label={section.label}>
                   <ul className="space-y-2">
@@ -99,7 +99,9 @@ export function Sidebar() {
                               className="flex items-center justify-between"
                             >
                               <div className="flex items-center gap-3">
-                                {item.icon && <item.icon className="size-6 shrink-0" aria-hidden="true" />}
+                                {item.icon && (
+                                  <item.icon className="size-6 shrink-0" aria-hidden="true" />
+                                )}
                                 <span>{item.title}</span>
                               </div>
                               <ChevronUp
@@ -139,7 +141,9 @@ export function Sidebar() {
                         ) : (
                           (() => {
                             const href =
-                              (item as any).url && typeof (item as any).url === "string" && (item as any).url.length > 0
+                              (item as any).url &&
+                              typeof (item as any).url === "string" &&
+                              (item as any).url.length > 0
                                 ? (item as any).url
                                 : "/" + item.title.toLowerCase().replace(/\s+/g, "-");
 
@@ -150,7 +154,9 @@ export function Sidebar() {
                                 href={href}
                                 isActive={pathname === href}
                               >
-                                {item.icon && <item.icon className="size-6 shrink-0" aria-hidden="true" />}
+                                {item.icon && (
+                                  <item.icon className="size-6 shrink-0" aria-hidden="true" />
+                                )}
                                 <span>{item.title}</span>
                               </MenuItem>
                             );

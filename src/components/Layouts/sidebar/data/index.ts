@@ -16,7 +16,7 @@ export const NAV_DATA = [
       { title: "Airtable Integration", url: "/airtable-integration", icon: Icons.PieChart, items: [] },
       { title: "Document Lodgement", url: "/document-lodgement", icon: Icons.Table, items: [] },
       { title: "LOA Upload", url: "/loa-upload", icon: Icons.Alphabet, items: [] },
-      { title: "Pitch Deck Generator", url: "/canva-pitch-deck", icon: Icons.PieChart, items: [] },
+      { title: "Strategy Generator", url: "/canva-pitch-deck", icon: Icons.PieChart, items: [] },
     ],
   },
   {
@@ -25,7 +25,7 @@ export const NAV_DATA = [
       {
         title: "MAIN MENU",
         items: [
-          { title: "Dashboard", icon: Icons.HomeIcon, items: [{ title: "eCommerce", url: "/" }] },
+          { title: "Dashboard", url: "/dashboard", icon: Icons.HomeIcon, items: [] },
           { title: "Calendar", url: "/calendar", icon: Icons.Calendar, items: [] },
           { title: "Profile", url: "/profile", icon: Icons.User, items: [] },
           {
