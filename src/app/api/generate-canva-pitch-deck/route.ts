@@ -122,9 +122,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       message: `✅ Found ${templatePdfs.length} templates - Manual combination workflow ready`,
+      // Keep the old format for frontend compatibility
+      canva_urls: templatePdfs.map(t => t.exportUrl),
+      // Add new structured data
       workflow: {
         step1: "Open templates in order",
-        step2: "Copy content from subsequent templates into the first one",
+        step2: "Copy content from subsequent templates into the first one", 
         step3: "Replace placeholder text with your business data",
         step4: "Download final combined document"
       },
@@ -138,14 +141,14 @@ export async function POST(req: NextRequest) {
       business_data: businessData,
       detailed_instructions: [
         `1. 🎯 Open the main template: ${templatePdfs[0]?.title}`,
-        "2. 📋 Open other templates in new tabs",
+        "2. 📋 Open other templates in new tabs", 
         "3. 🔄 Copy pages/content from additional templates into the main one",
         "4. ✏️ Replace all placeholder text with your business information:",
         ...Object.entries(businessData).map(([key, value]) => 
           value ? `   • ${key}: "${value}"` : null
         ).filter(Boolean),
         "5. 🎨 Customize colors, fonts, and layout as needed",
-        "6. 📥 Download as PDF: Share → Download → PDF Standard",
+        "6. 📥 Download as PDF: Share → Download → PDF Standard", 
         "7. ✅ Your combined strategy document is ready!"
       ],
       tip: "💡 Since Teams accounts can't auto-export, this manual workflow combines your templates into one professional document."
