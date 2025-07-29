@@ -66,11 +66,14 @@ export async function POST(req: NextRequest) {
 
         const templateData = await templateResponse.json();
         console.log(`✅ Found template: ${templateData.title || 'Untitled'} (${templateData.page_count || 1} pages)`);
+        console.log(`🔗 Template URLs:`, templateData.urls);
 
         // Teams accounts can't export - skip export attempts and go straight to edit URLs
         console.log(`ℹ️ Teams account detected - using edit URLs instead of export`);
         
         const editUrl = templateData.urls?.edit_url;
+        console.log(`📝 Edit URL found: ${editUrl ? 'YES' : 'NO'}`);
+        
         if (editUrl) {
           templatePdfs.push({
             templateId: actualTemplateId,
@@ -79,12 +82,26 @@ export async function POST(req: NextRequest) {
             pages: templateData.page_count || 1
           });
           console.log(`📝 Added edit URL for: ${templateData.title}`);
+        } else {
+          console.log(`❌ No edit URL found for template ${actualTemplateId}`);
+          // Add it anyway with a fallback URL
+          templatePdfs.push({
+            templateId: actualTemplateId,
+            title: templateData.title || 'Untitled Template',
+            exportUrl: `https://www.canva.com/design/${actualTemplateId}/edit`,
+            pages: templateData.page_count || 1
+          });
+          console.log(`🔄 Using fallback edit URL for: ${templateData.title}`);
         }
 
       } catch (error) {
         console.error(`❌ Error processing template ${actualTemplateId}:`, (error as Error).message);
+        console.error(`❌ Full error:`, error);
       }
     }
+
+    console.log(`📊 Final templatePdfs array:`, templatePdfs);
+    console.log(`📊 templatePdfs.length: ${templatePdfs.length}`);
 
     if (templatePdfs.length === 0) {
       return NextResponse.json({
