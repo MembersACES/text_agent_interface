@@ -2,13 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
 export async function POST(req: NextRequest) {
-  console.log("🚨 Handler triggered: /api/generate-canva-pitch-deck");
+  console.log("🚨 Teams-compatible handler triggered");
 
   try {
-    console.log("🧠 Attempting to parse request body...");
     const body = await req.json();
-    console.log("✅ Parsed body:", JSON.stringify(body, null, 2));
-
     const {
       business_name,
       business_info,
@@ -17,17 +14,10 @@ export async function POST(req: NextRequest) {
       canva_token,
     } = body;
 
-    console.log("📦 Extracted body keys:", {
-      business_name,
-      selected_templates,
-      placeholder_keys: Object.keys(placeholders || {}),
-    });
-
     const cookieStore = await cookies();
     const accessToken = canva_token || cookieStore.get("canva_access_token")?.value;
 
     if (!accessToken) {
-      console.log("❌ No access token found");
       return NextResponse.json(
         { error: "No Canva access token found. Please reconnect to Canva." },
         { status: 401 }
@@ -36,7 +26,13 @@ export async function POST(req: NextRequest) {
 
     console.log("🔐 Using Canva access token:", accessToken.slice(0, 10) + "...");
 
-    // ✅ Flatten business info
+    // ✅ Use your ACTUAL template IDs from the test results
+    const actualTemplates: Record<string, string> = {
+      "EAGubwPi5xA": "DAGugFDpdy0", // Cover Page Template
+      "EAGubwdp7rQ": "DAGuCjhrd6Q", // Template test 1 (6 pages)
+      // Add more mappings as needed
+    };
+
     const businessDetails = business_info?.business_details || {};
     const representativeDetails = business_info?.representative_details || {};
 
@@ -48,216 +44,138 @@ export async function POST(req: NextRequest) {
       ...placeholders,
     };
 
-    console.log("🧾 Raw flattened data:", JSON.stringify(flattenedData, null, 2));
+    console.log("🧾 Data to pre-fill:", flattenedData);
 
-    // 🔍 DEBUG: Check template fields first
-    console.log("🔍 Starting template debug...");
-    for (const templateId of selected_templates) {
-      await debugCanvaTemplate(accessToken, templateId);
+    // Get list of available designs first
+    console.log("📋 Fetching available designs...");
+    const designsResponse = await fetch("https://api.canva.com/rest/v1/designs", {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+
+    let availableDesigns: any[] = [];
+    if (designsResponse.ok) {
+      const designsData = await designsResponse.json();
+      availableDesigns = designsData.items || [];
+      console.log(`✅ Found ${availableDesigns.length} available designs`);
+    } else {
+      console.log("❌ Failed to fetch available designs");
     }
 
-    // 🔧 Convert to Canva's expected format
-    const canvaFormattedData: Record<string, { type: string; text: string }> = {};
-    for (const [key, value] of Object.entries(flattenedData)) {
-      if (value !== undefined && value !== null && value !== "") {
-        canvaFormattedData[key] = {
-          type: "text",
-          text: String(value)
-        };
-      }
-    }
+    const generatedUrls: string[] = [];
+    const instructions: string[] = [];
+    const templateInfo: any[] = [];
 
-    console.log("🧾 Canva-formatted data to send:", JSON.stringify(canvaFormattedData, null, 2));
-
-    const generatedUrls = [];
-
-    for (const templateId of selected_templates) {
-      console.log(`🚀 Starting generation for template: ${templateId}`);
-
-      // 🔧 Use correct endpoint and request structure
-      const requestBody = {
-        brand_template_id: templateId,
-        data: canvaFormattedData,
-        title: `${business_name} - Pitch Deck` // Optional title
-      };
-
-      console.log(`📤 Request body for template ${templateId}:`, JSON.stringify(requestBody, null, 2));
-
-      const res = await fetch(
-        "https://api.canva.com/rest/v1/autofills", // ✅ Correct endpoint
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(requestBody), // ✅ Correct structure
-        }
-      );
-
-      console.log(`📬 Canva responded with status: ${res.status}`);
-
-      let designData: any = {};
-      try {
-        designData = await res.json();
-        console.log(`📄 Canva JSON response for template ${templateId}:`, JSON.stringify(designData, null, 2));
-      } catch (parseErr) {
-        const raw = await res.text();
-        console.error("❌ Failed to parse Canva response as JSON. Raw body:", raw);
-        throw new Error("Invalid response from Canva API");
-      }
-
-      if (!res.ok) {
-        console.error("❌ Design generation failed:", designData);
-
-        if (res.status === 401) {
-          const response = NextResponse.json(
-            { error: "Canva token expired. Please reconnect to Canva." },
-            { status: 401 }
-          );
-          response.cookies.delete("canva_access_token");
-          return response;
-        }
-
-        // 🔧 Better error handling for 403 and other errors
-        if (res.status === 403) {
-          console.error("❌ Permission denied - check template access and Enterprise subscription");
-          throw new Error(`Access denied to template ${templateId}. Ensure you have Enterprise access and template permissions.`);
-        }
-
-        throw new Error(designData?.message || designData?.error || "Failed to generate Canva design");
-      }
-
-      // 🔧 Handle asynchronous job response
-      const jobId = designData.job?.id;
-      const jobStatus = designData.job?.status;
-
-      console.log(`📋 Job created with ID: ${jobId}, Status: ${jobStatus}`);
-
-      if (jobStatus === "success" && designData.job.result) {
-        // Job completed immediately
-        const designUrl = designData.job.result.design.urls.view_url || designData.job.result.design.url;
-        generatedUrls.push(designUrl);
-        console.log(`✅ Design ready immediately: ${designUrl}`);
-      } else if (jobStatus === "in_progress") {
-        // Need to poll for completion
-        console.log(`⏳ Job in progress, polling for completion...`);
-        const finalDesignUrl = await pollJobCompletion(accessToken, jobId);
-        generatedUrls.push(finalDesignUrl);
-      } else if (jobStatus === "failed") {
-        const errorMessage = designData.job.error?.message || "Job failed";
-        console.error(`❌ Job failed: ${errorMessage}`);
-        throw new Error(`Design generation failed: ${errorMessage}`);
-      }
-    }
-
-    console.log("🎉 All templates processed. Returning URLs:", generatedUrls);
-
-    return NextResponse.json({ canva_urls: generatedUrls });
-        } catch (err: any) {
-    console.error("🔥 Unhandled error in Canva pitch deck route:", err.message);
-    return NextResponse.json(
-      { error: err.message || "Unknown error" },
-      { status: 500 }
-    );
-  }
-}
-
-// 🔧 Helper function to poll job completion
-async function pollJobCompletion(accessToken: string, jobId: string, maxAttempts = 30, delayMs = 2000): Promise<string> {
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    try {
-      console.log(`🔄 Polling attempt ${attempt}/${maxAttempts} for job ${jobId}`);
+    for (const requestedTemplateId of selected_templates) {
+      // Map to actual template ID
+      const actualTemplateId = actualTemplates[requestedTemplateId] || requestedTemplateId;
       
-      const response = await fetch(
-        `https://api.canva.com/rest/v1/autofills/${jobId}`,
-        {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            "Content-Type": "application/json",
-          },
+      console.log(`🔄 Processing template: ${requestedTemplateId} -> ${actualTemplateId}`);
+
+      // Find the design in available designs
+      const design = availableDesigns.find(d => d.id === actualTemplateId);
+      
+      if (design) {
+        console.log(`✅ Found design: ${design.title} (${design.page_count} pages)`);
+        
+        // Create edit URL
+        const editUrl = design.urls?.edit_url;
+        
+        if (editUrl) {
+          // For now, just use the direct edit URL
+          // Canva doesn't support URL parameter pre-filling for most fields
+          generatedUrls.push(editUrl);
+          
+          templateInfo.push({
+            id: design.id,
+            title: design.title,
+            pages: design.page_count,
+            url: editUrl
+          });
+          
+          console.log(`📝 Generated edit URL for: ${design.title}`);
+        } else {
+          console.log(`❌ No edit URL found for design ${actualTemplateId}`);
         }
-      );
-
-      if (!response.ok) {
-        console.error(`❌ Failed to poll job status: ${response.status}`);
-        continue;
+      } else {
+        console.log(`❌ Design ${actualTemplateId} not found in available designs`);
+        
+        // Try to access it directly anyway
+        try {
+          console.log(`🔍 Attempting direct access to ${actualTemplateId}...`);
+          const directResponse = await fetch(`https://api.canva.com/rest/v1/designs/${actualTemplateId}`, {
+            headers: { Authorization: `Bearer ${accessToken}` }
+          });
+          
+          if (directResponse.ok) {
+            const directDesign = await directResponse.json();
+            const editUrl = directDesign.urls?.edit_url;
+            
+            if (editUrl) {
+              generatedUrls.push(editUrl);
+              templateInfo.push({
+                id: directDesign.id,
+                title: directDesign.title || 'Unknown Template',
+                pages: directDesign.page_count || 1,
+                url: editUrl
+              });
+              console.log(`✅ Direct access successful for ${actualTemplateId}`);
+            }
+          } else {
+            console.log(`❌ Direct access failed for ${actualTemplateId}: ${directResponse.status}`);
+          }
+        } catch (err) {
+          console.log(`❌ Direct access error for ${actualTemplateId}:`, (err as Error).message);
+        }
       }
-
-      const jobData: any = await response.json();
-      const status = jobData.job?.status;
-
-      console.log(`📊 Job ${jobId} status: ${status}`);
-
-      if (status === "success" && jobData.job.result) {
-        const designUrl = jobData.job.result.design.urls.view_url || jobData.job.result.design.url;
-        console.log(`✅ Job completed successfully: ${designUrl}`);
-        return designUrl;
-      } else if (status === "failed") {
-        const errorMessage = jobData.job.error?.message || "Job failed";
-        throw new Error(`Design generation failed: ${errorMessage}`);
-      }
-
-      // Still in progress, wait before next attempt
-      if (attempt < maxAttempts) {
-        await new Promise(resolve => setTimeout(resolve, delayMs));
-      }
-    } catch (error: unknown) {
-      console.error(`❌ Error polling job ${jobId}:`, (error as Error).message);
-      if (attempt === maxAttempts) throw error;
-    }
-  }
-
-  throw new Error(`Job ${jobId} did not complete within ${maxAttempts} attempts`);
-}
-
-// 🔍 Debug helper to check template fields
-async function debugCanvaTemplate(accessToken: string, templateId: string) {
-  console.log(`🔍 Debugging template: ${templateId}`);
-  
-  try {
-    // Check template dataset
-    const datasetResponse = await fetch(
-      `https://api.canva.com/rest/v1/brand-templates/${templateId}/dataset`,
-      {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-        },
-      }
-    );
-
-    if (!datasetResponse.ok) {
-      const errorData: any = await datasetResponse.json();
-      console.error(`❌ Failed to get dataset for ${templateId}:`, errorData);
-      return null;
     }
 
-    const dataset: any = await datasetResponse.json();
-    console.log(`📊 Dataset for template ${templateId}:`, JSON.stringify(dataset, null, 2));
+    if (generatedUrls.length === 0) {
+      return NextResponse.json({
+        error: "No templates could be accessed",
+        available_templates: availableDesigns.slice(0, 10).map(d => ({
+          id: d.id,
+          title: d.title,
+          pages: d.page_count
+        })),
+        suggestion: "Try using one of the available template IDs listed above instead",
+        your_templates: Object.entries(actualTemplates).map(([requested, actual]) => ({
+          requested,
+          actual,
+          status: availableDesigns.find(d => d.id === actual) ? "✅ Available" : "❌ Not found"
+        }))
+      }, { status: 400 });
+    }
 
-    // Extract available field names
-    const availableFields = dataset.dataset?.data_fields || {};
-    const fieldNames = Object.keys(availableFields);
+    // Generate instructions based on data
+    instructions.push("📝 **How to complete your pitch deck:**");
+    instructions.push("1. Click the template links below to open them in Canva");
+    instructions.push("2. Replace placeholder text with your business information:");
     
-    console.log(`📝 Available fields in template ${templateId}:`, fieldNames);
+    Object.entries(flattenedData).forEach(([key, value]) => {
+      if (value) {
+        instructions.push(`   • ${key}: "${value}"`);
+      }
+    });
     
-    // Show field types
-    for (const [fieldName, fieldInfo] of Object.entries(availableFields)) {
-      const info = fieldInfo as any;
-      console.log(`  - ${fieldName}: ${info.type} ${info.required ? '(required)' : '(optional)'}`);
-    }
+    instructions.push("3. Review and customize the design as needed");
+    instructions.push("4. Click 'Share' → 'Download' to export as PDF");
+    instructions.push("5. Choose 'PDF Standard' for best quality");
 
-    return {
-      templateId,
-      availableFields: fieldNames,
-      fieldDetails: availableFields
-    };
+    return NextResponse.json({
+      success: true,
+      canva_urls: generatedUrls,
+      templates: templateInfo,
+      instructions: instructions,
+      business_data: flattenedData,
+      note: "✅ Templates ready! Click the URLs to edit in Canva, then manually replace text with your business data.",
+      tip: "💡 Teams accounts require manual editing - we can't auto-fill text, but we've opened the right templates for you!"
+    });
 
-  } catch (error: unknown) {
-    console.error(`❌ Error debugging template ${templateId}:`, (error as Error).message);
-    return null;
+  } catch (err: unknown) {
+    console.error("🔥 Error in Teams workaround:", (err as Error).message);
+    return NextResponse.json({ 
+      error: (err as Error).message,
+      note: "This is the Teams-compatible version that opens templates for manual editing"
+    }, { status: 500 });
   }
 }
