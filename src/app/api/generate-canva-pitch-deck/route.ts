@@ -103,7 +103,11 @@ export async function POST(req: NextRequest) {
     console.log(`📊 Final templatePdfs array:`, templatePdfs);
     console.log(`📊 templatePdfs.length: ${templatePdfs.length}`);
 
+    console.log(`📊 Final templatePdfs array:`, templatePdfs);
+    console.log(`📊 templatePdfs.length: ${templatePdfs.length}`);
+
     if (templatePdfs.length === 0) {
+      console.log(`❌ No templates found - returning error`);
       return NextResponse.json({
         error: "Could not access any templates",
         note: "Teams accounts have limited API access",
@@ -112,6 +116,8 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
+    console.log(`✅ Templates found - proceeding with workflow`);
+    
     // Since Teams can't export, provide manual combination workflow
     return NextResponse.json({
       success: true,
