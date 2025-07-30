@@ -125,7 +125,24 @@ export default function BusinessInfoDisplay({ info }: { info: any }) {
   return (
     <div className="bg-gray-50 rounded-lg p-6 mt-6 shadow-sm">
       <h2 className="text-lg font-semibold text-gray-800 mb-4">Business Details</h2>
-      <InfoRow label="Business Name" value={business.name || <span className="text-sm text-gray-400">Not available</span>} />
+      <InfoRow
+      label="Business Name"
+      value={
+        <div className="flex items-center space-x-2">
+          <span>{business.name || <span className="text-sm text-gray-400">Not available</span>}</span>
+          {driveUrl && (
+            <a
+              href={driveUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 hover:underline text-sm font-medium"
+            >
+              (Drive Folder)
+            </a>
+          )}
+        </div>
+      }
+    />
       <InfoRow label="Trading As" value={business.trading_name || <span className="text-sm text-gray-400">Not available</span>} />
       <InfoRow label="ABN" value={business.abn || <span className="text-sm text-gray-400">Not available</span>} />
       <hr className="my-4 border-gray-200" />
@@ -247,6 +264,7 @@ export default function BusinessInfoDisplay({ info }: { info: any }) {
         })(),
         { key: "Waste", label: "Account Number", tool: "waste", param: "account_number", requestType: "waste" },
         { key: "Oil", label: "Account Name", tool: "oil", param: "business_name", requestType: "oil" },
+        { key: "Robot", label: "Robot Number", tool: "robot", param: "robot_number", requestType: "robot_data" },
       ]
       .filter(Boolean)
       .map((item) => {
@@ -292,27 +310,29 @@ export default function BusinessInfoDisplay({ info }: { info: any }) {
                   >
                     Invoice Data
                   </button>
-                  <button
-                    className="ml-2 px-2 py-1 border border-gray-300 rounded text-xs text-gray-700 hover:bg-gray-100 focus:outline-none"
-                    title="Request data from supplier for this utility"
-                    onClick={() => {
-                      // Data Request tool page (assume /data-request page exists)
-                      // Instead of opening immediately, show modal
-                      setDataRequestSummary({
-                        businessName: invoiceBusinessName,
-                        retailer: retailer || key,
-                        email: contact.email || '',
-                        identifier,
-                        requestType,
-                        param,
-                        tool,
-                        details: param !== "business_name" ? identifier : '',
-                      });
-                      setShowDataRequestModal(true);
-                    }}
-                  >
-                    Data Request
-                  </button>
+                  {tool !== "robot" && (
+                    <button
+                      className="ml-2 px-2 py-1 border border-gray-300 rounded text-xs text-gray-700 hover:bg-gray-100 focus:outline-none"
+                      title="Request data from supplier for this utility"
+                      onClick={() => {
+                        // Data Request tool page (assume /data-request page exists)
+                        // Instead of opening immediately, show modal
+                        setDataRequestSummary({
+                          businessName: invoiceBusinessName,
+                          retailer: retailer || key,
+                          email: contact.email || '',
+                          identifier,
+                          requestType,
+                          param,
+                          tool,
+                          details: param !== "business_name" ? identifier : '',
+                        });
+                        setShowDataRequestModal(true);
+                      }}
+                    >
+                      Data Request
+                    </button>
+                    )}
                 </div>
               );
             })}
@@ -349,8 +369,6 @@ export default function BusinessInfoDisplay({ info }: { info: any }) {
         );
       })}
       <hr className="my-4 border-gray-200" />
-      <h2 className="text-lg font-semibold text-gray-800 mb-4">Google Drive</h2>
-      <InfoRow label="Folder URL" value={driveUrl ? <FileLink label="Google Drive Folder" url={driveUrl} /> : <span className="text-sm text-gray-400">Not available</span>} />
       {/* Drive Filing Modal */}
       {showDriveModal && (
         <div className="fixed inset-0 bg-black bg-opacity-25 z-50 flex items-center justify-center">

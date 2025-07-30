@@ -14,9 +14,10 @@ export const NAV_DATA = [
       { title: "Business Info", url: "/business-info", icon: Icons.Table, items: [] },
       { title: "Utility Invoice Information", url: "/utility-invoice-info", icon: Icons.Table, items: [] },
       { title: "Airtable Integration", url: "/airtable-integration", icon: Icons.PieChart, items: [] },
-      { title: "Document Lodgement", url: "/document-lodgement", icon: Icons.Table, items: [] },
-      { title: "LOA Upload", url: "/loa-upload", icon: Icons.Alphabet, items: [] },
+      { title: "Invoice Lodgement", url: "/document-lodgement", icon: Icons.Table, items: [] },
+      { title: "New Client Creation", url: "/loa-upload", icon: Icons.Alphabet, items: [] },
       { title: "Strategy Generator", url: "/canva-pitch-deck", icon: Icons.PieChart, items: [] },
+      { title: "Site Profling", url: "/site-profiling", icon: Icons.PieChart, items: [] },
     ],
   },
   {
