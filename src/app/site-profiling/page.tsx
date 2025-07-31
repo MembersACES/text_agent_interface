@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 
 // Define proper types
 interface OperatingHours {
@@ -688,8 +689,11 @@ const SiteProfilingForm = ({ businessName }: { businessName: string }) => {
 };
 
 export default function SiteProfilingPage() {
-  const [businessName, setBusinessName] = useState<string>("");
-  const [startInteractive, setStartInteractive] = useState<boolean>(false);
+  const searchParams = useSearchParams();
+  const urlBusinessName = searchParams.get('businessName') || "";
+  
+  const [businessName, setBusinessName] = useState<string>(urlBusinessName);
+  const [startInteractive, setStartInteractive] = useState<boolean>(!!urlBusinessName);
 
   const handleStartInteractive = () => {
     if (!businessName.trim()) {

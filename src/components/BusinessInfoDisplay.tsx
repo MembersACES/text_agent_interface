@@ -110,10 +110,16 @@ export default function BusinessInfoDisplay({ info }: { info: any }) {
     return null;
   }
 
-  // Add this function after your existing useState declarations
-// Replace your handleOpenDocumentGeneration function with this:
+  const handleOpenSiteProfiling = () => {
+    const params = new URLSearchParams();
+    if (business.name) {
+      params.set('businessName', business.name);
+    }
+    const url = `/site-profiling?${params.toString()}`;
+    window.open(url, '_blank');
+  };
+
 const handleOpenDocumentGeneration = () => {
-  // Create URL with business information as query parameters
   const params = new URLSearchParams();
   
   if (business.name) params.set('businessName', business.name);
@@ -218,8 +224,8 @@ const handleOpenDocumentGeneration = () => {
           const specialMappedKey = specialKeyMap[doc];
           
           const fileUrl = info._processed_file_ids?.[docKey] 
-                       || info._processed_file_ids?.[normalizedDocKey] 
-                       || (specialMappedKey ? info._processed_file_ids?.[specialMappedKey] : undefined);
+                      || info._processed_file_ids?.[normalizedDocKey] 
+                      || (specialMappedKey ? info._processed_file_ids?.[specialMappedKey] : undefined);
 
           // Debug logs
           if (typeof window !== 'undefined') {
@@ -247,6 +253,15 @@ const handleOpenDocumentGeneration = () => {
             >
               File in Drive
             </button>
+            {doc === "Site Profling" && (
+              <button
+                className="ml-2 px-2 py-1 border border-blue-300 bg-blue-50 rounded text-xs text-blue-700 hover:bg-blue-100 focus:outline-none"
+                title="Start new site profiling questionnaire"
+                onClick={handleOpenSiteProfiling}
+              >
+                New Questionnaire
+              </button>
+            )}
           </div>
         );
       })}

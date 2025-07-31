@@ -25,7 +25,6 @@ export const NAV_DATA = [
         title: "Document Management", 
         items: [
           { title: "Document Generation", url: "/document-generation" },
-          { title: "New Client LOA Generation", url: "/new-client-loa" },
           { title: "Invoice Lodgement", url: "/document-lodgement" },
           { title: "Signed Agreement Lodgement", url: "/signed-agreement-lodgement" },
         ],
@@ -33,7 +32,8 @@ export const NAV_DATA = [
       {
         title: "Client & Strategy",
         items: [
-          { title: "New Client Creation", url: "/loa-upload" },
+          { title: "New Client LOA Generation", url: "/new-client-loa" },
+          { title: "Google Drive - New Client Creation", url: "/loa-upload" },
           { title: "Strategy Generator", url: "/canva-pitch-deck" },
           { title: "Airtable Integration", url: "/airtable-integration" },
         ],
