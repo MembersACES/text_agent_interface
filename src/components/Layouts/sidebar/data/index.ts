@@ -10,15 +10,34 @@ export const NAV_DATA = [
   {
     label: "MY PAGES",
     items: [
-      { title: "Agent", url: "/agent", icon: Icons.User, items: [] },
-      { title: "Business Info", url: "/business-info", icon: Icons.Table, items: [] },
-      { title: "Utility Invoice Information", url: "/utility-invoice-info", icon: Icons.Table, items: [] },
-      { title: "Airtable Integration", url: "/airtable-integration", icon: Icons.PieChart, items: [] },
-      { title: "Invoice Lodgement", url: "/document-lodgement", icon: Icons.Table, items: [] },
-      { title: "New Client Creation", url: "/loa-upload", icon: Icons.Alphabet, items: [] },
-      { title: "Strategy Generator", url: "/canva-pitch-deck", icon: Icons.PieChart, items: [] },
-      { title: "Site Profling", url: "/site-profiling", icon: Icons.PieChart, items: [] },
-      { title: "Signed Agreement Lodgement", url: "/signed-agreement-lodgement", icon: Icons.PieChart, items: [] },
+      { title: "Agent", url: "/agent", items: [] },
+      
+      // Create sub-sections for grouping
+      {
+        title: "Data & Information",
+        items: [
+          { title: "Business Info", url: "/business-info" },
+          { title: "Utility Invoice Information", url: "/utility-invoice-info" },
+          { title: "Site Profiling", url: "/site-profiling" },
+        ],
+      },
+      {
+        title: "Document Management", 
+        items: [
+          { title: "Document Generation", url: "/document-generation" },
+          { title: "New Client LOA Generation", url: "/new-client-loa" },
+          { title: "Invoice Lodgement", url: "/document-lodgement" },
+          { title: "Signed Agreement Lodgement", url: "/signed-agreement-lodgement" },
+        ],
+      },
+      {
+        title: "Client & Strategy",
+        items: [
+          { title: "New Client Creation", url: "/loa-upload" },
+          { title: "Strategy Generator", url: "/canva-pitch-deck" },
+          { title: "Airtable Integration", url: "/airtable-integration" },
+        ],
+      },
     ],
   },
   {
