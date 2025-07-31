@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { getApiBaseUrl } from "@/lib/utils";
+import { useSearchParams } from "next/navigation";
 
 interface BusinessInfo {
   business_name: string;
@@ -108,6 +109,7 @@ export default function DocumentGenerationPage() {
   const [loading, setLoading] = useState(false);
   const [businessLoading, setBusinessLoading] = useState(false);
   const [result, setResult] = useState("");
+  const searchParams = useSearchParams();
 
   // Fetch available EOI types when component mounts
   useEffect(() => {
@@ -188,6 +190,45 @@ export default function DocumentGenerationPage() {
     setBusinessLoading(false);
   };
 
+  useEffect(() => {
+    // First check for URL parameters (from Generate Documents button)
+    const businessNameFromUrl = searchParams.get('businessName');
+    
+    if (businessNameFromUrl) {
+      // Create business info from URL parameters
+      const businessInfoFromUrl: BusinessInfo = {
+        business_name: businessNameFromUrl,
+        abn: searchParams.get('abn') || "",
+        trading_as: searchParams.get('tradingAs') || "",
+        postal_address: searchParams.get('address') || "",
+        site_address: searchParams.get('siteAddress') || "",
+        telephone: searchParams.get('phone') || "",
+        email: searchParams.get('email') || "",
+        contact_name: searchParams.get('contactName') || "",
+        position: searchParams.get('position') || "",
+        client_folder_url: searchParams.get('clientFolderUrl') || "",
+      };
+      
+      setSelectedBusiness(businessInfoFromUrl);
+      setEditableBusinessInfo({...businessInfoFromUrl});
+      setResult(`✅ Business information loaded from link: ${businessInfoFromUrl.business_name}`);
+      
+      // Show business info section if coming from URL
+      return;
+    }
+    
+    // If no URL params, check session storage as before
+    const savedBusinessInfo = sessionStorage.getItem('selectedBusinessInfo');
+    if (savedBusinessInfo) {
+      try {
+        const businessData = JSON.parse(savedBusinessInfo);
+        setSelectedBusiness(businessData);
+        setEditableBusinessInfo({...businessData});
+      } catch (error) {
+        console.error('Error loading saved business info:', error);
+      }
+    }
+  }, [searchParams]);
   // Handle editable business info changes
   const handleBusinessInfoChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;

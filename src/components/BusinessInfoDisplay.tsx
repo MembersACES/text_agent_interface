@@ -1,4 +1,3 @@
-// LOGO USAGE: To use a logo from Google Drive, you must first download it and place it in the /public/images/logo/ or /src/assets/logos/ directory. You cannot reference a Google Drive file ID directly in <Image> or <img> tags. For best results, use a local file path (e.g., /images/logo/logo.svg).
 import React, { useState } from "react";
 import { getApiBaseUrl } from "@/lib/utils";
 import { useRouter } from "next/navigation";
@@ -111,6 +110,40 @@ export default function BusinessInfoDisplay({ info }: { info: any }) {
     return null;
   }
 
+  // Add this function after your existing useState declarations
+// Replace your handleOpenDocumentGeneration function with this:
+const handleOpenDocumentGeneration = () => {
+  // Create URL with business information as query parameters
+  const params = new URLSearchParams();
+  
+  if (business.name) params.set('businessName', business.name);
+  if (business.abn) params.set('abn', business.abn);
+  if (business.trading_name) params.set('tradingAs', business.trading_name);
+  if (contact.email) params.set('email', contact.email);
+  if (contact.telephone) params.set('phone', contact.telephone);
+  if (contact.postal_address) params.set('address', contact.postal_address);
+  if (contact.site_address) params.set('siteAddress', contact.site_address);
+  if (rep.contact_name) params.set('contactName', rep.contact_name);
+  if (rep.position) params.set('position', rep.position);
+  if (driveUrl) params.set('clientFolderUrl', driveUrl);
+  
+  // Add utility information if available
+  const linkedUtilities = [];
+  if (linked["C&I Electricity"]) linkedUtilities.push("ELECTRICITY_CI");
+  if (linked["SME Electricity"]) linkedUtilities.push("ELECTRICITY_SME");
+  if (linked["C&I Gas"]) linkedUtilities.push("GAS_CI");
+  if (linked["SME Gas"] || linked["Small Gas"]) linkedUtilities.push("GAS_SME");
+  if (linked["Waste"]) linkedUtilities.push("WASTE");
+  if (linked["Oil"]) linkedUtilities.push("COOKING_OIL");
+  
+  if (linkedUtilities.length > 0) {
+    params.set('utilities', linkedUtilities.join(','));
+  }
+  
+  const url = `/document-generation?${params.toString()}`;
+  window.open(url, '_blank');
+};
+
   React.useEffect(() => {
     if (driveModalResult === 'File successfully uploaded and Drive links updated!') {
       const timer = setTimeout(() => {
@@ -122,27 +155,41 @@ export default function BusinessInfoDisplay({ info }: { info: any }) {
     }
   }, [driveModalResult]);
 
-  return (
-    <div className="bg-gray-50 rounded-lg p-6 mt-6 shadow-sm">
-      <h2 className="text-lg font-semibold text-gray-800 mb-4">Business Details</h2>
-      <InfoRow
-      label="Business Name"
-      value={
-        <div className="flex items-center space-x-2">
-          <span>{business.name || <span className="text-sm text-gray-400">Not available</span>}</span>
-          {driveUrl && (
-            <a
-              href={driveUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-600 hover:underline text-sm font-medium"
-            >
-              (Drive Folder)
-            </a>
-          )}
+    return (
+      <div className="bg-gray-50 rounded-lg p-6 mt-6 shadow-sm">
+        <div className="flex items-center space-x-2 mb-4">
+          <h2 className="text-lg font-semibold text-gray-800">Business Details</h2>
+          <a
+            href="#"
+            onClick={(e) => {
+              e.preventDefault();
+              handleOpenDocumentGeneration();
+            }}
+            className="text-blue-600 hover:underline text-sm font-medium"
+            title="Generate documents for this client"
+          >
+            (Generate Documents)
+          </a>
         </div>
-      }
-    />
+        <InfoRow
+          label="Business Name"
+          value={
+            <div className="flex items-center space-x-2">
+              <span>{business.name || <span className="text-sm text-gray-400">Not available</span>}</span>
+              {driveUrl && (
+                <a
+                  href={driveUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:underline text-sm font-medium"
+                >
+                  (Drive Folder)
+                </a>
+              )}
+            </div>
+          }
+        />
+
       <InfoRow label="Trading As" value={business.trading_name || <span className="text-sm text-gray-400">Not available</span>} />
       <InfoRow label="ABN" value={business.abn || <span className="text-sm text-gray-400">Not available</span>} />
       <hr className="my-4 border-gray-200" />
