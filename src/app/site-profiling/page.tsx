@@ -9,6 +9,18 @@ interface OperatingHours {
   business: string;
 }
 
+interface BusinessInfo {
+  name: string;
+  address?: string;
+  industry?: string;
+  website?: string;
+  phone?: string;
+  email?: string;
+  googleDriveLink?: string;
+  utilities?: any[];
+  [key: string]: any;
+}
+
 interface SiteProfilingResponses {
   businessName: string;
   site_ownership?: string;
@@ -27,7 +39,7 @@ interface SiteProfilingResponses {
   renewable_energy_systems?: { [key: string]: string };
   transportation_vehicles?: { [key: string]: string };
   waste_management_final?: { [key: string]: string };
-  [key: string]: any; // Allow additional properties
+  [key: string]: any;
 }
 
 interface ToggleItem {
@@ -35,8 +47,16 @@ interface ToggleItem {
   label: string;
 }
 
-const SiteProfilingForm = ({ businessName }: { businessName: string }) => {
+const SiteProfilingForm = ({ 
+  businessName, 
+  businessInfo 
+}: { 
+  businessName: string;
+  businessInfo: BusinessInfo | null;
+}) => {
   const [step, setStep] = useState<string>("site_ownership");
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [submitStatus, setSubmitStatus] = useState<string>("");
   const [responses, setResponses] = useState<SiteProfilingResponses>({ 
     businessName,
     operatingHours: {
@@ -101,6 +121,66 @@ const SiteProfilingForm = ({ businessName }: { businessName: string }) => {
   const initializeSection = (section: string, defaults: { [key: string]: string }) => {
     if (!responses[section]) {
       setResponses(prev => ({ ...prev, [section]: defaults }));
+    }
+  };
+
+  // Function to submit data to N8N webhook
+  const submitToN8N = async () => {
+    setIsSubmitting(true);
+    setSubmitStatus("");
+
+    try {
+      // Prepare the data in the same format as the backend
+      const questionnaireData = {
+        site_ownership: responses.site_ownership,
+        number_of_sites: responses.number_of_sites,
+        staff_members: responses.staff_members,
+        surface_area: responses.surface_area,
+        activity_start: responses.activity_start,
+        operatingHours: responses.operatingHours,
+        offer_provided: responses.offer_provided || {},
+        communication: responses.communication || {},
+        community_engagement: responses.community_engagement || {},
+        refrigeration_cooling: responses.refrigeration_cooling || {},
+        miscellaneous_equipment: responses.miscellaneous_equipment || {},
+        renewable_energy_systems: responses.renewable_energy_systems || {},
+        transportation_vehicles: responses.transportation_vehicles || {},
+        waste_management_final: responses.waste_management_final || {}
+      };
+
+      const webhookData = {
+        business_name: businessName,
+        business_info: businessInfo || {
+          name: businessName,
+        },
+        questionnaire_data: questionnaireData,
+        timestamp: new Date().toISOString(),
+        source: "interactive_questionnaire",
+        // Include Google Drive link if available
+        google_drive_link: businessInfo?.googleDriveLink || null
+      };
+
+      console.log("Sending to N8N:", webhookData);
+
+      // Send to the NEW webhook endpoint for interactive questionnaires
+      const response = await fetch("https://membersaces.app.n8n.cloud/webhook/new_site_profiling", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(webhookData),
+      });
+
+      if (response.ok) {
+        setSubmitStatus("✅ Site profiling data has been successfully processed!");
+      } else {
+        setSubmitStatus(`⚠️ There was an issue processing the site profiling data. Status code: ${response.status}`);
+      }
+    } catch (error) {
+      console.error("Error submitting to N8N:", error);
+      setSubmitStatus(`❌ Error processing site profiling data: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -301,6 +381,105 @@ const SiteProfilingForm = ({ businessName }: { businessName: string }) => {
     </div>
   );
 
+  const renderUtilitiesSummary = () => {
+    console.log("Business Info in utilities summary:", businessInfo);
+    
+    // Handle the utilities structure from the business info display
+    const utilities = businessInfo?.utilities || {};
+    const retailers = businessInfo?.retailers || {};
+    
+    console.log("Found utilities:", utilities);
+    console.log("Found retailers:", retailers);
+    
+    // Convert the utilities object into an array format for display
+    const utilityArray = Object.entries(utilities).map(([type, details]) => {
+      let identifiers = [];
+      if (typeof details === "string") {
+        identifiers = details.split(",").map(s => s.trim()).filter(Boolean);
+      } else if (Array.isArray(details)) {
+        identifiers = details;
+      } else {
+        identifiers = [String(details)];
+      }
+      
+      // Get retailer info
+      const retailerInfo = retailers[type];
+      let retailerList = [];
+      if (Array.isArray(retailerInfo)) {
+        retailerList = retailerInfo;
+      } else if (typeof retailerInfo === 'string') {
+        retailerList = [retailerInfo];
+      }
+      
+      return {
+        type,
+        identifiers,
+        retailers: retailerList
+      };
+    }).filter(util => util.identifiers.length > 0);
+    
+    return (
+      <div className="space-y-4">
+        <h3 className="text-lg font-semibold">Utilities Summary</h3>
+        
+        {utilityArray.length > 0 ? (
+          <div className="space-y-3">
+            <p className="text-gray-600">
+              The following utilities are linked to your business:
+            </p>
+            <div className="grid grid-cols-1 gap-3">
+              {utilityArray.map((utility, index) => (
+                <div key={index} className="bg-blue-50 border border-blue-200 p-3 rounded">
+                  <div className="font-medium text-blue-800 mb-2">
+                    {utility.type}
+                  </div>
+                  {utility.identifiers.map((identifier, idx) => (
+                    <div key={idx} className="text-sm text-blue-600 ml-2">
+                      <div>
+                        <strong>
+                          {utility.type.includes('Electricity') ? 'NMI' : 
+                           utility.type.includes('Gas') ? 'MRIN' :
+                           utility.type === 'Waste' ? 'Account Number' :
+                           utility.type === 'Oil' ? 'Account Name' : 'ID'}:
+                        </strong> {identifier}
+                      </div>
+                      {utility.retailers[idx] && (
+                        <div className="text-blue-500">
+                          <strong>Retailer:</strong> {utility.retailers[idx]}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="bg-yellow-50 border border-yellow-200 p-4 rounded">
+            <p className="text-yellow-800">
+              No utilities are currently linked to your business. You can add utilities later in your business profile.
+            </p>
+            {businessInfo && (
+              <details className="mt-2 text-xs">
+                <summary className="cursor-pointer">Show available business info fields</summary>
+                <pre className="mt-2 bg-white p-2 rounded overflow-auto">
+                  {JSON.stringify(Object.keys(businessInfo), null, 2)}
+                </pre>
+              </details>
+            )}
+          </div>
+        )}
+        
+        <button
+          className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700"
+          onClick={() => setStep("offer_provided")}
+        >
+          ➡️ Continue to Offer Provided
+        </button>
+      </div>
+    );
+  };
+
   const renderToggleSection = (title: string, sectionKey: string, items: ToggleItem[], nextStep: string) => (
     <div className="space-y-4">
       <h3 className="text-lg font-semibold">{title}</h3>
@@ -343,6 +522,12 @@ const SiteProfilingForm = ({ businessName }: { businessName: string }) => {
         <div className="mb-6">
           <h2 className="text-2xl font-bold text-gray-900">Site Profiling Questionnaire</h2>
           <p className="text-gray-600 mt-1">Business: <span className="font-semibold">{businessName}</span></p>
+          {businessInfo && (
+            <div className="mt-2 text-sm text-gray-500">
+              {businessInfo.address && <p>Address: {businessInfo.address}</p>}
+              {businessInfo.industry && <p>Industry: {businessInfo.industry}</p>}
+            </div>
+          )}
         </div>
 
         {/* Site Ownership */}
@@ -484,25 +669,9 @@ const SiteProfilingForm = ({ businessName }: { businessName: string }) => {
         {step === "operating_hours" && renderOperatingHours()}
 
         {/* Utilities Summary */}
-        {step === "utilities_summary" && (
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold">Utilities Summary</h3>
-            <div className="bg-blue-50 p-4 rounded">
-              <p className="text-blue-800">
-                This section would normally show linked utilities from your business information.
-                For this demo, we'll proceed directly to the next section.
-              </p>
-            </div>
-            <button
-              className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700"
-              onClick={() => setStep("offer_provided")}
-            >
-              ➡️ Continue to Offer Provided
-            </button>
-          </div>
-        )}
+        {step === "utilities_summary" && renderUtilitiesSummary()}
 
-        {/* Offer Provided */}
+        {/* All other sections remain the same */}
         {step === "offer_provided" && renderToggleSection(
           "Offer Provided",
           "offer_provided",
@@ -515,7 +684,6 @@ const SiteProfilingForm = ({ businessName }: { businessName: string }) => {
           "communication"
         )}
 
-        {/* Communication */}
         {step === "communication" && renderToggleSection(
           "Communication",
           "communication",
@@ -528,7 +696,6 @@ const SiteProfilingForm = ({ businessName }: { businessName: string }) => {
           "community_engagement"
         )}
 
-        {/* Community Engagement */}
         {step === "community_engagement" && renderToggleSection(
           "Community Engagement",
           "community_engagement",
@@ -541,7 +708,6 @@ const SiteProfilingForm = ({ businessName }: { businessName: string }) => {
           "refrigeration_cooling"
         )}
 
-        {/* Refrigeration and Cooling */}
         {step === "refrigeration_cooling" && renderToggleSection(
           "Refrigeration and Cooling",
           "refrigeration_cooling",
@@ -563,7 +729,6 @@ const SiteProfilingForm = ({ businessName }: { businessName: string }) => {
           "miscellaneous_equipment"
         )}
 
-        {/* Miscellaneous Equipment */}
         {step === "miscellaneous_equipment" && renderToggleSection(
           "Miscellaneous Equipment and Facilities",
           "miscellaneous_equipment",
@@ -577,7 +742,6 @@ const SiteProfilingForm = ({ businessName }: { businessName: string }) => {
           "renewable_energy_systems"
         )}
 
-        {/* Renewable Energy Systems */}
         {step === "renewable_energy_systems" && renderToggleSection(
           "Renewable Energy and Systems",
           "renewable_energy_systems",
@@ -592,7 +756,6 @@ const SiteProfilingForm = ({ businessName }: { businessName: string }) => {
           "transportation_vehicles"
         )}
 
-        {/* Transportation and Vehicles */}
         {step === "transportation_vehicles" && renderToggleSection(
           "Transportation and Vehicles",
           "transportation_vehicles",
@@ -611,7 +774,6 @@ const SiteProfilingForm = ({ businessName }: { businessName: string }) => {
           "waste_management_final"
         )}
 
-        {/* Waste Management Final */}
         {step === "waste_management_final" && renderToggleSection(
           "Waste Management",
           "waste_management_final",
@@ -640,6 +802,17 @@ const SiteProfilingForm = ({ businessName }: { businessName: string }) => {
               </p>
             </div>
             
+            {/* Show status message if there is one */}
+            {submitStatus && (
+              <div className={`p-4 rounded ${
+                submitStatus.includes('✅') ? 'bg-green-50 text-green-700' : 
+                submitStatus.includes('⚠️') ? 'bg-yellow-50 text-yellow-700' : 
+                'bg-red-50 text-red-700'
+              }`}>
+                {submitStatus}
+              </div>
+            )}
+
             <div className="bg-gray-50 p-4 rounded">
               <h4 className="font-semibold mb-2">Summary of Responses:</h4>
               <div className="max-h-96 overflow-y-auto">
@@ -651,19 +824,21 @@ const SiteProfilingForm = ({ businessName }: { businessName: string }) => {
 
             <div className="flex gap-3">
               <button
-                className="bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700"
-                onClick={() => {
-                  // Here you would typically submit the data to your backend
-                  console.log("Submitting site profiling data:", responses);
-                  alert("Site profiling data submitted successfully!");
-                }}
+                className={`px-6 py-2 rounded font-medium ${
+                  isSubmitting 
+                    ? 'bg-gray-400 text-gray-700 cursor-not-allowed' 
+                    : 'bg-green-600 text-white hover:bg-green-700'
+                }`}
+                onClick={submitToN8N}
+                disabled={isSubmitting}
               >
-                Submit Data
+                {isSubmitting ? "🔄 Processing..." : "📤 Submit to N8N"}
               </button>
               <button
                 className="bg-gray-500 text-white px-6 py-2 rounded hover:bg-gray-600"
                 onClick={() => {
                   setStep("site_ownership");
+                  setSubmitStatus("");
                   setResponses({ 
                     businessName,
                     operatingHours: {
@@ -677,8 +852,9 @@ const SiteProfilingForm = ({ businessName }: { businessName: string }) => {
                     }
                   });
                 }}
+                disabled={isSubmitting}
               >
-                Start Over
+                🔄 Start Over
               </button>
             </div>
           </div>
@@ -691,15 +867,63 @@ const SiteProfilingForm = ({ businessName }: { businessName: string }) => {
 export default function SiteProfilingPage() {
   const searchParams = useSearchParams();
   const urlBusinessName = searchParams.get('businessName') || "";
+  const urlBusinessInfo = searchParams.get('businessInfo');
   
   const [businessName, setBusinessName] = useState<string>(urlBusinessName);
+  const [businessInfo, setBusinessInfo] = useState<BusinessInfo | null>(
+    urlBusinessInfo ? JSON.parse(decodeURIComponent(urlBusinessInfo)) : null
+  );
   const [startInteractive, setStartInteractive] = useState<boolean>(!!urlBusinessName);
+  const [isLoadingBusinessInfo, setIsLoadingBusinessInfo] = useState<boolean>(false);
+  const [businessInfoError, setBusinessInfoError] = useState<string>("");
 
-  const handleStartInteractive = () => {
+  // Function to call get business info tool (you'll need to implement this API call)
+  const getBusinessInfo = async (businessName: string): Promise<BusinessInfo | null> => {
+    try {
+      setIsLoadingBusinessInfo(true);
+      setBusinessInfoError("");
+      
+      // Replace this with your actual API call to get business info
+      const response = await fetch('/api/get-business-info', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ businessName }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        return data.businessInfo || null;
+      } else {
+        throw new Error(`Failed to fetch business info: ${response.status}`);
+      }
+    } catch (error) {
+      console.error("Error fetching business info:", error);
+      setBusinessInfoError(
+        error instanceof Error ? error.message : "Failed to fetch business information"
+      );
+      return null;
+    } finally {
+      setIsLoadingBusinessInfo(false);
+    }
+  };
+
+  const handleStartInteractive = async () => {
     if (!businessName.trim()) {
       alert("Please enter a business name before starting the questionnaire.");
       return;
     }
+
+    // If we don't have business info and this wasn't called from the business info page,
+    // try to fetch it
+    if (!businessInfo && !urlBusinessInfo) {
+      const fetchedBusinessInfo = await getBusinessInfo(businessName);
+      if (fetchedBusinessInfo) {
+        setBusinessInfo(fetchedBusinessInfo);
+      }
+    }
+
     setStartInteractive(true);
   };
 
@@ -720,6 +944,32 @@ export default function SiteProfilingPage() {
               </p>
             </div>
 
+            {/* Show business info if we have it */}
+            {businessInfo && (
+              <div className="bg-blue-50 border border-blue-200 p-4 rounded">
+                <h3 className="font-semibold text-blue-800 mb-2">Business Information Found:</h3>
+                <div className="text-left text-sm text-blue-700 space-y-1">
+                  <p><strong>Name:</strong> {businessInfo.name}</p>
+                  {businessInfo.address && <p><strong>Address:</strong> {businessInfo.address}</p>}
+                  {businessInfo.industry && <p><strong>Industry:</strong> {businessInfo.industry}</p>}
+                  {businessInfo.utilities && (
+                    <p><strong>Utilities:</strong> {businessInfo.utilities.length} linked</p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Show error if business info fetch failed */}
+            {businessInfoError && (
+              <div className="bg-yellow-50 border border-yellow-200 p-4 rounded">
+                <p className="text-yellow-800">
+                  <strong>Note:</strong> {businessInfoError}
+                  <br />
+                  You can still proceed with the questionnaire using just the business name.
+                </p>
+              </div>
+            )}
+
             <div className="max-w-md mx-auto space-y-4">
               <div className="text-left">
                 <label htmlFor="businessName" className="block font-medium text-gray-700 mb-2">
@@ -732,15 +982,16 @@ export default function SiteProfilingPage() {
                   value={businessName}
                   onChange={(e) => setBusinessName(e.target.value)}
                   placeholder="Enter your business name"
+                  disabled={isLoadingBusinessInfo}
                 />
               </div>
  
               <button
                 className="w-full bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:bg-gray-400 disabled:cursor-not-allowed"
                 onClick={handleStartInteractive}
-                disabled={!businessName.trim()}
+                disabled={!businessName.trim() || isLoadingBusinessInfo}
               >
-                Start Interactive Questionnaire
+                {isLoadingBusinessInfo ? "🔄 Loading Business Info..." : "Start Interactive Questionnaire"}
               </button>
             </div>
  
@@ -749,9 +1000,9 @@ export default function SiteProfilingPage() {
             </div>
           </div>
         ) : (
-          <SiteProfilingForm businessName={businessName} />
+          <SiteProfilingForm businessName={businessName} businessInfo={businessInfo} />
         )}
       </div>
     </div>
   );
- }
+}

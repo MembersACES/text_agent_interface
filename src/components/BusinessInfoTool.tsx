@@ -61,7 +61,7 @@ export default function BusinessInfoTool({ token }: { token: string }) {
       </div>
       <button
         onClick={getBusinessInfo}
-        style={{ padding: "10px 20px", fontSize: "16px" }}
+        className="px-4 py-2 rounded bg-blue-600 text-white font-semibold hover:bg-blue-700 focus:outline-none disabled:bg-gray-400"
         disabled={loading}
       >
         {loading ? "Loading..." : "Get Business Info"}

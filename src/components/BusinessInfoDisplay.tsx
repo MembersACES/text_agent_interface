@@ -115,6 +115,26 @@ export default function BusinessInfoDisplay({ info }: { info: any }) {
     if (business.name) {
       params.set('businessName', business.name);
     }
+    
+    const businessInfoToPass = {
+      name: business.name,
+      address: contact.postal_address,
+      siteAddress: contact.site_address,
+      industry: business.industry,
+      website: business.website,
+      phone: contact.telephone,
+      email: contact.email,
+      googleDriveLink: driveUrl,
+      utilities: linked,
+      retailers: retailers,
+      abn: business.abn,
+      tradingName: business.trading_name,
+      contactName: rep.contact_name,
+      position: rep.position
+    };
+    
+    params.set('businessInfo', encodeURIComponent(JSON.stringify(businessInfoToPass)));
+    
     const url = `/site-profiling?${params.toString()}`;
     window.open(url, '_blank');
   };

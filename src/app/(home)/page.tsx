@@ -16,10 +16,10 @@ export default function Home() {
 
       <div className="mt-8 flex flex-wrap justify-center gap-4">
         <Link
-          href="/dashboard"
+          href="/business-info"
           className="rounded-xl bg-primary px-6 py-3 text-white shadow-lg transition hover:bg-primary-dark"
         >
-          Go to Dashboard
+          Client Proflie
         </Link>
         <Link
           href="/agent"
