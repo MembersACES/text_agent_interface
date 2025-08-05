@@ -34,7 +34,8 @@ export const NAV_DATA = [
         items: [
           { title: "New Client LOA Generation", url: "/new-client-loa" },
           { title: "Google Drive - New Client Creation", url: "/loa-upload" },
-          { title: "Strategy Generator", url: "/canva-pitch-deck" },
+          { title: "Strategy Generator", url: "/strategy-generator" },
+          { title: "Canva Page", url: "/canva-pitch-deck" },
           { title: "Airtable Integration", url: "/airtable-integration" },
         ],
       },

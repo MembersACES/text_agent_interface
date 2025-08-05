@@ -139,7 +139,44 @@ export default function BusinessInfoDisplay({ info }: { info: any }) {
     window.open(url, '_blank');
   };
 
-const handleOpenDocumentGeneration = () => {
+  const handleOpenPresentationGenerator = () => {
+    const params = new URLSearchParams();
+    
+    const businessInfoToPass = {
+      name: business.name,
+      abn: business.abn,
+      trading_name: business.trading_name,
+      email: contact.email,
+      telephone: contact.telephone,
+      postal_address: contact.postal_address,
+      site_address: contact.site_address,
+      contact_name: rep.contact_name,
+      position: rep.position,
+      industry: business.industry,
+      website: business.website,
+      googleDriveLink: driveUrl,
+      utilities: linked,
+      retailers: retailers
+    };
+    
+    // Add utility information for auto-suggestions
+    const linkedUtilities = [];
+    if (linked["C&I Electricity"]) linkedUtilities.push("ELECTRICITY_CI");
+    if (linked["SME Electricity"]) linkedUtilities.push("ELECTRICITY_SME");
+    if (linked["C&I Gas"]) linkedUtilities.push("GAS_CI");
+    if (linked["SME Gas"] || linked["Small Gas"]) linkedUtilities.push("GAS_SME");
+    if (linked["Waste"]) linkedUtilities.push("WASTE");
+    if (linked["Oil"]) linkedUtilities.push("COOKING_OIL");
+    
+    businessInfoToPass.utilities = linkedUtilities;
+    
+    params.set('businessInfo', encodeURIComponent(JSON.stringify(businessInfoToPass)));
+    
+    const url = `/strategy-generator?${params.toString()}`;
+    window.open(url, '_blank');
+  };
+  
+  const handleOpenDocumentGeneration = () => {
   const params = new URLSearchParams();
   
   if (business.name) params.set('businessName', business.name);
@@ -195,6 +232,17 @@ const handleOpenDocumentGeneration = () => {
             title="Generate documents for this client"
           >
             (Generate Documents)
+          </a>
+          <a
+            href="#"
+            onClick={(e) => {
+              e.preventDefault();
+              handleOpenPresentationGenerator();
+            }}
+            className="text-green-600 hover:underline text-sm font-medium"
+            title="Generate strategic presentation for this client"
+          >
+            (Generate Presentation)
           </a>
         </div>
         <InfoRow
