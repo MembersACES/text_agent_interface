@@ -8,6 +8,7 @@ const tools = [
   { href: "/utility-invoice-info/sme-gas", label: "SME Gas Invoice Information" },
   { href: "/utility-invoice-info/waste", label: "Waste Invoice Information" },
   { href: "/utility-invoice-info/oil", label: "Oil Invoice Information" },
+  { href: "/utility-invoice-info/robot", label: "Robot Cleaning Data" },
 ];
 
 export default function UtilityInvoiceInfoPage() {

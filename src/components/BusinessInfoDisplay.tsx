@@ -1,4 +1,3 @@
-// LOGO USAGE: To use a logo from Google Drive, you must first download it and place it in the /public/images/logo/ or /src/assets/logos/ directory. You cannot reference a Google Drive file ID directly in <Image> or <img> tags. For best results, use a local file path (e.g., /images/logo/logo.svg).
 import React, { useState } from "react";
 import { getApiBaseUrl } from "@/lib/utils";
 import { useRouter } from "next/navigation";
@@ -111,6 +110,103 @@ export default function BusinessInfoDisplay({ info }: { info: any }) {
     return null;
   }
 
+  const handleOpenSiteProfiling = () => {
+    const params = new URLSearchParams();
+    if (business.name) {
+      params.set('businessName', business.name);
+    }
+    
+    const businessInfoToPass = {
+      name: business.name,
+      address: contact.postal_address,
+      siteAddress: contact.site_address,
+      industry: business.industry,
+      website: business.website,
+      phone: contact.telephone,
+      email: contact.email,
+      googleDriveLink: driveUrl,
+      utilities: linked,
+      retailers: retailers,
+      abn: business.abn,
+      tradingName: business.trading_name,
+      contactName: rep.contact_name,
+      position: rep.position
+    };
+    
+    params.set('businessInfo', encodeURIComponent(JSON.stringify(businessInfoToPass)));
+    
+    const url = `/site-profiling?${params.toString()}`;
+    window.open(url, '_blank');
+  };
+
+  const handleOpenPresentationGenerator = () => {
+    const params = new URLSearchParams();
+    
+    const businessInfoToPass = {
+      name: business.name,
+      abn: business.abn,
+      trading_name: business.trading_name,
+      email: contact.email,
+      telephone: contact.telephone,
+      postal_address: contact.postal_address,
+      site_address: contact.site_address,
+      contact_name: rep.contact_name,
+      position: rep.position,
+      industry: business.industry,
+      website: business.website,
+      googleDriveLink: driveUrl,
+      utilities: linked,
+      retailers: retailers
+    };
+    
+    // Add utility information for auto-suggestions
+    const linkedUtilities = [];
+    if (linked["C&I Electricity"]) linkedUtilities.push("ELECTRICITY_CI");
+    if (linked["SME Electricity"]) linkedUtilities.push("ELECTRICITY_SME");
+    if (linked["C&I Gas"]) linkedUtilities.push("GAS_CI");
+    if (linked["SME Gas"] || linked["Small Gas"]) linkedUtilities.push("GAS_SME");
+    if (linked["Waste"]) linkedUtilities.push("WASTE");
+    if (linked["Oil"]) linkedUtilities.push("COOKING_OIL");
+    
+    businessInfoToPass.utilities = linkedUtilities;
+    
+    params.set('businessInfo', encodeURIComponent(JSON.stringify(businessInfoToPass)));
+    
+    const url = `/strategy-generator?${params.toString()}`;
+    window.open(url, '_blank');
+  };
+  
+  const handleOpenDocumentGeneration = () => {
+  const params = new URLSearchParams();
+  
+  if (business.name) params.set('businessName', business.name);
+  if (business.abn) params.set('abn', business.abn);
+  if (business.trading_name) params.set('tradingAs', business.trading_name);
+  if (contact.email) params.set('email', contact.email);
+  if (contact.telephone) params.set('phone', contact.telephone);
+  if (contact.postal_address) params.set('address', contact.postal_address);
+  if (contact.site_address) params.set('siteAddress', contact.site_address);
+  if (rep.contact_name) params.set('contactName', rep.contact_name);
+  if (rep.position) params.set('position', rep.position);
+  if (driveUrl) params.set('clientFolderUrl', driveUrl);
+  
+  // Add utility information if available
+  const linkedUtilities = [];
+  if (linked["C&I Electricity"]) linkedUtilities.push("ELECTRICITY_CI");
+  if (linked["SME Electricity"]) linkedUtilities.push("ELECTRICITY_SME");
+  if (linked["C&I Gas"]) linkedUtilities.push("GAS_CI");
+  if (linked["SME Gas"] || linked["Small Gas"]) linkedUtilities.push("GAS_SME");
+  if (linked["Waste"]) linkedUtilities.push("WASTE");
+  if (linked["Oil"]) linkedUtilities.push("COOKING_OIL");
+  
+  if (linkedUtilities.length > 0) {
+    params.set('utilities', linkedUtilities.join(','));
+  }
+  
+  const url = `/document-generation?${params.toString()}`;
+  window.open(url, '_blank');
+};
+
   React.useEffect(() => {
     if (driveModalResult === 'File successfully uploaded and Drive links updated!') {
       const timer = setTimeout(() => {
@@ -122,10 +218,52 @@ export default function BusinessInfoDisplay({ info }: { info: any }) {
     }
   }, [driveModalResult]);
 
-  return (
-    <div className="bg-gray-50 rounded-lg p-6 mt-6 shadow-sm">
-      <h2 className="text-lg font-semibold text-gray-800 mb-4">Business Details</h2>
-      <InfoRow label="Business Name" value={business.name || <span className="text-sm text-gray-400">Not available</span>} />
+    return (
+      <div className="bg-gray-50 rounded-lg p-6 mt-6 shadow-sm">
+        <div className="flex items-center space-x-2 mb-4">
+          <h2 className="text-lg font-semibold text-gray-800">Business Details</h2>
+          <a
+            href="#"
+            onClick={(e) => {
+              e.preventDefault();
+              handleOpenDocumentGeneration();
+            }}
+            className="text-blue-600 hover:underline text-sm font-medium"
+            title="Generate documents for this client"
+          >
+            (Generate Documents)
+          </a>
+          <a
+            href="#"
+            onClick={(e) => {
+              e.preventDefault();
+              handleOpenPresentationGenerator();
+            }}
+            className="text-green-600 hover:underline text-sm font-medium"
+            title="Generate strategic presentation for this client"
+          >
+            (Generate Strategy)
+          </a>
+        </div>
+        <InfoRow
+          label="Business Name"
+          value={
+            <div className="flex items-center space-x-2">
+              <span>{business.name || <span className="text-sm text-gray-400">Not available</span>}</span>
+              {driveUrl && (
+                <a
+                  href={driveUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:underline text-sm font-medium"
+                >
+                  (Drive Folder)
+                </a>
+              )}
+            </div>
+          }
+        />
+
       <InfoRow label="Trading As" value={business.trading_name || <span className="text-sm text-gray-400">Not available</span>} />
       <InfoRow label="ABN" value={business.abn || <span className="text-sm text-gray-400">Not available</span>} />
       <hr className="my-4 border-gray-200" />
@@ -154,8 +292,8 @@ export default function BusinessInfoDisplay({ info }: { info: any }) {
           const specialMappedKey = specialKeyMap[doc];
           
           const fileUrl = info._processed_file_ids?.[docKey] 
-                       || info._processed_file_ids?.[normalizedDocKey] 
-                       || (specialMappedKey ? info._processed_file_ids?.[specialMappedKey] : undefined);
+                      || info._processed_file_ids?.[normalizedDocKey] 
+                      || (specialMappedKey ? info._processed_file_ids?.[specialMappedKey] : undefined);
 
           // Debug logs
           if (typeof window !== 'undefined') {
@@ -183,6 +321,15 @@ export default function BusinessInfoDisplay({ info }: { info: any }) {
             >
               File in Drive
             </button>
+            {doc === "Site Profling" && (
+              <button
+                className="ml-2 px-2 py-1 border border-blue-300 bg-blue-50 rounded text-xs text-blue-700 hover:bg-blue-100 focus:outline-none"
+                title="Start new site profiling questionnaire"
+                onClick={handleOpenSiteProfiling}
+              >
+                New Questionnaire
+              </button>
+            )}
           </div>
         );
       })}
@@ -247,6 +394,7 @@ export default function BusinessInfoDisplay({ info }: { info: any }) {
         })(),
         { key: "Waste", label: "Account Number", tool: "waste", param: "account_number", requestType: "waste" },
         { key: "Oil", label: "Account Name", tool: "oil", param: "business_name", requestType: "oil" },
+        { key: "Robot", label: "Robot Number", tool: "robot", param: "robot_number", requestType: "robot_data" },
       ]
       .filter(Boolean)
       .map((item) => {
@@ -292,27 +440,29 @@ export default function BusinessInfoDisplay({ info }: { info: any }) {
                   >
                     Invoice Data
                   </button>
-                  <button
-                    className="ml-2 px-2 py-1 border border-gray-300 rounded text-xs text-gray-700 hover:bg-gray-100 focus:outline-none"
-                    title="Request data from supplier for this utility"
-                    onClick={() => {
-                      // Data Request tool page (assume /data-request page exists)
-                      // Instead of opening immediately, show modal
-                      setDataRequestSummary({
-                        businessName: invoiceBusinessName,
-                        retailer: retailer || key,
-                        email: contact.email || '',
-                        identifier,
-                        requestType,
-                        param,
-                        tool,
-                        details: param !== "business_name" ? identifier : '',
-                      });
-                      setShowDataRequestModal(true);
-                    }}
-                  >
-                    Data Request
-                  </button>
+                  {tool !== "robot" && (
+                    <button
+                      className="ml-2 px-2 py-1 border border-gray-300 rounded text-xs text-gray-700 hover:bg-gray-100 focus:outline-none"
+                      title="Request data from supplier for this utility"
+                      onClick={() => {
+                        // Data Request tool page (assume /data-request page exists)
+                        // Instead of opening immediately, show modal
+                        setDataRequestSummary({
+                          businessName: invoiceBusinessName,
+                          retailer: retailer || key,
+                          email: contact.email || '',
+                          identifier,
+                          requestType,
+                          param,
+                          tool,
+                          details: param !== "business_name" ? identifier : '',
+                        });
+                        setShowDataRequestModal(true);
+                      }}
+                    >
+                      Data Request
+                    </button>
+                    )}
                 </div>
               );
             })}
@@ -349,8 +499,6 @@ export default function BusinessInfoDisplay({ info }: { info: any }) {
         );
       })}
       <hr className="my-4 border-gray-200" />
-      <h2 className="text-lg font-semibold text-gray-800 mb-4">Google Drive</h2>
-      <InfoRow label="Folder URL" value={driveUrl ? <FileLink label="Google Drive Folder" url={driveUrl} /> : <span className="text-sm text-gray-400">Not available</span>} />
       {/* Drive Filing Modal */}
       {showDriveModal && (
         <div className="fixed inset-0 bg-black bg-opacity-25 z-50 flex items-center justify-center">

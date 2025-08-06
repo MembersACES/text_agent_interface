@@ -30,6 +30,8 @@ export default function CanvaPitchDeckPage() {
   const [canvaToken, setCanvaToken] = useState<string>("");
   const [isConnected, setIsConnected] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [testResults, setTestResults] = useState<any>(null);
+  const [testing, setTesting] = useState(false);
   
   const token = (session as any)?.id_token || (session as any)?.accessToken;
 
@@ -113,6 +115,40 @@ export default function CanvaPitchDeckPage() {
     setIsConnected(false);
   };
 
+  // 🧪 ADD THIS TEST FUNCTION
+  const testCanvaCapabilities = async () => {
+    if (!canvaToken) {
+      alert('No Canva token available!');
+      return;
+    }
+
+    setTesting(true);
+    console.log("🧪 Testing Canva capabilities...");
+
+    try {
+      const response = await fetch('/api/explore-canva-capabilities', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          canva_token: canvaToken,
+          template_ids: ["EAGubwPi5xA", "EAGubwdp7rQ"]
+        })
+      });
+      
+      const result = await response.json();
+      console.log("🔍 Canva capabilities result:", result);
+      setTestResults(result);
+      
+    } catch (error: unknown) {
+      console.error("Error testing capabilities:", error);
+      setTestResults({ error: (error as Error).message });
+    } finally {
+      setTesting(false);
+    }
+  };
+
   // Add debugging info to the UI
   const debugInfo = {
     mounted,
@@ -160,9 +196,28 @@ export default function CanvaPitchDeckPage() {
             >
               Disconnect
             </button>
+            
+            {/* 🧪 ADD THIS TEST BUTTON */}
+            <button
+              onClick={testCanvaCapabilities}
+              disabled={testing}
+              className="px-3 py-1 bg-blue-600 text-white rounded text-sm disabled:opacity-50"
+            >
+              {testing ? "Testing..." : "🧪 Test Capabilities"}
+            </button>
           </div>
         )}
       </div>
+
+      {/* 📊 SHOW TEST RESULTS */}
+      {testResults && (
+        <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded">
+          <h3 className="font-bold text-lg mb-2">🧪 Canva Capabilities Test Results:</h3>
+          <pre className="text-sm overflow-auto max-h-96">
+            {JSON.stringify(testResults, null, 2)}
+          </pre>
+        </div>
+      )}
       
       {isConnected ? (
         <CanvaPitchDeckTool token={token} canvaToken={canvaToken} />

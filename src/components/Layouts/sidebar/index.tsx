@@ -14,7 +14,11 @@ export function Sidebar() {
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
 
   const toggleExpanded = (title: string) => {
-    setExpandedItems((prev) => (prev.includes(title) ? [] : [title]));
+    setExpandedItems((prev) => 
+      prev.includes(title) 
+        ? prev.filter(item => item !== title)
+        : [...prev, title]
+    );
   };
 
   useEffect(() => {
@@ -99,7 +103,7 @@ export function Sidebar() {
                               className="flex items-center justify-between"
                             >
                               <div className="flex items-center gap-3">
-                                {item.icon && (
+                                {"icon" in item && item.icon && (
                                   <item.icon className="size-6 shrink-0" aria-hidden="true" />
                                 )}
                                 <span>{item.title}</span>
@@ -154,7 +158,7 @@ export function Sidebar() {
                                 href={href}
                                 isActive={pathname === href}
                               >
-                                {item.icon && (
+                                {"icon" in item && item.icon && (
                                   <item.icon className="size-6 shrink-0" aria-hidden="true" />
                                 )}
                                 <span>{item.title}</span>

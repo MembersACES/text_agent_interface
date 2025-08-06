@@ -43,6 +43,8 @@ export default function CanvaPitchDeckTool({
   const [businessInfo, setBusinessInfo] = useState<any>(null);
   const [selectedTemplateIds, setSelectedTemplateIds] = useState<string[]>([]);
   const [mergedPdfUrl, setMergedPdfUrl] = useState<string | null>(null);
+  const [canvaUrls, setCanvaUrls] = useState<string[]>([]);
+  const [workflowInstructions, setWorkflowInstructions] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fetchingInfo, setFetchingInfo] = useState(false);
@@ -59,6 +61,8 @@ export default function CanvaPitchDeckTool({
     setFetchingInfo(true);
     setBusinessInfo(null);
     setMergedPdfUrl(null);
+    setCanvaUrls([]);
+    setWorkflowInstructions([]);
     setError(null);
     try {
       const res = await fetch(`${getApiBaseUrl()}/api/get-business-info`, {
@@ -81,6 +85,8 @@ export default function CanvaPitchDeckTool({
   const generateDeck = async () => {
     setLoading(true);
     setMergedPdfUrl(null);
+    setCanvaUrls([]);
+    setWorkflowInstructions([]);
     setError(null);
     try {
       const now = new Date();
@@ -104,9 +110,22 @@ export default function CanvaPitchDeckTool({
       });
 
       const result = await res.json();
+      console.log("🎯 Full API response:", result);
+      
       if (!res.ok) throw new Error(result.error || "Failed to generate deck");
 
-      if (Array.isArray(result.pdf_urls)) {
+      if (result.canva_urls && Array.isArray(result.canva_urls)) {
+        console.log("✅ Found canva_urls:", result.canva_urls);
+        setCanvaUrls(result.canva_urls);
+        
+        if (result.detailed_instructions) {
+          setWorkflowInstructions(result.detailed_instructions);
+        }
+        
+        console.log("ℹ️ Teams workflow - showing edit URLs for manual combination");
+        
+      } else if (result.pdf_urls && Array.isArray(result.pdf_urls)) {
+        console.log("📄 Found PDF URLs - attempting merge");
         const mergeRes = await fetch("/api/merge-pdfs", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -117,9 +136,11 @@ export default function CanvaPitchDeckTool({
         const blob = await mergeRes.blob();
         setMergedPdfUrl(URL.createObjectURL(blob));
       } else {
-        throw new Error("Missing PDF URLs in Canva response");
+        console.error("❌ Unexpected response format:", result);
+        throw new Error("No template URLs found in response. Check if templates exist and are accessible.");
       }
     } catch (err: any) {
+      console.error("🔥 Generate deck error:", err);
       setError(err.message);
     } finally {
       setLoading(false);
@@ -184,6 +205,56 @@ export default function CanvaPitchDeckTool({
             {loading ? "Generating..." : "Generate Strategy"}
           </button>
         </>
+      )}
+
+      {canvaUrls.length > 0 && (
+        <div style={{ marginTop: 30, padding: 20, backgroundColor: "#f0f9ff", borderRadius: 8, border: "1px solid #0ea5e9" }}>
+          <h3>🎯 Your Strategy Templates are Ready!</h3>
+          <p style={{ marginBottom: 16, color: "#0c4a6e" }}>
+            <strong>Teams Account Workflow:</strong> Open your templates below, combine them manually, and download as one PDF.
+          </p>
+          
+          <div style={{ marginBottom: 20 }}>
+            <h4>📋 Template Links:</h4>
+            {canvaUrls.map((url, index) => (
+              <div key={index} style={{ marginBottom: 8 }}>
+                <a
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    display: "inline-block",
+                    padding: "8px 16px",
+                    backgroundColor: "#0ea5e9",
+                    color: "#fff",
+                    textDecoration: "none",
+                    borderRadius: "4px",
+                    fontWeight: 500,
+                    marginRight: 8
+                  }}
+                >
+                  {index === 0 ? "🎯 Main Template" : `📋 Template ${index + 1}`}
+                </a>
+                <span style={{ color: "#64748b", fontSize: "14px" }}>
+                  {index === 0 ? "(Edit this one)" : "(Copy content from this)"}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {workflowInstructions.length > 0 && (
+            <div>
+              <h4>📝 Step-by-Step Instructions:</h4>
+              <ol style={{ paddingLeft: 20, lineHeight: 1.6 }}>
+                {workflowInstructions.map((instruction, index) => (
+                  <li key={index} style={{ marginBottom: 4 }}>
+                    {instruction}
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+        </div>
       )}
 
       {mergedPdfUrl && (

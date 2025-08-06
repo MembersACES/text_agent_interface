@@ -15,6 +15,7 @@ export default function BusinessInfoTool({ token }: { token: string }) {
     setError(null);
     setBusinessInfo(null);
     setLoading(true);
+    console.log("🔍 About to make fetch request...");
     try {
       const res = await fetch(
         `${getApiBaseUrl()}/api/get-business-info`,
@@ -27,6 +28,7 @@ export default function BusinessInfoTool({ token }: { token: string }) {
           body: JSON.stringify({ business_name: businessName }),
         }
       );
+      console.log("🔍 Fetch completed, response:", res);
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.detail || "Unknown error");
@@ -34,8 +36,10 @@ export default function BusinessInfoTool({ token }: { token: string }) {
       const data = await res.json();
       setBusinessInfo(data);
     } catch (err: any) {
+      console.log("🔍 Error caught:", err);
       setError(err.message);
     } finally {
+      console.log("🔍 Finally block reached");
       setLoading(false);
     }
   };
@@ -57,7 +61,7 @@ export default function BusinessInfoTool({ token }: { token: string }) {
       </div>
       <button
         onClick={getBusinessInfo}
-        style={{ padding: "10px 20px", fontSize: "16px" }}
+        className="px-4 py-2 rounded bg-blue-600 text-white font-semibold hover:bg-blue-700 focus:outline-none disabled:bg-gray-400"
         disabled={loading}
       >
         {loading ? "Loading..." : "Get Business Info"}

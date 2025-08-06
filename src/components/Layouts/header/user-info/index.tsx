@@ -9,12 +9,13 @@ import {
 import { cn } from "@/lib/utils";
 import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { LogOutIcon, SettingsIcon, UserIcon } from "./icons";
-import { useSession, signOut } from "next-auth/react";
+import { useSession, signOut, signIn } from "next-auth/react";
 
 export function UserInfo() {
   const [isOpen, setIsOpen] = useState(false);
+  const [needsReauth, setNeedsReauth] = useState(false);
   const { data: session } = useSession();
 
   const USER = session?.user || {
@@ -22,6 +23,41 @@ export function UserInfo() {
     email: "",
     image: "/images/user/user-03.png",
   };
+
+  // Function to handle reauthentication
+  const handleReauth = async () => {
+    setIsOpen(false);
+    try {
+      await signIn('google', { 
+        callbackUrl: window.location.href,
+        prompt: 'consent' // Force consent screen to get fresh tokens
+      });
+    } catch (error) {
+      console.error('Reauthentication failed:', error);
+    }
+  };
+
+  // Function to handle logout
+  const handleLogout = () => {
+    setIsOpen(false);
+    signOut();
+  };
+
+  // Listen for API errors that indicate reauthentication is needed
+  useEffect(() => {
+    const handleApiError = (event: CustomEvent) => {
+      if (event.detail?.error === 'REAUTHENTICATION_REQUIRED') {
+        setNeedsReauth(true);
+      }
+    };
+
+    // Listen for custom events from your API calls
+    window.addEventListener('api-error', handleApiError as EventListener);
+    
+    return () => {
+      window.removeEventListener('api-error', handleApiError as EventListener);
+    };
+  }, []);
 
   return (
     <Dropdown isOpen={isOpen} setIsOpen={setIsOpen}>
@@ -106,14 +142,23 @@ export function UserInfo() {
         <hr className="border-[#E8E8E8] dark:border-dark-3" />
 
         <div className="p-2 text-base text-[#4B5563] dark:text-dark-6">
-          <button
-            className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[9px] hover:bg-gray-2 hover:text-dark dark:hover:bg-dark-3 dark:hover:text-white"
-            onClick={() => { setIsOpen(false); signOut(); }}
-          >
-            <LogOutIcon />
-
-            <span className="text-base font-medium">Log out</span>
-          </button>
+          {needsReauth ? (
+            <button
+              className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[9px] hover:bg-gray-2 hover:text-dark dark:hover:bg-dark-3 dark:hover:text-white"
+              onClick={handleReauth}
+            >
+              <LogOutIcon />
+              <span className="text-base font-medium">Reauthentication required</span>
+            </button>
+          ) : (
+            <button
+              className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[9px] hover:bg-gray-2 hover:text-dark dark:hover:bg-dark-3 dark:hover:text-white"
+              onClick={handleLogout}
+            >
+              <LogOutIcon />
+              <span className="text-base font-medium">Log out</span>
+            </button>
+          )}
         </div>
       </DropdownContent>
     </Dropdown>
