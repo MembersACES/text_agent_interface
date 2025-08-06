@@ -261,21 +261,32 @@ export default function StrategyGeneratorPage() {
       const currentDate = new Date();
       const currentMonth = currentDate.toLocaleString('default', { month: 'long' });
       const currentYear = currentDate.getFullYear().toString();
-  
-             // Use the existing endpoint that creates presentations
-       const response = await fetch(`${getApiBaseUrl()}/api/generate-strategy-presentation-real`, {
+
+      const response = await fetch(`${getApiBaseUrl()}/api/generate-strategy-presentation-real`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${token}`,
         },
-                 body: JSON.stringify({
-           title: `Strategy Presentation for ${editableBusinessInfo.business_name}`,
-           selected_solutions: selectedStrategies,
-           business_info: editableBusinessInfo,
-           user_token: token
-         }),
+        body: JSON.stringify({
+          businessInfo: {
+            business_name: editableBusinessInfo.business_name,
+            abn: editableBusinessInfo.abn,
+            trading_as: editableBusinessInfo.trading_as,
+            // ... add other fields as needed
+          },
+          selectedStrategies: selectedStrategies,
+          coverPageTemplateId: "1k1X6omqY14uvU6a7O5SZ0T028N8OcTupLDbDjGht7tI",
+          strategyTemplates: strategyOptions.filter(s => selectedStrategies.includes(s.id)),
+          placeholders: {
+            BusinessName: editableBusinessInfo.business_name,
+            month: currentMonth,
+            year: currentYear
+          }
+        }),
       });
+
+      console.log("Token being sent:", token?.substring(0, 50) + "...");
   
       const data = await response.json();
   
