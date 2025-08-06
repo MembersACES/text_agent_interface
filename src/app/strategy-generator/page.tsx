@@ -262,26 +262,19 @@ export default function StrategyGeneratorPage() {
       const currentMonth = currentDate.toLocaleString('default', { month: 'long' });
       const currentYear = currentDate.getFullYear().toString();
   
-      // Use the REAL endpoint that actually creates presentations
-      const response = await fetch(`${getApiBaseUrl()}/api/generate-strategy-presentation-real`, {
+             // Use the existing endpoint that creates presentations
+       const response = await fetch(`${getApiBaseUrl()}/api/google/generate-strategy-presentation-real`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          businessInfo: editableBusinessInfo,
-          selectedStrategies: selectedStrategies,
-          coverPageTemplateId: COVER_PAGE_TEMPLATE_ID,
-          strategyTemplates: strategyOptions.filter(option => 
-            selectedStrategies.includes(option.id)
-          ),
-          placeholders: {
-            BusinessName: editableBusinessInfo.business_name,
-            month: currentMonth,
-            year: currentYear
-          }
-        }),
+                 body: JSON.stringify({
+           title: `Strategy Presentation for ${editableBusinessInfo.business_name}`,
+           selected_solutions: selectedStrategies,
+           business_info: editableBusinessInfo,
+           user_token: token
+         }),
       });
   
       const data = await response.json();
@@ -293,12 +286,19 @@ export default function StrategyGeneratorPage() {
           pdfUrl: data.pdfUrl,
           message: `✅ ${data.message || `Strategy presentation generated successfully for ${editableBusinessInfo.business_name}`}`
         });
-      } else {
-        setGenerationResult({
-          success: false,
-          message: `❌ Error generating presentation: ${data.detail || data.error || 'Unknown error'}`
-        });
-      }
+             } else {
+         let errorMessage = data.detail || data.error || 'Unknown error';
+         
+         // Handle specific authentication errors
+         if (errorMessage.includes('refresh') || errorMessage.includes('401')) {
+           errorMessage = 'Authentication token expired. Please log out and log back in to refresh your credentials.';
+         }
+         
+         setGenerationResult({
+           success: false,
+           message: `❌ Error generating presentation: ${errorMessage}`
+         });
+       }
     } catch (error: any) {
       console.error("Strategy generation error:", error);
       setGenerationResult({
@@ -335,16 +335,28 @@ export default function StrategyGeneratorPage() {
     );
   }
   
-  const token = session?.accessToken;
-  if (!token) {
-    return (
-      <div className="p-6">
-        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-          Access token not available. Please log out and log back in.
-        </div>
-      </div>
-    );
-  }
+     const token = (session as any)?.id_token || (session as any)?.accessToken;
+   
+   // Check for refresh token error
+   if ((session as any)?.error === "RefreshAccessTokenError") {
+     return (
+       <div className="p-6">
+         <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+           Your authentication has expired. Please log out and log back in to refresh your credentials.
+         </div>
+       </div>
+     );
+   }
+   
+   if (!token) {
+     return (
+       <div className="p-6">
+         <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+           Access token not available. Please log out and log back in.
+         </div>
+       </div>
+     );
+   }
 
   return (
     <div className="max-w-6xl mx-auto p-6">
