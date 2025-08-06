@@ -9,7 +9,9 @@ export const authOptions: NextAuthOptions = {
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
       authorization: {
         params: {
-          scope: "openid email profile"
+          scope: "openid email profile https://www.googleapis.com/auth/presentations https://www.googleapis.com/auth/drive",
+          access_type: "offline",
+          prompt: "consent"
         }
       }
     }),
@@ -34,4 +36,4 @@ export const authOptions: NextAuthOptions = {
       return token;
     },
   },
-}; 
+};

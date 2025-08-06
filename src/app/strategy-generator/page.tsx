@@ -4,7 +4,6 @@ import React, { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { getApiBaseUrl } from "@/lib/utils";
 import { useSearchParams } from "next/navigation";
-import GooglePresentationTool from "@/components/GooglePresentationTool";
 
 interface BusinessInfo {
   business_name: string;
@@ -23,9 +22,25 @@ interface BusinessInfo {
   retailers?: any[];
 }
 
+interface StrategyOption {
+  id: string;
+  name: string;
+  description: string;
+  presentationId: string;
+  enabled: boolean;
+}
+
+interface GenerationResult {
+  success: boolean;
+  presentationUrl?: string;
+  pdfUrl?: string;
+  message: string;
+}
+
 export default function StrategyGeneratorPage() {
-  const { data: session } = useSession();
-  const token = (session as any)?.id_token || (session as any)?.accessToken;
+  const { data: session, status } = useSession();
+  console.log("Session status:", status);
+  console.log("Session data:", session);
   const searchParams = useSearchParams();
 
   const [businessQuery, setBusinessQuery] = useState("");
@@ -33,6 +48,40 @@ export default function StrategyGeneratorPage() {
   const [editableBusinessInfo, setEditableBusinessInfo] = useState<BusinessInfo | null>(null);
   const [businessLoading, setBusinessLoading] = useState(false);
   const [result, setResult] = useState("");
+
+  // Strategy selection state
+  const [selectedStrategies, setSelectedStrategies] = useState<string[]>([]);
+  const [generationLoading, setGenerationLoading] = useState(false);
+  const [generationResult, setGenerationResult] = useState<GenerationResult | null>(null);
+
+  // Available strategy options
+  const strategyOptions: StrategyOption[] = [
+    {
+      id: "cooking_oil",
+      name: "Cooking Oil Solution",
+      description: "Cooking oil collection and recycling services for businesses",
+      presentationId: "1qppczXwSy56UkLpOsE42ASiwZ8QlbKArN8EhTMqJz6w",
+      enabled: true
+    },
+    {
+      id: "cleaning_bot_scrubbing",
+      name: "Cleaning Robot - Scrubber",
+      description: "Cleaning robot visuals - scrubber",
+      presentationId: "1N-eSEG4nfU-D4GclpmslyvEct5bWEPqu7xWZ5ohyUPA",
+      enabled: true
+    },
+    {
+      id: "cleaning_bot_vacuum",
+      name: "Cleaning Robot - Vacuum",
+      description: "Cleaning robot visuals - vacuum",
+      presentationId: "1ziS3mDgvA25PzcltLnYPv_SKG-BiJV63pemL91YrPfE",
+      enabled: true
+    }
+    // Add more strategies here as they become available
+  ];
+
+  // Templates
+  const COVER_PAGE_TEMPLATE_ID = "1k1X6omqY14uvU6a7O5SZ0T028N8OcTupLDbDjGht7tI";
 
   // Load business info from session storage on mount
   useEffect(() => {
@@ -119,18 +168,6 @@ export default function StrategyGeneratorPage() {
       
       return;
     }
-    
-    // If no URL params, check session storage as before
-    const savedBusinessInfo = sessionStorage.getItem('selectedBusinessInfo');
-    if (savedBusinessInfo) {
-      try {
-        const businessData = JSON.parse(savedBusinessInfo);
-        setSelectedBusiness(businessData);
-        setEditableBusinessInfo({...businessData});
-      } catch (error) {
-        console.error('Error loading saved business info:', error);
-      }
-    }
   }, [searchParams]);
 
   // Fetch business information
@@ -197,16 +234,98 @@ export default function StrategyGeneratorPage() {
     setEditableBusinessInfo(prev => prev ? { ...prev, [name]: value } : null);
   };
 
+  // Handle strategy selection
+  const handleStrategyToggle = (strategyId: string) => {
+    setSelectedStrategies(prev => 
+      prev.includes(strategyId) 
+        ? prev.filter(id => id !== strategyId)
+        : [...prev, strategyId]
+    );
+  };
+
+  // Generate strategy presentation
+  const generateStrategyPresentation = async () => {
+    if (!editableBusinessInfo || selectedStrategies.length === 0) {
+      setGenerationResult({
+        success: false,
+        message: "❌ Please select at least one strategy option."
+      });
+      return;
+    }
+  
+    setGenerationLoading(true);
+    setGenerationResult(null);
+  
+    try {
+      // Get current date info for placeholders
+      const currentDate = new Date();
+      const currentMonth = currentDate.toLocaleString('default', { month: 'long' });
+      const currentYear = currentDate.getFullYear().toString();
+  
+      // Use the REAL endpoint that actually creates presentations
+      const response = await fetch(`${getApiBaseUrl()}/api/generate-strategy-presentation-real`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          businessInfo: editableBusinessInfo,
+          selectedStrategies: selectedStrategies,
+          coverPageTemplateId: COVER_PAGE_TEMPLATE_ID,
+          strategyTemplates: strategyOptions.filter(option => 
+            selectedStrategies.includes(option.id)
+          ),
+          placeholders: {
+            BusinessName: editableBusinessInfo.business_name,
+            month: currentMonth,
+            year: currentYear
+          }
+        }),
+      });
+  
+      const data = await response.json();
+  
+      if (response.ok && data.success) {
+        setGenerationResult({
+          success: true,
+          presentationUrl: data.presentationUrl,
+          pdfUrl: data.pdfUrl,
+          message: `✅ ${data.message || `Strategy presentation generated successfully for ${editableBusinessInfo.business_name}`}`
+        });
+      } else {
+        setGenerationResult({
+          success: false,
+          message: `❌ Error generating presentation: ${data.detail || data.error || 'Unknown error'}`
+        });
+      }
+    } catch (error: any) {
+      console.error("Strategy generation error:", error);
+      setGenerationResult({
+        success: false,
+        message: `❌ Error generating strategy presentation: ${error.message}`
+      });
+    }
+  
+    setGenerationLoading(false);
+  };
+
   // Clear business info and start fresh
   const handleNewSearch = () => {
     setSelectedBusiness(null);
     setEditableBusinessInfo(null);
     setBusinessQuery("");
     setResult("");
+    setSelectedStrategies([]);
+    setGenerationResult(null);
     sessionStorage.removeItem('selectedBusinessInfo');
   };
 
-  if (!token) {
+  if (status === "loading") {
+    return <div className="p-6">Loading...</div>;
+  }
+  
+  if (status === "unauthenticated" || !session) {
     return (
       <div className="p-6">
         <div className="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded mb-4">
@@ -215,33 +334,21 @@ export default function StrategyGeneratorPage() {
       </div>
     );
   }
-
-  // Convert business info to the format expected by GooglePresentationTool
-  const getBusinessInfoForPresentation = () => {
-    if (!editableBusinessInfo) return {};
-    
-    return {
-      name: editableBusinessInfo.business_name,
-      abn: editableBusinessInfo.abn,
-      trading_name: editableBusinessInfo.trading_as,
-      email: editableBusinessInfo.email,
-      telephone: editableBusinessInfo.telephone,
-      postal_address: editableBusinessInfo.postal_address,
-      site_address: editableBusinessInfo.site_address,
-      contact_name: editableBusinessInfo.contact_name,
-      position: editableBusinessInfo.position,
-      industry: editableBusinessInfo.industry,
-      website: editableBusinessInfo.website,
-      googleDriveLink: editableBusinessInfo.client_folder_url,
-      utilities: editableBusinessInfo.utilities,
-      // Additional data that might come from Business Info tool
-      retailers: editableBusinessInfo.retailers || []
-    };
-  };
+  
+  const token = session?.accessToken;
+  if (!token) {
+    return (
+      <div className="p-6">
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+          Access token not available. Please log out and log back in.
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-6xl mx-auto p-6">
-      <h1 className="text-3xl font-bold mb-8 text-gray-800">🎯 Business Solutions Presentation Generator</h1>
+      <h1 className="text-3xl font-bold mb-8 text-gray-800">🎯 Business Strategy Generator</h1>
 
       {/* Business Search Section */}
       <div className="mb-8 p-6 bg-gray-50 rounded-lg">
@@ -395,27 +502,6 @@ export default function StrategyGeneratorPage() {
                 />
               </div>
             </div>
-
-            {/* Utilities Display */}
-            {editableBusinessInfo?.utilities && editableBusinessInfo.utilities.length > 0 && (
-              <div className="mt-4 p-3 bg-blue-50 rounded border border-blue-200">
-                <h4 className="font-medium text-blue-800 mb-2">Linked Utilities:</h4>
-                <div className="flex flex-wrap gap-2">
-                  {editableBusinessInfo.utilities.map((utility, index) => (
-                    <span key={index} className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-sm">
-                      {utility}
-                    </span>
-                  ))}
-                </div>
-                <p className="text-xs text-blue-600 mt-2">
-                  💡 Solutions will be auto-suggested based on these utilities
-                </p>
-              </div>
-            )}
-            
-            <div className="mt-3 text-xs text-gray-600">
-              💡 Review and edit the information above before generating your presentation. All changes will be used in the generated presentation.
-            </div>
           </div>
         )}
 
@@ -445,14 +531,121 @@ export default function StrategyGeneratorPage() {
         </div>
       )}
 
-      {/* Strategy Generator Tool */}
+      {/* Strategy Selection Section */}
       {selectedBusiness && (
-        <div className="bg-white rounded-lg shadow-sm border p-6">
-          <h2 className="text-xl font-semibold mb-4 text-gray-800">2. Generate Strategy Presentation</h2>
-          <GooglePresentationTool 
-            token={token} 
-            initialBusinessInfo={getBusinessInfoForPresentation()}
-          />
+        <div className="mb-8 p-6 bg-gray-50 rounded-lg">
+          <h2 className="text-xl font-semibold mb-4 text-gray-800">2. Select Strategy Solutions</h2>
+          
+          <div className="space-y-4">
+            {strategyOptions.map((strategy) => (
+              <div key={strategy.id} className="flex items-start space-x-3 p-4 bg-white rounded border border-gray-200">
+                <input
+                  type="checkbox"
+                  id={strategy.id}
+                  checked={selectedStrategies.includes(strategy.id)}
+                  onChange={() => handleStrategyToggle(strategy.id)}
+                  disabled={!strategy.enabled}
+                  className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                />
+                <div className="flex-1">
+                  <label htmlFor={strategy.id} className="block text-sm font-medium text-gray-900 cursor-pointer">
+                    {strategy.name}
+                  </label>
+                  <p className="text-sm text-gray-600 mt-1">{strategy.description}</p>
+                  {!strategy.enabled && (
+                    <p className="text-xs text-gray-400 mt-1">Coming soon...</p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {selectedStrategies.length > 0 && (
+            <div className="mt-4 p-3 bg-blue-50 rounded border border-blue-200">
+              <p className="text-sm text-blue-700">
+                ✅ {selectedStrategies.length} strategy solution{selectedStrategies.length !== 1 ? 's' : ''} selected
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Generate Presentation Section */}
+      {selectedBusiness && selectedStrategies.length > 0 && (
+        <div className="mb-8 p-6 bg-white rounded-lg shadow-sm border">
+          <h2 className="text-xl font-semibold mb-4 text-gray-800">3. Generate Strategy Presentation</h2>
+          
+          <div className="mb-4">
+            <p className="text-sm text-gray-600 mb-2">
+              This will create a custom presentation including:
+            </p>
+            <ul className="text-sm text-gray-600 space-y-1 ml-4">
+              <li>• Cover page with business details ({editableBusinessInfo?.business_name})</li>
+              {selectedStrategies.map(strategyId => {
+                const strategy = strategyOptions.find(s => s.id === strategyId);
+                return strategy ? <li key={strategyId}>• {strategy.name} slides</li> : null;
+              })}
+            </ul>
+          </div>
+
+          <button
+            onClick={generateStrategyPresentation}
+            disabled={generationLoading}
+            className="px-6 py-3 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+          >
+            {generationLoading ? "Generating Presentation..." : "🎯 Generate Strategy Presentation"}
+          </button>
+        </div>
+      )}
+
+      {/* Generation Result */}
+      {generationResult && (
+        <div className={`mb-6 p-6 rounded-lg border ${
+          generationResult.success 
+            ? "bg-green-50 border-green-200" 
+            : "bg-red-50 border-red-200"
+        }`}>
+          <h3 className={`font-semibold mb-3 ${
+            generationResult.success ? "text-green-800" : "text-red-800"
+          }`}>
+            {generationResult.success ? "✅ Presentation Generated!" : "❌ Generation Failed"}
+          </h3>
+          
+          <p className={`text-sm mb-4 ${
+            generationResult.success ? "text-green-700" : "text-red-700"
+          }`}>
+            {generationResult.message}
+          </p>
+
+          {generationResult.success && (
+            <div className="space-y-3">
+              {generationResult.pdfUrl && (
+                <div>
+                  <a
+                    href={generationResult.pdfUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors text-sm font-medium"
+                  >
+                    📄 Download PDF
+                  </a>
+                </div>
+              )}
+              
+              {generationResult.presentationUrl && (
+                <div>
+                  <a
+                    href={generationResult.presentationUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm font-medium"
+                  >
+                    📝 Edit Presentation
+                  </a>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -463,7 +656,7 @@ export default function StrategyGeneratorPage() {
           <ol className="text-sm text-gray-600 space-y-1">
             <li>1. Search for an existing business by name</li>
             <li>2. Review and edit the business details if needed</li>
-            <li>3. Select the business solutions you want to include</li>
+            <li>3. Select the strategy solutions you want to include</li>
             <li>4. Generate your custom strategy presentation</li>
           </ol>
           

@@ -242,7 +242,7 @@ export default function BusinessInfoDisplay({ info }: { info: any }) {
             className="text-green-600 hover:underline text-sm font-medium"
             title="Generate strategic presentation for this client"
           >
-            (Generate Presentation)
+            (Generate Strategy)
           </a>
         </div>
         <InfoRow

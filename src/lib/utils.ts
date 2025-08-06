@@ -6,13 +6,13 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function getApiBaseUrl(): string {
-  // Temporarily use production backend for testing
-  return "https://text-agent-backend-672026052958.australia-southeast2.run.app";
+  // Use local backend in development, production backend in production
+  return process.env.NODE_ENV === "development"
+    ? "http://localhost:8000"  // Your local FastAPI server
+    : "https://text-agent-backend-672026052958.australia-southeast2.run.app";
   
-  // Uncomment this when your local backend is working:
-  // return process.env.NODE_ENV === "development"
-  //   ? "http://localhost:8000"  // Your local FastAPI server
-  //   : "https://text-agent-backend-672026052958.australia-southeast2.run.app";
+  // Temporarily use production backend for testing
+  // return "https://text-agent-backend-672026052958.australia-southeast2.run.app";
 }
 
 export function getCanvaApiBaseUrl() {
