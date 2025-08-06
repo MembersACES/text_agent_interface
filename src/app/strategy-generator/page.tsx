@@ -273,6 +273,7 @@ export default function StrategyGeneratorPage() {
             business_name: editableBusinessInfo.business_name,
             abn: editableBusinessInfo.abn,
             trading_as: editableBusinessInfo.trading_as,
+            client_folder_url: editableBusinessInfo.client_folder_url,
             // ... add other fields as needed
           },
           selectedStrategies: selectedStrategies,
@@ -282,7 +283,8 @@ export default function StrategyGeneratorPage() {
             BusinessName: editableBusinessInfo.business_name,
             month: currentMonth,
             year: currentYear
-          }
+          },
+          clientFolderUrl: editableBusinessInfo.client_folder_url
         }),
       });
 
