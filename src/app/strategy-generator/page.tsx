@@ -263,7 +263,7 @@ export default function StrategyGeneratorPage() {
       const currentYear = currentDate.getFullYear().toString();
   
              // Use the existing endpoint that creates presentations
-       const response = await fetch(`${getApiBaseUrl()}/api/google/generate-strategy-presentation-real`, {
+       const response = await fetch(`${getApiBaseUrl()}/api/generate-strategy-presentation-real`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
