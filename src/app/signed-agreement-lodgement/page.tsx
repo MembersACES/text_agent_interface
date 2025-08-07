@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { getApiBaseUrl } from "@/lib/utils";
+import { signIn } from "next-auth/react";
 
 interface ContractTypes {
   contracts: string[];
@@ -10,7 +11,7 @@ interface ContractTypes {
 }
 
 const UTILITY_TYPES = {
-  "C&I Electricity": ["Origin C&I Electricity", "Momentum C&I Electricity", "Alinta C&I Electricity"],
+  "C&I Electricity": ["Origin C&I Electricity", "Momentum C&I Electricity", "Alinta C&I Electricity", "Other"],
   "SME Electricity": ["Origin SME Electricity", "BlueNRG SME Electricity"],
   "C&I Gas": ["Origin C&I Gas", "Alinta C&I Gas"],
   "SME Gas": ["CovaU SME Gas"],
@@ -37,7 +38,8 @@ export default function SignedAgreementLodgementPage() {
   const [businessName, setBusinessName] = useState("");
   const [nmi, setNmi] = useState("");
   const [mirn, setMirn] = useState("");
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<FileList | null>(null);
+  const [multipleAttachments, setMultipleAttachments] = useState(false);
   const [result, setResult] = useState("");
   const [loading, setLoading] = useState(false);
   const [availableContracts, setAvailableContracts] = useState<ContractTypes>({ contracts: [], eois: [] });
@@ -66,6 +68,19 @@ export default function SignedAgreementLodgementPage() {
     return selectedUtilityType === "C&I Gas" || selectedUtilityType === "SME Gas";
   };
 
+  const dispatchReauthEvent = () => {
+    console.log("🔍 401 Unauthorized - dispatching reauthentication event");
+    
+    const apiErrorEvent = new CustomEvent('api-error', {
+      detail: { 
+        error: 'REAUTHENTICATION_REQUIRED',
+        status: 401,
+        message: 'Authentication expired'
+      }
+    });
+    window.dispatchEvent(apiErrorEvent);
+  };
+
   // Get the identifier label
   const getIdentifierLabel = () => {
     if (requiresNMI()) return "NMI";
@@ -90,6 +105,7 @@ export default function SignedAgreementLodgementPage() {
     setContractType("");
     setNmi("");
     setMirn("");
+    setMultipleAttachments(false);
   }, [agreementType]);
 
   // Reset contract type when utility type changes
@@ -99,20 +115,76 @@ export default function SignedAgreementLodgementPage() {
     setMirn("");
   }, [selectedUtilityType]);
 
+  // Reset multiple attachments when switching to EOI
+  useEffect(() => {
+    if (agreementType === "eoi") {
+      setMultipleAttachments(false);
+    }
+  }, [agreementType]);
+
+  // Add this useEffect for auto-reauth
+useEffect(() => {
+  const handleApiError = async (event: Event) => {
+    const customEvent = event as CustomEvent;
+    if (customEvent.detail?.error === 'REAUTHENTICATION_REQUIRED') {
+      console.log('Reauthentication required - automatically triggering...');
+      try {
+        await signIn('google', { 
+          callbackUrl: window.location.href,
+          prompt: 'consent'
+        });
+      } catch (error) {
+        console.error('Reauthentication failed:', error);
+      }
+    }
+  };
+
+  window.addEventListener('api-error', handleApiError);
+  
+  return () => {
+    window.removeEventListener('api-error', handleApiError);
+  };
+}, []);
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files?.[0]) {
-      const selectedFile = e.target.files[0];
-      if (!selectedFile.name.toLowerCase().endsWith('.pdf')) {
-        setResult("❌ Please select a PDF file only.");
+    if (e.target.files) {
+      const selectedFiles = e.target.files;
+      
+      // Validate all files are PDFs
+      const invalidFiles = Array.from(selectedFiles).filter(file => 
+        !file.name.toLowerCase().endsWith('.pdf')
+      );
+      
+      if (invalidFiles.length > 0) {
+        setResult("❌ Please select PDF files only.");
         return;
       }
-      setFile(selectedFile);
+
+      // If multiple attachments is off, only allow one file
+      if (!multipleAttachments && selectedFiles.length > 1) {
+        setResult("❌ Please select only one file or enable multiple attachments.");
+        return;
+      }
+
+      setFiles(selectedFiles);
       setResult(""); // Clear any previous error
     }
   };
 
+  const handleMultipleAttachmentsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const isChecked = e.target.checked;
+    setMultipleAttachments(isChecked);
+    
+    // If unchecking and we have multiple files, clear files
+    if (!isChecked && files && files.length > 1) {
+      setFiles(null);
+      const fileInput = document.getElementById("file-input") as HTMLInputElement;
+      if (fileInput) fileInput.value = "";
+    }
+  };
+
   const handleSubmit = async () => {
-    if (!file) {
+    if (!files || files.length === 0) {
       setResult("❌ No file selected.");
       return;
     }
@@ -142,10 +214,19 @@ export default function SignedAgreementLodgementPage() {
     setResult("");
 
     const formData = new FormData();
-    formData.append("file", file);
+    
+    // Add all files to form data
+    Array.from(files).forEach((file, index) => {
+      formData.append(`file_${index}`, file);
+    });
+    
     formData.append("business_name", buildBusinessNameForSubmission());
     formData.append("contract_type", contractType);
-    formData.append("agreement_type", agreementType);
+    
+    // Set agreement type based on multiple attachments
+    const finalAgreementType = multipleAttachments ? "contract_multiple_attachments" : agreementType;
+    formData.append("agreement_type", finalAgreementType);
+    formData.append("file_count", files.length.toString());
 
     try {
       if (!token) {
@@ -157,8 +238,9 @@ export default function SignedAgreementLodgementPage() {
       const apiUrl = `${getApiBaseUrl()}/api/signed-agreement-lodgement`;
       console.log("Making request to:", apiUrl);
       console.log("Token exists:", !!token);
-      console.log("Agreement type:", agreementType);
+      console.log("Agreement type:", finalAgreementType);
       console.log("Contract type:", contractType);
+      console.log("File count:", files.length);
 
       const res = await fetch(apiUrl, {
         method: "POST",
@@ -170,6 +252,13 @@ export default function SignedAgreementLodgementPage() {
 
       console.log("Response status:", res.status);
       console.log("Response headers:", res.headers);
+
+      if (res.status === 401) {
+        dispatchReauthEvent();
+        setResult("Session expired. Please wait while we refresh your authentication...");
+        setLoading(false);
+        return;
+      }
 
       let data;
       try {
@@ -187,12 +276,13 @@ export default function SignedAgreementLodgementPage() {
       if (res.ok) {
         setResult(data.message || "✅ Agreement submitted successfully!");
         // Reset form on success
-        setFile(null);
+        setFiles(null);
         setBusinessName("");
         setNmi("");
         setMirn("");
         setContractType("");
         setSelectedUtilityType("");
+        setMultipleAttachments(false);
         // Reset file input
         const fileInput = document.getElementById("file-input") as HTMLInputElement;
         if (fileInput) fileInput.value = "";
@@ -205,6 +295,12 @@ export default function SignedAgreementLodgementPage() {
     }
 
     setLoading(false);
+  };
+
+  const getFileDisplayText = () => {
+    if (!files || files.length === 0) return "";
+    if (files.length === 1) return `✅ Selected: ${files[0].name}`;
+    return `✅ Selected ${files.length} files: ${Array.from(files).map(f => f.name).join(", ")}`;
   };
 
   return (
@@ -237,6 +333,22 @@ export default function SignedAgreementLodgementPage() {
           </label>
         </div>
       </div>
+
+      {/* Multiple Attachments Checkbox - Only show for contracts */}
+      {agreementType === "contract" && (
+        <div className="mb-6">
+          <label className="flex items-center">
+            <input
+              type="checkbox"
+              checked={multipleAttachments}
+              onChange={handleMultipleAttachmentsChange}
+              className="mr-2"
+            />
+            <span className="font-medium text-gray-700">Multiple Attachments</span>
+            <span className="text-sm text-gray-500 ml-2">(Enable to upload multiple signed agreements at once)</span>
+          </label>
+        </div>
+      )}
 
       {/* Utility Type Selection */}
       <div className="mb-4">
@@ -288,7 +400,7 @@ export default function SignedAgreementLodgementPage() {
         </div>
       )}
 
-      {      /* Business Name */}
+      {/* Business Name */}
       <div className="mb-4">
         <label className="block font-medium mb-2 text-gray-700">
           Business Name *
@@ -347,18 +459,24 @@ export default function SignedAgreementLodgementPage() {
       {/* File Upload */}
       <div className="mb-6">
         <label className="block font-medium mb-2 text-gray-700">
-          Upload Signed Agreement (PDF only)
+          Upload Signed Agreement{multipleAttachments ? "s" : ""} (PDF only)
         </label>
         <input
           id="file-input"
           type="file"
           accept="application/pdf,.pdf"
+          multiple={multipleAttachments}
           onChange={handleFileChange}
           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
-        {file && (
+        {files && files.length > 0 && (
           <p className="mt-2 text-sm text-green-600">
-            ✅ Selected: {file.name}
+            {getFileDisplayText()}
+          </p>
+        )}
+        {multipleAttachments && (
+          <p className="mt-1 text-sm text-blue-600">
+            ℹ️ You can select multiple PDF files at once
           </p>
         )}
       </div>
@@ -368,7 +486,8 @@ export default function SignedAgreementLodgementPage() {
         onClick={handleSubmit}
         disabled={
           loading || 
-          !file || 
+          !files || 
+          files.length === 0 ||
           !contractType || 
           !businessName.trim() ||
           (requiresNMI() && !nmi.trim()) ||
@@ -376,7 +495,7 @@ export default function SignedAgreementLodgementPage() {
         }
         className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
       >
-        {loading ? "Submitting..." : `Submit Signed ${agreementType === "contract" ? "Contract" : "EOI"}`}
+        {loading ? "Submitting..." : `Submit Signed ${agreementType === "contract" ? "Contract" : "EOI"}${multipleAttachments ? "s" : ""}`}
       </button>
 
       {/* Result Display */}
@@ -396,12 +515,13 @@ export default function SignedAgreementLodgementPage() {
         <h3 className="font-medium text-gray-800 mb-2">Instructions:</h3>
         <ul className="text-sm text-gray-600 space-y-1">
           <li>1. Select whether you're submitting a Contract or EOI</li>
-          <li>2. Choose the utility type/size (e.g., "C&I Electricity") or service category</li>
-          <li>3. Select the specific supplier or service</li>
-          <li>4. Enter the business name</li>
-          <li>5. If required, enter the NMI (electricity/DMA) or MIRN (gas)</li>
-          <li>6. Upload the signed PDF agreement</li>
-          <li>7. The system will automatically email the supplier and file the document</li>
+          <li>2. {agreementType === "contract" && "For contracts, optionally enable 'Multiple Attachments' to upload several agreements at once"}</li>
+          <li>{agreementType === "contract" ? "3" : "2"}. Choose the utility type/size (e.g., "C&I Electricity") or service category</li>
+          <li>{agreementType === "contract" ? "4" : "3"}. Select the specific supplier or service</li>
+          <li>{agreementType === "contract" ? "5" : "4"}. Enter the business name</li>
+          <li>{agreementType === "contract" ? "6" : "5"}. If required, enter the NMI (electricity/DMA) or MIRN (gas)</li>
+          <li>{agreementType === "contract" ? "7" : "6"}. Upload the signed PDF agreement{multipleAttachments ? "s" : ""}</li>
+          <li>{agreementType === "contract" ? "8" : "7"}. The system will automatically email the supplier and file the document{multipleAttachments ? "s" : ""}</li>
         </ul>
       </div>
     </div>

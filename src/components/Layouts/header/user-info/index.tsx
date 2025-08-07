@@ -15,7 +15,7 @@ import { useSession, signOut, signIn } from "next-auth/react";
 
 export function UserInfo() {
   const [isOpen, setIsOpen] = useState(false);
-  const [needsReauth, setNeedsReauth] = useState(false);
+  const [isReauthenticating, setIsReauthenticating] = useState(false);
   const { data: session } = useSession();
 
   const USER = session?.user || {
@@ -24,9 +24,11 @@ export function UserInfo() {
     image: "/images/user/user-03.png",
   };
 
-  // Function to handle reauthentication
-  const handleReauth = async () => {
+  // Function to handle automatic reauthentication
+  const handleAutoReauth = async () => {
     setIsOpen(false);
+    setIsReauthenticating(true);
+    
     try {
       await signIn('google', { 
         callbackUrl: window.location.href,
@@ -34,6 +36,8 @@ export function UserInfo() {
       });
     } catch (error) {
       console.error('Reauthentication failed:', error);
+    } finally {
+      setIsReauthenticating(false);
     }
   };
 
@@ -43,19 +47,21 @@ export function UserInfo() {
     signOut();
   };
 
-  // Listen for API errors that indicate reauthentication is needed
+  // Listen for API errors and automatically trigger reauthentication
   useEffect(() => {
-    const handleApiError = (event: CustomEvent) => {
-      if (event.detail?.error === 'REAUTHENTICATION_REQUIRED') {
-        setNeedsReauth(true);
+    const handleApiError = async (event: Event) => {
+      const customEvent = event as CustomEvent;
+      if (customEvent.detail?.error === 'REAUTHENTICATION_REQUIRED') {
+        console.log('Reauthentication required - automatically triggering...');
+        await handleAutoReauth();
       }
     };
 
     // Listen for custom events from your API calls
-    window.addEventListener('api-error', handleApiError as EventListener);
+    window.addEventListener('api-error', handleApiError);
     
     return () => {
-      window.removeEventListener('api-error', handleApiError as EventListener);
+      window.removeEventListener('api-error', handleApiError);
     };
   }, []);
 
@@ -74,7 +80,7 @@ export function UserInfo() {
             height={200}
           />
           <figcaption className="flex items-center gap-1 font-medium text-dark dark:text-dark-6 max-[1024px]:sr-only">
-            <span>{USER.name}</span>
+            <span>{isReauthenticating ? "Reauthenticating..." : USER.name}</span>
 
             <ChevronUpIcon
               aria-hidden
@@ -106,7 +112,7 @@ export function UserInfo() {
 
           <figcaption className="space-y-1 text-base font-medium">
             <div className="mb-2 leading-none text-dark dark:text-white">
-              {USER.name}
+              {isReauthenticating ? "Reauthenticating..." : USER.name}
             </div>
 
             <div className="leading-none text-gray-6">{USER.email}</div>
@@ -142,23 +148,14 @@ export function UserInfo() {
         <hr className="border-[#E8E8E8] dark:border-dark-3" />
 
         <div className="p-2 text-base text-[#4B5563] dark:text-dark-6">
-          {needsReauth ? (
-            <button
-              className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[9px] hover:bg-gray-2 hover:text-dark dark:hover:bg-dark-3 dark:hover:text-white"
-              onClick={handleReauth}
-            >
-              <LogOutIcon />
-              <span className="text-base font-medium">Reauthentication required</span>
-            </button>
-          ) : (
-            <button
-              className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[9px] hover:bg-gray-2 hover:text-dark dark:hover:bg-dark-3 dark:hover:text-white"
-              onClick={handleLogout}
-            >
-              <LogOutIcon />
-              <span className="text-base font-medium">Log out</span>
-            </button>
-          )}
+          <button
+            className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[9px] hover:bg-gray-2 hover:text-dark dark:hover:bg-dark-3 dark:hover:text-white"
+            onClick={handleLogout}
+            disabled={isReauthenticating}
+          >
+            <LogOutIcon />
+            <span className="text-base font-medium">Log out</span>
+          </button>
         </div>
       </DropdownContent>
     </Dropdown>

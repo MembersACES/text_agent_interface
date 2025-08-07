@@ -29,15 +29,40 @@ export default function BusinessInfoTool({ token }: { token: string }) {
         }
       );
       console.log("🔍 Fetch completed, response:", res);
+      
+      // Check for 401 Unauthorized status
+      if (res.status === 401) {
+        console.log("🔍 401 Unauthorized - dispatching reauthentication event");
+        
+        // Dispatch custom event to trigger automatic reauthentication
+        const apiErrorEvent = new CustomEvent('api-error', {
+          detail: { 
+            error: 'REAUTHENTICATION_REQUIRED',
+            status: 401,
+            message: 'Authentication expired'
+          }
+        });
+        window.dispatchEvent(apiErrorEvent);
+        
+        // Set a user-friendly error message
+        setError("Session expired. Please wait while we refresh your authentication...");
+        return; // Don't throw error, just return
+      }
+      
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.detail || "Unknown error");
       }
+      
       const data = await res.json();
       setBusinessInfo(data);
     } catch (err: any) {
       console.log("🔍 Error caught:", err);
-      setError(err.message);
+      
+      // Only set error if it's not a reauthentication issue
+      if (err.message !== 'REAUTHENTICATION_REQUIRED') {
+        setError(err.message);
+      }
     } finally {
       console.log("🔍 Finally block reached");
       setLoading(false);
@@ -79,4 +104,4 @@ export default function BusinessInfoTool({ token }: { token: string }) {
       )}
     </div>
   );
-} 
+}

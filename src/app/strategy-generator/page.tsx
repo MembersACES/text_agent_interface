@@ -83,6 +83,20 @@ export default function StrategyGeneratorPage() {
   // Templates
   const COVER_PAGE_TEMPLATE_ID = "1k1X6omqY14uvU6a7O5SZ0T028N8OcTupLDbDjGht7tI";
 
+  const dispatchReauthEvent = () => {
+    console.log("🔍 401 Unauthorized - dispatching reauthentication event");
+    
+    const apiErrorEvent = new CustomEvent('api-error', {
+      detail: { 
+        error: 'REAUTHENTICATION_REQUIRED',
+        status: 401,
+        message: 'Authentication expired'
+      }
+    });
+    window.dispatchEvent(apiErrorEvent);
+  };
+
+
   // Load business info from session storage on mount
   useEffect(() => {
     const savedBusinessInfo = sessionStorage.getItem('selectedBusinessInfo');
@@ -189,6 +203,12 @@ export default function StrategyGeneratorPage() {
         },
         body: JSON.stringify({ business_name: businessQuery.trim() }),
       });
+      
+      if (response.status === 401) {
+        dispatchReauthEvent();
+        setResult("Session expired. Please wait while we refresh your authentication...");
+        return;
+      }
 
       const data = await response.json();
 
@@ -287,6 +307,15 @@ export default function StrategyGeneratorPage() {
           clientFolderUrl: editableBusinessInfo.client_folder_url
         }),
       });
+
+      if (response.status === 401) {
+        dispatchReauthEvent();
+        setGenerationResult({
+          success: false,
+          message: "Session expired. Please wait while we refresh your authentication..."
+        });
+        return;
+      }
 
       console.log("Token being sent:", token?.substring(0, 50) + "...");
   
