@@ -22,11 +22,18 @@ interface BusinessInfo {
   retailers?: any[];
 }
 
-interface StrategyOption {
+interface BrandOption {
   id: string;
   name: string;
   description: string;
   presentationId: string;
+}
+
+interface StrategyOption {
+  id: string;
+  name: string;
+  description: string;
+  presentationId: string; 
   enabled: boolean;
 }
 
@@ -49,12 +56,37 @@ export default function StrategyGeneratorPage() {
   const [businessLoading, setBusinessLoading] = useState(false);
   const [result, setResult] = useState("");
 
+  // Brand selection state
+  const [selectedBrands, setSelectedBrands] = useState<string[]>([]);
+
   // Strategy selection state
   const [selectedStrategies, setSelectedStrategies] = useState<string[]>([]);
   const [generationLoading, setGenerationLoading] = useState(false);
   const [generationResult, setGenerationResult] = useState<GenerationResult | null>(null);
 
-  // Available strategy options
+  // Available brand options
+  const brandOptions: BrandOption[] = [
+    {
+      id: "sustainable_supermarkets",
+      name: "Sustainable Supermarkets",
+      description: "Supermarket-specific branding and solutions",
+      presentationId: "1k1X6omqY14uvU6a7O5SZ0T028N8OcTupLDbDjGht7tI"
+    },
+    {
+      id: "sustainable_clubs",
+      name: "Sustainable Clubs",
+      description: "Club and hospitality-specific branding and solutions",
+      presentationId: "1k1X6omqY14uvU6a7O5SZ0T028N8OcTupLDbDjGht7tI"
+    },
+    {
+      id: "sustainable_hotels",
+      name: "Sustainable Hotels",
+      description: "Hotel and accommodation-specific branding and solutions",
+      presentationId: "1k1X6omqY14uvU6a7O5SZ0T028N8OcTupLDbDjGht7tI"
+    }
+  ];
+
+  // Available strategy options with brand-specific presentation IDs
   const strategyOptions: StrategyOption[] = [
     {
       id: "cooking_oil",
@@ -76,8 +108,21 @@ export default function StrategyGeneratorPage() {
       description: "Cleaning robot visuals - vacuum",
       presentationId: "1ziS3mDgvA25PzcltLnYPv_SKG-BiJV63pemL91YrPfE",
       enabled: true
+    },
+    {
+      id: "other",
+      name: "Other",
+      description: "Placeholder",
+      presentationId: "1ziS3mDgvA25PzcltLnYPv_SKG-BiJV63pemL91YrPfE",
+      enabled: true
+    },
+    {
+      id: "Discrepancy_Request",
+      name: "Discrepancy_Request",
+      description: "Discrepancy SME Reviews",
+      presentationId: "1ziS3mDgvA25PzcltLnYPv_SKG-BiJV63pemL91YrPfE",
+      enabled: true
     }
-    // Add more strategies here as they become available
   ];
 
   // Templates
@@ -95,7 +140,6 @@ export default function StrategyGeneratorPage() {
     });
     window.dispatchEvent(apiErrorEvent);
   };
-
 
   // Load business info from session storage on mount
   useEffect(() => {
@@ -254,6 +298,15 @@ export default function StrategyGeneratorPage() {
     setEditableBusinessInfo(prev => prev ? { ...prev, [name]: value } : null);
   };
 
+  // Handle brand selection
+  const handleBrandToggle = (brandId: string) => {
+    setSelectedBrands(prev => 
+      prev.includes(brandId) 
+        ? prev.filter(id => id !== brandId)
+        : [...prev, brandId]
+    );
+  };
+
   // Handle strategy selection
   const handleStrategyToggle = (strategyId: string) => {
     setSelectedStrategies(prev => 
@@ -263,12 +316,12 @@ export default function StrategyGeneratorPage() {
     );
   };
 
-  // Generate strategy presentation
+  
   const generateStrategyPresentation = async () => {
-    if (!editableBusinessInfo || selectedStrategies.length === 0) {
+    if (!editableBusinessInfo || (selectedStrategies.length === 0 && selectedBrands.length === 0)) {
       setGenerationResult({
         success: false,
-        message: "❌ Please select at least one strategy option."
+        message: "❌ Please select at least one brand or strategy option."
       });
       return;
     }
@@ -281,7 +334,39 @@ export default function StrategyGeneratorPage() {
       const currentDate = new Date();
       const currentMonth = currentDate.toLocaleString('default', { month: 'long' });
       const currentYear = currentDate.getFullYear().toString();
-
+  
+      // Build strategy templates - combining both brands and strategies
+      const allTemplates = [
+        // Add brand templates
+        ...selectedBrands.map(brandId => {
+          const brand = brandOptions.find(b => b.id === brandId);
+          if (!brand) return null;
+  
+          return {
+            id: brand.id,
+            name: brand.name,
+            description: brand.description,
+            presentationId: brand.presentationId,
+            enabled: true,
+            type: 'brand'
+          };
+        }),
+        // Add strategy templates
+        ...selectedStrategies.map(strategyId => {
+          const strategy = strategyOptions.find(s => s.id === strategyId);
+          if (!strategy) return null;
+  
+          return {
+            id: strategy.id,
+            name: strategy.name,
+            description: strategy.description,
+            presentationId: strategy.presentationId,
+            enabled: strategy.enabled,
+            type: 'strategy'
+          };
+        })
+      ].filter(Boolean);
+  
       const response = await fetch(`${getApiBaseUrl()}/api/generate-strategy-presentation-real`, {
         method: "POST",
         headers: {
@@ -294,11 +379,11 @@ export default function StrategyGeneratorPage() {
             abn: editableBusinessInfo.abn,
             trading_as: editableBusinessInfo.trading_as,
             client_folder_url: editableBusinessInfo.client_folder_url,
-            // ... add other fields as needed
           },
           selectedStrategies: selectedStrategies,
-          coverPageTemplateId: "1k1X6omqY14uvU6a7O5SZ0T028N8OcTupLDbDjGht7tI",
-          strategyTemplates: strategyOptions.filter(s => selectedStrategies.includes(s.id)),
+          selectedBrands: selectedBrands,
+          coverPageTemplateId: COVER_PAGE_TEMPLATE_ID,
+          strategyTemplates: allTemplates,
           placeholders: {
             BusinessName: editableBusinessInfo.business_name,
             month: currentMonth,
@@ -307,7 +392,7 @@ export default function StrategyGeneratorPage() {
           clientFolderUrl: editableBusinessInfo.client_folder_url
         }),
       });
-
+  
       if (response.status === 401) {
         dispatchReauthEvent();
         setGenerationResult({
@@ -316,31 +401,45 @@ export default function StrategyGeneratorPage() {
         });
         return;
       }
-
-      console.log("Token being sent:", token?.substring(0, 50) + "...");
   
       const data = await response.json();
   
       if (response.ok && data.success) {
+        const brandNames = selectedBrands.map(brandId => 
+          brandOptions.find(b => b.id === brandId)?.name
+        ).filter(Boolean).join(', ');
+        
+        const strategyNames = selectedStrategies.map(strategyId => 
+          strategyOptions.find(s => s.id === strategyId)?.name
+        ).filter(Boolean).join(', ');
+  
+        let solutionsText = "";
+        if (brandNames && strategyNames) {
+          solutionsText = `${brandNames} and ${strategyNames}`;
+        } else if (brandNames) {
+          solutionsText = brandNames;
+        } else if (strategyNames) {
+          solutionsText = strategyNames;
+        }
+  
         setGenerationResult({
           success: true,
           presentationUrl: data.presentationUrl,
           pdfUrl: data.pdfUrl,
-          message: `✅ ${data.message || `Strategy presentation generated successfully for ${editableBusinessInfo.business_name}`}`
+          message: `✅ ${data.message || `Strategy presentation generated successfully for ${editableBusinessInfo.business_name} with ${solutionsText}`}`
         });
-             } else {
-         let errorMessage = data.detail || data.error || 'Unknown error';
-         
-         // Handle specific authentication errors
-         if (errorMessage.includes('refresh') || errorMessage.includes('401')) {
-           errorMessage = 'Authentication token expired. Please log out and log back in to refresh your credentials.';
-         }
-         
-         setGenerationResult({
-           success: false,
-           message: `❌ Error generating presentation: ${errorMessage}`
-         });
-       }
+      } else {
+        let errorMessage = data.detail || data.error || 'Unknown error';
+        
+        if (errorMessage.includes('refresh') || errorMessage.includes('401')) {
+          errorMessage = 'Authentication token expired. Please log out and log back in to refresh your credentials.';
+        }
+        
+        setGenerationResult({
+          success: false,
+          message: `❌ Error generating presentation: ${errorMessage}`
+        });
+      }
     } catch (error: any) {
       console.error("Strategy generation error:", error);
       setGenerationResult({
@@ -358,6 +457,7 @@ export default function StrategyGeneratorPage() {
     setEditableBusinessInfo(null);
     setBusinessQuery("");
     setResult("");
+    setSelectedBrands([]);
     setSelectedStrategies([]);
     setGenerationResult(null);
     sessionStorage.removeItem('selectedBusinessInfo');
@@ -377,28 +477,28 @@ export default function StrategyGeneratorPage() {
     );
   }
   
-     const token = (session as any)?.id_token || (session as any)?.accessToken;
+  const token = (session as any)?.id_token || (session as any)?.accessToken;
    
-   // Check for refresh token error
-   if ((session as any)?.error === "RefreshAccessTokenError") {
-     return (
-       <div className="p-6">
-         <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-           Your authentication has expired. Please log out and log back in to refresh your credentials.
-         </div>
-       </div>
-     );
-   }
+  // Check for refresh token error
+  if ((session as any)?.error === "RefreshAccessTokenError") {
+    return (
+      <div className="p-6">
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+          Your authentication has expired. Please log out and log back in to refresh your credentials.
+        </div>
+      </div>
+    );
+  }
    
-   if (!token) {
-     return (
-       <div className="p-6">
-         <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-           Access token not available. Please log out and log back in.
-         </div>
-       </div>
-     );
-   }
+  if (!token) {
+    return (
+      <div className="p-6">
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+          Access token not available. Please log out and log back in.
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-6xl mx-auto p-6">
@@ -585,10 +685,47 @@ export default function StrategyGeneratorPage() {
         </div>
       )}
 
+      {/* Brand Selection Section */}
+      {selectedBusiness && (
+        <div className="mb-8 p-6 bg-gray-50 rounded-lg">
+          <h2 className="text-xl font-semibold mb-4 text-gray-800">2. Select Brand/Industry Type</h2>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {brandOptions.map((brand) => (
+              <div key={brand.id} className="flex items-start space-x-3 p-4 bg-white rounded border border-gray-200">
+                <input
+                  type="checkbox"
+                  id={brand.id}
+                  checked={selectedBrands.includes(brand.id)}
+                  onChange={() => handleBrandToggle(brand.id)}
+                  className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                />
+                <div className="flex-1">
+                  <label htmlFor={brand.id} className="block text-sm font-medium text-gray-900 cursor-pointer">
+                    {brand.name}
+                  </label>
+                  <p className="text-sm text-gray-600 mt-1">{brand.description}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {selectedBrands.length > 0 && (
+            <div className="mt-4 p-3 bg-blue-50 rounded border border-blue-200">
+              <p className="text-sm text-blue-700">
+                ✅ {selectedBrands.length} brand{selectedBrands.length !== 1 ? 's' : ''} selected: {selectedBrands.map(brandId => 
+                  brandOptions.find(b => b.id === brandId)?.name
+                ).join(', ')}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Strategy Selection Section */}
       {selectedBusiness && (
         <div className="mb-8 p-6 bg-gray-50 rounded-lg">
-          <h2 className="text-xl font-semibold mb-4 text-gray-800">2. Select Strategy Solutions</h2>
+          <h2 className="text-xl font-semibold mb-4 text-gray-800">3. Select Strategy Solutions</h2>
           
           <div className="space-y-4">
             {strategyOptions.map((strategy) => (
@@ -609,14 +746,23 @@ export default function StrategyGeneratorPage() {
                   {!strategy.enabled && (
                     <p className="text-xs text-gray-400 mt-1">Coming soon...</p>
                   )}
+                  {selectedBrands.length > 0 && (
+                    <div className="mt-2">
+                      <p className="text-xs text-gray-500">
+                        Available for: {selectedBrands.map(brandId => 
+                          brandOptions.find(b => b.id === brandId)?.name
+                        ).join(', ')}
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
           </div>
 
           {selectedStrategies.length > 0 && (
-            <div className="mt-4 p-3 bg-blue-50 rounded border border-blue-200">
-              <p className="text-sm text-blue-700">
+            <div className="mt-4 p-3 bg-green-50 rounded border border-green-200">
+              <p className="text-sm text-green-700">
                 ✅ {selectedStrategies.length} strategy solution{selectedStrategies.length !== 1 ? 's' : ''} selected
               </p>
             </div>
@@ -625,9 +771,9 @@ export default function StrategyGeneratorPage() {
       )}
 
       {/* Generate Presentation Section */}
-      {selectedBusiness && selectedStrategies.length > 0 && (
+      {selectedBusiness && (selectedBrands.length > 0 || selectedStrategies.length > 0) && (
         <div className="mb-8 p-6 bg-white rounded-lg shadow-sm border">
-          <h2 className="text-xl font-semibold mb-4 text-gray-800">3. Generate Strategy Presentation</h2>
+          <h2 className="text-xl font-semibold mb-4 text-gray-800">4. Generate Strategy Presentation</h2>
           
           <div className="mb-4">
             <p className="text-sm text-gray-600 mb-2">
@@ -635,6 +781,9 @@ export default function StrategyGeneratorPage() {
             </p>
             <ul className="text-sm text-gray-600 space-y-1 ml-4">
               <li>• Cover page with business details ({editableBusinessInfo?.business_name})</li>
+              <li>• Branded templates for: {selectedBrands.map(brandId => 
+                brandOptions.find(b => b.id === brandId)?.name
+              ).join(', ')}</li>
               {selectedStrategies.map(strategyId => {
                 const strategy = strategyOptions.find(s => s.id === strategyId);
                 return strategy ? <li key={strategyId}>• {strategy.name} slides</li> : null;
@@ -710,14 +859,15 @@ export default function StrategyGeneratorPage() {
           <ol className="text-sm text-gray-600 space-y-1">
             <li>1. Search for an existing business by name</li>
             <li>2. Review and edit the business details if needed</li>
-            <li>3. Select the strategy solutions you want to include</li>
-            <li>4. Generate your custom strategy presentation</li>
+            <li>3. Select the brand/industry type for appropriate branding</li>
+            <li>4. Select the strategy solutions you want to include</li>
+            <li>5. Generate your custom strategy presentation</li>
           </ol>
           
           <div className="mt-4 p-3 bg-blue-50 rounded border border-blue-200">
             <p className="text-sm text-blue-700">
               💡 <strong>Note:</strong> This page is for existing clients with business information already in the system. 
-              For new clients, use the "New Client Creation" page to fill out all details manually.
+              The brand selection determines which template designs and logos will be used for each solution.
             </p>
           </div>
         </div>
