@@ -175,7 +175,7 @@ export default function BusinessInfoDisplay({ info }: { info: any }) {
     const url = `/strategy-generator?${params.toString()}`;
     window.open(url, '_blank');
   };
-  
+
   const handleOpenDocumentGeneration = () => {
   const params = new URLSearchParams();
   
@@ -207,6 +207,68 @@ export default function BusinessInfoDisplay({ info }: { info: any }) {
   window.open(url, '_blank');
 };
 
+    // Opens Initial Strategy Generator with business info
+    const openInitialStrategyGenerator = () => {
+      const params = new URLSearchParams();
+      const businessInfoToPass: any = {
+        name: business.name,
+        abn: business.abn,
+        trading_name: business.trading_name,
+        email: contact.email,
+        telephone: contact.telephone,
+        postal_address: contact.postal_address,
+        site_address: contact.site_address,
+        contact_name: rep.contact_name,
+        position: rep.position,
+        industry: business.industry,
+        website: business.website,
+        googleDriveLink: driveUrl,
+        retailers,
+        utilities: [] as string[],
+      };
+    
+      if (linked["C&I Electricity"]) businessInfoToPass.utilities.push("ELECTRICITY_CI");
+      if (linked["SME Electricity"]) businessInfoToPass.utilities.push("ELECTRICITY_SME");
+      if (linked["C&I Gas"]) businessInfoToPass.utilities.push("GAS_CI");
+      if (linked["SME Gas"] || linked["Small Gas"]) businessInfoToPass.utilities.push("GAS_SME");
+      if (linked["Waste"]) businessInfoToPass.utilities.push("WASTE");
+      if (linked["Oil"]) businessInfoToPass.utilities.push("COOKING_OIL");
+    
+      // ❗ No encodeURIComponent here
+      params.set("businessInfo", JSON.stringify(businessInfoToPass));
+      window.open(`/initial-strategy-generator?${params.toString()}`, "_blank");
+    };
+    
+    const openSolutionsStrategyGenerator = () => {
+      const params = new URLSearchParams();
+      const businessInfoToPass: any = {
+        name: business.name,
+        abn: business.abn,
+        trading_name: business.trading_name,
+        email: contact.email,
+        telephone: contact.telephone,
+        postal_address: contact.postal_address,
+        site_address: contact.site_address,
+        contact_name: rep.contact_name,
+        position: rep.position,
+        industry: business.industry,
+        website: business.website,
+        googleDriveLink: driveUrl,
+        retailers,
+        utilities: [] as string[],
+      };
+    
+      if (linked["C&I Electricity"]) businessInfoToPass.utilities.push("ELECTRICITY_CI");
+      if (linked["SME Electricity"]) businessInfoToPass.utilities.push("ELECTRICITY_SME");
+      if (linked["C&I Gas"]) businessInfoToPass.utilities.push("GAS_CI");
+      if (linked["SME Gas"] || linked["Small Gas"]) businessInfoToPass.utilities.push("GAS_SME");
+      if (linked["Waste"]) businessInfoToPass.utilities.push("WASTE");
+      if (linked["Oil"]) businessInfoToPass.utilities.push("COOKING_OIL");
+    
+      params.set("businessInfo", JSON.stringify(businessInfoToPass));
+      window.open(`/solutions-strategy-generator?${params.toString()}`, "_blank");
+    };
+
   React.useEffect(() => {
     if (driveModalResult === 'File successfully uploaded and Drive links updated!') {
       const timer = setTimeout(() => {
@@ -218,54 +280,57 @@ export default function BusinessInfoDisplay({ info }: { info: any }) {
     }
   }, [driveModalResult]);
 
-    return (
-      <div className="bg-gray-50 rounded-lg p-6 mt-6 shadow-sm">
-        <div className="flex items-center space-x-2 mb-4">
-          <h2 className="text-lg font-semibold text-gray-800">Business Details</h2>
-          <a
-            href="#"
-            onClick={(e) => {
-              e.preventDefault();
-              handleOpenDocumentGeneration();
-            }}
-            className="text-blue-600 hover:underline text-sm font-medium"
-            title="Generate documents for this client"
-          >
-            (Generate Documents)
-          </a>
-          <a
-            href="#"
-            onClick={(e) => {
-              e.preventDefault();
-              handleOpenPresentationGenerator();
-            }}
-            className="text-green-600 hover:underline text-sm font-medium"
-            title="Generate strategic presentation for this client"
-          >
-            (Generate Strategy)
-          </a>
-        </div>
-        <InfoRow
-          label="Business Name"
-          value={
-            <div className="flex items-center space-x-2">
-              <span>{business.name || <span className="text-sm text-gray-400">Not available</span>}</span>
-              {driveUrl && (
-                <a
-                  href={driveUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-blue-600 hover:underline text-sm font-medium"
-                >
-                  (Drive Folder)
-                </a>
-              )}
-            </div>
-          }
-        />
+  return (
+    <div className="bg-gray-50 rounded-lg p-6 mt-6 shadow-sm">
+      <h2 className="text-lg font-semibold text-gray-800 mb-4">Business Details</h2>
+
+      <InfoRow
+        label="Business Name"
+        value={
+          <div className="flex items-center space-x-2">
+            <span>{business.name || <span className="text-sm text-gray-400">Not available</span>}</span>
+            {driveUrl && (
+              <a
+                href={driveUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 hover:underline text-sm font-medium"
+              >
+                (Drive Folder)
+              </a>
+            )}
+          </div>
+        }
+      />
 
       <InfoRow label="Trading As" value={business.trading_name || <span className="text-sm text-gray-400">Not available</span>} />
       <InfoRow label="ABN" value={business.abn || <span className="text-sm text-gray-400">Not available</span>} />
+
+      {/* New Document Generation Section */}
+      <div className="mt-4 bg-blue-50 border border-blue-100 rounded-lg p-4">
+        <h3 className="text-md font-semibold text-gray-800 mb-3">Document Generation</h3>
+        <div className="flex flex-wrap gap-3">
+          <button
+            onClick={handleOpenDocumentGeneration}
+            className="px-3 py-2 rounded bg-blue-600 text-white text-sm font-medium hover:bg-blue-700"
+          >
+            Business Documents
+          </button>
+          <button
+            onClick={openInitialStrategyGenerator}
+            className="px-3 py-2 rounded bg-green-600 text-white text-sm font-medium hover:bg-green-700"
+          >
+            Initial Strategy Generator
+          </button>
+          <button
+            onClick={openSolutionsStrategyGenerator}
+            className="px-3 py-2 rounded bg-purple-600 text-white text-sm font-medium hover:bg-purple-700"
+          >
+            Solutions Strategy Generator
+          </button>
+        </div>
+      </div>
+
       <hr className="my-4 border-gray-200" />
       <h2 className="text-lg font-semibold text-gray-800 mb-4">Contact Information</h2>
       <InfoRow label="Postal Address" value={contact.postal_address || <span className="text-sm text-gray-400">Not available</span>} />
