@@ -413,7 +413,7 @@ export default function InitialStrategyGeneratorPage() {
         if (data.detail) {
           if (Array.isArray(data.detail)) {
             // Handle validation errors (array of objects)
-            errorMessage = data.detail.map(err => {
+            errorMessage = data.detail.map((err: any) => {
               if (typeof err === 'object') {
                 return `${err.loc ? err.loc.join('.') + ': ' : ''}${err.msg || JSON.stringify(err)}`;
               }
