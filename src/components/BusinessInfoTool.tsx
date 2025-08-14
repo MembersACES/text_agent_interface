@@ -69,6 +69,16 @@ export default function BusinessInfoTool({ token }: { token: string }) {
     }
   };
 
+  const handleLinkUtility = () => {
+    const params = new URLSearchParams();
+    const actualBusinessName = businessInfo?.business_details?.name || businessName;
+    params.set('businessName', actualBusinessName);
+    params.set('token', token);
+    
+    const url = `/utility-linking?${params.toString()}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
   return (
     <div>
       <div style={{ marginBottom: 24 }}>
@@ -96,7 +106,10 @@ export default function BusinessInfoTool({ token }: { token: string }) {
         <div style={{ marginTop: 20, textAlign: "left" }}>
           <h3>Business Info:</h3>
           {typeof businessInfo === 'object' && businessInfo !== null ? (
-            <BusinessInfoDisplay info={businessInfo} />
+            <BusinessInfoDisplay 
+              info={businessInfo} 
+              onLinkUtility={handleLinkUtility}
+            />
           ) : (
             <pre>{JSON.stringify(businessInfo, null, 2)}</pre>
           )}

@@ -33,8 +33,11 @@ interface SolutionOption {
 interface GenerationResult {
   success: boolean;
   presentationUrl?: string;
+  presentationId?: string;
   pdfUrl?: string;
+  pdfId?: string;
   message: string;
+  totalSlidesAdded?: number;
 }
 
 export default function InitialStrategyGeneratorPage() {
@@ -347,17 +350,18 @@ export default function InitialStrategyGeneratorPage() {
         };
       }).filter(Boolean);
 
-      // Log the request payload for debugging
       const requestPayload = {
         businessInfo: {
           business_name: editableBusinessInfo.business_name,
           abn: editableBusinessInfo.abn,
           trading_as: editableBusinessInfo.trading_as,
+          contact_name: editableBusinessInfo.contact_name,
+          email: editableBusinessInfo.email,
           client_folder_url: editableBusinessInfo.client_folder_url,
         },
-        selectedStrategies: selectedSolutions, // Changed from selectedSolutions
+        selectedStrategies: selectedSolutions,
         coverPageTemplateId: COVER_PAGE_TEMPLATE_ID,
-        strategyTemplates: selectedSolutionTemplates, // Changed from solutionTemplates
+        strategyTemplates: selectedSolutionTemplates,
         placeholders: {
           BusinessName: editableBusinessInfo.business_name,
           month: currentMonth,
@@ -365,9 +369,9 @@ export default function InitialStrategyGeneratorPage() {
         },
         clientFolderUrl: editableBusinessInfo.client_folder_url
       };
-
+  
       console.log("Request payload:", JSON.stringify(requestPayload, null, 2));
-
+  
       const response = await fetch(`${getApiBaseUrl()}/api/generate-strategy-presentation-real`, {
         method: "POST",
         headers: {
@@ -388,7 +392,6 @@ export default function InitialStrategyGeneratorPage() {
   
       const data = await response.json();
       
-      // Log the response for debugging
       console.log("API Response:", data);
       console.log("Response status:", response.status);
   
@@ -400,19 +403,19 @@ export default function InitialStrategyGeneratorPage() {
         setGenerationResult({
           success: true,
           presentationUrl: data.presentationUrl,
+          presentationId: data.presentationId,
           pdfUrl: data.pdfUrl,
-          message: `✅ ${data.message || `Initial strategy presentation generated successfully for ${editableBusinessInfo.business_name} with ${solutionNames}`}`
+          pdfId: data.pdfId,
+          totalSlidesAdded: data.totalSlidesAdded,
+          message: `✅ ${data.message || `Initial strategy presentation and PDF generated successfully for ${editableBusinessInfo.business_name} with ${solutionNames}`}`
         });
       } else {
-        // Log the full error response for debugging
         console.error("API Error Response:", data);
         
         let errorMessage = 'Unknown error';
         
-        // Handle different error response formats
         if (data.detail) {
           if (Array.isArray(data.detail)) {
-            // Handle validation errors (array of objects)
             errorMessage = data.detail.map((err: any) => {
               if (typeof err === 'object') {
                 return `${err.loc ? err.loc.join('.') + ': ' : ''}${err.msg || JSON.stringify(err)}`;
@@ -448,7 +451,7 @@ export default function InitialStrategyGeneratorPage() {
     }
   
     setGenerationLoading(false);
-  };
+  };    
 
   // Clear business info and start fresh
   const handleNewSearch = () => {

@@ -25,7 +25,7 @@ export const NAV_DATA = [
         title: "Document Management", 
         items: [
           { title: "Document Generation", url: "/document-generation" },
-          { title: "Invoice Lodgement", url: "/document-lodgement" },
+          { title: "Invoice & Data Lodgement", url: "/document-lodgement" },
           { title: "Signed Agreement Lodgement", url: "/signed-agreement-lodgement" },
         ],
       },

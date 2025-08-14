@@ -27,6 +27,12 @@ function InfoRow({
     </div>
   );
 }
+
+interface BusinessInfoDisplayProps {
+  info: any;
+  onLinkUtility?: () => void;
+}
+
 function FileLink({ label, url }: { label: string; url?: string }) {
   if (!url) return <span className="text-sm text-gray-400">Not available</span>;
   return (
@@ -41,12 +47,14 @@ function FileLink({ label, url }: { label: string; url?: string }) {
   );
 }
 
-export default function BusinessInfoDisplay({ info }: { info: any }) {
+export default function BusinessInfoDisplay({ info, onLinkUtility }: BusinessInfoDisplayProps) {
   if (!info) return null;
   const business = info.business_details || {};
   const contact = info.contact_information || {};
   const rep = info.representative_details || {};
   const docs: Record<string, any> = (info && typeof info.business_documents === 'object' && info.business_documents !== null && !Array.isArray(info.business_documents)) ? info.business_documents : {};
+  console.log('docs object:', docs);
+  console.log('info.business_documents:', info.business_documents);
   const contracts = [
     { key: "C&I Electricity", url: info._processed_file_ids?.["contract_C&I Electricity"] },
     { key: "SME Electricity", url: info._processed_file_ids?.["contract_SME Electricity"] },
@@ -177,97 +185,97 @@ export default function BusinessInfoDisplay({ info }: { info: any }) {
   };
 
   const handleOpenDocumentGeneration = () => {
-  const params = new URLSearchParams();
-  
-  if (business.name) params.set('businessName', business.name);
-  if (business.abn) params.set('abn', business.abn);
-  if (business.trading_name) params.set('tradingAs', business.trading_name);
-  if (contact.email) params.set('email', contact.email);
-  if (contact.telephone) params.set('phone', contact.telephone);
-  if (contact.postal_address) params.set('address', contact.postal_address);
-  if (contact.site_address) params.set('siteAddress', contact.site_address);
-  if (rep.contact_name) params.set('contactName', rep.contact_name);
-  if (rep.position) params.set('position', rep.position);
-  if (driveUrl) params.set('clientFolderUrl', driveUrl);
-  
-  // Add utility information if available
-  const linkedUtilities = [];
-  if (linked["C&I Electricity"]) linkedUtilities.push("ELECTRICITY_CI");
-  if (linked["SME Electricity"]) linkedUtilities.push("ELECTRICITY_SME");
-  if (linked["C&I Gas"]) linkedUtilities.push("GAS_CI");
-  if (linked["SME Gas"] || linked["Small Gas"]) linkedUtilities.push("GAS_SME");
-  if (linked["Waste"]) linkedUtilities.push("WASTE");
-  if (linked["Oil"]) linkedUtilities.push("COOKING_OIL");
-  
-  if (linkedUtilities.length > 0) {
-    params.set('utilities', linkedUtilities.join(','));
-  }
-  
-  const url = `/document-generation?${params.toString()}`;
-  window.open(url, '_blank');
-};
+    const params = new URLSearchParams();
+    
+    if (business.name) params.set('businessName', business.name);
+    if (business.abn) params.set('abn', business.abn);
+    if (business.trading_name) params.set('tradingAs', business.trading_name);
+    if (contact.email) params.set('email', contact.email);
+    if (contact.telephone) params.set('phone', contact.telephone);
+    if (contact.postal_address) params.set('address', contact.postal_address);
+    if (contact.site_address) params.set('siteAddress', contact.site_address);
+    if (rep.contact_name) params.set('contactName', rep.contact_name);
+    if (rep.position) params.set('position', rep.position);
+    if (driveUrl) params.set('clientFolderUrl', driveUrl);
+    
+    // Add utility information if available
+    const linkedUtilities = [];
+    if (linked["C&I Electricity"]) linkedUtilities.push("ELECTRICITY_CI");
+    if (linked["SME Electricity"]) linkedUtilities.push("ELECTRICITY_SME");
+    if (linked["C&I Gas"]) linkedUtilities.push("GAS_CI");
+    if (linked["SME Gas"] || linked["Small Gas"]) linkedUtilities.push("GAS_SME");
+    if (linked["Waste"]) linkedUtilities.push("WASTE");
+    if (linked["Oil"]) linkedUtilities.push("COOKING_OIL");
+    
+    if (linkedUtilities.length > 0) {
+      params.set('utilities', linkedUtilities.join(','));
+    }
+    
+    const url = `/document-generation?${params.toString()}`;
+    window.open(url, '_blank');
+  };
 
-    // Opens Initial Strategy Generator with business info
-    const openInitialStrategyGenerator = () => {
-      const params = new URLSearchParams();
-      const businessInfoToPass: any = {
-        name: business.name,
-        abn: business.abn,
-        trading_name: business.trading_name,
-        email: contact.email,
-        telephone: contact.telephone,
-        postal_address: contact.postal_address,
-        site_address: contact.site_address,
-        contact_name: rep.contact_name,
-        position: rep.position,
-        industry: business.industry,
-        website: business.website,
-        googleDriveLink: driveUrl,
-        retailers,
-        utilities: [] as string[],
-      };
-    
-      if (linked["C&I Electricity"]) businessInfoToPass.utilities.push("ELECTRICITY_CI");
-      if (linked["SME Electricity"]) businessInfoToPass.utilities.push("ELECTRICITY_SME");
-      if (linked["C&I Gas"]) businessInfoToPass.utilities.push("GAS_CI");
-      if (linked["SME Gas"] || linked["Small Gas"]) businessInfoToPass.utilities.push("GAS_SME");
-      if (linked["Waste"]) businessInfoToPass.utilities.push("WASTE");
-      if (linked["Oil"]) businessInfoToPass.utilities.push("COOKING_OIL");
-    
-      // ❗ No encodeURIComponent here
-      params.set("businessInfo", JSON.stringify(businessInfoToPass));
-      window.open(`/initial-strategy-generator?${params.toString()}`, "_blank");
+  // Opens Initial Strategy Generator with business info
+  const openInitialStrategyGenerator = () => {
+    const params = new URLSearchParams();
+    const businessInfoToPass: any = {
+      name: business.name,
+      abn: business.abn,
+      trading_name: business.trading_name,
+      email: contact.email,
+      telephone: contact.telephone,
+      postal_address: contact.postal_address,
+      site_address: contact.site_address,
+      contact_name: rep.contact_name,
+      position: rep.position,
+      industry: business.industry,
+      website: business.website,
+      googleDriveLink: driveUrl,
+      retailers,
+      utilities: [] as string[],
     };
-    
-    const openSolutionsStrategyGenerator = () => {
-      const params = new URLSearchParams();
-      const businessInfoToPass: any = {
-        name: business.name,
-        abn: business.abn,
-        trading_name: business.trading_name,
-        email: contact.email,
-        telephone: contact.telephone,
-        postal_address: contact.postal_address,
-        site_address: contact.site_address,
-        contact_name: rep.contact_name,
-        position: rep.position,
-        industry: business.industry,
-        website: business.website,
-        googleDriveLink: driveUrl,
-        retailers,
-        utilities: [] as string[],
-      };
-    
-      if (linked["C&I Electricity"]) businessInfoToPass.utilities.push("ELECTRICITY_CI");
-      if (linked["SME Electricity"]) businessInfoToPass.utilities.push("ELECTRICITY_SME");
-      if (linked["C&I Gas"]) businessInfoToPass.utilities.push("GAS_CI");
-      if (linked["SME Gas"] || linked["Small Gas"]) businessInfoToPass.utilities.push("GAS_SME");
-      if (linked["Waste"]) businessInfoToPass.utilities.push("WASTE");
-      if (linked["Oil"]) businessInfoToPass.utilities.push("COOKING_OIL");
-    
-      params.set("businessInfo", JSON.stringify(businessInfoToPass));
-      window.open(`/solutions-strategy-generator?${params.toString()}`, "_blank");
+
+    if (linked["C&I Electricity"]) businessInfoToPass.utilities.push("ELECTRICITY_CI");
+    if (linked["SME Electricity"]) businessInfoToPass.utilities.push("ELECTRICITY_SME");
+    if (linked["C&I Gas"]) businessInfoToPass.utilities.push("GAS_CI");
+    if (linked["SME Gas"] || linked["Small Gas"]) businessInfoToPass.utilities.push("GAS_SME");
+    if (linked["Waste"]) businessInfoToPass.utilities.push("WASTE");
+    if (linked["Oil"]) businessInfoToPass.utilities.push("COOKING_OIL");
+
+    // ❗ No encodeURIComponent here
+    params.set("businessInfo", JSON.stringify(businessInfoToPass));
+    window.open(`/initial-strategy-generator?${params.toString()}`, "_blank");
+  };
+  
+  const openSolutionsStrategyGenerator = () => {
+    const params = new URLSearchParams();
+    const businessInfoToPass: any = {
+      name: business.name,
+      abn: business.abn,
+      trading_name: business.trading_name,
+      email: contact.email,
+      telephone: contact.telephone,
+      postal_address: contact.postal_address,
+      site_address: contact.site_address,
+      contact_name: rep.contact_name,
+      position: rep.position,
+      industry: business.industry,
+      website: business.website,
+      googleDriveLink: driveUrl,
+      retailers,
+      utilities: [] as string[],
     };
+
+    if (linked["C&I Electricity"]) businessInfoToPass.utilities.push("ELECTRICITY_CI");
+    if (linked["SME Electricity"]) businessInfoToPass.utilities.push("ELECTRICITY_SME");
+    if (linked["C&I Gas"]) businessInfoToPass.utilities.push("GAS_CI");
+    if (linked["SME Gas"] || linked["Small Gas"]) businessInfoToPass.utilities.push("GAS_SME");
+    if (linked["Waste"]) businessInfoToPass.utilities.push("WASTE");
+    if (linked["Oil"]) businessInfoToPass.utilities.push("COOKING_OIL");
+
+    params.set("businessInfo", JSON.stringify(businessInfoToPass));
+    window.open(`/solutions-strategy-generator?${params.toString()}`, "_blank");
+  };
 
   React.useEffect(() => {
     if (driveModalResult === 'File successfully uploaded and Drive links updated!') {
@@ -306,7 +314,7 @@ export default function BusinessInfoDisplay({ info }: { info: any }) {
       <InfoRow label="Trading As" value={business.trading_name || <span className="text-sm text-gray-400">Not available</span>} />
       <InfoRow label="ABN" value={business.abn || <span className="text-sm text-gray-400">Not available</span>} />
 
-      {/* New Document Generation Section */}
+      {/* Updated Document Generation Section - Removed Initial Strategy Generator */}
       <div className="mt-4 bg-blue-50 border border-blue-100 rounded-lg p-4">
         <h3 className="text-md font-semibold text-gray-800 mb-3">Document Generation</h3>
         <div className="flex flex-wrap gap-3">
@@ -315,12 +323,6 @@ export default function BusinessInfoDisplay({ info }: { info: any }) {
             className="px-3 py-2 rounded bg-blue-600 text-white text-sm font-medium hover:bg-blue-700"
           >
             Business Documents
-          </button>
-          <button
-            onClick={openInitialStrategyGenerator}
-            className="px-3 py-2 rounded bg-green-600 text-white text-sm font-medium hover:bg-green-700"
-          >
-            Initial Strategy Generator
           </button>
           <button
             onClick={openSolutionsStrategyGenerator}
@@ -347,8 +349,10 @@ export default function BusinessInfoDisplay({ info }: { info: any }) {
       <h2 className="text-lg font-semibold text-gray-800 mb-4">Business Documents</h2>
       {Object.keys(docs).length === 0 && <div className="text-sm text-gray-400 mb-4">No business documents available</div>}
       <div className="space-y-2">
-      {Object.entries(docs).map(([doc, status]) => {
-          // Robust file key lookup with special mapping for known mismatches
+        
+
+        {/* Rest of the documents */}
+        {Object.entries(docs).map(([doc, status]) => {
           const specialKeyMap: { [key: string]: string } = {
             'Floor Plan (Exit Map)': 'business_site_map_upload'
           };
@@ -365,39 +369,51 @@ export default function BusinessInfoDisplay({ info }: { info: any }) {
             console.log('Checking doc:', doc, 'docKey:', docKey, 'normalizedDocKey:', normalizedDocKey, 'specialMappedKey:', specialMappedKey, 'fileUrl:', fileUrl);
             console.log('All fileIds:', info._processed_file_ids);
           }
-        return (
-          <div key={doc} className="flex items-center mb-2">
-            <InfoRow
-              label={doc}
-              value={fileUrl ? <FileLink label="In File" url={fileUrl} /> : <span className="text-sm text-gray-400">Not available</span>}
-            />
-            <button
-              className="ml-2 px-2 py-1 border border-gray-300 rounded text-xs text-gray-700 hover:bg-gray-100 focus:outline-none"
-              title="File this document in Drive"
-              onClick={() => {
-                  let filingType = doc.toLowerCase().replace(/[^a-z0-9]+/g, '_');
-                  if (filingType === 'site_profling') filingType = 'site_profiling';
-                  if (filingType === 'service_fee_agreement') filingType = 'savings';
-                  if (filingType.includes('exit_map') || filingType.includes('exitmap') || filingType.includes('floor_plan_exit_map')) filingType = 'site_map_upload';
-                  setDriveModalFilingType(filingType);
-                  setDriveModalBusinessName(business.name || "");
-                  setShowDriveModal(true);
-                }}
-            >
-              File in Drive
-            </button>
-            {doc === "Site Profling" && (
+          
+          return (
+            <div key={doc} className="flex items-center mb-2">
+              <InfoRow
+                label={doc}
+                value={fileUrl ? <FileLink label="In File" url={fileUrl} /> : <span className="text-sm text-gray-400">Not available</span>}
+              />
               <button
-                className="ml-2 px-2 py-1 border border-blue-300 bg-blue-50 rounded text-xs text-blue-700 hover:bg-blue-100 focus:outline-none"
-                title="Start new site profiling questionnaire"
-                onClick={handleOpenSiteProfiling}
+                className="ml-2 px-2 py-1 border border-gray-300 rounded text-xs text-gray-700 hover:bg-gray-100 focus:outline-none"
+                title="File this document in Drive"
+                onClick={() => {
+                    let filingType = doc.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+                    if (filingType === 'site_profling') filingType = 'site_profiling';
+                    if (filingType === 'service_fee_agreement') filingType = 'savings';
+                    if (filingType.includes('exit_map') || filingType.includes('exitmap') || filingType.includes('floor_plan_exit_map')) filingType = 'site_map_upload';
+                    setDriveModalFilingType(filingType);
+                    setDriveModalBusinessName(business.name || "");
+                    setShowDriveModal(true);
+                  }}
               >
-                New Questionnaire
+                File in Drive
               </button>
-            )}
-          </div>
-        );
-      })}
+              
+              {doc === "Initial Strategy" && (
+                <button
+                  className="ml-2 px-2 py-1 border border-green-300 bg-green-50 rounded text-xs text-green-700 hover:bg-green-100 focus:outline-none"
+                  title="Generate new initial strategy"
+                  onClick={openInitialStrategyGenerator}
+                >
+                  Initial Strategy Generator
+                </button>
+              )}
+              
+              {doc === "Site Profling" && (
+                <button
+                  className="ml-2 px-2 py-1 border border-blue-300 bg-blue-50 rounded text-xs text-blue-700 hover:bg-blue-100 focus:outline-none"
+                  title="Start new site profiling questionnaire"
+                  onClick={handleOpenSiteProfiling}
+                >
+                  New Questionnaire
+                </button>
+              )}
+            </div>
+          );
+        })}
       </div>
       <hr className="my-4 border-gray-200" />
       <h2 className="text-lg font-semibold text-gray-800 mb-4">Signed Contracts</h2>
@@ -440,7 +456,17 @@ export default function BusinessInfoDisplay({ info }: { info: any }) {
         })}
       </div>
       <hr className="my-4 border-gray-200" />
-      <h2 className="text-lg font-semibold text-gray-800 mb-4">Linked Utilities and Retailers</h2>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-lg font-semibold text-gray-800">Linked Utilities and Retailers</h2>
+        {onLinkUtility && (
+          <button
+            onClick={onLinkUtility}
+            className="px-3 py-1 rounded bg-green-600 text-white text-sm font-semibold hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
+          >
+            Link Utility
+          </button>
+        )}
+      </div>
       {Object.keys(linked).length === 0 && <div className="text-sm text-gray-400 mb-4">No linked utilities</div>}
       <div className="space-y-4">
       {/* Utility rows with Invoice Data buttons */}
@@ -640,12 +666,17 @@ export default function BusinessInfoDisplay({ info }: { info: any }) {
                           body: JSON.stringify({ business_name: driveModalBusinessName }),
                         });
                         fileIds = await fileIdRes.json();
+
+                        console.log('N8N Response:', fileIds);
+                        console.log('N8N Response Keys:', fileIds?.[0] ? Object.keys(fileIds[0]) : 'No data');
+
                         // Process n8n response to match UI keys
                         const n8nMap = {
                           'LOA File ID': 'business_LOA',
                           'Floor Plan': 'business_Floor Plan (Exit Map)',
                           'Site Profiling': 'business_Site Profling',
                           'Service Fee Agreement': 'business_Service Fee Agreement',
+                          'Initial Strategy': 'business_Initial Strategy',
                           'SC C&I E': 'contract_C&I Electricity',
                           'SC SME E': 'contract_SME Electricity',
                           'SC C&I G': 'contract_C&I Gas',
@@ -732,4 +763,4 @@ export default function BusinessInfoDisplay({ info }: { info: any }) {
       )}
     </div>
   );
-} 
+}
