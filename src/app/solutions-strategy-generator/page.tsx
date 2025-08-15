@@ -28,20 +28,18 @@ interface SolutionOption {
   description: string;
   presentationId: string; 
   enabled: boolean;
-  category: string; // 'branding' | 'service' | 'equipment'
+  category: string;
 }
 
-interface GenerationResult {
+interface EmailResult {
+  solutionId: string;
+  solutionName: string;
   success: boolean;
-  presentationUrl?: string;
-  pdfUrl?: string;
   message: string;
 }
 
-export default function StrategyGeneratorPage() {
+export default function IndividualStrategyEmailPage() {
   const { data: session, status } = useSession();
-  console.log("Session status:", status);
-  console.log("Session data:", session);
   const searchParams = useSearchParams();
 
   const [businessQuery, setBusinessQuery] = useState("");
@@ -49,12 +47,165 @@ export default function StrategyGeneratorPage() {
   const [editableBusinessInfo, setEditableBusinessInfo] = useState<BusinessInfo | null>(null);
   const [businessLoading, setBusinessLoading] = useState(false);
   const [result, setResult] = useState("");
-
-  // Solution selection state
   const [selectedSolutions, setSelectedSolutions] = useState<string[]>([]);
-  const [expandedCategories, setExpandedCategories] = useState<string[]>(['platform']); // Start with platform expanded
-  const [generationLoading, setGenerationLoading] = useState(false);
-  const [generationResult, setGenerationResult] = useState<GenerationResult | null>(null);
+  const [expandedCategories, setExpandedCategories] = useState<string[]>(['platform']);
+  const [emailLoading, setEmailLoading] = useState(false);
+  const [emailResults, setEmailResults] = useState<EmailResult[]>([]);
+
+  // Generate email subject for a solution
+  const generateEmailSubject = (businessName: string, solutionName: string): string => {
+    return `Strategic Solution Proposal: ${solutionName} for ${businessName}`;
+  };
+
+  // Generate HTML email body for a solution
+  const generateEmailBody = (businessInfo: BusinessInfo, solution: SolutionOption, userInfo: any): string => {
+    const currentDate = new Date().toLocaleDateString('en-AU', { 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    });
+
+    return `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Strategic Solution Proposal</title>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; background: #fff; }
+          .header { margin-bottom: 20px; }
+          .content { margin-bottom: 20px; }
+          .solution-details { margin: 20px 0; }
+          .contact-info { margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; }
+          h1 { color: #2c3e50; font-size: 20px; margin-bottom: 10px; }
+          h2 { color: #34495e; font-size: 16px; margin-top: 20px; margin-bottom: 10px; }
+          p { margin-bottom: 10px; }
+          ul, ol { margin: 10px 0; padding-left: 20px; }
+          li { margin-bottom: 5px; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>Strategic Solution Proposal: ${solution.name}</h1>
+          <p>Dear ${businessInfo.contact_name || 'Business Owner'},</p>
+          <p>I hope this email finds you well. I'm writing to present a strategic solution that could benefit ${businessInfo.business_name}.</p>
+        </div>
+        
+        <div class="content">
+          <div class="solution-details">
+            <h2>${solution.name}</h2>
+            <p>${solution.description}</p>
+            
+            <h2>Key Benefits for ${businessInfo.business_name}:</h2>
+            <ul>
+              <li>Customized implementation tailored to your business needs</li>
+              <li>Sustainable and cost-effective solution</li>
+              <li>Proven return on investment and environmental impact</li>
+              <li>Comprehensive support throughout the process</li>
+            </ul>
+
+            <h2>Next Steps:</h2>
+            <ol>
+              <li>Review the attached strategy presentation for detailed information</li>
+              <li>Consider how this solution aligns with your business goals</li>
+              <li>Contact me to discuss implementation and answer any questions</li>
+            </ol>
+          </div>
+
+          <p>This ${solution.name} solution has been specifically selected based on ${businessInfo.business_name}'s industry profile and potential for sustainable growth. Our analysis indicates significant opportunities for both cost savings and positive environmental impact.</p>
+
+          <p>I would be happy to discuss this proposal further at your convenience. Please feel free to reach out with any questions or to arrange a meeting.</p>
+        </div>
+
+        <div class="contact-info">
+          <p>Best regards,<br>
+          ${userInfo.name}<br>
+          ${userInfo.email}</p>
+          
+          <p><em>This proposal was prepared specifically for ${businessInfo.business_name} on ${currentDate}</em></p>
+        </div>
+      </body>
+      </html>
+    `;
+  };
+   // Send individual strategy emails with subject and body
+   const sendIndividualStrategyEmails = async () => {
+    if (!editableBusinessInfo || selectedSolutions.length === 0 || !session) {
+      setEmailResults([{
+        solutionId: '',
+        solutionName: '',
+        success: false,
+        message: "❌ Please select at least one solution option."
+      }]);
+      return;
+    }
+
+    setEmailLoading(true);
+    setEmailResults([]);
+
+    const results: EmailResult[] = [];
+    const userInfo = {
+      name: (session as any)?.user?.name || "",
+      email: (session as any)?.user?.email || ""
+    };
+
+    for (const solutionId of selectedSolutions) {
+      const solution = solutionOptions.find(s => s.id === solutionId);
+      if (!solution) continue;
+
+      try {
+        const emailSubject = generateEmailSubject(editableBusinessInfo.business_name, solution.name);
+        const emailBody = generateEmailBody(editableBusinessInfo, solution, userInfo);
+
+        const payload = {
+          user: userInfo,
+          business_name: editableBusinessInfo.business_name,
+          business_info: {
+            business_name: editableBusinessInfo.business_name,
+            contact_name: editableBusinessInfo.contact_name,
+            email: editableBusinessInfo.email,
+            industry: editableBusinessInfo.industry,
+            position: editableBusinessInfo.position
+          },
+          solution_name: solution.name,
+          solution_id: solution.id,
+          presentation_id: solution.presentationId,
+          email_subject: emailSubject,
+          email_body: emailBody
+        };
+
+        const response = await fetch("https://membersaces.app.n8n.cloud/webhook/email-individual-strategy", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.detail || error.message || `Request failed: ${response.statusText}`);
+        }
+
+        results.push({
+          solutionId: solution.id,
+          solutionName: solution.name,
+          success: true,
+          message: `✅ Individual strategy email sent successfully for ${solution.name}`
+        });
+
+      } catch (error: any) {
+        results.push({
+          solutionId: solution.id,
+          solutionName: solution.name,
+          success: false,
+          message: `❌ Failed to send email for ${solution.name}: ${error.message}`
+        });
+      }
+    }
+
+    setEmailResults(results);
+    setEmailLoading(false);
+  };
 
   // Available solution options
   const solutionOptions: SolutionOption[] = [
@@ -63,59 +214,59 @@ export default function StrategyGeneratorPage() {
       id: "sustainable_platforms",
       name: "Sustainable Platforms",
       description: "Comprehensive sustainable platform solutions using generic branding template",
-      presentationId: "1k1X6omqY14uvU6a7O5SZ0T028N8OcTupLDbDjGht7tI",
+      presentationId: "1jedCYkRGH3jXo29eg4BLdZq_vf9g1qSlkjMstMa_xYU",
       enabled: true,
       category: "platform"
     },
     
-    // Solutions AI-Bot
+    // AI Bots
     {
       id: "assisted_scrubber",
       name: "Assisted Scrubber",
       description: "AI-powered assisted scrubbing solutions for automated cleaning",
-      presentationId: "1N-eSEG4nfU-D4GclpmslyvEct5bWEPqu7xWZ5ohyUPA",
+      presentationId: "1VqfPbIWfHwx11fXFfi8Z5qq0-AzgvMzooM1fV-FWtGs",
       enabled: true,
-      category: "ai_bot"
+      category: "ai_bots"
     },
     {
       id: "scrubber_ai_bot",
-      name: "Scrubber - Assisted AI Bot",
+      name: "Scrubber-Assisted AI Bot",
       description: "Advanced AI bot for intelligent scrubbing operations",
-      presentationId: "1N-eSEG4nfU-D4GclpmslyvEct5bWEPqu7xWZ5ohyUPA",
+      presentationId: "1c0s191tvwa1ZenWPG5Ghdo5J4c0SPf3GbbjtDPO5lXE",
       enabled: true,
-      category: "ai_bot"
+      category: "ai_bots"
     },
     {
       id: "vacuum_mopping_ai_bot",
       name: "Vacuum-Mopping AI Bot",
       description: "Comprehensive vacuum and mopping AI bot system",
-      presentationId: "1ziS3mDgvA25PzcltLnYPv_SKG-BiJV63pemL91YrPfE",
+      presentationId: "1DCNrBY1AA-B4OLuMFIXvEhkN-rTA287J1TbESkD-3ts",
       enabled: true,
-      category: "ai_bot"
+      category: "ai_bots"
     },
     {
       id: "engagement_bot",
-      name: "Engagement Bot",
+      name: "Customer Engagement Bot",
       description: "AI-powered customer engagement and interaction bot",
-      presentationId: "1ziS3mDgvA25PzcltLnYPv_SKG-BiJV63pemL91YrPfE",
+      presentationId: "1W3SbzwNFyIoNCCoj_SFAULVHZT1pflNE031QF9dII8U",
       enabled: true,
-      category: "ai_bot"
+      category: "ai_bots"
     },
     {
       id: "filtering_cleaning_bot",
       name: "Filtering & Cleaning Assisted Bot",
       description: "Advanced filtering and cleaning assistance through AI automation",
-      presentationId: "1ziS3mDgvA25PzcltLnYPv_SKG-BiJV63pemL91YrPfE",
+      presentationId: "10srsHl936u9unxOE30EyGQKmsQU4XEpGbQcBhOG8_Gc",
       enabled: true,
-      category: "ai_bot"
+      category: "ai_bots"
     },
     
     // Event Referral
     {
       id: "event_referral",
-      name: "Event Referral",
+      name: "Event Referral Program",
       description: "Comprehensive event referral and management system",
-      presentationId: "1ziS3mDgvA25PzcltLnYPv_SKG-BiJV63pemL91YrPfE",
+      presentationId: "1Jqi5pMRv0amYqMiPysc_hFi03vNorKio3A5fcRUluOc",
       enabled: true,
       category: "referral"
     },
@@ -125,7 +276,7 @@ export default function StrategyGeneratorPage() {
       id: "electricity_ci_sme_align",
       name: "Electricity C&I & SME Align Forward",
       description: "Commercial & Industrial and SME electricity alignment solutions",
-      presentationId: "1ziS3mDgvA25PzcltLnYPv_SKG-BiJV63pemL91YrPfE",
+      presentationId: "1im1Yl0AzuzJULk4_crwV1W7nOQV9XF7CvzRpkjRQV34",
       enabled: true,
       category: "profile_reset"
     },
@@ -133,7 +284,7 @@ export default function StrategyGeneratorPage() {
       id: "electricity_gas_discrepancy",
       name: "Electricity & Gas Discrepancy Review",
       description: "Comprehensive review and analysis of electricity and gas discrepancies",
-      presentationId: "1ziS3mDgvA25PzcltLnYPv_SKG-BiJV63pemL91YrPfE",
+      presentationId: "1EC3SncEMHfaIoofzJTWKnPhEaa6w6q_1B1iIzp1SJdw",
       enabled: true,
       category: "profile_reset"
     },
@@ -141,208 +292,11 @@ export default function StrategyGeneratorPage() {
       id: "waste_review",
       name: "Waste Review",
       description: "Complete waste management and optimization review",
-      presentationId: "1ziS3mDgvA25PzcltLnYPv_SKG-BiJV63pemL91YrPfE",
+      presentationId: "1DOgFANIrqz7JuWMruM8LiHLx8OMqOrON0YchUozUpYQ",
       enabled: true,
       category: "profile_reset"
-    },
-    
-    // AI Automation
-    {
-      id: "phone_agent",
-      name: "Phone Agent",
-      description: "AI-powered phone automation and customer service agent",
-      presentationId: "1ziS3mDgvA25PzcltLnYPv_SKG-BiJV63pemL91YrPfE",
-      enabled: true,
-      category: "ai_automation"
-    },
-    {
-      id: "booking_digital_receptionist",
-      name: "Booking Digital Receptionist",
-      description: "Automated booking and digital receptionist services",
-      presentationId: "1ziS3mDgvA25PzcltLnYPv_SKG-BiJV63pemL91YrPfE",
-      enabled: true,
-      category: "ai_automation"
-    },
-    
-    // Renewable Energy
-    {
-      id: "solar_monitoring",
-      name: "Solar Monitoring",
-      description: "Advanced solar system monitoring and optimization",
-      presentationId: "1ziS3mDgvA25PzcltLnYPv_SKG-BiJV63pemL91YrPfE",
-      enabled: true,
-      category: "renewable_energy"
-    },
-    {
-      id: "solar_rooftop",
-      name: "Solar Rooftop",
-      description: "Rooftop solar installation and management solutions",
-      presentationId: "1ziS3mDgvA25PzcltLnYPv_SKG-BiJV63pemL91YrPfE",
-      enabled: true,
-      category: "renewable_energy"
-    },
-    {
-      id: "solar_car_park",
-      name: "Solar Car Park",
-      description: "Solar carport and parking lot energy solutions",
-      presentationId: "1ziS3mDgvA25PzcltLnYPv_SKG-BiJV63pemL91YrPfE",
-      enabled: true,
-      category: "renewable_energy"
-    },
-    {
-      id: "solar_farm",
-      name: "Solar Farm",
-      description: "Large-scale solar farm development and management",
-      presentationId: "1ziS3mDgvA25PzcltLnYPv_SKG-BiJV63pemL91YrPfE",
-      enabled: true,
-      category: "renewable_energy"
-    },
-    {
-      id: "quote_review_recommendation",
-      name: "Quote Review & Recommendation",
-      description: "Expert review and recommendations for renewable energy quotes",
-      presentationId: "1ziS3mDgvA25PzcltLnYPv_SKG-BiJV63pemL91YrPfE",
-      enabled: true,
-      category: "renewable_energy"
-    },
-    
-    // Resource Recovery
-    {
-      id: "cardboard_bin_recycling",
-      name: "Cardboard Bin Recycling",
-      description: "Cardboard bin collection and recycling services",
-      presentationId: "1ziS3mDgvA25PzcltLnYPv_SKG-BiJV63pemL91YrPfE",
-      enabled: true,
-      category: "resource_recovery"
-    },
-    {
-      id: "cardboard_bales_recycling",
-      name: "Cardboard Bales Recycling",
-      description: "Cardboard bale processing and recycling solutions",
-      presentationId: "1ziS3mDgvA25PzcltLnYPv_SKG-BiJV63pemL91YrPfE",
-      enabled: true,
-      category: "resource_recovery"
-    },
-    {
-      id: "wax_cardboard",
-      name: "Wax Cardboard Recycling",
-      description: "Specialized wax cardboard recycling and processing",
-      presentationId: "1ziS3mDgvA25PzcltLnYPv_SKG-BiJV63pemL91YrPfE",
-      enabled: true,
-      category: "resource_recovery"
-    },
-    {
-      id: "organic_waste_diversion",
-      name: "Organic Waste Diversion",
-      description: "Organic waste collection and diversion programs",
-      presentationId: "1ziS3mDgvA25PzcltLnYPv_SKG-BiJV63pemL91YrPfE",
-      enabled: true,
-      category: "resource_recovery"
-    },
-    {
-      id: "glass_bottles_recycling",
-      name: "Glass Bottles Recycling",
-      description: "Glass bottle collection and recycling services",
-      presentationId: "1ziS3mDgvA25PzcltLnYPv_SKG-BiJV63pemL91YrPfE",
-      enabled: true,
-      category: "resource_recovery"
-    },
-    {
-      id: "wood_offcut_recycling",
-      name: "Wood Offcut Recycling",
-      description: "Wood waste and offcut recycling solutions",
-      presentationId: "1ziS3mDgvA25PzcltLnYPv_SKG-BiJV63pemL91YrPfE",
-      enabled: true,
-      category: "resource_recovery"
-    },
-    {
-      id: "baled_plastic_recycling",
-      name: "Baled Plastic Recycling",
-      description: "Plastic baling and recycling management",
-      presentationId: "1ziS3mDgvA25PzcltLnYPv_SKG-BiJV63pemL91YrPfE",
-      enabled: true,
-      category: "resource_recovery"
-    },
-    {
-      id: "used_cooking_oil",
-      name: "Used Cooking Oil Collection",
-      description: "Commercial cooking oil collection and recycling services",
-      presentationId: "1qppczXwSy56UkLpOsE42ASiwZ8QlbKArN8EhTMqJz6w",
-      enabled: true,
-      category: "resource_recovery"
-    },
-    
-    // Asset Optimisation
-    {
-      id: "renewable_certificates",
-      name: "Self-Managed Renewable Certificates",
-      description: "Management and optimization of renewable energy certificates",
-      presentationId: "1ziS3mDgvA25PzcltLnYPv_SKG-BiJV63pemL91YrPfE",
-      enabled: true,
-      category: "asset_optimisation"
-    },
-    {
-      id: "carbon_credits_offset",
-      name: "Australian Carbon Credit and Carbon Offset",
-      description: "Carbon credit management and offset solutions",
-      presentationId: "1ziS3mDgvA25PzcltLnYPv_SKG-BiJV63pemL91YrPfE",
-      enabled: true,
-      category: "asset_optimisation"
-    },
-    {
-      id: "state_government_incentives",
-      name: "State Government Incentives",
-      description: "State-level government incentive programs and applications",
-      presentationId: "1ziS3mDgvA25PzcltLnYPv_SKG-BiJV63pemL91YrPfE",
-      enabled: true,
-      category: "asset_optimisation"
-    },
-    {
-      id: "federal_government_incentives",
-      name: "Federal Government Incentives",
-      description: "Federal government incentive programs and grant applications",
-      presentationId: "1ziS3mDgvA25PzcltLnYPv_SKG-BiJV63pemL91YrPfE",
-      enabled: true,
-      category: "asset_optimisation"
-    },
-    {
-      id: "electricity_demand_response",
-      name: "Electricity Demand Response",
-      description: "Demand response programs and grid optimization services",
-      presentationId: "1ziS3mDgvA25PzcltLnYPv_SKG-BiJV63pemL91YrPfE",
-      enabled: true,
-      category: "asset_optimisation"
-    },
-    
-    // Other Solutions (will be categorized later)
-    {
-      id: "backup_power_generators",
-      name: "Back-up Power Generators",
-      description: "Emergency backup power generation solutions",
-      presentationId: "1ziS3mDgvA25PzcltLnYPv_SKG-BiJV63pemL91YrPfE",
-      enabled: true,
-      category: "other"
-    },
-    {
-      id: "door_curtain_refrigerator",
-      name: "Solution Door Curtain Refrigerator",
-      description: "Energy-efficient refrigerator door curtain solutions",
-      presentationId: "1ziS3mDgvA25PzcltLnYPv_SKG-BiJV63pemL91YrPfE",
-      enabled: true,
-      category: "other"
-    },
-    {
-      id: "greenhouse_gas_centre",
-      name: "Greenhouse Gas Centre",
-      description: "Greenhouse gas monitoring and management center",
-      presentationId: "1ziS3mDgvA25PzcltLnYPv_SKG-BiJV63pemL91YrPfE",
-      enabled: true,
-      category: "other"
     }
   ];
-
-  // Templates
-  const COVER_PAGE_TEMPLATE_ID = "1k1X6omqY14uvU6a7O5SZ0T028N8OcTupLDbDjGht7tI";
 
   const dispatchReauthEvent = () => {
     console.log("🔍 401 Unauthorized - dispatching reauthentication event");
@@ -359,7 +313,7 @@ export default function StrategyGeneratorPage() {
 
   // Load business info from session storage on mount
   useEffect(() => {
-    const savedBusinessInfo = sessionStorage.getItem('selectedBusinessInfo');
+    const savedBusinessInfo = sessionStorage.getItem('selectedBusinessInfoIndividual');
     if (savedBusinessInfo) {
       try {
         const businessData = JSON.parse(savedBusinessInfo);
@@ -374,7 +328,7 @@ export default function StrategyGeneratorPage() {
   // Save business info to session storage when it changes
   useEffect(() => {
     if (editableBusinessInfo) {
-      sessionStorage.setItem('selectedBusinessInfo', JSON.stringify(editableBusinessInfo));
+      sessionStorage.setItem('selectedBusinessInfoIndividual', JSON.stringify(editableBusinessInfo));
     }
   }, [editableBusinessInfo]);
 
@@ -491,7 +445,7 @@ export default function StrategyGeneratorPage() {
         };
         
         setSelectedBusiness(businessInfo);
-        setEditableBusinessInfo({...businessInfo}); // Create editable copy
+        setEditableBusinessInfo({...businessInfo});
         setResult(`✅ Business information loaded for: ${businessInfo.business_name}`);
       } else {
         setResult(`❌ Could not find business information for: ${businessQuery}`);
@@ -554,152 +508,10 @@ export default function StrategyGeneratorPage() {
 
   const categoryLabels = {
     platform: "🌱 Sustainable Platform",
-    ai_bot: "🤖 Solutions AI-Bot",
+    ai_bots: "🤖 AI Bots",
     referral: "📅 Event Referral",
-    profile_reset: "🔄 Profile Reset",
-    ai_automation: "⚡ AI Automation",
-    renewable_energy: "☀️ Renewable Energy",
-    resource_recovery: "♻️ Resource Recovery",
-    asset_optimisation: "📈 Asset Optimisation",
-    other: "🔧 Other Solutions"
+    profile_reset: "🔄 Profile Reset"
   };
-
-  const generateStrategyPresentation = async () => {
-    if (!editableBusinessInfo || selectedSolutions.length === 0) {
-      setGenerationResult({
-        success: false,
-        message: "❌ Please select at least one solution option."
-      });
-      return;
-    }
-  
-    setGenerationLoading(true);
-    setGenerationResult(null);
-  
-    try {
-      // Get current date info for placeholders
-      const currentDate = new Date();
-      const currentMonth = currentDate.toLocaleString('default', { month: 'long' });
-      const currentYear = currentDate.getFullYear().toString();
-  
-      // Build solution templates
-      const selectedSolutionTemplates = selectedSolutions.map(solutionId => {
-        const solution = solutionOptions.find(s => s.id === solutionId);
-        if (!solution) return null;
-  
-        return {
-          id: solution.id,
-          name: solution.name,
-          description: solution.description,
-          presentationId: solution.presentationId,
-          enabled: solution.enabled,
-          category: solution.category
-        };
-      }).filter(Boolean);
-
-      // Log the request payload for debugging
-      const requestPayload = {
-        businessInfo: {
-          business_name: editableBusinessInfo.business_name,
-          abn: editableBusinessInfo.abn,
-          trading_as: editableBusinessInfo.trading_as,
-          client_folder_url: editableBusinessInfo.client_folder_url,
-        },
-        selectedStrategies: selectedSolutions, // Changed from selectedSolutions
-        coverPageTemplateId: COVER_PAGE_TEMPLATE_ID,
-        strategyTemplates: selectedSolutionTemplates, // Changed from solutionTemplates
-        placeholders: {
-          BusinessName: editableBusinessInfo.business_name,
-          month: currentMonth,
-          year: currentYear
-        },
-        clientFolderUrl: editableBusinessInfo.client_folder_url
-      };
-
-      console.log("Request payload:", JSON.stringify(requestPayload, null, 2));
-
-      const response = await fetch(`${getApiBaseUrl()}/api/generate-strategy-presentation-real`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
-        },
-        body: JSON.stringify(requestPayload),
-      });
-  
-      if (response.status === 401) {
-        dispatchReauthEvent();
-        setGenerationResult({
-          success: false,
-          message: "Session expired. Please wait while we refresh your authentication..."
-        });
-        return;
-      }
-  
-      const data = await response.json();
-      
-      // Log the response for debugging
-      console.log("API Response:", data);
-      console.log("Response status:", response.status);
-  
-      if (response.ok && data.success) {
-        const solutionNames = selectedSolutions.map(solutionId => 
-          solutionOptions.find(s => s.id === solutionId)?.name
-        ).filter(Boolean).join(', ');
-  
-        setGenerationResult({
-          success: true,
-          presentationUrl: data.presentationUrl,
-          pdfUrl: data.pdfUrl,
-          message: `✅ ${data.message || `Strategy presentation generated successfully for ${editableBusinessInfo.business_name} with ${solutionNames}`}`
-        });
-      } else {
-        // Log the full error response for debugging
-        console.error("API Error Response:", data);
-        
-        let errorMessage = 'Unknown error';
-        
-        // Handle different error response formats
-        if (data.detail) {
-          if (Array.isArray(data.detail)) {
-            // Handle validation errors (array of objects)
-            errorMessage = data.detail.map((err: any) => {
-              if (typeof err === 'object') {
-                return `${err.loc ? err.loc.join('.') + ': ' : ''}${err.msg || JSON.stringify(err)}`;
-              }
-              return String(err);
-            }).join('; ');
-          } else if (typeof data.detail === 'object') {
-            errorMessage = JSON.stringify(data.detail);
-          } else {
-            errorMessage = String(data.detail);
-          }
-        } else if (data.error) {
-          errorMessage = String(data.error);
-        } else if (data.message) {
-          errorMessage = String(data.message);
-        }
-        
-        if (errorMessage.includes('refresh') || errorMessage.includes('401')) {
-          errorMessage = 'Authentication token expired. Please log out and log back in to refresh your credentials.';
-        }
-        
-        setGenerationResult({
-          success: false,
-          message: `❌ Error generating presentation: ${errorMessage}`
-        });
-      }
-    } catch (error: any) {
-      console.error("Strategy generation error:", error);
-      setGenerationResult({
-        success: false,
-        message: `❌ Error generating strategy presentation: ${error.message}`
-      });
-    }
-  
-    setGenerationLoading(false);
-  };
-
   // Clear business info and start fresh
   const handleNewSearch = () => {
     setSelectedBusiness(null);
@@ -707,8 +519,8 @@ export default function StrategyGeneratorPage() {
     setBusinessQuery("");
     setResult("");
     setSelectedSolutions([]);
-    setGenerationResult(null);
-    sessionStorage.removeItem('selectedBusinessInfo');
+    setEmailResults([]);
+    sessionStorage.removeItem('selectedBusinessInfoIndividual');
   };
 
   if (status === "loading") {
@@ -750,7 +562,7 @@ export default function StrategyGeneratorPage() {
 
   return (
     <div className="max-w-6xl mx-auto p-6">
-      <h1 className="text-3xl font-bold mb-8 text-gray-800">🎯 Business Strategy Generator</h1>
+      <h1 className="text-3xl font-bold mb-8 text-gray-800">📧 Individual Strategy Email</h1>
 
       {/* Business Search Section */}
       <div className="mb-8 p-6 bg-gray-50 rounded-lg">
@@ -790,7 +602,6 @@ export default function StrategyGeneratorPage() {
                   className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
-              
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">ABN</label>
                 <input
@@ -801,7 +612,7 @@ export default function StrategyGeneratorPage() {
                   className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Trading As</label>
                 <input
@@ -812,7 +623,7 @@ export default function StrategyGeneratorPage() {
                   className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
                 <input
@@ -1052,100 +863,94 @@ export default function StrategyGeneratorPage() {
         </div>
       )}
 
-      {/* Generate Presentation Section */}
+      {/* Send Individual Strategy Emails Section */}
       {selectedBusiness && selectedSolutions.length > 0 && (
         <div className="mb-8 p-6 bg-white rounded-lg shadow-sm border">
-          <h2 className="text-xl font-semibold mb-4 text-gray-800">3. Generate Strategy Presentation</h2>
+          <h2 className="text-xl font-semibold mb-4 text-gray-800">3. Send Individual Strategy Emails</h2>
           
           <div className="mb-4">
             <p className="text-sm text-gray-600 mb-2">
-              This will create a custom presentation including:
+              This will send individual strategy emails for each selected solution to the business:
             </p>
             <ul className="text-sm text-gray-600 space-y-1 ml-4">
-              <li>• Cover page with business details ({editableBusinessInfo?.business_name})</li>
+              <li>• Business: {editableBusinessInfo?.business_name}</li>
               {selectedSolutions.map(solutionId => {
                 const solution = solutionOptions.find(s => s.id === solutionId);
-                return solution ? <li key={solutionId}>• {solution.name} slides</li> : null;
+                return solution ? <li key={solutionId}>• {solution.name} strategy email</li> : null;
               })}
             </ul>
           </div>
 
           <button
-            onClick={generateStrategyPresentation}
-            disabled={generationLoading}
+            onClick={sendIndividualStrategyEmails}
+            disabled={emailLoading}
             className="px-6 py-3 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
           >
-            {generationLoading ? "Generating Presentation..." : "🎯 Generate Strategy Presentation"}
+            {emailLoading ? "Sending Emails..." : "📧 Send Individual Strategy Emails"}
           </button>
         </div>
       )}
 
-      {/* Generation Result */}
-      {generationResult && (
-        <div className={`mb-6 p-6 rounded-lg border ${
-          generationResult.success 
-            ? "bg-green-50 border-green-200" 
-            : "bg-red-50 border-red-200"
-        }`}>
-          <h3 className={`font-semibold mb-3 ${
-            generationResult.success ? "text-green-800" : "text-red-800"
-          }`}>
-            {generationResult.success ? "✅ Presentation Generated!" : "❌ Generation Failed"}
-          </h3>
+      {/* Email Results */}
+      {emailResults.length > 0 && (
+        <div className="mb-6 p-6 rounded-lg border bg-gray-50">
+          <h3 className="font-semibold mb-4 text-gray-800">Email Results</h3>
           
-          <p className={`text-sm mb-4 ${
-            generationResult.success ? "text-green-700" : "text-red-700"
-          }`}>
-            {generationResult.message}
-          </p>
+          <div className="space-y-3">
+            {emailResults.map((result, index) => (
+              <div key={index} className={`p-4 rounded-lg border ${
+                result.success 
+                  ? "bg-green-50 border-green-200" 
+                  : "bg-red-50 border-red-200"
+              }`}>
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h4 className={`font-medium ${
+                      result.success ? "text-green-800" : "text-red-800"
+                    }`}>
+                      {result.solutionName || 'General'}
+                    </h4>
+                    <p className={`text-sm mt-1 ${
+                      result.success ? "text-green-700" : "text-red-700"
+                    }`}>
+                      {result.message}
+                    </p>
+                  </div>
+                  <span className={`text-lg ${
+                    result.success ? "text-green-600" : "text-red-600"
+                  }`}>
+                    {result.success ? "✅" : "❌"}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
 
-          {generationResult.success && (
-            <div className="space-y-3">
-              {generationResult.pdfUrl && (
-                <div>
-                  <a
-                    href={generationResult.pdfUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors text-sm font-medium"
-                  >
-                    📄 Download PDF
-                  </a>
-                </div>
-              )}
-              
-              {generationResult.presentationUrl && (
-                <div>
-                  <a
-                    href={generationResult.presentationUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm font-medium"
-                  >
-                    📝 Edit Presentation
-                  </a>
-                </div>
-              )}
-            </div>
-          )}
+          {/* Summary */}
+          <div className="mt-4 p-3 bg-blue-50 rounded border border-blue-200">
+            <p className="text-sm text-blue-700">
+              📊 <strong>Summary:</strong> {emailResults.filter(r => r.success).length} successful, {emailResults.filter(r => !r.success).length} failed out of {emailResults.length} total emails.
+            </p>
+          </div>
         </div>
       )}
 
       {/* Instructions */}
       {!selectedBusiness && (
         <div className="mt-8 p-4 bg-gray-50 rounded-md">
-          <h3 className="font-medium text-gray-800 mb-2">How to use:</h3>
+          <h3 className="font-medium text-gray-800 mb-2">How to use Individual Strategy Email:</h3>
           <ol className="text-sm text-gray-600 space-y-1">
             <li>1. Search for an existing business by name</li>
             <li>2. Review and edit the business details if needed</li>
-            <li>3. Select the solutions you want to include in the presentation</li>
-            <li>4. Generate your custom strategy presentation</li>
+            <li>3. Select the solutions you want to send individual emails for</li>
+            <li>4. Send individual strategy emails for each selected solution</li>
           </ol>
           
           <div className="mt-4 p-3 bg-blue-50 rounded border border-blue-200">
             <p className="text-sm text-blue-700">
-              💡 <strong>Note:</strong> This page is for existing clients with business information already in the system. 
-              Solutions are organized by category: Branding & Visual Identity, Service Solutions, and Equipment Solutions.
+              📧 <strong>Individual Strategy Focus:</strong> This tool sends separate strategy emails for each selected solution,
+              allowing you to target specific solutions to clients. Each email will contain detailed information about
+              that particular solution tailored to the business.
             </p>
           </div>
         </div>

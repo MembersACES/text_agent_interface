@@ -33,8 +33,11 @@ interface SolutionOption {
 interface GenerationResult {
   success: boolean;
   presentationUrl?: string;
+  presentationId?: string;
   pdfUrl?: string;
+  pdfId?: string;
   message: string;
+  totalSlidesAdded?: number;
 }
 
 export default function InitialStrategyGeneratorPage() {
@@ -48,11 +51,15 @@ export default function InitialStrategyGeneratorPage() {
   const [editableBusinessInfo, setEditableBusinessInfo] = useState<BusinessInfo | null>(null);
   const [businessLoading, setBusinessLoading] = useState(false);
   const [result, setResult] = useState("");
+  
 
   // Solution selection state
   const [selectedSolutions, setSelectedSolutions] = useState<string[]>([]);
   const [generationLoading, setGenerationLoading] = useState(false);
   const [generationResult, setGenerationResult] = useState<GenerationResult | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
 
   // Available solution options for Initial Strategy
   const solutionOptions: SolutionOption[] = [
@@ -288,6 +295,49 @@ export default function InitialStrategyGeneratorPage() {
     setBusinessLoading(false);
   };
 
+  const sendPresentation = async () => {
+    setSending(true);
+    setSuccessMessage(null);
+    setErrorMessage(null);
+  
+    if (!generationResult?.pdfId || !editableBusinessInfo?.business_name || !session) {
+      setErrorMessage("Missing required information to send presentation.");
+      setSending(false);
+      return;
+    }
+  
+    try {
+      const payload = {
+        user: {
+          name: (session as any)?.user?.name || "",
+          email: (session as any)?.user?.email || ""
+        },
+        business_name: editableBusinessInfo.business_name,
+        pdf_id: generationResult.pdfId
+      };
+  
+      console.log("Sending presentation to n8n webhook:", payload);
+  
+      const res = await fetch("https://membersaces.app.n8n.cloud/webhook/email-bdm-strategy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+  
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || err.message || `Request failed: ${res.statusText}`);
+      }
+  
+      setSuccessMessage(`Presentation for "${editableBusinessInfo.business_name}" sent successfully!`);
+    } catch (err: any) {
+      console.error("Error sending presentation:", err);
+      setErrorMessage(`Failed to send presentation: ${err.message}`);
+    } finally {
+      setSending(false);
+    }
+  };
+  
   // Handle editable business info changes
   const handleBusinessInfoChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -347,17 +397,18 @@ export default function InitialStrategyGeneratorPage() {
         };
       }).filter(Boolean);
 
-      // Log the request payload for debugging
       const requestPayload = {
         businessInfo: {
           business_name: editableBusinessInfo.business_name,
           abn: editableBusinessInfo.abn,
           trading_as: editableBusinessInfo.trading_as,
+          contact_name: editableBusinessInfo.contact_name,
+          email: editableBusinessInfo.email,
           client_folder_url: editableBusinessInfo.client_folder_url,
         },
-        selectedStrategies: selectedSolutions, // Changed from selectedSolutions
+        selectedStrategies: selectedSolutions,
         coverPageTemplateId: COVER_PAGE_TEMPLATE_ID,
-        strategyTemplates: selectedSolutionTemplates, // Changed from solutionTemplates
+        strategyTemplates: selectedSolutionTemplates,
         placeholders: {
           BusinessName: editableBusinessInfo.business_name,
           month: currentMonth,
@@ -365,9 +416,9 @@ export default function InitialStrategyGeneratorPage() {
         },
         clientFolderUrl: editableBusinessInfo.client_folder_url
       };
-
+  
       console.log("Request payload:", JSON.stringify(requestPayload, null, 2));
-
+  
       const response = await fetch(`${getApiBaseUrl()}/api/generate-strategy-presentation-real`, {
         method: "POST",
         headers: {
@@ -388,7 +439,6 @@ export default function InitialStrategyGeneratorPage() {
   
       const data = await response.json();
       
-      // Log the response for debugging
       console.log("API Response:", data);
       console.log("Response status:", response.status);
   
@@ -400,19 +450,19 @@ export default function InitialStrategyGeneratorPage() {
         setGenerationResult({
           success: true,
           presentationUrl: data.presentationUrl,
+          presentationId: data.presentationId,
           pdfUrl: data.pdfUrl,
-          message: `✅ ${data.message || `Initial strategy presentation generated successfully for ${editableBusinessInfo.business_name} with ${solutionNames}`}`
+          pdfId: data.pdfId,
+          totalSlidesAdded: data.totalSlidesAdded,
+          message: `✅ ${data.message || `Initial strategy presentation and PDF generated successfully for ${editableBusinessInfo.business_name} with ${solutionNames}`}`
         });
       } else {
-        // Log the full error response for debugging
         console.error("API Error Response:", data);
         
         let errorMessage = 'Unknown error';
         
-        // Handle different error response formats
         if (data.detail) {
           if (Array.isArray(data.detail)) {
-            // Handle validation errors (array of objects)
             errorMessage = data.detail.map((err: any) => {
               if (typeof err === 'object') {
                 return `${err.loc ? err.loc.join('.') + ': ' : ''}${err.msg || JSON.stringify(err)}`;
@@ -448,7 +498,7 @@ export default function InitialStrategyGeneratorPage() {
     }
   
     setGenerationLoading(false);
-  };
+  };    
 
   // Clear business info and start fresh
   const handleNewSearch = () => {
@@ -800,8 +850,6 @@ export default function InitialStrategyGeneratorPage() {
           </button>
         </div>
       )}
-
-      {/* Generation Result */}
       {generationResult && (
         <div className={`mb-6 p-6 rounded-lg border ${
           generationResult.success 
@@ -834,7 +882,7 @@ export default function InitialStrategyGeneratorPage() {
                   </a>
                 </div>
               )}
-              
+
               {generationResult.presentationUrl && (
                 <div>
                   <a
@@ -847,11 +895,44 @@ export default function InitialStrategyGeneratorPage() {
                   </a>
                 </div>
               )}
+
+              <div>
+              <button
+                onClick={sendPresentation}
+                disabled={sending}
+                className={`px-4 py-2 rounded-md text-white text-sm font-medium transition-colors
+                  ${sending ? "bg-green-400 cursor-not-allowed" : "bg-green-600 hover:bg-green-700"}`}
+              >
+                {sending ? "Sending Presentation..." : "📤 Send Presentation"}
+              </button>
+              </div>
+
+              {/* ✅ Success/Error messages go here */}
+              {successMessage && (
+                <div className="mt-4 bg-green-50 border border-green-200 rounded-lg p-4">
+                  <div className="flex">
+                    <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                    </svg>
+                    <div className="ml-3 text-sm text-green-700">{successMessage}</div>
+                  </div>
+                </div>
+              )}
+
+              {errorMessage && (
+                <div className="mt-4 bg-red-50 border border-red-200 rounded-lg p-4">
+                  <div className="flex">
+                    <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M18 10A8 8 0 11.001 10 8 8 0 0118 10zm-7-4a1 1 0 10-2 0v3a1 1 0 002 0V6zm-1 7a1.5 1.5 0 100-3 1.5 1.5 0 000 3z" clipRule="evenodd" />
+                    </svg>
+                    <div className="ml-3 text-sm text-red-700">{errorMessage}</div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
       )}
-
       {/* Instructions */}
       {!selectedBusiness && (
         <div className="mt-8 p-4 bg-gray-50 rounded-md">
