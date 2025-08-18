@@ -28,6 +28,27 @@ function InfoRow({
   );
 }
 
+function mapUtilityKey(key: string): string {
+  switch (key.toLowerCase()) {
+    case "c&i electricity":
+      return "electricity_ci";
+    case "sme electricity":
+      return "electricity_sme";
+    case "c&i gas":
+      return "gas_ci";
+    case "sme gas":
+    case "small gas":
+      return "gas_sme";
+    case "waste":
+      return "waste";
+    case "oil":
+      return "oil";
+    default:
+      throw new Error(`Unknown utility key: ${key}`);
+  }
+}
+
+
 interface BusinessInfoDisplayProps {
   info: any;
   onLinkUtility?: () => void;
@@ -554,6 +575,33 @@ export default function BusinessInfoDisplay({ info, onLinkUtility }: BusinessInf
                       Data Request
                     </button>
                     )}
+                     <button
+                        className="ml-2 px-2 py-1 border border-yellow-300 rounded text-xs text-yellow-700 bg-yellow-50 hover:bg-yellow-100 focus:outline-none"
+                        title="Request a quote for this utility"
+                        onClick={() => {
+                          const businessInfoToPass = {
+                            business_name: business.name,
+                            abn: business.abn,
+                            trading_name: business.trading_name,
+                            email: contact.email,
+                            telephone: contact.telephone,
+                            postal_address: contact.postal_address,
+                            site_address: contact.site_address,
+                            contact_name: rep.contact_name,
+                            googleDriveLink: driveUrl,
+                            loaLink: info._processed_file_ids?.["business_LOA"],
+                          };
+
+                          const params = new URLSearchParams();
+                          params.set("businessInfo", encodeURIComponent(JSON.stringify(businessInfoToPass)));
+                          params.set("utility", mapUtilityKey(key)); 
+                          params.set("identifier", identifier);
+
+                          window.open(`/quote-request?${params.toString()}`, "_blank");
+                        }}
+                      >
+                        Quote Request
+                      </button>
                 </div>
               );
             })}
