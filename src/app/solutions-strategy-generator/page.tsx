@@ -63,6 +63,10 @@ export default function IndividualStrategyEmailPage() {
   const [expandedCategories, setExpandedCategories] = useState<string[]>(['platform']);
   const [emailLoading, setEmailLoading] = useState(false);
   const [emailResults, setEmailResults] = useState<EmailResult[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("all");
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [showOnlySelected, setShowOnlySelected] = useState(false);
 
   // Generate email subject for a solution
   const generateEmailSubject = (businessName: string, solutionName: string): string => {
@@ -1056,124 +1060,335 @@ export default function IndividualStrategyEmailPage() {
         </div>
       )}
 
-      {/* Solution Selection Section */}
-      {selectedBusiness && (
-        <div className="mb-8 p-6 bg-gray-50 rounded-lg">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold text-gray-800">2. Select Solutions</h2>
-            <div className="flex gap-2">
-              <button
-                onClick={expandAllCategories}
-                className="px-3 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors"
-              >
-                Expand All
-              </button>
-              <button
-                onClick={collapseAllCategories}
-                className="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors"
-              >
-                Collapse All
-              </button>
-            </div>
-          </div>
-          
-          {Object.entries(groupedSolutions).map(([category, solutions]) => {
-            const isExpanded = expandedCategories.includes(category);
-            const categoryCount = solutions.filter(s => selectedSolutions.includes(s.id)).length;
-            
-            return (
-              <div key={category} className="mb-4 border border-gray-200 rounded-lg bg-white">
-                <button
-                  onClick={() => toggleCategory(category)}
-                  className="w-full flex items-center justify-between p-4 text-left hover:bg-gray-50 transition-colors"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="text-lg font-medium text-gray-700">
-                      {categoryLabels[category as keyof typeof categoryLabels]}
-                    </span>
-                    <span className="text-sm text-gray-500">
-                      ({solutions.length} solutions)
-                    </span>
-                    {categoryCount > 0 && (
-                      <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">
-                        {categoryCount} selected
-                      </span>
-                    )}
-                  </div>
-                  <svg
-                    className={`w-5 h-5 text-gray-400 transition-transform ${
-                      isExpanded ? 'rotate-180' : ''
-                    }`}
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-                
-                {isExpanded && (
-                  <div className="border-t border-gray-200 p-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {solutions.map((solution) => (
-                        <div key={solution.id} className="flex items-start space-x-3 p-3 bg-gray-50 rounded border hover:bg-gray-100 transition-colors">
-                          <input
-                            type="checkbox"
-                            id={solution.id}
-                            checked={selectedSolutions.includes(solution.id)}
-                            onChange={() => handleSolutionToggle(solution.id)}
-                            disabled={!solution.enabled}
-                            className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                          />
-                          <div className="flex-1 min-w-0">
-                            <label htmlFor={solution.id} className="block text-sm font-medium text-gray-900 cursor-pointer">
-                              {solution.name}
-                            </label>
-                            <p className="text-xs text-gray-600 mt-1 line-clamp-2">{solution.description}</p>
-                            {!solution.enabled && (
-                              <p className="text-xs text-gray-400 mt-1">Coming soon...</p>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
+      {/* Solution Selection Section - IMPROVED */}
+{selectedBusiness && (
+  <div className="mb-8 p-6 bg-gray-50 rounded-lg">
+    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
+      <h2 className="text-xl font-semibold text-gray-800">2. Select Solutions</h2>
 
-          {selectedSolutions.length > 0 && (
-            <div className="mt-6 p-4 bg-blue-50 rounded border border-blue-200">
-              <div className="flex justify-between items-start mb-2">
-                <h4 className="font-medium text-blue-800">Selected Solutions ({selectedSolutions.length}):</h4>
-                <button
-                  onClick={() => setSelectedSolutions([])}
-                  className="text-xs text-blue-600 hover:text-blue-800 underline"
-                >
-                  Clear All
-                </button>
-              </div>
-              <div className="text-sm text-blue-700">
-                {selectedSolutions.map(solutionId => {
-                  const solution = solutionOptions.find(s => s.id === solutionId);
-                  return solution ? (
-                    <span key={solutionId} className="inline-flex items-center bg-blue-100 px-2 py-1 rounded text-xs mr-2 mb-1">
-                      {solution.name}
-                      <button
-                        onClick={() => handleSolutionToggle(solutionId)}
-                        className="ml-1 text-blue-600 hover:text-blue-800"
-                      >
-                        ×
-                      </button>
-                    </span>
-                  ) : null;
-                })}
-              </div>
-            </div>
-          )}
+      {/* Selected Solutions Summary */}
+      {selectedSolutions.length > 0 && (
+        <div className="flex items-center gap-4">
+          <span className="text-sm font-medium text-blue-700 bg-blue-100 px-3 py-1 rounded-full">
+            {selectedSolutions.length} solution{selectedSolutions.length !== 1 ? "s" : ""} selected
+          </span>
+          <button
+            onClick={() => setSelectedSolutions([])}
+            className="text-sm text-red-600 hover:text-red-800 flex items-center gap-1 hover:bg-red-50 px-2 py-1 rounded transition-colors"
+          >
+            ✕ Clear All
+          </button>
         </div>
       )}
+    </div>
+
+    {/* Filters and Controls */}
+    <div className="flex flex-col lg:flex-row gap-4 mb-6">
+      {/* Search */}
+      <div className="relative flex-1">
+        <svg
+          className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        </svg>
+        <input
+          type="text"
+          placeholder="Search solutions by name, description, or category..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+        />
+        {searchTerm && (
+          <button
+            onClick={() => setSearchTerm("")}
+            className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+          >
+            ✕
+          </button>
+        )}
+      </div>
+
+      {/* Category Filter */}
+      <select
+        value={selectedCategory}
+        onChange={(e) => setSelectedCategory(e.target.value)}
+        className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[200px]"
+      >
+        <option value="all">🌟 All Solutions</option>
+        {Object.entries(categoryLabels).map(([key, label]) => (
+          <option key={key} value={key}>
+            {label}
+          </option>
+        ))}
+      </select>
+
+      {/* View Toggle */}
+      <div className="flex items-center border border-gray-300 rounded-md overflow-hidden">
+        <button
+          onClick={() => setViewMode("grid")}
+          className={`px-3 py-2 flex items-center gap-2 text-sm transition-colors ${
+            viewMode === "grid"
+              ? "bg-blue-500 text-white"
+              : "bg-white text-gray-700 hover:bg-gray-50"
+          }`}
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h4v4H4V6zm6 0h4v4h-4V6zm6 0h4v4h-4V6zM4 16h4v4H4v-4zm6 0h4v4h-4v-4zm6 0h4v4h-4v-4z" />
+          </svg>
+          Grid
+        </button>
+        <button
+          onClick={() => setViewMode("list")}
+          className={`px-3 py-2 flex items-center gap-2 text-sm transition-colors ${
+            viewMode === "list"
+              ? "bg-blue-500 text-white"
+              : "bg-white text-gray-700 hover:bg-gray-50"
+          }`}
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+          List
+        </button>
+      </div>
+
+      {/* Show Only Selected */}
+      <button
+        onClick={() => setShowOnlySelected(!showOnlySelected)}
+        className={`px-4 py-2 rounded-md border flex items-center gap-2 text-sm transition-colors ${
+          showOnlySelected
+            ? "bg-blue-500 text-white border-blue-500"
+            : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+        }`}
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+        </svg>
+        Selected Only
+      </button>
+    </div>
+
+    {/* Filtered Solutions */}
+    {(() => {
+      const filteredSolutions = solutionOptions.filter((solution) => {
+        const matchesSearch =
+          searchTerm === "" ||
+          solution.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          solution.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          categoryLabels[solution.category]?.toLowerCase().includes(searchTerm.toLowerCase());
+
+        const matchesCategory = selectedCategory === "all" || solution.category === selectedCategory;
+        const matchesSelected = !showOnlySelected || selectedSolutions.includes(solution.id);
+
+        return matchesSearch && matchesCategory && matchesSelected;
+      });
+
+      const filteredGroupedSolutions = filteredSolutions.reduce((groups, solution) => {
+        const category = solution.category;
+        if (!groups[category]) groups[category] = [];
+        groups[category].push(solution);
+        return groups;
+      }, {} as Record<string, SolutionOption[]>);
+
+      if (filteredSolutions.length === 0) {
+        return (
+          <div className="text-center py-12 text-gray-500 bg-white rounded-lg border-2 border-dashed border-gray-200">
+            <p className="text-lg font-medium">No solutions found</p>
+            <p className="text-sm mt-1">
+              {searchTerm ? `No results for "${searchTerm}"` : "Try adjusting your filters"}
+            </p>
+          </div>
+        );
+      }
+
+      if (selectedCategory === "all") {
+        return (
+          <div className="space-y-4">
+            {Object.entries(filteredGroupedSolutions).map(([category, solutions]) => {
+              const isExpanded = expandedCategories.includes(category);
+              const categoryCount = solutions.filter((s) => selectedSolutions.includes(s.id)).length;
+
+              return (
+                <div key={category} className="border border-gray-200 rounded-lg bg-white">
+                  <button
+                    onClick={() => toggleCategory(category)}
+                    className="w-full flex items-center justify-between p-4 text-left hover:bg-gray-50 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-lg font-medium text-gray-700">
+                        {categoryLabels[category as keyof typeof categoryLabels]}
+                      </span>
+                      <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+                        {solutions.length} solution{solutions.length !== 1 ? "s" : ""}
+                      </span>
+                      {categoryCount > 0 && (
+                        <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full font-medium">
+                          {categoryCount} selected
+                        </span>
+                      )}
+                    </div>
+                    <svg
+                      className={`w-5 h-5 text-gray-400 transition-transform ${
+                        isExpanded ? "rotate-180" : ""
+                      }`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+
+                  {isExpanded && (
+                    <div className="border-t border-gray-200 p-4">
+                      <div
+                        className={
+                          viewMode === "grid"
+                            ? "grid grid-cols-1 md:grid-cols-2 gap-4"
+                            : "space-y-2"
+                        }
+                      >
+                        {solutions.map((solution) => (
+                          <div
+                            key={solution.id}
+                            className={`${viewMode === "list" ? "flex items-center p-3" : "p-4"} border rounded-lg transition-all duration-200 hover:shadow-md cursor-pointer ${
+                              selectedSolutions.includes(solution.id)
+                                ? "border-blue-500 bg-blue-50 shadow-sm"
+                                : "border-gray-200 bg-white hover:border-gray-300"
+                            }`}
+                            onClick={() => handleSolutionToggle(solution.id)}
+                          >
+                            <div className="flex items-start space-x-3">
+                              <div className="flex-shrink-0 mt-1">
+                                <div
+                                  className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                                    selectedSolutions.includes(solution.id)
+                                      ? "bg-blue-500 border-blue-500"
+                                      : "border-gray-300 hover:border-blue-400"
+                                  }`}
+                                >
+                                  {selectedSolutions.includes(solution.id) && (
+                                    <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                    </svg>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <h4 className="font-medium text-gray-900">{solution.name}</h4>
+                                <p className="text-sm text-gray-600 mt-1 line-clamp-2">
+                                  {solution.description}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        );
+      }
+
+      return (
+        <div
+          className={
+            viewMode === "grid"
+              ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+              : "space-y-2"
+          }
+        >
+          {filteredSolutions.map((solution) => (
+            <div
+              key={solution.id}
+              className={`${viewMode === "list" ? "flex items-center p-3" : "p-4"} border rounded-lg transition-all duration-200 hover:shadow-md cursor-pointer ${
+                selectedSolutions.includes(solution.id)
+                  ? "border-blue-500 bg-blue-50 shadow-sm"
+                  : "border-gray-200 bg-white hover:border-gray-300"
+              }`}
+              onClick={() => handleSolutionToggle(solution.id)}
+            >
+              <div className="flex items-start space-x-3">
+                <div className="flex-shrink-0 mt-1">
+                  <div
+                    className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                      selectedSolutions.includes(solution.id)
+                        ? "bg-blue-500 border-blue-500"
+                        : "border-gray-300 hover:border-blue-400"
+                    }`}
+                  >
+                    {selectedSolutions.includes(solution.id) && (
+                      <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                  </div>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h4 className="font-medium text-gray-900">{solution.name}</h4>
+                  <p className="text-sm text-gray-600 mt-1 line-clamp-2">
+                    {solution.description}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+    })()}
+
+    {/* Quick Selection Summary */}
+    {selectedSolutions.length > 0 && (
+      <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+        <div className="flex justify-between items-start mb-3">
+          <h4 className="font-medium text-blue-800">📋 Selected Solutions ({selectedSolutions.length})</h4>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowOnlySelected(!showOnlySelected)}
+              className="text-xs text-blue-600 hover:text-blue-800 underline"
+            >
+              {showOnlySelected ? "Show All" : "Show Selected Only"}
+            </button>
+            <button
+              onClick={() => setSelectedSolutions([])}
+              className="text-xs text-red-600 hover:text-red-800 underline"
+            >
+              Clear All
+            </button>
+          </div>
+        </div>
+        <div className="text-sm text-blue-700 flex flex-wrap gap-2">
+          {selectedSolutions.map((solutionId) => {
+            const solution = solutionOptions.find((s) => s.id === solutionId);
+            return solution ? (
+              <span
+                key={solutionId}
+                className="inline-flex items-center bg-blue-100 px-3 py-1 rounded-full text-xs"
+              >
+                {solution.name}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleSolutionToggle(solutionId);
+                  }}
+                  className="ml-2 text-blue-600 hover:text-blue-800 font-bold"
+                >
+                  ×
+                </button>
+              </span>
+            ) : null;
+          })}
+        </div>
+      </div>
+    )}
+  </div>
+)}
 
       {/* Send Individual Strategy Emails Section */}
       {selectedBusiness && selectedSolutions.length > 0 && (
