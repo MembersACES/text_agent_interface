@@ -22,13 +22,25 @@ interface BusinessInfo {
   retailers?: any[];
 }
 
+type SolutionCategory =
+  | "platform"
+  | "ai_bots"
+  | "ai_automation"
+  | "referral"
+  | "profile_reset"
+  | "renewable_energy"
+  | "resource_recovery"
+  | "asset_optimisation"
+  | "other_solutions"
+  | "ghg";
+
 interface SolutionOption {
   id: string;
   name: string;
   description: string;
-  presentationId: string; 
+  presentationId: string;
   enabled: boolean;
-  category: string;
+  category: SolutionCategory;
 }
 
 interface EmailResult {
@@ -800,7 +812,7 @@ export default function IndividualStrategyEmailPage() {
     return groups;
   }, {} as Record<string, SolutionOption[]>);
 
-  const categoryLabels = {
+  const categoryLabels: Record<SolutionCategory, string> = {
     platform: "🌱 Sustainable Platform",
     ai_bots: "🤖 AI Bots",
     ai_automation: "⚡ AI Automation",
@@ -810,7 +822,7 @@ export default function IndividualStrategyEmailPage() {
     resource_recovery: "♻️ Resource Recovery",
     asset_optimisation: "📈 Asset Optimisation",
     other_solutions: "🔧 Other Solutions",
-    ghg: "🌍 GHG"
+    ghg: "🌍 GHG",
   };
   // Clear business info and start fresh
   const handleNewSearch = () => {
