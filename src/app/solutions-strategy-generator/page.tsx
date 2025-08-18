@@ -22,13 +22,25 @@ interface BusinessInfo {
   retailers?: any[];
 }
 
+type SolutionCategory =
+  | "platform"
+  | "ai_bots"
+  | "ai_automation"
+  | "referral"
+  | "profile_reset"
+  | "renewable_energy"
+  | "resource_recovery"
+  | "asset_optimisation"
+  | "other_solutions"
+  | "ghg";
+
 interface SolutionOption {
   id: string;
   name: string;
   description: string;
-  presentationId: string; 
+  presentationId: string;
   enabled: boolean;
-  category: string;
+  category: SolutionCategory;
 }
 
 interface EmailResult {
@@ -51,6 +63,10 @@ export default function IndividualStrategyEmailPage() {
   const [expandedCategories, setExpandedCategories] = useState<string[]>(['platform']);
   const [emailLoading, setEmailLoading] = useState(false);
   const [emailResults, setEmailResults] = useState<EmailResult[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("all");
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [showOnlySelected, setShowOnlySelected] = useState(false);
 
   // Generate email subject for a solution
   const generateEmailSubject = (businessName: string, solutionName: string): string => {
@@ -140,59 +156,149 @@ export default function IndividualStrategyEmailPage() {
       }]);
       return;
     }
-
+  
     setEmailLoading(true);
     setEmailResults([]);
-
+  
     const results: EmailResult[] = [];
     const userInfo = {
       name: (session as any)?.user?.name || "",
       email: (session as any)?.user?.email || ""
     };
-
+  
     for (const solutionId of selectedSolutions) {
       const solution = solutionOptions.find(s => s.id === solutionId);
       if (!solution) continue;
-
+  
       try {
-        const emailSubject = generateEmailSubject(editableBusinessInfo.business_name, solution.name);
-        const emailBody = generateEmailBody(editableBusinessInfo, solution, userInfo);
-
-        const payload = {
-          user: userInfo,
+        // Generate enhanced placeholders for this solution
+        const placeholders = {
+          // Date/Time placeholders
+          year: new Date().getFullYear().toString(),
+          month: new Date().toLocaleDateString('en-AU', { month: 'long' }),
+          date: new Date().toLocaleDateString('en-AU', { 
+            year: 'numeric', 
+            month: 'long', 
+            day: 'numeric' 
+          }),
+          current_date: new Date().toLocaleDateString('en-AU'),
+          
+          // Business placeholders
           business_name: editableBusinessInfo.business_name,
+          contact_name: editableBusinessInfo.contact_name || "Business Owner",
+          company_name: editableBusinessInfo.business_name,
+          abn: editableBusinessInfo.abn || "",
+          trading_name: editableBusinessInfo.trading_as || editableBusinessInfo.business_name,
+          business_email: editableBusinessInfo.email || "",
+          business_phone: editableBusinessInfo.telephone || "",
+          business_website: editableBusinessInfo.website || "",
+          postal_address: editableBusinessInfo.postal_address || "",
+          site_address: editableBusinessInfo.site_address || "",
+          business_industry: editableBusinessInfo.industry || "",
+          
+          // Contact placeholders
+          client_name: editableBusinessInfo.contact_name || "Valued Client",
+          contact_position: editableBusinessInfo.position || "Business Owner",
+          contact_title: editableBusinessInfo.position 
+            ? `${editableBusinessInfo.contact_name}, ${editableBusinessInfo.position}` 
+            : editableBusinessInfo.contact_name || "Business Contact",
+          
+          // Solution placeholders
+          solution_name: solution.name,
+          solution_description: solution.description,
+          solution_category: categoryLabels[solution.category] || solution.category,
+          
+          // User/Presenter placeholders
+          presenter_name: userInfo.name,
+          presenter_email: userInfo.email,
+          
+          // Custom business-specific placeholders
+          proposal_title: `${solution.name} Strategy for ${editableBusinessInfo.business_name}`,
+          presentation_title: `${solution.name} - ${editableBusinessInfo.business_name}`,
+        };
+  
+        // Payload for Google Apps Script
+        const payload = {
           business_info: {
             business_name: editableBusinessInfo.business_name,
             contact_name: editableBusinessInfo.contact_name,
             email: editableBusinessInfo.email,
             industry: editableBusinessInfo.industry,
-            position: editableBusinessInfo.position
+            position: editableBusinessInfo.position,
+            abn: editableBusinessInfo.abn,
+            trading_as: editableBusinessInfo.trading_as,
+            postal_address: editableBusinessInfo.postal_address,
+            site_address: editableBusinessInfo.site_address,
+            telephone: editableBusinessInfo.telephone,
+            website: editableBusinessInfo.website,
+            client_folder_url: editableBusinessInfo.client_folder_url
           },
           solution_name: solution.name,
           solution_id: solution.id,
           presentation_id: solution.presentationId,
-          email_subject: emailSubject,
-          email_body: emailBody
+          placeholders: placeholders,
+          user: userInfo
         };
-
-        const response = await fetch("https://membersaces.app.n8n.cloud/webhook/email-individual-strategy", {
+  
+        const response = await fetch("https://script.google.com/macros/s/AKfycbxyH9xOa11ZpHQ1R5MWygNOLZRof9VfELR6Zq_ByKxnIUvrJL2VMWJhoXlzg2g_nmHO/exec", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload)
         });
-
+  
         if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.detail || error.message || `Request failed: ${response.statusText}`);
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
-
-        results.push({
-          solutionId: solution.id,
-          solutionName: solution.name,
-          success: true,
-          message: `✅ Individual strategy email sent successfully for ${solution.name}`
-        });
-
+  
+        const scriptResult = await response.json();
+  
+        if (scriptResult.success) {
+          // Now send the email with the generated presentation
+          const emailSubject = generateEmailSubject(editableBusinessInfo.business_name, solution.name);
+          const emailBody = generateEmailBody(editableBusinessInfo, solution, userInfo);
+  
+          const emailPayload = {
+            user: userInfo,
+            business_name: editableBusinessInfo.business_name,
+            business_info: {
+              business_name: editableBusinessInfo.business_name,
+              contact_name: editableBusinessInfo.contact_name,
+              email: editableBusinessInfo.email,
+              industry: editableBusinessInfo.industry,
+              position: editableBusinessInfo.position
+            },
+            solution_name: solution.name,
+            solution_id: solution.id,
+            presentation_id: solution.presentationId,
+            email_subject: emailSubject,
+            email_body: emailBody,
+            // Include the generated presentation/PDF URLs
+            generated_presentation_url: scriptResult.presentationUrl,
+            generated_pdf_url: scriptResult.pdfUrl,
+            generated_pdf_id: scriptResult.pdfId
+          };
+  
+          // Send email via your existing n8n webhook
+          const emailResponse = await fetch("https://membersaces.app.n8n.cloud/webhook/email-individual-strategy", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(emailPayload)
+          });
+  
+          if (!emailResponse.ok) {
+            const error = await emailResponse.json();
+            throw new Error(error.detail || error.message || `Email request failed: ${emailResponse.statusText}`);
+          }
+  
+          results.push({
+            solutionId: solution.id,
+            solutionName: solution.name,
+            success: true,
+            message: `✅ Individual strategy email sent successfully for ${solution.name}. PDF generated and attached.`
+          });
+        } else {
+          throw new Error(scriptResult.message || "Failed to generate presentation");
+        }
+  
       } catch (error: any) {
         results.push({
           solutionId: solution.id,
@@ -202,12 +308,20 @@ export default function IndividualStrategyEmailPage() {
         });
       }
     }
-
+  
     setEmailResults(results);
     setEmailLoading(false);
   };
+  
+  // Also add these placeholder examples to your UI for reference
+  const commonPlaceholders = [
+    "{year}", "{month}", "{date}", "{current_date}",
+    "{business_name}", "{contact_name}", "{company_name}", 
+    "{abn}", "{business_email}", "{business_phone}",
+    "{solution_name}", "{presenter_name}", "{presenter_email}",
+    "{proposal_title}", "{presentation_title}"
+  ];
 
-  // Available solution options
   const solutionOptions: SolutionOption[] = [
     // Sustainable Platform
     {
@@ -261,6 +375,24 @@ export default function IndividualStrategyEmailPage() {
       category: "ai_bots"
     },
     
+    // AI Automation Category
+    {
+      id: "phone_agent",
+      name: "Phone Agent",
+      description: "AI-powered phone agent for automated customer service and support",
+      presentationId: "13jOv5xfI-R2RYKPfjlRNLZmAiDeDl4rACikyp8NcmP8",
+      enabled: true,
+      category: "ai_automation"
+    },
+    {
+      id: "booking_digital_receptionist",
+      name: "Booking Digital Receptionist",
+      description: "Digital receptionist system for automated booking and appointment management",
+      presentationId: "1e3RfOAVz0ugegwSBUR2z8uVzqsQpFADgI1ZOgdK1sUY",
+      enabled: true,
+      category: "ai_automation"
+    },
+    
     // Event Referral
     {
       id: "event_referral",
@@ -295,6 +427,184 @@ export default function IndividualStrategyEmailPage() {
       presentationId: "1DOgFANIrqz7JuWMruM8LiHLx8OMqOrON0YchUozUpYQ",
       enabled: true,
       category: "profile_reset"
+    },
+    
+    // Renewable Energy Category
+    {
+      id: "solar_quote_review",
+      name: "Solar Quote Review & Recommendation",
+      description: "Comprehensive solar quote analysis and tailored recommendations",
+      presentationId: "1haUf3MWTvJBppJkbB6-khaGiDFhtlyAYhBD-_cvuVmQ",
+      enabled: true,
+      category: "renewable_energy"
+    },
+    {
+      id: "solar_farm",
+      name: "Solar Farm",
+      description: "Large-scale solar farm development and implementation solutions",
+      presentationId: "1AD4a5MTwnYl0_XqVULeyeoTAIfjCHuxGH_XRnN-LlLo",
+      enabled: true,
+      category: "renewable_energy"
+    },
+    {
+      id: "solar_car_park",
+      name: "Solar Car Park",
+      description: "Solar canopy solutions for car parks and parking structures",
+      presentationId: "12BixHi5UX0hZpIoAVQB79dqcFMiVTzwaa7nTHipWY1g",
+      enabled: true,
+      category: "renewable_energy"
+    },
+    {
+      id: "solar_rooftop",
+      name: "Solar Rooftop",
+      description: "Commercial and residential rooftop solar installation solutions",
+      presentationId: "1sDM8-1-XD8s_ciOUIKuIKG9WY5sbeWa8uds4ueyE0ig",
+      enabled: true,
+      category: "renewable_energy"
+    },
+    {
+      id: "solar_monitoring",
+      name: "Solar Monitoring",
+      description: "Advanced solar system monitoring and performance optimization",
+      presentationId: "1-CcTIPNfWGAB_ywWLdNUTC8oPFaiGmP3H2v8QUwAx1M",
+      enabled: true,
+      category: "renewable_energy"
+    },
+  
+    // NEW Resource Recovery Category
+    {
+      id: "cooking_used_oil",
+      name: "Cooking & Used Oil",
+      description: "Sustainable cooking and used oil recovery and processing solutions",
+      presentationId: "1NohfoE4Tck34V2uLWn9fvirW3peJKPUMqfmzE4CNLrg",
+      enabled: true,
+      category: "resource_recovery"
+    },
+    {
+      id: "baled_plastic_recycling",
+      name: "Baled Plastic Recycling",
+      description: "Comprehensive baled plastic recycling and processing systems",
+      presentationId: "190wilKqZQFoEgsvJ6ZKYRmm-fY5rnQda7g_KFI0546I",
+      enabled: true,
+      category: "resource_recovery"
+    },
+    {
+      id: "wood_offcut_recycling",
+      name: "Wood Offcut Recycling",
+      description: "Wood offcut collection, processing and recycling solutions",
+      presentationId: "1cjjlNBeFaUmhPuJo4k07shvCKch0NhtMqS4B4CLjrI0",
+      enabled: true,
+      category: "resource_recovery"
+    },
+    {
+      id: "glass_bottle_recycling",
+      name: "Glass Bottle Recycling",
+      description: "Glass bottle collection and recycling management systems",
+      presentationId: "1aECRrTGsaiW6_6fYjatP6nlhNND9QvsMAPQmI7V4D7Y",
+      enabled: true,
+      category: "resource_recovery"
+    },
+    {
+      id: "organic_waste_diversion",
+      name: "Organic Waste Diversion",
+      description: "Organic waste diversion and composting solutions",
+      presentationId: "1IVNC9JBlyfJ70TgduSiW2YyJ2y3opYyhstjI3FZTjqY",
+      enabled: true,
+      category: "resource_recovery"
+    },
+    {
+      id: "wax_cardboard",
+      name: "Wax Cardboard",
+      description: "Wax cardboard collection and specialized recycling processes",
+      presentationId: "1WSpo6Ayr6blkQytM6Axpf59fdLXplSqt9K11epQ8gsA",
+      enabled: true,
+      category: "resource_recovery"
+    },
+    {
+      id: "cardboard_bin_recycling",
+      name: "Cardboard Bin Recycling",
+      description: "Cardboard bin collection and recycling management",
+      presentationId: "1oZU7F0j3buEAA6E5Ji3NT9xLLhZCPaIOKqA1xGgZcsY",
+      enabled: true,
+      category: "resource_recovery"
+    },
+    {
+      id: "cardboard_bales_recycling",
+      name: "Cardboard Bales Recycling",
+      description: "Large-scale cardboard baling and recycling operations",
+      presentationId: "1_ixppvK1AkVorOrqyu8ghnezO5Xc0BD36RBTDRFHTr8",
+      enabled: true,
+      category: "resource_recovery"
+    },
+  
+    // NEW Asset Optimisation Category
+    {
+      id: "electricity_demand_response",
+      name: "Electricity Demand Response",
+      description: "Smart electricity demand response and grid optimization solutions",
+      presentationId: "1qN5fqOq-1VXkwO4nV9PFzaINEyjYZy1_nNPMnKi2Rio",
+      enabled: true,
+      category: "asset_optimisation"
+    },
+    {
+      id: "federal_government_incentives",
+      name: "Federal Government Incentives",
+      description: "Federal government sustainability and business incentive programs",
+      presentationId: "1Sp8T3yOKnNxgP3BGMTtCukM7TYMAQONqXuu3Lxw6GxM",
+      enabled: true,
+      category: "asset_optimisation"
+    },
+    {
+      id: "state_government_incentives",
+      name: "State Government Incentives",
+      description: "State-level government incentives and rebate programs",
+      presentationId: "1kOVzGHbKBjj7hty_K2I6OOw3LtvAYbh6lSzKfwUo5m0",
+      enabled: true,
+      category: "asset_optimisation"
+    },
+    {
+      id: "carbon_credit_offset",
+      name: "Australian Carbon Credit and Carbon Offset",
+      description: "Australian carbon credit generation and offset management",
+      presentationId: "1J0PuIWMgly8DqD6dAk46Fm7U1IU_EU_02PrvmD2rtbc",
+      enabled: true,
+      category: "asset_optimisation"
+    },
+    {
+      id: "renewable_certificates",
+      name: "Self-Managed Renewable Certificates",
+      description: "Self-managed renewable energy certificate trading and optimization",
+      presentationId: "1TB0Jz8Lc0qb4OJsOPp-UEqvek7_qpPG1dGDaKx8Cs-o",
+      enabled: true,
+      category: "asset_optimisation"
+    },
+  
+    // NEW Other Solutions Category
+    {
+      id: "backup_power_generators",
+      name: "Back-up Power Generators",
+      description: "Reliable backup power generation systems for business continuity",
+      presentationId: "1NogU72GNKHqs0LNIqmblsn9I2Fa36V6dzNoqh6PACUA",
+      enabled: true,
+      category: "other_solutions"
+    },
+    {
+      id: "door_curtain_refrigerator",
+      name: "Door Curtain Refrigerator",
+      description: "Energy-efficient door curtain refrigeration solutions",
+      presentationId: "1K87ZdSdlydCib0hdw7ax7XO0vAgY8dciy1KIpF5_B3I",
+      enabled: true,
+      category: "other_solutions"
+    },
+  
+    // NEW GHG Category
+    {
+      id: "ghg_reporting",
+      name: "GHG Reporting",
+      description: "Comprehensive greenhouse gas reporting and compliance solutions",
+      presentationId: "1c4LRa0OB6K8Dh0tCH5dr7JWWqUl4sG8LZSZPhEnjdo4",
+      enabled: true,
+      category: "ghg"
     }
   ];
 
@@ -506,11 +816,17 @@ export default function IndividualStrategyEmailPage() {
     return groups;
   }, {} as Record<string, SolutionOption[]>);
 
-  const categoryLabels = {
+  const categoryLabels: Record<SolutionCategory, string> = {
     platform: "🌱 Sustainable Platform",
     ai_bots: "🤖 AI Bots",
+    ai_automation: "⚡ AI Automation",
     referral: "📅 Event Referral",
-    profile_reset: "🔄 Profile Reset"
+    profile_reset: "🔄 Profile Reset",
+    renewable_energy: "☀️ Renewable Energy",
+    resource_recovery: "♻️ Resource Recovery",
+    asset_optimisation: "📈 Asset Optimisation",
+    other_solutions: "🔧 Other Solutions",
+    ghg: "🌍 GHG",
   };
   // Clear business info and start fresh
   const handleNewSearch = () => {
@@ -744,124 +1060,335 @@ export default function IndividualStrategyEmailPage() {
         </div>
       )}
 
-      {/* Solution Selection Section */}
-      {selectedBusiness && (
-        <div className="mb-8 p-6 bg-gray-50 rounded-lg">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold text-gray-800">2. Select Solutions</h2>
-            <div className="flex gap-2">
-              <button
-                onClick={expandAllCategories}
-                className="px-3 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors"
-              >
-                Expand All
-              </button>
-              <button
-                onClick={collapseAllCategories}
-                className="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors"
-              >
-                Collapse All
-              </button>
-            </div>
-          </div>
-          
-          {Object.entries(groupedSolutions).map(([category, solutions]) => {
-            const isExpanded = expandedCategories.includes(category);
-            const categoryCount = solutions.filter(s => selectedSolutions.includes(s.id)).length;
-            
-            return (
-              <div key={category} className="mb-4 border border-gray-200 rounded-lg bg-white">
-                <button
-                  onClick={() => toggleCategory(category)}
-                  className="w-full flex items-center justify-between p-4 text-left hover:bg-gray-50 transition-colors"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="text-lg font-medium text-gray-700">
-                      {categoryLabels[category as keyof typeof categoryLabels]}
-                    </span>
-                    <span className="text-sm text-gray-500">
-                      ({solutions.length} solutions)
-                    </span>
-                    {categoryCount > 0 && (
-                      <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">
-                        {categoryCount} selected
-                      </span>
-                    )}
-                  </div>
-                  <svg
-                    className={`w-5 h-5 text-gray-400 transition-transform ${
-                      isExpanded ? 'rotate-180' : ''
-                    }`}
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-                
-                {isExpanded && (
-                  <div className="border-t border-gray-200 p-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {solutions.map((solution) => (
-                        <div key={solution.id} className="flex items-start space-x-3 p-3 bg-gray-50 rounded border hover:bg-gray-100 transition-colors">
-                          <input
-                            type="checkbox"
-                            id={solution.id}
-                            checked={selectedSolutions.includes(solution.id)}
-                            onChange={() => handleSolutionToggle(solution.id)}
-                            disabled={!solution.enabled}
-                            className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                          />
-                          <div className="flex-1 min-w-0">
-                            <label htmlFor={solution.id} className="block text-sm font-medium text-gray-900 cursor-pointer">
-                              {solution.name}
-                            </label>
-                            <p className="text-xs text-gray-600 mt-1 line-clamp-2">{solution.description}</p>
-                            {!solution.enabled && (
-                              <p className="text-xs text-gray-400 mt-1">Coming soon...</p>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
+      {/* Solution Selection Section - IMPROVED */}
+{selectedBusiness && (
+  <div className="mb-8 p-6 bg-gray-50 rounded-lg">
+    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
+      <h2 className="text-xl font-semibold text-gray-800">2. Select Solutions</h2>
 
-          {selectedSolutions.length > 0 && (
-            <div className="mt-6 p-4 bg-blue-50 rounded border border-blue-200">
-              <div className="flex justify-between items-start mb-2">
-                <h4 className="font-medium text-blue-800">Selected Solutions ({selectedSolutions.length}):</h4>
-                <button
-                  onClick={() => setSelectedSolutions([])}
-                  className="text-xs text-blue-600 hover:text-blue-800 underline"
-                >
-                  Clear All
-                </button>
-              </div>
-              <div className="text-sm text-blue-700">
-                {selectedSolutions.map(solutionId => {
-                  const solution = solutionOptions.find(s => s.id === solutionId);
-                  return solution ? (
-                    <span key={solutionId} className="inline-flex items-center bg-blue-100 px-2 py-1 rounded text-xs mr-2 mb-1">
-                      {solution.name}
-                      <button
-                        onClick={() => handleSolutionToggle(solutionId)}
-                        className="ml-1 text-blue-600 hover:text-blue-800"
-                      >
-                        ×
-                      </button>
-                    </span>
-                  ) : null;
-                })}
-              </div>
-            </div>
-          )}
+      {/* Selected Solutions Summary */}
+      {selectedSolutions.length > 0 && (
+        <div className="flex items-center gap-4">
+          <span className="text-sm font-medium text-blue-700 bg-blue-100 px-3 py-1 rounded-full">
+            {selectedSolutions.length} solution{selectedSolutions.length !== 1 ? "s" : ""} selected
+          </span>
+          <button
+            onClick={() => setSelectedSolutions([])}
+            className="text-sm text-red-600 hover:text-red-800 flex items-center gap-1 hover:bg-red-50 px-2 py-1 rounded transition-colors"
+          >
+            ✕ Clear All
+          </button>
         </div>
       )}
+    </div>
+
+    {/* Filters and Controls */}
+    <div className="flex flex-col lg:flex-row gap-4 mb-6">
+      {/* Search */}
+      <div className="relative flex-1">
+        <svg
+          className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        </svg>
+        <input
+          type="text"
+          placeholder="Search solutions by name, description, or category..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+        />
+        {searchTerm && (
+          <button
+            onClick={() => setSearchTerm("")}
+            className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+          >
+            ✕
+          </button>
+        )}
+      </div>
+
+      {/* Category Filter */}
+      <select
+        value={selectedCategory}
+        onChange={(e) => setSelectedCategory(e.target.value)}
+        className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[200px]"
+      >
+        <option value="all">🌟 All Solutions</option>
+        {Object.entries(categoryLabels).map(([key, label]) => (
+          <option key={key} value={key}>
+            {label}
+          </option>
+        ))}
+      </select>
+
+      {/* View Toggle */}
+      <div className="flex items-center border border-gray-300 rounded-md overflow-hidden">
+        <button
+          onClick={() => setViewMode("grid")}
+          className={`px-3 py-2 flex items-center gap-2 text-sm transition-colors ${
+            viewMode === "grid"
+              ? "bg-blue-500 text-white"
+              : "bg-white text-gray-700 hover:bg-gray-50"
+          }`}
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h4v4H4V6zm6 0h4v4h-4V6zm6 0h4v4h-4V6zM4 16h4v4H4v-4zm6 0h4v4h-4v-4zm6 0h4v4h-4v-4z" />
+          </svg>
+          Grid
+        </button>
+        <button
+          onClick={() => setViewMode("list")}
+          className={`px-3 py-2 flex items-center gap-2 text-sm transition-colors ${
+            viewMode === "list"
+              ? "bg-blue-500 text-white"
+              : "bg-white text-gray-700 hover:bg-gray-50"
+          }`}
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+          List
+        </button>
+      </div>
+
+      {/* Show Only Selected */}
+      <button
+        onClick={() => setShowOnlySelected(!showOnlySelected)}
+        className={`px-4 py-2 rounded-md border flex items-center gap-2 text-sm transition-colors ${
+          showOnlySelected
+            ? "bg-blue-500 text-white border-blue-500"
+            : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+        }`}
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+        </svg>
+        Selected Only
+      </button>
+    </div>
+
+    {/* Filtered Solutions */}
+    {(() => {
+      const filteredSolutions = solutionOptions.filter((solution) => {
+        const matchesSearch =
+          searchTerm === "" ||
+          solution.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          solution.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          categoryLabels[solution.category]?.toLowerCase().includes(searchTerm.toLowerCase());
+
+        const matchesCategory = selectedCategory === "all" || solution.category === selectedCategory;
+        const matchesSelected = !showOnlySelected || selectedSolutions.includes(solution.id);
+
+        return matchesSearch && matchesCategory && matchesSelected;
+      });
+
+      const filteredGroupedSolutions = filteredSolutions.reduce((groups, solution) => {
+        const category = solution.category;
+        if (!groups[category]) groups[category] = [];
+        groups[category].push(solution);
+        return groups;
+      }, {} as Record<string, SolutionOption[]>);
+
+      if (filteredSolutions.length === 0) {
+        return (
+          <div className="text-center py-12 text-gray-500 bg-white rounded-lg border-2 border-dashed border-gray-200">
+            <p className="text-lg font-medium">No solutions found</p>
+            <p className="text-sm mt-1">
+              {searchTerm ? `No results for "${searchTerm}"` : "Try adjusting your filters"}
+            </p>
+          </div>
+        );
+      }
+
+      if (selectedCategory === "all") {
+        return (
+          <div className="space-y-4">
+            {Object.entries(filteredGroupedSolutions).map(([category, solutions]) => {
+              const isExpanded = expandedCategories.includes(category);
+              const categoryCount = solutions.filter((s) => selectedSolutions.includes(s.id)).length;
+
+              return (
+                <div key={category} className="border border-gray-200 rounded-lg bg-white">
+                  <button
+                    onClick={() => toggleCategory(category)}
+                    className="w-full flex items-center justify-between p-4 text-left hover:bg-gray-50 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-lg font-medium text-gray-700">
+                        {categoryLabels[category as keyof typeof categoryLabels]}
+                      </span>
+                      <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+                        {solutions.length} solution{solutions.length !== 1 ? "s" : ""}
+                      </span>
+                      {categoryCount > 0 && (
+                        <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full font-medium">
+                          {categoryCount} selected
+                        </span>
+                      )}
+                    </div>
+                    <svg
+                      className={`w-5 h-5 text-gray-400 transition-transform ${
+                        isExpanded ? "rotate-180" : ""
+                      }`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+
+                  {isExpanded && (
+                    <div className="border-t border-gray-200 p-4">
+                      <div
+                        className={
+                          viewMode === "grid"
+                            ? "grid grid-cols-1 md:grid-cols-2 gap-4"
+                            : "space-y-2"
+                        }
+                      >
+                        {solutions.map((solution) => (
+                          <div
+                            key={solution.id}
+                            className={`${viewMode === "list" ? "flex items-center p-3" : "p-4"} border rounded-lg transition-all duration-200 hover:shadow-md cursor-pointer ${
+                              selectedSolutions.includes(solution.id)
+                                ? "border-blue-500 bg-blue-50 shadow-sm"
+                                : "border-gray-200 bg-white hover:border-gray-300"
+                            }`}
+                            onClick={() => handleSolutionToggle(solution.id)}
+                          >
+                            <div className="flex items-start space-x-3">
+                              <div className="flex-shrink-0 mt-1">
+                                <div
+                                  className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                                    selectedSolutions.includes(solution.id)
+                                      ? "bg-blue-500 border-blue-500"
+                                      : "border-gray-300 hover:border-blue-400"
+                                  }`}
+                                >
+                                  {selectedSolutions.includes(solution.id) && (
+                                    <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                    </svg>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <h4 className="font-medium text-gray-900">{solution.name}</h4>
+                                <p className="text-sm text-gray-600 mt-1 line-clamp-2">
+                                  {solution.description}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        );
+      }
+
+      return (
+        <div
+          className={
+            viewMode === "grid"
+              ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+              : "space-y-2"
+          }
+        >
+          {filteredSolutions.map((solution) => (
+            <div
+              key={solution.id}
+              className={`${viewMode === "list" ? "flex items-center p-3" : "p-4"} border rounded-lg transition-all duration-200 hover:shadow-md cursor-pointer ${
+                selectedSolutions.includes(solution.id)
+                  ? "border-blue-500 bg-blue-50 shadow-sm"
+                  : "border-gray-200 bg-white hover:border-gray-300"
+              }`}
+              onClick={() => handleSolutionToggle(solution.id)}
+            >
+              <div className="flex items-start space-x-3">
+                <div className="flex-shrink-0 mt-1">
+                  <div
+                    className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                      selectedSolutions.includes(solution.id)
+                        ? "bg-blue-500 border-blue-500"
+                        : "border-gray-300 hover:border-blue-400"
+                    }`}
+                  >
+                    {selectedSolutions.includes(solution.id) && (
+                      <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                  </div>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h4 className="font-medium text-gray-900">{solution.name}</h4>
+                  <p className="text-sm text-gray-600 mt-1 line-clamp-2">
+                    {solution.description}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+    })()}
+
+    {/* Quick Selection Summary */}
+    {selectedSolutions.length > 0 && (
+      <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+        <div className="flex justify-between items-start mb-3">
+          <h4 className="font-medium text-blue-800">📋 Selected Solutions ({selectedSolutions.length})</h4>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowOnlySelected(!showOnlySelected)}
+              className="text-xs text-blue-600 hover:text-blue-800 underline"
+            >
+              {showOnlySelected ? "Show All" : "Show Selected Only"}
+            </button>
+            <button
+              onClick={() => setSelectedSolutions([])}
+              className="text-xs text-red-600 hover:text-red-800 underline"
+            >
+              Clear All
+            </button>
+          </div>
+        </div>
+        <div className="text-sm text-blue-700 flex flex-wrap gap-2">
+          {selectedSolutions.map((solutionId) => {
+            const solution = solutionOptions.find((s) => s.id === solutionId);
+            return solution ? (
+              <span
+                key={solutionId}
+                className="inline-flex items-center bg-blue-100 px-3 py-1 rounded-full text-xs"
+              >
+                {solution.name}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleSolutionToggle(solutionId);
+                  }}
+                  className="ml-2 text-blue-600 hover:text-blue-800 font-bold"
+                >
+                  ×
+                </button>
+              </span>
+            ) : null;
+          })}
+        </div>
+      </div>
+    )}
+  </div>
+)}
 
       {/* Send Individual Strategy Emails Section */}
       {selectedBusiness && selectedSolutions.length > 0 && (
