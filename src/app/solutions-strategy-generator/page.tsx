@@ -140,59 +140,149 @@ export default function IndividualStrategyEmailPage() {
       }]);
       return;
     }
-
+  
     setEmailLoading(true);
     setEmailResults([]);
-
+  
     const results: EmailResult[] = [];
     const userInfo = {
       name: (session as any)?.user?.name || "",
       email: (session as any)?.user?.email || ""
     };
-
+  
     for (const solutionId of selectedSolutions) {
       const solution = solutionOptions.find(s => s.id === solutionId);
       if (!solution) continue;
-
+  
       try {
-        const emailSubject = generateEmailSubject(editableBusinessInfo.business_name, solution.name);
-        const emailBody = generateEmailBody(editableBusinessInfo, solution, userInfo);
-
-        const payload = {
-          user: userInfo,
+        // Generate enhanced placeholders for this solution
+        const placeholders = {
+          // Date/Time placeholders
+          year: new Date().getFullYear().toString(),
+          month: new Date().toLocaleDateString('en-AU', { month: 'long' }),
+          date: new Date().toLocaleDateString('en-AU', { 
+            year: 'numeric', 
+            month: 'long', 
+            day: 'numeric' 
+          }),
+          current_date: new Date().toLocaleDateString('en-AU'),
+          
+          // Business placeholders
           business_name: editableBusinessInfo.business_name,
+          contact_name: editableBusinessInfo.contact_name || "Business Owner",
+          company_name: editableBusinessInfo.business_name,
+          abn: editableBusinessInfo.abn || "",
+          trading_name: editableBusinessInfo.trading_as || editableBusinessInfo.business_name,
+          business_email: editableBusinessInfo.email || "",
+          business_phone: editableBusinessInfo.telephone || "",
+          business_website: editableBusinessInfo.website || "",
+          postal_address: editableBusinessInfo.postal_address || "",
+          site_address: editableBusinessInfo.site_address || "",
+          business_industry: editableBusinessInfo.industry || "",
+          
+          // Contact placeholders
+          client_name: editableBusinessInfo.contact_name || "Valued Client",
+          contact_position: editableBusinessInfo.position || "Business Owner",
+          contact_title: editableBusinessInfo.position 
+            ? `${editableBusinessInfo.contact_name}, ${editableBusinessInfo.position}` 
+            : editableBusinessInfo.contact_name || "Business Contact",
+          
+          // Solution placeholders
+          solution_name: solution.name,
+          solution_description: solution.description,
+          solution_category: categoryLabels[solution.category] || solution.category,
+          
+          // User/Presenter placeholders
+          presenter_name: userInfo.name,
+          presenter_email: userInfo.email,
+          
+          // Custom business-specific placeholders
+          proposal_title: `${solution.name} Strategy for ${editableBusinessInfo.business_name}`,
+          presentation_title: `${solution.name} - ${editableBusinessInfo.business_name}`,
+        };
+  
+        // Payload for Google Apps Script
+        const payload = {
           business_info: {
             business_name: editableBusinessInfo.business_name,
             contact_name: editableBusinessInfo.contact_name,
             email: editableBusinessInfo.email,
             industry: editableBusinessInfo.industry,
-            position: editableBusinessInfo.position
+            position: editableBusinessInfo.position,
+            abn: editableBusinessInfo.abn,
+            trading_as: editableBusinessInfo.trading_as,
+            postal_address: editableBusinessInfo.postal_address,
+            site_address: editableBusinessInfo.site_address,
+            telephone: editableBusinessInfo.telephone,
+            website: editableBusinessInfo.website,
+            client_folder_url: editableBusinessInfo.client_folder_url
           },
           solution_name: solution.name,
           solution_id: solution.id,
           presentation_id: solution.presentationId,
-          email_subject: emailSubject,
-          email_body: emailBody
+          placeholders: placeholders,
+          user: userInfo
         };
-
-        const response = await fetch("https://membersaces.app.n8n.cloud/webhook/email-individual-strategy", {
+  
+        const response = await fetch("https://script.google.com/macros/s/AKfycbxyH9xOa11ZpHQ1R5MWygNOLZRof9VfELR6Zq_ByKxnIUvrJL2VMWJhoXlzg2g_nmHO/exec", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload)
         });
-
+  
         if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.detail || error.message || `Request failed: ${response.statusText}`);
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
-
-        results.push({
-          solutionId: solution.id,
-          solutionName: solution.name,
-          success: true,
-          message: `✅ Individual strategy email sent successfully for ${solution.name}`
-        });
-
+  
+        const scriptResult = await response.json();
+  
+        if (scriptResult.success) {
+          // Now send the email with the generated presentation
+          const emailSubject = generateEmailSubject(editableBusinessInfo.business_name, solution.name);
+          const emailBody = generateEmailBody(editableBusinessInfo, solution, userInfo);
+  
+          const emailPayload = {
+            user: userInfo,
+            business_name: editableBusinessInfo.business_name,
+            business_info: {
+              business_name: editableBusinessInfo.business_name,
+              contact_name: editableBusinessInfo.contact_name,
+              email: editableBusinessInfo.email,
+              industry: editableBusinessInfo.industry,
+              position: editableBusinessInfo.position
+            },
+            solution_name: solution.name,
+            solution_id: solution.id,
+            presentation_id: solution.presentationId,
+            email_subject: emailSubject,
+            email_body: emailBody,
+            // Include the generated presentation/PDF URLs
+            generated_presentation_url: scriptResult.presentationUrl,
+            generated_pdf_url: scriptResult.pdfUrl,
+            generated_pdf_id: scriptResult.pdfId
+          };
+  
+          // Send email via your existing n8n webhook
+          const emailResponse = await fetch("https://membersaces.app.n8n.cloud/webhook/email-individual-strategy", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(emailPayload)
+          });
+  
+          if (!emailResponse.ok) {
+            const error = await emailResponse.json();
+            throw new Error(error.detail || error.message || `Email request failed: ${emailResponse.statusText}`);
+          }
+  
+          results.push({
+            solutionId: solution.id,
+            solutionName: solution.name,
+            success: true,
+            message: `✅ Individual strategy email sent successfully for ${solution.name}. PDF generated and attached.`
+          });
+        } else {
+          throw new Error(scriptResult.message || "Failed to generate presentation");
+        }
+  
       } catch (error: any) {
         results.push({
           solutionId: solution.id,
@@ -202,12 +292,20 @@ export default function IndividualStrategyEmailPage() {
         });
       }
     }
-
+  
     setEmailResults(results);
     setEmailLoading(false);
   };
+  
+  // Also add these placeholder examples to your UI for reference
+  const commonPlaceholders = [
+    "{year}", "{month}", "{date}", "{current_date}",
+    "{business_name}", "{contact_name}", "{company_name}", 
+    "{abn}", "{business_email}", "{business_phone}",
+    "{solution_name}", "{presenter_name}", "{presenter_email}",
+    "{proposal_title}", "{presentation_title}"
+  ];
 
-  // Available solution options
   const solutionOptions: SolutionOption[] = [
     // Sustainable Platform
     {
@@ -261,6 +359,24 @@ export default function IndividualStrategyEmailPage() {
       category: "ai_bots"
     },
     
+    // AI Automation Category
+    {
+      id: "phone_agent",
+      name: "Phone Agent",
+      description: "AI-powered phone agent for automated customer service and support",
+      presentationId: "13jOv5xfI-R2RYKPfjlRNLZmAiDeDl4rACikyp8NcmP8",
+      enabled: true,
+      category: "ai_automation"
+    },
+    {
+      id: "booking_digital_receptionist",
+      name: "Booking Digital Receptionist",
+      description: "Digital receptionist system for automated booking and appointment management",
+      presentationId: "1e3RfOAVz0ugegwSBUR2z8uVzqsQpFADgI1ZOgdK1sUY",
+      enabled: true,
+      category: "ai_automation"
+    },
+    
     // Event Referral
     {
       id: "event_referral",
@@ -295,6 +411,184 @@ export default function IndividualStrategyEmailPage() {
       presentationId: "1DOgFANIrqz7JuWMruM8LiHLx8OMqOrON0YchUozUpYQ",
       enabled: true,
       category: "profile_reset"
+    },
+    
+    // Renewable Energy Category
+    {
+      id: "solar_quote_review",
+      name: "Solar Quote Review & Recommendation",
+      description: "Comprehensive solar quote analysis and tailored recommendations",
+      presentationId: "1haUf3MWTvJBppJkbB6-khaGiDFhtlyAYhBD-_cvuVmQ",
+      enabled: true,
+      category: "renewable_energy"
+    },
+    {
+      id: "solar_farm",
+      name: "Solar Farm",
+      description: "Large-scale solar farm development and implementation solutions",
+      presentationId: "1AD4a5MTwnYl0_XqVULeyeoTAIfjCHuxGH_XRnN-LlLo",
+      enabled: true,
+      category: "renewable_energy"
+    },
+    {
+      id: "solar_car_park",
+      name: "Solar Car Park",
+      description: "Solar canopy solutions for car parks and parking structures",
+      presentationId: "12BixHi5UX0hZpIoAVQB79dqcFMiVTzwaa7nTHipWY1g",
+      enabled: true,
+      category: "renewable_energy"
+    },
+    {
+      id: "solar_rooftop",
+      name: "Solar Rooftop",
+      description: "Commercial and residential rooftop solar installation solutions",
+      presentationId: "1sDM8-1-XD8s_ciOUIKuIKG9WY5sbeWa8uds4ueyE0ig",
+      enabled: true,
+      category: "renewable_energy"
+    },
+    {
+      id: "solar_monitoring",
+      name: "Solar Monitoring",
+      description: "Advanced solar system monitoring and performance optimization",
+      presentationId: "1-CcTIPNfWGAB_ywWLdNUTC8oPFaiGmP3H2v8QUwAx1M",
+      enabled: true,
+      category: "renewable_energy"
+    },
+  
+    // NEW Resource Recovery Category
+    {
+      id: "cooking_used_oil",
+      name: "Cooking & Used Oil",
+      description: "Sustainable cooking and used oil recovery and processing solutions",
+      presentationId: "1NohfoE4Tck34V2uLWn9fvirW3peJKPUMqfmzE4CNLrg",
+      enabled: true,
+      category: "resource_recovery"
+    },
+    {
+      id: "baled_plastic_recycling",
+      name: "Baled Plastic Recycling",
+      description: "Comprehensive baled plastic recycling and processing systems",
+      presentationId: "190wilKqZQFoEgsvJ6ZKYRmm-fY5rnQda7g_KFI0546I",
+      enabled: true,
+      category: "resource_recovery"
+    },
+    {
+      id: "wood_offcut_recycling",
+      name: "Wood Offcut Recycling",
+      description: "Wood offcut collection, processing and recycling solutions",
+      presentationId: "1cjjlNBeFaUmhPuJo4k07shvCKch0NhtMqS4B4CLjrI0",
+      enabled: true,
+      category: "resource_recovery"
+    },
+    {
+      id: "glass_bottle_recycling",
+      name: "Glass Bottle Recycling",
+      description: "Glass bottle collection and recycling management systems",
+      presentationId: "1aECRrTGsaiW6_6fYjatP6nlhNND9QvsMAPQmI7V4D7Y",
+      enabled: true,
+      category: "resource_recovery"
+    },
+    {
+      id: "organic_waste_diversion",
+      name: "Organic Waste Diversion",
+      description: "Organic waste diversion and composting solutions",
+      presentationId: "1IVNC9JBlyfJ70TgduSiW2YyJ2y3opYyhstjI3FZTjqY",
+      enabled: true,
+      category: "resource_recovery"
+    },
+    {
+      id: "wax_cardboard",
+      name: "Wax Cardboard",
+      description: "Wax cardboard collection and specialized recycling processes",
+      presentationId: "1WSpo6Ayr6blkQytM6Axpf59fdLXplSqt9K11epQ8gsA",
+      enabled: true,
+      category: "resource_recovery"
+    },
+    {
+      id: "cardboard_bin_recycling",
+      name: "Cardboard Bin Recycling",
+      description: "Cardboard bin collection and recycling management",
+      presentationId: "1oZU7F0j3buEAA6E5Ji3NT9xLLhZCPaIOKqA1xGgZcsY",
+      enabled: true,
+      category: "resource_recovery"
+    },
+    {
+      id: "cardboard_bales_recycling",
+      name: "Cardboard Bales Recycling",
+      description: "Large-scale cardboard baling and recycling operations",
+      presentationId: "1_ixppvK1AkVorOrqyu8ghnezO5Xc0BD36RBTDRFHTr8",
+      enabled: true,
+      category: "resource_recovery"
+    },
+  
+    // NEW Asset Optimisation Category
+    {
+      id: "electricity_demand_response",
+      name: "Electricity Demand Response",
+      description: "Smart electricity demand response and grid optimization solutions",
+      presentationId: "1qN5fqOq-1VXkwO4nV9PFzaINEyjYZy1_nNPMnKi2Rio",
+      enabled: true,
+      category: "asset_optimisation"
+    },
+    {
+      id: "federal_government_incentives",
+      name: "Federal Government Incentives",
+      description: "Federal government sustainability and business incentive programs",
+      presentationId: "1Sp8T3yOKnNxgP3BGMTtCukM7TYMAQONqXuu3Lxw6GxM",
+      enabled: true,
+      category: "asset_optimisation"
+    },
+    {
+      id: "state_government_incentives",
+      name: "State Government Incentives",
+      description: "State-level government incentives and rebate programs",
+      presentationId: "1kOVzGHbKBjj7hty_K2I6OOw3LtvAYbh6lSzKfwUo5m0",
+      enabled: true,
+      category: "asset_optimisation"
+    },
+    {
+      id: "carbon_credit_offset",
+      name: "Australian Carbon Credit and Carbon Offset",
+      description: "Australian carbon credit generation and offset management",
+      presentationId: "1J0PuIWMgly8DqD6dAk46Fm7U1IU_EU_02PrvmD2rtbc",
+      enabled: true,
+      category: "asset_optimisation"
+    },
+    {
+      id: "renewable_certificates",
+      name: "Self-Managed Renewable Certificates",
+      description: "Self-managed renewable energy certificate trading and optimization",
+      presentationId: "1TB0Jz8Lc0qb4OJsOPp-UEqvek7_qpPG1dGDaKx8Cs-o",
+      enabled: true,
+      category: "asset_optimisation"
+    },
+  
+    // NEW Other Solutions Category
+    {
+      id: "backup_power_generators",
+      name: "Back-up Power Generators",
+      description: "Reliable backup power generation systems for business continuity",
+      presentationId: "1NogU72GNKHqs0LNIqmblsn9I2Fa36V6dzNoqh6PACUA",
+      enabled: true,
+      category: "other_solutions"
+    },
+    {
+      id: "door_curtain_refrigerator",
+      name: "Door Curtain Refrigerator",
+      description: "Energy-efficient door curtain refrigeration solutions",
+      presentationId: "1K87ZdSdlydCib0hdw7ax7XO0vAgY8dciy1KIpF5_B3I",
+      enabled: true,
+      category: "other_solutions"
+    },
+  
+    // NEW GHG Category
+    {
+      id: "ghg_reporting",
+      name: "GHG Reporting",
+      description: "Comprehensive greenhouse gas reporting and compliance solutions",
+      presentationId: "1c4LRa0OB6K8Dh0tCH5dr7JWWqUl4sG8LZSZPhEnjdo4",
+      enabled: true,
+      category: "ghg"
     }
   ];
 
@@ -509,8 +803,14 @@ export default function IndividualStrategyEmailPage() {
   const categoryLabels = {
     platform: "🌱 Sustainable Platform",
     ai_bots: "🤖 AI Bots",
+    ai_automation: "⚡ AI Automation",
     referral: "📅 Event Referral",
-    profile_reset: "🔄 Profile Reset"
+    profile_reset: "🔄 Profile Reset",
+    renewable_energy: "☀️ Renewable Energy",
+    resource_recovery: "♻️ Resource Recovery",
+    asset_optimisation: "📈 Asset Optimisation",
+    other_solutions: "🔧 Other Solutions",
+    ghg: "🌍 GHG"
   };
   // Clear business info and start fresh
   const handleNewSearch = () => {
