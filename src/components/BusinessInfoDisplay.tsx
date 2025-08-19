@@ -550,7 +550,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility }: BusinessInf
                       window.open(url, '_blank');
                     }}
                   >
-                    Invoice Data
+                    Utility Account Information
                   </button>
                   {tool !== "robot" && (
                     <button
