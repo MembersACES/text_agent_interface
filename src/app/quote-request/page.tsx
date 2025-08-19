@@ -25,6 +25,21 @@ export default function QuoteRequestPage() {
   const [intervalLoading, setIntervalLoading] = useState(false);
   const [intervalError, setIntervalError] = useState<string | null>(null);
 
+  // Quote details state
+  const [quoteDetails, setQuoteDetails] = useState({
+    quoteType: '',
+    commission: '0',
+    startDate: '',
+    offerDue: '',
+    yearlyPeakEst: '',
+    yearlyShoulderEst: '',
+    yearlyOffPeakEst: '',
+    yearlyConsumptionEst: ''
+  });
+
+  // Modal state
+  const [showSummaryModal, setShowSummaryModal] = useState(false);
+
   // grab from URL
   const businessInfoRaw = searchParams.get("businessInfo");
   const utility = searchParams.get("utility");
@@ -240,6 +255,224 @@ export default function QuoteRequestPage() {
     } finally {
       setIntervalLoading(false);
     }
+  };
+
+  // Calculate yearly estimates from interval data or invoice data
+  const calculateYearlyEstimates = () => {
+    console.log('=== Calculating Yearly Estimates ===');
+    
+    // First try to use interval data if available
+    if (intervalData && Array.isArray(intervalData) && intervalData.length > 0) {
+      const latestData = intervalData[0];
+      console.log('Using interval data:', latestData);
+      
+      if (latestData["Total kWh"]) {
+        const totalKwh = parseFloat(latestData["Total kWh"]);
+        
+        // Try to get peak/off-peak splits from invoice data
+        let peakPercent = 0.6; // default fallback
+        let shoulderPercent = 0.0; // default fallback  
+        let offPeakPercent = 0.4; // default fallback
+        
+        // Look for usage splits in utility result
+        if (utilityResult) {
+          for (const [key, value] of Object.entries(utilityResult)) {
+            if (typeof value === 'object' && value !== null) {
+              try {
+                const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+                
+                // Look for peak/off-peak quantities in invoice
+                const peakQty = parsed.retail_quantity_peak_kwh || parsed.peak_kwh || parsed["Peak kWh"];
+                const shoulderQty = parsed.retail_quantity_shoulder_kwh || parsed.shoulder_kwh || parsed["Shoulder kWh"] || 0;
+                const offPeakQty = parsed.retail_quantity_off_peak_kwh || parsed.off_peak_kwh || parsed["Off Peak kWh"];
+                
+                if (peakQty && offPeakQty) {
+                  const total = parseFloat(peakQty) + parseFloat(shoulderQty || 0) + parseFloat(offPeakQty);
+                  if (total > 0) {
+                    peakPercent = parseFloat(peakQty) / total;
+                    shoulderPercent = parseFloat(shoulderQty || 0) / total;
+                    offPeakPercent = parseFloat(offPeakQty) / total;
+                    console.log('Found invoice splits:', { peakPercent, shoulderPercent, offPeakPercent });
+                  }
+                }
+              } catch (e) {
+                // Skip if not parseable
+              }
+            }
+          }
+        }
+        
+        const result = {
+          yearlyPeakEst: Math.round(totalKwh * peakPercent).toString(),
+          yearlyShoulderEst: Math.round(totalKwh * shoulderPercent).toString(),
+          yearlyOffPeakEst: Math.round(totalKwh * offPeakPercent).toString(),
+          yearlyConsumptionEst: Math.round(totalKwh).toString()
+        };
+        console.log('Interval data result:', result);
+        return result;
+      }
+    }
+    
+    // Fallback to invoice data extrapolation
+    console.log('Using invoice data extrapolation');
+    console.log('Available utility data:', utilityResult);
+    
+    if (utilityResult) {
+      for (const [key, value] of Object.entries(utilityResult)) {
+        console.log(`Checking key: ${key}`, value);
+        
+        if (typeof value === 'object' && value !== null) {
+          try {
+            const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+            console.log('Parsed object:', parsed);
+            
+            // Look for invoice review period to determine days
+            const invoiceReviewPeriod = parsed.invoice_review_period || parsed["Invoice Review Period"];
+            let numberOfDays = 30; // default fallback
+            
+            if (invoiceReviewPeriod) {
+              console.log('Found invoice review period:', invoiceReviewPeriod);
+              
+              // Try to extract number of days from period string
+              // Examples: "30/07/2022- 30/08/2022 31 Days", "01/06/2022 - 30/06/2022 (30 days)"
+              const daysMatch = invoiceReviewPeriod.match(/(\d+)\s*days?/i);
+              if (daysMatch) {
+                numberOfDays = parseInt(daysMatch[1]);
+                console.log('Extracted days from period:', numberOfDays);
+              } else {
+                // Try to calculate from date range if no explicit days mentioned
+                const dateMatches = invoiceReviewPeriod.match(/(\d{2}\/\d{2}\/\d{4})/g);
+                if (dateMatches && dateMatches.length >= 2) {
+                  try {
+                    const startDate = new Date(dateMatches[0].split('/').reverse().join('-'));
+                    const endDate = new Date(dateMatches[1].split('/').reverse().join('-'));
+                    const timeDiff = endDate.getTime() - startDate.getTime();
+                    numberOfDays = Math.ceil(timeDiff / (1000 * 3600 * 24)) + 1; // +1 to include both start and end dates
+                    console.log('Calculated days from date range:', numberOfDays);
+                  } catch (e) {
+                    console.log('Could not parse dates, using default 30 days');
+                  }
+                }
+              }
+            }
+            
+            // Look for usage amount
+            const usageAmount = parsed.monthly_usage || parsed["Monthly Usage"] || parsed.usage_kwh || parsed["Usage kWh"] || parsed.total_kwh || parsed["Total kWh"];
+            
+            if (usageAmount) {
+              console.log(`Found usage: ${usageAmount} kWh over ${numberOfDays} days`);
+              
+              const dailyUsage = parseFloat(usageAmount) / numberOfDays;
+              const annualUsage = dailyUsage * 365;
+              
+              console.log(`Daily usage: ${dailyUsage.toFixed(2)} kWh/day`);
+              console.log(`Annual usage: ${annualUsage.toFixed(0)} kWh/year`);
+              
+              // Look for peak/off-peak splits
+              const peakQty = parsed.retail_quantity_peak_kwh || parsed.peak_kwh || parsed["Peak kWh"];
+              const shoulderQty = parsed.retail_quantity_shoulder_kwh || parsed.shoulder_kwh || parsed["Shoulder kWh"] || 0;
+              const offPeakQty = parsed.retail_quantity_off_peak_kwh || parsed.off_peak_kwh || parsed["Off Peak kWh"];
+              
+              let annualPeak, annualShoulder, annualOffPeak;
+              
+              if (peakQty && offPeakQty) {
+                // Use actual splits if available - also convert to daily then annual
+                const dailyPeak = parseFloat(peakQty) / numberOfDays;
+                const dailyShoulder = parseFloat(shoulderQty || 0) / numberOfDays;
+                const dailyOffPeak = parseFloat(offPeakQty) / numberOfDays;
+                
+                annualPeak = dailyPeak * 365;
+                annualShoulder = dailyShoulder * 365;
+                annualOffPeak = dailyOffPeak * 365;
+                
+                console.log('Using actual splits converted to daily then annual:', { 
+                  dailyPeak: dailyPeak.toFixed(2), 
+                  dailyShoulder: dailyShoulder.toFixed(2), 
+                  dailyOffPeak: dailyOffPeak.toFixed(2),
+                  annualPeak: annualPeak.toFixed(0),
+                  annualShoulder: annualShoulder.toFixed(0),
+                  annualOffPeak: annualOffPeak.toFixed(0)
+                });
+              } else {
+                // Use percentage splits if no actual splits found
+                annualPeak = annualUsage * 0.6;
+                annualShoulder = 0;
+                annualOffPeak = annualUsage * 0.4;
+                console.log('Using percentage splits (60/40) on annual usage');
+              }
+              
+              const result = {
+                yearlyPeakEst: Math.round(annualPeak).toString(),
+                yearlyShoulderEst: Math.round(annualShoulder).toString(),
+                yearlyOffPeakEst: Math.round(annualOffPeak).toString(),
+                yearlyConsumptionEst: Math.round(annualUsage).toString()
+              };
+              console.log('Invoice extrapolation result:', result);
+              return result;
+            }
+          } catch (e) {
+            console.log('Error parsing:', e);
+          }
+        }
+      }
+    }
+    
+    // Final fallback to default values
+    console.log('Using fallback default values');
+    return {
+      yearlyPeakEst: '381091',
+      yearlyShoulderEst: '0',
+      yearlyOffPeakEst: '246974',
+      yearlyConsumptionEst: '628065'
+    };
+  };
+
+  // Update quote details when interval data or utility data changes
+  useEffect(() => {
+    if ((intervalData || Object.keys(utilityResult).length > 0) && !loading) {
+      const estimates = calculateYearlyEstimates();
+      setQuoteDetails(prev => {
+        // Only update if values actually changed to prevent infinite loop
+        if (prev.yearlyPeakEst !== estimates.yearlyPeakEst || 
+            prev.yearlyShoulderEst !== estimates.yearlyShoulderEst ||
+            prev.yearlyOffPeakEst !== estimates.yearlyOffPeakEst ||
+            prev.yearlyConsumptionEst !== estimates.yearlyConsumptionEst) {
+          return {
+            ...prev,
+            ...estimates
+          };
+        }
+        return prev;
+      });
+    }
+  }, [intervalData, utilityResult, loading]);
+
+  const handleQuoteDetailsChange = (key: string, value: string) => {
+    setQuoteDetails({ ...quoteDetails, [key]: value });
+  };
+
+  // Handle send quote request
+  const handleSendQuoteRequest = () => {
+    console.log('Business Info for modal:', businessInfo);
+    setShowSummaryModal(true);
+  };
+
+  // Get attachment status
+  const getAttachmentStatus = () => {
+    const hasLOA = !!businessInfo.loaLink;
+    const hasInvoice = !!getInvoiceLink();
+    const hasIntervalData = !!getIntervalDataLink();
+    
+    return {
+      hasLOA,
+      hasInvoice,
+      hasIntervalData,
+      attachmentSummary: [
+        hasLOA ? "Letter of Authority" : null,
+        hasInvoice ? "Recent Invoice" : null,
+        hasIntervalData ? "Interval Data" : null
+      ].filter(Boolean).join(", ") || "No attachments"
+    };
   };
 
   // Handle interval data section toggle
@@ -636,6 +869,131 @@ export default function QuoteRequestPage() {
               </ul>
             </div>
           </div>
+          
+          {/* Quote Details */}
+          <div className="p-6 border-b">
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">Quote Details</h2>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Quote Details */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Quote Details
+                </label>
+                <select 
+                  value={quoteDetails.quoteType}
+                  onChange={(e) => handleQuoteDetailsChange('quoteType', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select quote type...</option>
+                  <option value="3_year_stepped">3 year Stepped</option>
+                  <option value="3_year_smoothed">3 year Smoothed</option>
+                  <option value="3_year_stepped_smoothed">3 year Stepped and Smoothed</option>
+                </select>
+              </div>
+
+              {/* Commission */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Commission
+                </label>
+                <select 
+                  value={quoteDetails.commission}
+                  onChange={(e) => handleQuoteDetailsChange('commission', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="0">0</option>
+                  <option value="3%">3%</option>
+                  <option value="$3.33 / mWh">$3.33 / mWh</option>
+                </select>
+              </div>
+
+              {/* Start Date */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Start Date
+                </label>
+                <input
+                  type="date"
+                  value={quoteDetails.startDate}
+                  onChange={(e) => handleQuoteDetailsChange('startDate', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              {/* Offer Due */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Offer Due?
+                </label>
+                <input
+                  type="date"
+                  value={quoteDetails.offerDue}
+                  onChange={(e) => handleQuoteDetailsChange('offerDue', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+
+            {/* Usage Estimates */}
+            <div className="mt-6">
+              <h3 className="text-lg font-medium text-gray-900 mb-4">
+                Usage Estimates 
+                <span className="text-sm font-normal text-gray-600 ml-2">
+                  (Auto-calculated from {intervalData && Array.isArray(intervalData) && intervalData.length > 0 && intervalData[0]["Total kWh"] ? 'interval data' : 'invoice data'})
+                </span>
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Yearly Peak Est
+                  </label>
+                  <input
+                    type="number"
+                    value={quoteDetails.yearlyPeakEst}
+                    onChange={(e) => handleQuoteDetailsChange('yearlyPeakEst', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Yearly Shoulder Est
+                  </label>
+                  <input
+                    type="number"
+                    value={quoteDetails.yearlyShoulderEst}
+                    onChange={(e) => handleQuoteDetailsChange('yearlyShoulderEst', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Yearly Off-Peak Est
+                  </label>
+                  <input
+                    type="number"
+                    value={quoteDetails.yearlyOffPeakEst}
+                    onChange={(e) => handleQuoteDetailsChange('yearlyOffPeakEst', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Yearly Consumption Est
+                  </label>
+                  <input
+                    type="number"
+                    value={quoteDetails.yearlyConsumptionEst}
+                    onChange={(e) => handleQuoteDetailsChange('yearlyConsumptionEst', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
 
           {/* Next Steps */}
           <div className="p-6">
@@ -644,11 +1002,221 @@ export default function QuoteRequestPage() {
               <p className="text-gray-700 mb-4">
                 Review and adjust the information above. When ready, click below to send your quote request to suppliers.
               </p>
-              <button className="px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors">
+              <button 
+                onClick={handleSendQuoteRequest}
+                className="px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
+              >
                 Send Quote Request
               </button>
             </div>
           </div>
+
+          {/* Summary Modal */}
+          {showSummaryModal && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+                <div className="p-6 border-b">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-2xl font-bold text-gray-900">Quote Request Summary</h2>
+                    <button
+                      onClick={() => setShowSummaryModal(false)}
+                      className="text-gray-400 hover:text-gray-600 text-2xl font-bold"
+                    >
+                      ×
+                    </button>
+                  </div>
+                </div>
+                
+                <div className="p-6 space-y-6">
+                  {/* Business Information */}
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-3">Business Information</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                      <div>
+                        <span className="font-medium text-gray-600">Business Name:</span>
+                        <div className="text-gray-900">{businessInfo.business_name || 'Not specified'}</div>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-600">Site Address:</span>
+                        <div className="text-gray-900">
+                          {businessInfo.site_address || businessInfo.address || businessInfo.business_address || 'Not specified'}
+                        </div>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-600">Contact Person:</span>
+                        <div className="text-gray-900">
+                          {businessInfo.contact_name || businessInfo.contact_person || businessInfo.primary_contact || businessInfo.contact || 'Not specified'}
+                        </div>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-600">Phone:</span>
+                        <div className="text-gray-900">
+                          {businessInfo.telephone || businessInfo.phone || businessInfo.phone_number || businessInfo.contact_phone || businessInfo.mobile || 'Not specified'}
+                        </div>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-600">Email:</span>
+                        <div className="text-gray-900">
+                          {businessInfo.email || businessInfo.contact_email || businessInfo.business_email || 'Not specified'}
+                        </div>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-600">ABN:</span>
+                        <div className="text-gray-900">
+                          {businessInfo.abn || businessInfo.business_abn || businessInfo.abn_number || 'Not specified'}
+                        </div>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-600">Trading Name:</span>
+                        <div className="text-gray-900">
+                          {businessInfo.trading_name || businessInfo.trade_name || 'Not specified'}
+                        </div>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-600">Postal Address:</span>
+                        <div className="text-gray-900">
+                          {businessInfo.postal_address || businessInfo.mailing_address || 'Not specified'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Utility Information */}
+                  <div className="bg-blue-50 p-4 rounded-lg">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-3">Utility Information</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                      <div>
+                        <span className="font-medium text-gray-600">{getUtilityDisplayName()}:</span>
+                        <div className="text-gray-900 font-mono">{identifier || 'Not specified'}</div>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-600">Utility Type:</span>
+                        <div className="text-gray-900 capitalize">{utility?.replace('_', ' ') || 'Not specified'}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Quote Details */}
+                  <div className="bg-green-50 p-4 rounded-lg">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-3">Quote Configuration</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                      <div>
+                        <span className="font-medium text-gray-600">Quote Type:</span>
+                        <div className="text-gray-900">{quoteDetails.quoteType.replace('_', ' ') || 'Not selected'}</div>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-600">Commission:</span>
+                        <div className="text-gray-900">{quoteDetails.commission || '0'}</div>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-600">Start Date:</span>
+                        <div className="text-gray-900">{quoteDetails.startDate || 'Not specified'}</div>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-600">Offer Due:</span>
+                        <div className="text-gray-900">{quoteDetails.offerDue || 'Not specified'}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Annual Usage Estimates */}
+                  <div className="bg-yellow-50 p-4 rounded-lg">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-3">Annual Usage Estimates</h3>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                      <div className="text-center">
+                        <div className="font-medium text-gray-600">Peak</div>
+                        <div className="text-lg font-bold text-blue-900">
+                          {quoteDetails.yearlyPeakEst ? formatNumber(quoteDetails.yearlyPeakEst) : '0'} kWh
+                        </div>
+                      </div>
+                      <div className="text-center">
+                        <div className="font-medium text-gray-600">Shoulder</div>
+                        <div className="text-lg font-bold text-green-900">
+                          {quoteDetails.yearlyShoulderEst ? formatNumber(quoteDetails.yearlyShoulderEst) : '0'} kWh
+                        </div>
+                      </div>
+                      <div className="text-center">
+                        <div className="font-medium text-gray-600">Off-Peak</div>
+                        <div className="text-lg font-bold text-purple-900">
+                          {quoteDetails.yearlyOffPeakEst ? formatNumber(quoteDetails.yearlyOffPeakEst) : '0'} kWh
+                        </div>
+                      </div>
+                      <div className="text-center">
+                        <div className="font-medium text-gray-600">Total</div>
+                        <div className="text-xl font-bold text-red-900">
+                          {quoteDetails.yearlyConsumptionEst ? formatNumber(quoteDetails.yearlyConsumptionEst) : '0'} kWh
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Attachments Status */}
+                  <div className="bg-purple-50 p-4 rounded-lg">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-3">Attachments</h3>
+                    <div className="space-y-2">
+                      {(() => {
+                        const status = getAttachmentStatus();
+                        return (
+                          <>
+                            <div className="flex items-center space-x-2">
+                              <span className={`w-3 h-3 rounded-full ${status.hasLOA ? 'bg-green-500' : 'bg-red-500'}`}></span>
+                              <span className="text-sm">Letter of Authority</span>
+                              <span className="text-xs text-gray-500">
+                                {status.hasLOA ? '✓ Attached' : '✗ Missing'}
+                              </span>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              <span className={`w-3 h-3 rounded-full ${status.hasInvoice ? 'bg-green-500' : 'bg-red-500'}`}></span>
+                              <span className="text-sm">Recent Invoice</span>
+                              <span className="text-xs text-gray-500">
+                                {status.hasInvoice ? '✓ Attached' : '✗ Missing'}
+                              </span>
+                            </div>
+                            {(utility === "electricity_ci" || utility === "gas_ci") && (
+                              <div className="flex items-center space-x-2">
+                                <span className={`w-3 h-3 rounded-full ${status.hasIntervalData ? 'bg-green-500' : 'bg-yellow-500'}`}></span>
+                                <span className="text-sm">Interval Data</span>
+                                <span className="text-xs text-gray-500">
+                                  {status.hasIntervalData ? '✓ Available' : '⚠ Optional'}
+                                </span>
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-6 border-t bg-gray-50 flex space-x-3">
+                  <button
+                    onClick={() => setShowSummaryModal(false)}
+                    className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
+                  >
+                    Review & Edit
+                  </button>
+                  <button
+                    onClick={() => {
+                      // Here you would actually send the quote request
+                      console.log('Sending quote request...', {
+                        businessInfo,
+                        utility,
+                        identifier,
+                        quoteDetails,
+                        attachments: getAttachmentStatus()
+                      });
+                      setShowSummaryModal(false);
+                      // Show success message or redirect
+                      alert('Quote request sent successfully!');
+                    }}
+                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    Confirm & Send
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

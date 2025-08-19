@@ -182,6 +182,282 @@ function InvoiceResult({ result }: { result: any }) {
   );
 }
 
+// Data Comparison Component
+function DataComparisonSection({ invoiceData, intervalData, title }: { invoiceData: any, intervalData: any, title: string }) {
+  // Helper functions
+  const parseNumber = (value: any): number | null => {
+    if (!value || value === "-") return null;
+    const num = parseFloat(String(value).replace(/[^0-9.\-]/g, ''));
+    return isNaN(num) ? null : num;
+  };
+
+  const formatNumber = (value: number | null): string => {
+    if (value === null) return "N/A";
+    return value.toLocaleString('en-US');
+  };
+
+  const getComparisonStatus = (invoiceVal: number | null, intervalVal: number | null, tolerance: number = 0.05): { status: 'match' | 'close' | 'mismatch' | 'missing', message: string } => {
+    if (invoiceVal === null || intervalVal === null) {
+      return { status: 'missing', message: 'Data missing from one source' };
+    }
+    
+    const diff = Math.abs(invoiceVal - intervalVal);
+    const avgVal = (invoiceVal + intervalVal) / 2;
+    const percentDiff = avgVal === 0 ? 0 : (diff / avgVal);
+    
+    if (percentDiff <= tolerance) {
+      return { status: 'match', message: 'Values match' };
+    } else if (percentDiff <= 0.1) {
+      return { status: 'close', message: `Close match (${(percentDiff * 100).toFixed(1)}% difference)` };
+    } else {
+      return { status: 'mismatch', message: `Significant difference (${(percentDiff * 100).toFixed(1)}%)` };
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'match': return { bg: '#e6f9ed', border: '#b8e6c1', text: '#217a4a', icon: '✅' };
+      case 'close': return { bg: '#fffbe6', border: '#ffe58f', text: '#b38600', icon: '⚠️' };
+      case 'mismatch': return { bg: '#fef2f2', border: '#fecaca', text: '#991b1b', icon: '❌' };
+      case 'missing': return { bg: '#f3f4f6', border: '#d1d5db', text: '#6b7280', icon: '➖' };
+      default: return { bg: '#f3f4f6', border: '#d1d5db', text: '#6b7280', icon: '❓' };
+    }
+  };
+
+  // Extract comparison metrics
+  // Get invoice details
+  const invoiceDetails = invoiceData?.electricity_ci_invoice_details || 
+                        invoiceData?.electricity_sme_invoice_details || 
+                        invoiceData?.gas_invoice_details || 
+                        invoiceData?.gas_sme_invoicedetails;
+
+  // Get the latest interval data entry with proper typing
+  const latestIntervalData = Array.isArray(intervalData) && intervalData.length > 0 ? intervalData[0] : null;
+
+  if (!invoiceDetails || !latestIntervalData) {
+    return null;
+  }
+
+  // Now TypeScript knows latestIntervalData is definitely not null
+  const comparisons: Array<{
+    metric: string;
+    invoiceValue: string;
+    intervalValue: string;
+    comparison: { status: 'match' | 'close' | 'mismatch' | 'missing', message: string };
+  }> = [];
+
+  // Demand Capacity (kW) Comparison
+  if (invoiceDetails.demand_capacity || latestIntervalData["Highest Demand (kW)"]) {
+    const invoiceKW = parseNumber(invoiceDetails.demand_capacity);
+    const intervalKW = parseNumber(latestIntervalData["Highest Demand (kW)"]);
+    const comparison = getComparisonStatus(invoiceKW, intervalKW);
+    
+    comparisons.push({
+      metric: 'Demand Capacity (kW)',
+      invoiceValue: formatNumber(invoiceKW),
+      intervalValue: formatNumber(intervalKW),
+      comparison
+    });
+  }
+
+  // kVA Comparison (if available)
+  if (latestIntervalData["Highest Demand (kVA)"]) {
+    const intervalKVA = parseNumber(latestIntervalData["Highest Demand (kVA)"]);
+    
+    comparisons.push({
+      metric: 'Highest Demand (kVA)',
+      invoiceValue: "Not available in invoice",
+      intervalValue: formatNumber(intervalKVA),
+      comparison: { status: 'missing', message: 'Only available in interval data' }
+    });
+  }
+
+  // Monthly Usage vs Total kWh - Handle period differences
+  if (invoiceDetails.monthly_usage || latestIntervalData["Total kWh"]) {
+    const invoiceUsage = parseNumber(invoiceDetails.monthly_usage);
+    const intervalUsage = parseNumber(latestIntervalData["Total kWh"]);
+    
+    // Determine if interval data is annual or monthly based on period
+    const intervalPeriod = latestIntervalData.Period || "";
+    const isIntervalAnnual = intervalPeriod.includes("to") || intervalPeriod.includes("-");
+    
+    if (invoiceUsage && intervalUsage) {
+      // If interval data is annual and invoice is monthly, compare annualized invoice usage
+      if (isIntervalAnnual) {
+        const annualizedInvoiceUsage = invoiceUsage * 12;
+        const comparison = getComparisonStatus(annualizedInvoiceUsage, intervalUsage, 0.1); // 10% tolerance for annual comparison
+        
+        comparisons.push({
+          metric: 'Energy Usage (kWh) - Annual Comparison',
+          invoiceValue: `${formatNumber(invoiceUsage)} monthly → ${formatNumber(annualizedInvoiceUsage)} annual`,
+          intervalValue: `${formatNumber(intervalUsage)} annual`,
+          comparison: {
+            ...comparison,
+            message: comparison.status === 'match' ? 'Annual usage aligns well' :
+                    comparison.status === 'close' ? `${comparison.message} (annualized)` :
+                    `${comparison.message} - Invoice: ${formatNumber(annualizedInvoiceUsage)} vs Interval: ${formatNumber(intervalUsage)}`
+          }
+        });
+        
+        // Also show monthly rate comparison if interval data spans full year
+        const monthlyFromInterval = intervalUsage / 12;
+        const monthlyComparison = getComparisonStatus(invoiceUsage, monthlyFromInterval, 0.15); // 15% tolerance for monthly
+        
+        comparisons.push({
+          metric: 'Energy Usage (kWh) - Monthly Rate',
+          invoiceValue: `${formatNumber(invoiceUsage)} (invoice month)`,
+          intervalValue: `${formatNumber(monthlyFromInterval)} (avg monthly from annual)`,
+          comparison: {
+            ...monthlyComparison,
+            message: monthlyComparison.status === 'match' ? 'Monthly rate consistent' :
+                    monthlyComparison.status === 'close' ? `${monthlyComparison.message} monthly rate` :
+                    `${monthlyComparison.message} - May indicate seasonal variation or billing period mismatch`
+          }
+        });
+      } else {
+        // Direct monthly to monthly comparison
+        const comparison = getComparisonStatus(invoiceUsage, intervalUsage, 0.02); // 2% tolerance for direct monthly
+        
+        comparisons.push({
+          metric: 'Energy Usage (kWh) - Monthly',
+          invoiceValue: formatNumber(invoiceUsage),
+          intervalValue: formatNumber(intervalUsage),
+          comparison
+        });
+      }
+    }
+  }
+
+  // Period Comparison - Enhanced logic
+  if (invoiceDetails.period || latestIntervalData.Period) {
+    const invoicePeriod = invoiceDetails.period || invoiceDetails.invoice_review_period;
+    const intervalPeriod = latestIntervalData.Period;
+    
+    // Extract date information for better comparison
+    let periodComparison: { status: 'match' | 'close' | 'mismatch' | 'missing', message: string };
+    
+    if (invoicePeriod && intervalPeriod) {
+      // Check if invoice period falls within interval period
+      const invoicePeriodLower = invoicePeriod.toLowerCase();
+      const intervalPeriodLower = intervalPeriod.toLowerCase();
+      
+      // Extract year from invoice period (look for 2024, 2025, etc.)
+      const invoiceYearMatch = invoicePeriod.match(/20\d{2}/);
+      const intervalYearMatch = intervalPeriod.match(/20\d{2}/g); // Could have multiple years
+      
+      if (invoiceYearMatch && intervalYearMatch) {
+        const invoiceYear = invoiceYearMatch[0];
+        const intervalYears = intervalYearMatch;
+        
+        if (intervalYears.includes(invoiceYear)) {
+          periodComparison = { status: 'close', message: `Invoice period (${invoiceYear}) falls within interval data timeframe` };
+        } else {
+          periodComparison = { status: 'mismatch', message: `Invoice year (${invoiceYear}) not covered by interval data (${intervalYears.join('-')})` };
+        }
+      } else if (invoicePeriod === intervalPeriod) {
+        periodComparison = { status: 'match', message: 'Periods match exactly' };
+      } else {
+        // Check if they're describing the same general timeframe
+        if (invoicePeriodLower.includes('07') && intervalPeriodLower.includes('07')) {
+          periodComparison = { status: 'close', message: 'Both periods include July - partial overlap likely' };
+        } else {
+          periodComparison = { status: 'mismatch', message: 'Different time periods - comparison may not be meaningful' };
+        }
+      }
+    } else {
+      periodComparison = { status: 'missing', message: 'Period information missing from one source' };
+    }
+    
+    comparisons.push({
+      metric: 'Billing Period Coverage',
+      invoiceValue: invoicePeriod || "N/A",
+      intervalValue: intervalPeriod || "N/A",
+      comparison: periodComparison
+    });
+  }
+
+  if (comparisons.length === 0) {
+    return null;
+  }
+
+  return (
+    <div style={{ marginTop: 20, background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+      <div style={{ padding: 20, borderBottom: '1px solid #e5e7eb' }}>
+        <h3 style={{ fontSize: 18, fontWeight: 600, marginBottom: 16, color: '#111827', display: 'flex', alignItems: 'center' }}>
+          <span style={{ fontSize: 22, marginRight: 8 }}>🔍</span> Invoice vs Interval Data Comparison
+        </h3>
+        
+        <div style={{ marginBottom: 20 }}>
+          {comparisons.map((comp, index) => {
+            const colors = getStatusColor(comp.comparison.status);
+            return (
+              <div key={index} style={{ 
+                marginBottom: 16, 
+                padding: 16, 
+                background: colors.bg, 
+                border: `1px solid ${colors.border}`, 
+                borderRadius: 6 
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
+                  <span style={{ fontSize: 18, marginRight: 8 }}>{colors.icon}</span>
+                  <h4 style={{ fontSize: 16, fontWeight: 600, margin: 0, color: colors.text }}>
+                    {comp.metric}
+                  </h4>
+                </div>
+                
+                <div style={{ 
+                  display: 'grid', 
+                  gridTemplateColumns: '1fr 1fr 2fr', 
+                  gap: 16, 
+                  alignItems: 'center' 
+                }}>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>
+                      Invoice Data
+                    </div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>
+                      {comp.invoiceValue}
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>
+                      Interval Data
+                    </div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>
+                      {comp.intervalValue}
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>
+                      Comparison Status
+                    </div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: colors.text }}>
+                      {comp.comparison.message}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        
+        {/* Data Quality Summary */}
+        <div style={{ background: '#f8fafc', padding: 16, borderRadius: 6, border: '1px solid #e2e8f0' }}>
+          <h4 style={{ fontSize: 14, fontWeight: 600, color: '#374151', marginBottom: 8 }}>
+            Data Quality Summary:
+          </h4>
+          <div style={{ fontSize: 13, color: '#6b7280', lineHeight: 1.5 }}>
+            This comparison helps identify potential discrepancies between your invoice and actual usage data. 
+            Large differences may indicate billing errors, meter reading issues, or data quality problems that warrant investigation.
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Interval Data Component
 function IntervalDataSection({ title, identifier, result }: { title: string, identifier: string, result: any }) {
   const [intervalData, setIntervalData] = useState<any>(null);
@@ -260,185 +536,205 @@ function IntervalDataSection({ title, identifier, result }: { title: string, ide
     return null;
   }
 
+  // Check if we have valid interval data for comparison
+  const hasValidIntervalData = intervalData && 
+    Array.isArray(intervalData) && 
+    intervalData.length > 0 && 
+    intervalData[0]["Total kWh"] &&
+    !(intervalData[0]["Interval Data Period"] === "" && 
+      intervalData[0]["Interval Data ID"] === "" && 
+      intervalData[0]["Interval Data Link"] === "");
+
   return (
-    <div style={{ marginTop: 20, background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-      <div style={{ padding: 20, borderBottom: '1px solid #e5e7eb' }}>
-        <h3 style={{ fontSize: 18, fontWeight: 600, marginBottom: 16, color: '#111827', display: 'flex', alignItems: 'center' }}>
-          <span style={{ fontSize: 22, marginRight: 8 }}>📊</span> Interval Data for {getFieldDisplayName()}: {identifier}
-        </h3>
-        
-        {intervalLoading && (
-          <div style={{ textAlign: 'center', padding: 32, color: '#6b7280' }}>
-            Loading interval data...
-          </div>
-        )}
-        
-        {intervalError && (
-          <div style={{ 
-            background: '#fef2f2', 
-            border: '1px solid #fecaca', 
-            borderRadius: 6, 
-            padding: 16, 
-            marginBottom: 16 
-          }}>
-            <div style={{ color: '#991b1b', fontWeight: 600 }}>Error loading interval data:</div>
-            <div style={{ color: '#dc2626', fontSize: 14, marginTop: 4 }}>{intervalError}</div>
-            <button
-              onClick={fetchIntervalData}
-              style={{ 
-                marginTop: 8, 
-                padding: '4px 12px', 
-                background: '#dc2626', 
-                color: 'white', 
-                fontSize: 14, 
-                borderRadius: 4,
-                border: 'none',
-                cursor: 'pointer'
-              }}
-            >
-              Retry
-            </button>
-          </div>
-        )}
-        
-        {intervalData && !intervalLoading && (
-          <div>
-            {/* Check if interval data is available */}
-            {Array.isArray(intervalData) && intervalData.length > 0 && 
-             intervalData[0]["Interval Data Period"] === "" && 
-             intervalData[0]["Interval Data ID"] === "" && 
-             intervalData[0]["Interval Data Link"] === "" ? (
-              <div style={{ 
-                background: '#fffbeb', 
-                border: '1px solid #fed7aa', 
-                borderRadius: 6, 
-                padding: 16 
-              }}>
-                <div style={{ color: '#92400e', fontWeight: 600, marginBottom: 8 }}>
-                  No Interval Data Found for this {getFieldDisplayName()}
-                </div>
-                <div style={{ color: '#d97706', fontSize: 14, marginBottom: 12 }}>
-                  No interval data is currently available for {identifier}. You can lodge interval data on the document lodgement page.
-                </div>
-                <button 
-                  onClick={() => window.open('/document-lodgement', '_blank')}
-                  style={{ 
-                    padding: '4px 12px', 
-                    background: '#d97706', 
-                    color: 'white', 
-                    fontSize: 14, 
-                    borderRadius: 4,
-                    border: 'none',
-                    cursor: 'pointer'
-                  }}
-                >
-                  Go to Document Lodgement
-                </button>
-              </div>
-            ) : Array.isArray(intervalData) && intervalData.length > 0 && intervalData[0]["Total kWh"] ? (
-              <div>
-                {intervalData.map((data, index) => (
-                  <div key={index} style={{ marginBottom: index < intervalData.length - 1 ? 16 : 0 }}>
-                    <div style={{ 
-                      display: 'grid', 
-                      gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
-                      gap: 16 
-                    }}>
-                      <div style={{ background: 'white', padding: 12, borderRadius: 4, border: '1px solid #e5e7eb' }}>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>
-                          {getFieldDisplayName()}
-                        </div>
-                        <div style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>
-                          {data.NMI || data["NMI / MRIN"] || identifier}
-                        </div>
-                      </div>
-                      <div style={{ background: 'white', padding: 12, borderRadius: 4, border: '1px solid #e5e7eb' }}>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>Period</div>
-                        <div style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>
-                          {data.Period || 'N/A'}
-                        </div>
-                      </div>
-                      <div style={{ background: 'white', padding: 12, borderRadius: 4, border: '1px solid #e5e7eb' }}>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>Year</div>
-                        <div style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>
-                          {data.Year || 'N/A'}
-                        </div>
-                      </div>
-                      <div style={{ background: 'white', padding: 12, borderRadius: 4, border: '1px solid #e5e7eb' }}>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>Total kWh</div>
-                        <div style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>
-                          {data["Total kWh"] ? formatNumber(data["Total kWh"]) : 'N/A'}
-                        </div>
-                      </div>
-                      <div style={{ background: 'white', padding: 12, borderRadius: 4, border: '1px solid #e5e7eb' }}>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>Highest Demand (kW)</div>
-                        <div style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>
-                          {data["Highest Demand (kW)"] || 'N/A'}
-                        </div>
-                      </div>
-                      <div style={{ background: 'white', padding: 12, borderRadius: 4, border: '1px solid #e5e7eb' }}>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>Peak Demand Period</div>
-                        <div style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>
-                          {data["Peak Demand Period"] ? new Date(data["Peak Demand Period"]).toLocaleDateString() : 'N/A'}
-                        </div>
-                      </div>
-                      <div style={{ background: 'white', padding: 12, borderRadius: 4, border: '1px solid #e5e7eb' }}>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>Highest Demand (kVA)</div>
-                        <div style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>
-                          {data["Highest Demand (kVA)"] || 'N/A'}
-                        </div>
-                      </div>
-                      <div style={{ background: 'white', padding: 12, borderRadius: 4, border: '1px solid #e5e7eb' }}>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>Peak Demand Period kVA</div>
-                        <div style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>
-                          {data["Peak Demand Period kVA"] ? new Date(data["Peak Demand Period kVA"]).toLocaleDateString() : 'N/A'}
-                        </div>
-                      </div>
-                      <div style={{ background: 'white', padding: 12, borderRadius: 4, border: '1px solid #e5e7eb' }}>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>Data Analysis</div>
-                        <div style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>
-                          {data["Data Analysis"] || 'N/A'}
-                        </div>
-                      </div>
-                      {data["Interval Data File ID"] && (
-                        <div style={{ background: 'white', padding: 12, borderRadius: 4, border: '1px solid #e5e7eb' }}>
-                          <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>Interval Data File</div>
-                          <a
-                            href={`https://drive.google.com/file/d/${data["Interval Data File ID"]}/view`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{ color: '#2563eb', textDecoration: 'underline', fontSize: 14, fontWeight: 600 }}
-                          >
-                            View Interval Data File
-                          </a>
-                        </div>
-                      )}
-                    </div>
+    <>
+      <div style={{ marginTop: 20, background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+        <div style={{ padding: 20, borderBottom: '1px solid #e5e7eb' }}>
+          <h3 style={{ fontSize: 18, fontWeight: 600, marginBottom: 16, color: '#111827', display: 'flex', alignItems: 'center' }}>
+            <span style={{ fontSize: 22, marginRight: 8 }}>📊</span> Interval Data for {getFieldDisplayName()}: {identifier}
+          </h3>
+          
+          {intervalLoading && (
+            <div style={{ textAlign: 'center', padding: 32, color: '#6b7280' }}>
+              Loading interval data...
+            </div>
+          )}
+          
+          {intervalError && (
+            <div style={{ 
+              background: '#fef2f2', 
+              border: '1px solid #fecaca', 
+              borderRadius: 6, 
+              padding: 16, 
+              marginBottom: 16 
+            }}>
+              <div style={{ color: '#991b1b', fontWeight: 600 }}>Error loading interval data:</div>
+              <div style={{ color: '#dc2626', fontSize: 14, marginTop: 4 }}>{intervalError}</div>
+              <button
+                onClick={fetchIntervalData}
+                style={{ 
+                  marginTop: 8, 
+                  padding: '4px 12px', 
+                  background: '#dc2626', 
+                  color: 'white', 
+                  fontSize: 14, 
+                  borderRadius: 4,
+                  border: 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                Retry
+              </button>
+            </div>
+          )}
+          
+          {intervalData && !intervalLoading && (
+            <div>
+              {/* Check if interval data is available */}
+              {Array.isArray(intervalData) && intervalData.length > 0 && 
+               intervalData[0]["Interval Data Period"] === "" && 
+               intervalData[0]["Interval Data ID"] === "" && 
+               intervalData[0]["Interval Data Link"] === "" ? (
+                <div style={{ 
+                  background: '#fffbeb', 
+                  border: '1px solid #fed7aa', 
+                  borderRadius: 6, 
+                  padding: 16 
+                }}>
+                  <div style={{ color: '#92400e', fontWeight: 600, marginBottom: 8 }}>
+                    No Interval Data Found for this {getFieldDisplayName()}
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div>
-                <div style={{ background: '#f3f4f6', padding: 16, borderRadius: 6 }}>
-                  <pre style={{ fontSize: 14, overflow: 'auto', whiteSpace: 'pre-wrap' }}>
-                    {JSON.stringify(intervalData, null, 2)}
-                  </pre>
+                  <div style={{ color: '#d97706', fontSize: 14, marginBottom: 12 }}>
+                    No interval data is currently available for {identifier}. You can lodge interval data on the document lodgement page.
+                  </div>
+                  <button 
+                    onClick={() => window.open('/document-lodgement', '_blank')}
+                    style={{ 
+                      padding: '4px 12px', 
+                      background: '#d97706', 
+                      color: 'white', 
+                      fontSize: 14, 
+                      borderRadius: 4,
+                      border: 'none',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Go to Document Lodgement
+                  </button>
                 </div>
-                <div style={{ marginTop: 16, fontSize: 14, color: '#6b7280' }}>
-                  Unexpected data format - check console for detailed logs.
+              ) : Array.isArray(intervalData) && intervalData.length > 0 && intervalData[0]["Total kWh"] ? (
+                <div>
+                  {intervalData.map((data, index) => (
+                    <div key={index} style={{ marginBottom: index < intervalData.length - 1 ? 16 : 0 }}>
+                      <div style={{ 
+                        display: 'grid', 
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
+                        gap: 16 
+                      }}>
+                        <div style={{ background: 'white', padding: 12, borderRadius: 4, border: '1px solid #e5e7eb' }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>
+                            {getFieldDisplayName()}
+                          </div>
+                          <div style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>
+                            {data.NMI || data["NMI / MRIN"] || identifier}
+                          </div>
+                        </div>
+                        <div style={{ background: 'white', padding: 12, borderRadius: 4, border: '1px solid #e5e7eb' }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>Period</div>
+                          <div style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>
+                            {data.Period || 'N/A'}
+                          </div>
+                        </div>
+                        <div style={{ background: 'white', padding: 12, borderRadius: 4, border: '1px solid #e5e7eb' }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>Year</div>
+                          <div style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>
+                            {data.Year || 'N/A'}
+                          </div>
+                        </div>
+                        <div style={{ background: 'white', padding: 12, borderRadius: 4, border: '1px solid #e5e7eb' }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>Total kWh</div>
+                          <div style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>
+                            {data["Total kWh"] ? formatNumber(data["Total kWh"]) : 'N/A'}
+                          </div>
+                        </div>
+                        <div style={{ background: 'white', padding: 12, borderRadius: 4, border: '1px solid #e5e7eb' }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>Highest Demand (kW)</div>
+                          <div style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>
+                            {data["Highest Demand (kW)"] || 'N/A'}
+                          </div>
+                        </div>
+                        <div style={{ background: 'white', padding: 12, borderRadius: 4, border: '1px solid #e5e7eb' }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>Peak Demand Period</div>
+                          <div style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>
+                            {data["Peak Demand Period"] ? new Date(data["Peak Demand Period"]).toLocaleDateString() : 'N/A'}
+                          </div>
+                        </div>
+                        <div style={{ background: 'white', padding: 12, borderRadius: 4, border: '1px solid #e5e7eb' }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>Highest Demand (kVA)</div>
+                          <div style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>
+                            {data["Highest Demand (kVA)"] || 'N/A'}
+                          </div>
+                        </div>
+                        <div style={{ background: 'white', padding: 12, borderRadius: 4, border: '1px solid #e5e7eb' }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>Peak Demand Period kVA</div>
+                          <div style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>
+                            {data["Peak Demand Period kVA"] ? new Date(data["Peak Demand Period kVA"]).toLocaleDateString() : 'N/A'}
+                          </div>
+                        </div>
+                        <div style={{ background: 'white', padding: 12, borderRadius: 4, border: '1px solid #e5e7eb' }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>Data Analysis</div>
+                          <div style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>
+                            {data["Data Analysis"] || 'N/A'}
+                          </div>
+                        </div>
+                        {data["Interval Data File ID"] && (
+                          <div style={{ background: 'white', padding: 12, borderRadius: 4, border: '1px solid #e5e7eb' }}>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>Interval Data File</div>
+                            <a
+                              href={`https://drive.google.com/file/d/${data["Interval Data File ID"]}/view`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ color: '#2563eb', textDecoration: 'underline', fontSize: 14, fontWeight: 600 }}
+                            >
+                              View Interval Data File
+                            </a>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              </div>
-            )}
-          </div>
-        )}
-        
-        {!intervalData && !intervalLoading && !intervalError && (
-          <div style={{ textAlign: 'center', padding: 32, color: '#6b7280' }}>
-            No interval data available
-          </div>
-        )}
+              ) : (
+                <div>
+                  <div style={{ background: '#f3f4f6', padding: 16, borderRadius: 6 }}>
+                    <pre style={{ fontSize: 14, overflow: 'auto', whiteSpace: 'pre-wrap' }}>
+                      {JSON.stringify(intervalData, null, 2)}
+                    </pre>
+                  </div>
+                  <div style={{ marginTop: 16, fontSize: 14, color: '#6b7280' }}>
+                    Unexpected data format - check console for detailed logs.
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          
+          {!intervalData && !intervalLoading && !intervalError && (
+            <div style={{ textAlign: 'center', padding: 32, color: '#6b7280' }}>
+              No interval data available
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+      
+      {/* Add Data Comparison Section if we have both invoice and interval data */}
+      {hasValidIntervalData && result && (
+        <DataComparisonSection 
+          invoiceData={result}
+          intervalData={intervalData}
+          title={title}
+        />
+      )}
+    </>
   );
 }
 
