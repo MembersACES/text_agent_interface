@@ -1786,10 +1786,8 @@ export default function QuoteRequestPage() {
                   <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
                     <h4 className="font-semibold text-blue-900 mb-2">What happens next?</h4>
                     <ul className="text-sm text-blue-800 space-y-1">
-                      <li>• Retailers will review your quote request</li>
-                      <li>• You should receive quotes within 3-5 business days</li>
-                      <li>• Quotes will be sent directly to your email address</li>
-                      <li>• You can compare offers and choose the best option</li>
+                      <li>• Retailers will review the quote request</li>
+                      <li>• The quotes should come back on the offer due date</li>
                     </ul>
                   </div>
                 </div>
