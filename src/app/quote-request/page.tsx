@@ -37,6 +37,9 @@ export default function QuoteRequestPage() {
     yearlyConsumptionEst: ''
   });
 
+  // Selected retailers state
+  const [selectedRetailers, setSelectedRetailers] = useState<string[]>([]);
+  
   // Modal state
   const [showSummaryModal, setShowSummaryModal] = useState(false);
 
@@ -44,6 +47,406 @@ export default function QuoteRequestPage() {
   const businessInfoRaw = searchParams.get("businessInfo");
   const utility = searchParams.get("utility");
   const identifier = searchParams.get("identifier");
+
+  // Available retailers based on utility type
+  const getAvailableRetailers = () => {
+    const testRetailer = 'Test';
+    
+    if (utility === 'electricity_ci' || utility === 'gas_ci') {
+      return [
+        testRetailer,
+        'Origin C&I',
+        'Alinta C&I', 
+        'Shell C&I',
+        'Momentum C&I'
+      ];
+    } else if (utility === 'electricity_sme' || utility === 'gas_sme') {
+      return [
+        testRetailer,
+        'Origin SME',
+        'Alinta SME',
+        'Shell SME', 
+        'Momentum SME'
+      ];
+    } else if (utility === 'waste') {
+      return [testRetailer, 'Waste Provider 1', 'Waste Provider 2'];
+    } else if (utility === 'oil') {
+      return [testRetailer, 'Oil Provider 1', 'Oil Provider 2'];
+    }
+    return [testRetailer];
+  };
+
+  const getQuoteTypeOptions = () => {
+    switch (utility) {
+      case 'electricity_ci':
+        return [
+          { value: '3_year_stepped', label: '3 Year Stepped' },
+          { value: '3_year_smoothed', label: '3 Year Smoothed' },
+          { value: '3_year_stepped_smoothed', label: '3 Year Stepped and Smoothed' },
+          { value: '2_year_fixed', label: '2 Year Fixed' },
+          { value: '1_year_fixed', label: '1 Year Fixed' }
+        ];
+      case 'gas_ci':
+        return [
+          { value: '3_year_stepped', label: '3 Year Stepped' },
+          { value: '3_year_smoothed', label: '3 Year Smoothed' }
+        ];
+      case 'electricity_sme':
+        return [
+          { value: '2_year_fixed', label: '2 Year Fixed' },
+          { value: '1_year_fixed', label: '1 Year Fixed' },
+          { value: 'flexible', label: 'Flexible Contract' }
+        ];
+      case 'gas_sme':
+        return [
+          { value: '2_year_fixed', label: '2 Year Fixed' },
+          { value: '1_year_fixed', label: '1 Year Fixed' }
+        ];
+      case 'waste':
+        return [
+          { value: '3_year_contract', label: '3 Year Contract' },
+          { value: '2_year_contract', label: '2 Year Contract' },
+          { value: 'monthly_service', label: 'Monthly Service' }
+        ];
+      case 'oil':
+        return [
+          { value: 'supply_collect', label: 'Supply & Collection Service' },
+          { value: 'collection_only', label: 'Collection Only' },
+          { value: 'supply_only', label: 'Supply Only' }
+        ];
+      default:
+        return [
+          { value: 'standard', label: 'Standard Service' }
+        ];
+    }
+  };
+
+  // Commission options based on utility type
+  const getCommissionOptions = () => {
+    switch (utility) {
+      case 'electricity_ci':
+      case 'electricity_sme':
+        return [
+          { value: '0', label: '0%' },
+          { value: '3%', label: '3%' },
+          { value: '$3.33 / mWh', label: '$3.33 / mWh' },
+          { value: '$5.00 / mWh', label: '$5.00 / mWh' }
+        ];
+      case 'gas_ci':
+      case 'gas_sme':
+        return [
+          { value: '0', label: '0%' },
+          { value: '3%', label: '3%' },
+          { value: '$0.50 / GJ', label: '$0.50 / GJ' },
+          { value: '$1.00 / GJ', label: '$1.00 / GJ' }
+        ];
+      case 'waste':
+        return [
+          { value: '0', label: '0%' },
+          { value: '5%', label: '5%' },
+          { value: '10%', label: '10%' },
+          { value: '$50 / month', label: '$50 / month' }
+        ];
+      case 'oil':
+        return [
+          { value: '0', label: '0%' },
+          { value: '5%', label: '5%' },
+          { value: '$0.10 / litre', label: '$0.10 / litre' }
+        ];
+      default:
+        return [
+          { value: '0', label: '0%' }
+        ];
+    }
+  };
+
+  // Helper to get consumption unit based on utility type
+  const getConsumptionUnit = () => {
+    switch (utility) {
+      case 'electricity_ci':
+      case 'electricity_sme':
+        return 'kWh';
+      case 'gas_ci':
+      case 'gas_sme':
+        return 'MJ';
+      case 'waste':
+        return 'tonnes';
+      case 'oil':
+        return 'litres';
+      default:
+        return 'units';
+    }
+  };
+
+  // Helper to determine if utility shows peak/shoulder/off-peak breakdown
+  const showUsageBreakdown = () => {
+    return utility === 'electricity_ci' || utility === 'electricity_sme';
+  };
+
+  // Dynamic Quote Details Section Component
+  const renderQuoteDetailsSection = () => (
+    <div className="p-6 border-b">
+      <h2 className="text-xl font-semibold text-gray-900 mb-4">Quote Details</h2>
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Quote Type Options */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            {utility === 'waste' || utility === 'oil' ? 'Service Options' : 'Quote Details'}
+          </label>
+          <select 
+            value={quoteDetails.quoteType}
+            onChange={(e) => handleQuoteDetailsChange('quoteType', e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">Select option...</option>
+            {getQuoteTypeOptions().map(option => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Commission Options */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Commission
+          </label>
+          <select 
+            value={quoteDetails.commission}
+            onChange={(e) => handleQuoteDetailsChange('commission', e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            {getCommissionOptions().map(option => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Start Date */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Start Date
+          </label>
+          <input
+            type="date"
+            value={quoteDetails.startDate}
+            onChange={(e) => handleQuoteDetailsChange('startDate', e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+
+        {/* Offer Due */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Offer Due
+          </label>
+          <input
+            type="date"
+            value={quoteDetails.offerDue}
+            onChange={(e) => handleQuoteDetailsChange('offerDue', e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+      </div>
+
+      {/* Usage Estimates - Different layouts based on utility type */}
+      <div className="mt-6">
+        <h3 className="text-lg font-medium text-gray-900 mb-4">
+          {utility === 'waste' ? 'Volume Estimates' : 
+           utility === 'oil' ? 'Usage Estimates' : 
+           'Consumption Estimates'}
+          <span className="text-sm font-normal text-gray-600 ml-2">
+            (Auto-calculated from invoice data)
+          </span>
+        </h3>
+        
+        {showUsageBreakdown() ? (
+          // Electricity: Show peak/shoulder/off-peak breakdown
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Yearly Peak Est
+              </label>
+              <input
+                type="number"
+                value={quoteDetails.yearlyPeakEst}
+                onChange={(e) => handleQuoteDetailsChange('yearlyPeakEst', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <span className="text-xs text-gray-500 mt-1">{getConsumptionUnit()}</span>
+            </div>
+
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Yearly Shoulder Est
+              </label>
+              <input
+                type="number"
+                value={quoteDetails.yearlyShoulderEst}
+                onChange={(e) => handleQuoteDetailsChange('yearlyShoulderEst', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <span className="text-xs text-gray-500 mt-1">{getConsumptionUnit()}</span>
+            </div>
+
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Yearly Off-Peak Est
+              </label>
+              <input
+                type="number"
+                value={quoteDetails.yearlyOffPeakEst}
+                onChange={(e) => handleQuoteDetailsChange('yearlyOffPeakEst', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <span className="text-xs text-gray-500 mt-1">{getConsumptionUnit()}</span>
+            </div>
+
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Total Yearly Est
+              </label>
+              <input
+                type="number"
+                value={quoteDetails.yearlyConsumptionEst}
+                onChange={(e) => handleQuoteDetailsChange('yearlyConsumptionEst', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <span className="text-xs text-gray-500 mt-1">{getConsumptionUnit()}</span>
+            </div>
+          </div>
+        ) : (
+          // Gas/Waste/Oil: Show only total consumption
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-md">
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                {utility === 'waste' ? 'Annual Volume Est' : 
+                 utility === 'oil' ? 'Annual Usage Est' : 
+                 'Annual Consumption Est'}
+              </label>
+              <input
+                type="number"
+                value={quoteDetails.yearlyConsumptionEst}
+                onChange={(e) => handleQuoteDetailsChange('yearlyConsumptionEst', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <span className="text-xs text-gray-500 mt-1">{getConsumptionUnit()}</span>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  // Updated calculateYearlyEstimates function to handle all utility types
+  const calculateYearlyEstimatesForUtility = () => {
+    console.log('=== Calculating Yearly Estimates for', utility, '===');
+    
+    // For gas utilities, look for Energy Charge Quantity field
+    if (utility === 'gas_ci' || utility === 'gas_sme') {
+      console.log('Processing gas utility data');
+      
+      if (utilityResult) {
+        for (const [key, value] of Object.entries(utilityResult)) {
+          if (typeof value === 'object' && value !== null) {
+            try {
+              const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+              console.log('Checking gas data:', parsed);
+              
+              // Look for Energy Charge Quantity field
+              const energyChargeQty = parsed.energy_charge_quantity || parsed["Energy Charge Quantity"] || parsed.gas_usage || parsed["Gas Usage"];
+              
+              // Look for invoice review period to determine days
+              const invoiceReviewPeriod = parsed.invoice_review_period || parsed["Invoice Review Period"];
+              let numberOfDays = 30; // default fallback
+              
+              if (invoiceReviewPeriod) {
+                console.log('Found gas invoice review period:', invoiceReviewPeriod);
+                const daysMatch = invoiceReviewPeriod.match(/(\d+)\s*days?/i);
+                if (daysMatch) {
+                  numberOfDays = parseInt(daysMatch[1]);
+                }
+              }
+              
+              if (energyChargeQty) {
+                console.log(`Found gas usage: ${energyChargeQty} MJ over ${numberOfDays} days`);
+                
+                const dailyUsage = parseFloat(energyChargeQty) / numberOfDays;
+                const annualUsage = dailyUsage * 365;
+                
+                console.log(`Daily gas usage: ${dailyUsage.toFixed(2)} MJ/day`);
+                console.log(`Annual gas usage: ${annualUsage.toFixed(0)} MJ/year`);
+                
+                return {
+                  yearlyPeakEst: '0', // Gas doesn't have peak/off-peak
+                  yearlyShoulderEst: '0',
+                  yearlyOffPeakEst: '0',
+                  yearlyConsumptionEst: Math.round(annualUsage).toString()
+                };
+              }
+            } catch (e) {
+              console.log('Error parsing gas data:', e);
+            }
+          }
+        }
+      }
+      
+      // Fallback for gas
+      return {
+        yearlyPeakEst: '0',
+        yearlyShoulderEst: '0',
+        yearlyOffPeakEst: '0',
+        yearlyConsumptionEst: '50000' // Default MJ consumption
+      };
+    }
+    
+    // For waste/oil utilities, simple calculation
+    if (utility === 'waste' || utility === 'oil') {
+      // Look for volume/quantity fields in utility data
+      if (utilityResult) {
+        for (const [key, value] of Object.entries(utilityResult)) {
+          if (typeof value === 'object' && value !== null) {
+            try {
+              const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+              
+              const volumeFields = ['volume', 'quantity', 'amount', 'usage'];
+              for (const field of volumeFields) {
+                if (parsed[field]) {
+                  const volume = parseFloat(parsed[field]);
+                  if (!isNaN(volume)) {
+                    return {
+                      yearlyPeakEst: '0',
+                      yearlyShoulderEst: '0', 
+                      yearlyOffPeakEst: '0',
+                      yearlyConsumptionEst: Math.round(volume * 12).toString() // Assume monthly to annual
+                    };
+                  }
+                }
+              }
+            } catch (e) {
+              console.log('Error parsing waste/oil data:', e);
+            }
+          }
+        }
+      }
+      
+      // Fallback values
+      const defaultConsumption = utility === 'waste' ? '240' : '5000'; // tonnes/litres
+      return {
+        yearlyPeakEst: '0',
+        yearlyShoulderEst: '0',
+        yearlyOffPeakEst: '0',
+        yearlyConsumptionEst: defaultConsumption
+      };
+    }
+    
+    // For electricity utilities, use the existing logic
+    return calculateYearlyEstimates();
+  };
 
   // decode businessInfo once
   useEffect(() => {
@@ -186,6 +589,31 @@ export default function QuoteRequestPage() {
     }
     
     return null;
+  };
+
+  const getCurrentRetailerFromUtility = (utilityData: Record<string, any>) => {
+    if (!utilityData || typeof utilityData !== 'object') return "";
+    
+    for (const [key, value] of Object.entries(utilityData)) {
+      if (typeof value === 'object' && value !== null) {
+        try {
+          const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+          const retailerFields = [
+            'current_retailer', 'retailer', 'retailer_name', 'current_frmp',
+            'frmp', 'electricity_retailer', 'gas_retailer', 'supplier', 'provider'
+          ];
+          
+          for (const field of retailerFields) {
+            if (parsed[field] && typeof parsed[field] === 'string' && parsed[field].trim() !== '') {
+              return parsed[field].trim();
+            }
+          }
+        } catch (e) {
+          // Skip if not parseable
+        }
+      }
+    }
+    return "";
   };
 
   // Helper to get interval data file link
@@ -430,7 +858,7 @@ export default function QuoteRequestPage() {
   // Update quote details when interval data or utility data changes
   useEffect(() => {
     if ((intervalData || Object.keys(utilityResult).length > 0) && !loading) {
-      const estimates = calculateYearlyEstimates();
+      const estimates = calculateYearlyEstimatesForUtility();
       setQuoteDetails(prev => {
         // Only update if values actually changed to prevent infinite loop
         if (prev.yearlyPeakEst !== estimates.yearlyPeakEst || 
@@ -455,6 +883,87 @@ export default function QuoteRequestPage() {
   const handleSendQuoteRequest = () => {
     console.log('Business Info for modal:', businessInfo);
     setShowSummaryModal(true);
+  };
+
+  // Handle actual quote request submission
+  const handleSubmitQuoteRequest = async () => {
+    try {
+      setLoading(true);
+      
+      // Validate retailer selection
+      if (selectedRetailers.length === 0) {
+        alert('Please select at least one retailer to send quote requests to.');
+        return;
+      }
+
+      // Prepare the data payload matching the backend API structure
+      const payload = {
+        selected_retailers: selectedRetailers,
+        business_name: businessInfo.business_name || '',
+        trading_as: businessInfo.trading_name || '',
+        abn: businessInfo.abn || '',
+        site_address: businessInfo.site_address || '',
+        client_name: businessInfo.contact_name || '',
+        client_number: businessInfo.telephone || '',
+        client_email: businessInfo.email || '',
+        current_retailer: getCurrentRetailerFromUtility(utilityResult) || '',
+        nmi: utility === 'electricity_ci' || utility === 'electricity_sme' ? identifier : undefined,
+        mrin: utility === 'gas_ci' || utility === 'gas_sme' ? identifier : undefined,
+        utility_type: utility || '',
+        quote_type: quoteDetails.quoteType || '',
+        commission: quoteDetails.commission || '0',
+        start_date: quoteDetails.startDate || '',
+        offer_due: quoteDetails.offerDue || '',
+        yearly_peak_est: parseInt(quoteDetails.yearlyPeakEst) || 0,
+        yearly_shoulder_est: parseInt(quoteDetails.yearlyShoulderEst) || 0,
+        yearly_off_peak_est: parseInt(quoteDetails.yearlyOffPeakEst) || 0,
+        yearly_consumption_est: parseInt(quoteDetails.yearlyConsumptionEst) || 0,
+        loa_file_id: businessInfo.loaLink ? extractFileId(businessInfo.loaLink) : undefined,
+        invoice_file_id: getInvoiceLink() ? extractFileId(getInvoiceLink()) : undefined,
+        interval_data_file_id: getIntervalDataLink() ? extractFileId(getIntervalDataLink()) : undefined
+      };
+
+      console.log('Sending quote request payload:', payload);
+
+      // Send to backend
+      const response = await fetch('/api/send-quote-request', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to send quote request');
+      }
+
+      const result = await response.json();
+      
+      console.log('Quote request result:', result);
+      
+      // Show success message
+      alert(`Quote request sent successfully! Request ID: ${result.quote_request_id}`);
+      
+      // Close modal and reset form
+      setShowSummaryModal(false);
+      
+      // Optionally redirect to a success page or show confirmation
+      
+    } catch (error: any) {
+      console.error('Error sending quote request:', error);
+      alert(`Error: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Helper function to extract Google Drive file ID
+  const extractFileId = (url: string | null): string | undefined => {
+    if (!url) return undefined;
+    const match = url.match(/\/file\/d\/([a-zA-Z0-9-_]+)/);
+    return match ? match[1] : undefined;
   };
 
   // Get attachment status
@@ -870,130 +1379,63 @@ export default function QuoteRequestPage() {
             </div>
           </div>
           
-          {/* Quote Details */}
-          <div className="p-6 border-b">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">Quote Details</h2>
+          {/* Retailer Selection */}
+          <div className="p-6 border-b bg-blue-50">
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">Select Retailers for Quote Requests</h2>
+            <p className="text-gray-600 mb-4">
+              Choose which retailers you want to send quote requests to. At least one retailer must be selected.
+            </p>
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
+              <p className="text-sm text-yellow-800">
+                <strong>Note:</strong> The "Test" retailer sends quote requests to <code className="bg-yellow-100 px-1 rounded">data.quote@fornrg.com</code> for testing purposes. 
+                Use this option to test the system without sending live requests to actual retailers.
+              </p>
+            </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Quote Details */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Quote Details
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {getAvailableRetailers().map((retailer) => (
+                <label key={retailer} className={`flex items-center space-x-3 p-3 rounded-lg border hover:bg-gray-50 cursor-pointer ${
+                  retailer === 'Test' 
+                    ? 'bg-yellow-50 border-yellow-300' 
+                    : 'bg-white border-gray-300'
+                }`}>
+                  <input
+                    type="checkbox"
+                    checked={selectedRetailers.includes(retailer)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedRetailers([...selectedRetailers, retailer]);
+                      } else {
+                        setSelectedRetailers(selectedRetailers.filter(r => r !== retailer));
+                      }
+                    }}
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  />
+                  <div className="flex items-center space-x-2">
+                    <span className={`text-sm font-medium ${
+                      retailer === 'Test' ? 'text-yellow-800' : 'text-gray-900'
+                    }`}>
+                      {retailer}
+                    </span>
+                    {retailer === 'Test' && (
+                      <span className="px-2 py-1 text-xs bg-yellow-200 text-yellow-800 rounded-full font-medium">
+                        TEST
+                      </span>
+                    )}
+                  </div>
                 </label>
-                <select 
-                  value={quoteDetails.quoteType}
-                  onChange={(e) => handleQuoteDetailsChange('quoteType', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">Select quote type...</option>
-                  <option value="3_year_stepped">3 year Stepped</option>
-                  <option value="3_year_smoothed">3 year Smoothed</option>
-                  <option value="3_year_stepped_smoothed">3 year Stepped and Smoothed</option>
-                </select>
-              </div>
-
-              {/* Commission */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Commission
-                </label>
-                <select 
-                  value={quoteDetails.commission}
-                  onChange={(e) => handleQuoteDetailsChange('commission', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="0">0</option>
-                  <option value="3%">3%</option>
-                  <option value="$3.33 / mWh">$3.33 / mWh</option>
-                </select>
-              </div>
-
-              {/* Start Date */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Start Date
-                </label>
-                <input
-                  type="date"
-                  value={quoteDetails.startDate}
-                  onChange={(e) => handleQuoteDetailsChange('startDate', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              {/* Offer Due */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Offer Due?
-                </label>
-                <input
-                  type="date"
-                  value={quoteDetails.offerDue}
-                  onChange={(e) => handleQuoteDetailsChange('offerDue', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
+              ))}
             </div>
-
-            {/* Usage Estimates */}
-            <div className="mt-6">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">
-                Usage Estimates 
-                <span className="text-sm font-normal text-gray-600 ml-2">
-                  (Auto-calculated from {intervalData && Array.isArray(intervalData) && intervalData.length > 0 && intervalData[0]["Total kWh"] ? 'interval data' : 'invoice data'})
-                </span>
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Yearly Peak Est
-                  </label>
-                  <input
-                    type="number"
-                    value={quoteDetails.yearlyPeakEst}
-                    onChange={(e) => handleQuoteDetailsChange('yearlyPeakEst', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Yearly Shoulder Est
-                  </label>
-                  <input
-                    type="number"
-                    value={quoteDetails.yearlyShoulderEst}
-                    onChange={(e) => handleQuoteDetailsChange('yearlyShoulderEst', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Yearly Off-Peak Est
-                  </label>
-                  <input
-                    type="number"
-                    value={quoteDetails.yearlyOffPeakEst}
-                    onChange={(e) => handleQuoteDetailsChange('yearlyOffPeakEst', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Yearly Consumption Est
-                  </label>
-                  <input
-                    type="number"
-                    value={quoteDetails.yearlyConsumptionEst}
-                    onChange={(e) => handleQuoteDetailsChange('yearlyConsumptionEst', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
+            
+            {selectedRetailers.length === 0 && (
+              <div className="mt-3 text-sm text-red-600">
+                Please select at least one retailer to send quote requests to.
               </div>
-            </div>
+            )}
           </div>
+
+          {/* Quote Details - Dynamic Section */}
+          {renderQuoteDetailsSection()}
 
           {/* Next Steps */}
           <div className="p-6">
@@ -1004,9 +1446,10 @@ export default function QuoteRequestPage() {
               </p>
               <button 
                 onClick={handleSendQuoteRequest}
-                className="px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
+                disabled={selectedRetailers.length === 0}
+                className="px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:bg-blue-400 disabled:cursor-not-allowed"
               >
-                Send Quote Request
+                {selectedRetailers.length === 0 ? 'Select Retailers First' : 'Send Quote Request'}
               </button>
             </div>
           </div>
@@ -1096,6 +1539,23 @@ export default function QuoteRequestPage() {
                     </div>
                   </div>
 
+                  {/* Selected Retailers */}
+                  <div className="bg-indigo-50 p-4 rounded-lg">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-3">Selected Retailers</h3>
+                    <div className="space-y-2">
+                      {selectedRetailers.length > 0 ? (
+                        selectedRetailers.map((retailer, index) => (
+                          <div key={index} className="flex items-center space-x-2">
+                            <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                            <span className="text-sm font-medium text-gray-900">{retailer}</span>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="text-sm text-red-600">No retailers selected</div>
+                      )}
+                    </div>
+                  </div>
+
                   {/* Quote Details */}
                   <div className="bg-green-50 p-4 rounded-lg">
                     <h3 className="text-lg font-semibold text-gray-900 mb-3">Quote Configuration</h3>
@@ -1122,32 +1582,45 @@ export default function QuoteRequestPage() {
                   {/* Annual Usage Estimates */}
                   <div className="bg-yellow-50 p-4 rounded-lg">
                     <h3 className="text-lg font-semibold text-gray-900 mb-3">Annual Usage Estimates</h3>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                      <div className="text-center">
-                        <div className="font-medium text-gray-600">Peak</div>
-                        <div className="text-lg font-bold text-blue-900">
-                          {quoteDetails.yearlyPeakEst ? formatNumber(quoteDetails.yearlyPeakEst) : '0'} kWh
+                    {showUsageBreakdown() ? (
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                        <div className="text-center">
+                          <div className="font-medium text-gray-600">Peak</div>
+                          <div className="text-lg font-bold text-blue-900">
+                            {quoteDetails.yearlyPeakEst ? formatNumber(quoteDetails.yearlyPeakEst) : '0'} {getConsumptionUnit()}
+                          </div>
+                        </div>
+                        <div className="text-center">
+                          <div className="font-medium text-gray-600">Shoulder</div>
+                          <div className="text-lg font-bold text-green-900">
+                            {quoteDetails.yearlyShoulderEst ? formatNumber(quoteDetails.yearlyShoulderEst) : '0'} {getConsumptionUnit()}
+                          </div>
+                        </div>
+                        <div className="text-center">
+                          <div className="font-medium text-gray-600">Off-Peak</div>
+                          <div className="text-lg font-bold text-purple-900">
+                            {quoteDetails.yearlyOffPeakEst ? formatNumber(quoteDetails.yearlyOffPeakEst) : '0'} {getConsumptionUnit()}
+                          </div>
+                        </div>
+                        <div className="text-center">
+                          <div className="font-medium text-gray-600">Total</div>
+                          <div className="text-xl font-bold text-red-900">
+                            {quoteDetails.yearlyConsumptionEst ? formatNumber(quoteDetails.yearlyConsumptionEst) : '0'} {getConsumptionUnit()}
+                          </div>
                         </div>
                       </div>
+                    ) : (
                       <div className="text-center">
-                        <div className="font-medium text-gray-600">Shoulder</div>
-                        <div className="text-lg font-bold text-green-900">
-                          {quoteDetails.yearlyShoulderEst ? formatNumber(quoteDetails.yearlyShoulderEst) : '0'} kWh
+                        <div className="font-medium text-gray-600 mb-2">
+                          {utility === 'waste' ? 'Annual Volume' : 
+                           utility === 'oil' ? 'Annual Usage' : 
+                           'Annual Consumption'}
+                        </div>
+                        <div className="text-xl font-bold text-blue-900">
+                          {quoteDetails.yearlyConsumptionEst ? formatNumber(quoteDetails.yearlyConsumptionEst) : '0'} {getConsumptionUnit()}
                         </div>
                       </div>
-                      <div className="text-center">
-                        <div className="font-medium text-gray-600">Off-Peak</div>
-                        <div className="text-lg font-bold text-purple-900">
-                          {quoteDetails.yearlyOffPeakEst ? formatNumber(quoteDetails.yearlyOffPeakEst) : '0'} kWh
-                        </div>
-                      </div>
-                      <div className="text-center">
-                        <div className="font-medium text-gray-600">Total</div>
-                        <div className="text-xl font-bold text-red-900">
-                          {quoteDetails.yearlyConsumptionEst ? formatNumber(quoteDetails.yearlyConsumptionEst) : '0'} kWh
-                        </div>
-                      </div>
-                    </div>
+                    )}
                   </div>
 
                   {/* Attachments Status */}
@@ -1196,22 +1669,11 @@ export default function QuoteRequestPage() {
                     Review & Edit
                   </button>
                   <button
-                    onClick={() => {
-                      // Here you would actually send the quote request
-                      console.log('Sending quote request...', {
-                        businessInfo,
-                        utility,
-                        identifier,
-                        quoteDetails,
-                        attachments: getAttachmentStatus()
-                      });
-                      setShowSummaryModal(false);
-                      // Show success message or redirect
-                      alert('Quote request sent successfully!');
-                    }}
-                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                    onClick={handleSubmitQuoteRequest}
+                    disabled={loading}
+                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-blue-400 disabled:cursor-not-allowed"
                   >
-                    Confirm & Send
+                    {loading ? 'Sending...' : 'Confirm & Send'}
                   </button>
                 </div>
               </div>
