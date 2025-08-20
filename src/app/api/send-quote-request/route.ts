@@ -29,6 +29,27 @@ interface QuoteRequestData {
   interval_data_file_id?: string;
 }
 
+// Function to determine backend URL based on environment
+function getBackendUrl() {
+  // Try NEXT_PUBLIC_API_BASE_URL first (if available in server context)
+  if (process.env.NEXT_PUBLIC_API_BASE_URL) {
+    return process.env.NEXT_PUBLIC_API_BASE_URL;
+  }
+  
+  // Fallback to BACKEND_API_URL
+  if (process.env.BACKEND_API_URL) {
+    return process.env.BACKEND_API_URL;
+  }
+  
+  // If we're in production (deployed), use the live backend
+  if (process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production') {
+    return 'https://text-agent-backend-672026052958.australia-southeast2.run.app';
+  }
+  
+  // Development fallback
+  return 'http://localhost:8000';
+}
+
 export async function POST(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
@@ -57,9 +78,11 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
+    const backendUrl = getBackendUrl();
+    
     // Log the request
     console.log(`Received quote request: business_name=${requestData.business_name}, utility_type=${requestData.utility_type}`);
-    console.log('Backend API URL:', process.env.BACKEND_API_URL || 'http://localhost:8000');
+    console.log('Backend API URL:', backendUrl);
     console.log('Backend API Key:', process.env.BACKEND_API_KEY || 'test-key');
 
     // Add utility type identifier for n8n switch node
@@ -109,9 +132,10 @@ export async function POST(req: NextRequest) {
       }
     };
 
-    // Prepare the payload for backend
+    // Prepare the payload for backend - use only the data that was sent from frontend
     const backendPayload = {
       ...requestData,
+      // Use the data as provided by frontend (which has already processed businessInfo/utilityResult)
       utility_type_identifier: getUtilityTypeIdentifier(requestData.utility_type),
       retailer_type_identifier: getRetailerTypeIdentifier(requestData.selected_retailers),
       quote_details: getQuoteDetails(requestData.quote_type),
@@ -124,7 +148,7 @@ export async function POST(req: NextRequest) {
     let backendResponse: Response;
     try {
       // Call your backend tool/API
-      backendResponse = await fetch(`${process.env.BACKEND_API_URL || 'http://localhost:8000'}/api/send-quote-request`, {
+      backendResponse = await fetch(`${backendUrl}/api/send-quote-request`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

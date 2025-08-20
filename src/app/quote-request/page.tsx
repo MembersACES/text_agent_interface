@@ -885,9 +885,43 @@ export default function QuoteRequestPage() {
     setShowSummaryModal(true);
   };
 
+  const getUtilityTypeIdentifier = (utilityType) => {
+    switch (utilityType) {
+      case 'electricity_ci': return 'C&I Electricity';
+      case 'electricity_sme': return 'SME Electricity';
+      case 'gas_ci': return 'C&I Gas';
+      case 'gas_sme': return 'SME Gas';
+      case 'waste': return 'Waste';
+      case 'oil': return 'Oil';
+      default: return utilityType;
+    }
+  };
+  
+  const getRetailerTypeIdentifier = (retailers) => {
+    const hasCI = retailers.some(r => r.includes('C&I'));
+    const hasSME = retailers.some(r => r.includes('SME'));
+    if (hasCI && hasSME) return 'Mixed C&I & SME';
+    if (hasCI) return 'C&I Only';
+    if (hasSME) return 'SME Only';
+    return 'Other';
+  };
+  
+  const getQuoteDetails = (quoteType) => {
+    switch (quoteType) {
+      case '3_year_stepped': return '3 Year Stepped Contract';
+      case '2_year_fixed': return '2 Year Fixed Contract';
+      case '1_year_fixed': return '1 Year Fixed Contract';
+      case 'flexible': return 'Flexible Contract Options';
+      default: return quoteType;
+    }
+  };
+
   // Handle actual quote request submission
   const handleSubmitQuoteRequest = async () => {
     try {
+      console.log('Session:', session);
+      console.log('User:', session?.user);
+
       setLoading(true);
       
       // Validate retailer selection
@@ -920,16 +954,20 @@ export default function QuoteRequestPage() {
         yearly_consumption_est: parseInt(quoteDetails.yearlyConsumptionEst) || 0,
         loa_file_id: businessInfo.loaLink ? extractFileId(businessInfo.loaLink) : undefined,
         invoice_file_id: getInvoiceLink() ? extractFileId(getInvoiceLink()) : undefined,
-        interval_data_file_id: getIntervalDataLink() ? extractFileId(getIntervalDataLink()) : undefined
+        interval_data_file_id: getIntervalDataLink() ? extractFileId(getIntervalDataLink()) : undefined,
+        utility_type_identifier: getUtilityTypeIdentifier(utility || ''),
+        retailer_type_identifier: getRetailerTypeIdentifier(selectedRetailers),
+        quote_details: getQuoteDetails(quoteDetails.quoteType || '')
       };
 
       console.log('Sending quote request payload:', payload);
 
       // Send to backend
-      const response = await fetch('/api/send-quote-request', {
+      const response = await fetch(`${getApiBaseUrl()}/api/send-quote-request`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify(payload)
       });
