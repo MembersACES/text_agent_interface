@@ -885,7 +885,7 @@ export default function QuoteRequestPage() {
     setShowSummaryModal(true);
   };
 
-  const getUtilityTypeIdentifier = (utilityType) => {
+  const getUtilityTypeIdentifier = (utilityType: string) => {
     switch (utilityType) {
       case 'electricity_ci': return 'C&I Electricity';
       case 'electricity_sme': return 'SME Electricity';
@@ -897,7 +897,7 @@ export default function QuoteRequestPage() {
     }
   };
   
-  const getRetailerTypeIdentifier = (retailers) => {
+  const getRetailerTypeIdentifier = (retailers: string[]) => {
     const hasCI = retailers.some(r => r.includes('C&I'));
     const hasSME = retailers.some(r => r.includes('SME'));
     if (hasCI && hasSME) return 'Mixed C&I & SME';
@@ -906,7 +906,7 @@ export default function QuoteRequestPage() {
     return 'Other';
   };
   
-  const getQuoteDetails = (quoteType) => {
+  const getQuoteDetails = (quoteType: string) => {
     switch (quoteType) {
       case '3_year_stepped': return '3 Year Stepped Contract';
       case '2_year_fixed': return '2 Year Fixed Contract';
