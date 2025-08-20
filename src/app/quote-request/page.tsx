@@ -48,6 +48,9 @@ export default function QuoteRequestPage() {
   const utility = searchParams.get("utility");
   const identifier = searchParams.get("identifier");
 
+  const [successMessage, setSuccessMessage] = useState<string>('');
+  const [showSuccessModalState, setShowSuccessModalState] = useState<boolean>(false);
+
   // Available retailers based on utility type
   const getAvailableRetailers = () => {
     const testRetailer = 'Test';
@@ -905,7 +908,14 @@ export default function QuoteRequestPage() {
     if (hasSME) return 'SME Only';
     return 'Other';
   };
-  
+
+  // Updated showSuccessModal function
+  const showSuccessModal = (message: string) => {
+    setSuccessMessage(message);
+    setShowSuccessModalState(true);
+  };
+
+
   const getQuoteDetails = (quoteType: string) => {
     switch (quoteType) {
       case '3_year_stepped': return '3 Year Stepped Contract';
@@ -921,7 +931,7 @@ export default function QuoteRequestPage() {
     try {
       console.log('Session:', session);
       console.log('User:', session?.user);
-
+  
       setLoading(true);
       
       // Validate retailer selection
@@ -929,7 +939,7 @@ export default function QuoteRequestPage() {
         alert('Please select at least one retailer to send quote requests to.');
         return;
       }
-
+  
       // Prepare the data payload matching the backend API structure
       const payload = {
         selected_retailers: selectedRetailers,
@@ -959,9 +969,9 @@ export default function QuoteRequestPage() {
         retailer_type_identifier: getRetailerTypeIdentifier(selectedRetailers),
         quote_details: getQuoteDetails(quoteDetails.quoteType || '')
       };
-
+  
       console.log('Sending quote request payload:', payload);
-
+  
       // Send to backend
       const response = await fetch(`${getApiBaseUrl()}/api/send-quote-request`, {
         method: 'POST',
@@ -971,31 +981,57 @@ export default function QuoteRequestPage() {
         },
         body: JSON.stringify(payload)
       });
-
+  
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || 'Failed to send quote request');
       }
-
+  
+      // The backend now returns a formatted string response like the data request tool
       const result = await response.json();
       
       console.log('Quote request result:', result);
       
-      // Show success message
-      alert(`Quote request sent successfully! Request ID: ${result.quote_request_id}`);
+      // Check if we got a formatted string response or the old JSON format
+      let successMessage = '';
       
-      // Close modal and reset form
+      if (typeof result === 'string') {
+        // New format - formatted string like data request tool
+        successMessage = result;
+      } else if (result.message || result.success) {
+        // Old format - JSON object (fallback)
+        const requestId = result.quote_request_id || result.request_id || `QR_${Date.now()}`;
+        successMessage = `Quote request sent successfully!\n\nRequest ID: ${requestId}\n\nRetailers contacted: ${selectedRetailers.join(', ')}\n\nEstimated response time: 3-5 business days`;
+      } else {
+        // Unexpected format
+        successMessage = `Quote request sent successfully to ${selectedRetailers.length} retailers: ${selectedRetailers.join(', ')}`;
+      }
+      
+      // Create a styled success modal instead of basic alert
+      showSuccessModal(successMessage);
+      
+      // Close the summary modal
       setShowSummaryModal(false);
       
-      // Optionally redirect to a success page or show confirmation
-      
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error sending quote request:', error);
-      alert(`Error: ${error.message}`);
+    
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+    
+      if (errorMessage.includes('✅') || errorMessage.includes('❌')) {
+        // This is actually a formatted response, treat as success/info
+        showSuccessModal(errorMessage);
+        setShowSummaryModal(false);
+      } else {
+        // This is a real error
+        alert(`Error: ${errorMessage}`);
+      }
     } finally {
       setLoading(false);
     }
   };
+  
 
   // Helper function to extract Google Drive file ID
   const extractFileId = (url: string | null): string | undefined => {
@@ -1712,6 +1748,67 @@ export default function QuoteRequestPage() {
                     className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-blue-400 disabled:cursor-not-allowed"
                   >
                     {loading ? 'Sending...' : 'Confirm & Send'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+          {/* Success Modal */}
+          {showSuccessModalState && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+                <div className="p-6 border-b">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                        <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      </div>
+                      <h2 className="text-2xl font-bold text-gray-900">Quote Request Sent Successfully!</h2>
+                    </div>
+                    <button
+                      onClick={() => setShowSuccessModalState(false)}
+                      className="text-gray-400 hover:text-gray-600 text-2xl font-bold"
+                    >
+                      ×
+                    </button>
+                  </div>
+                </div>
+                
+                <div className="p-6">
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                    <pre className="whitespace-pre-wrap text-sm text-gray-800 font-medium">
+                      {successMessage}
+                    </pre>
+                  </div>
+                  
+                  <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <h4 className="font-semibold text-blue-900 mb-2">What happens next?</h4>
+                    <ul className="text-sm text-blue-800 space-y-1">
+                      <li>• Retailers will review your quote request</li>
+                      <li>• You should receive quotes within 3-5 business days</li>
+                      <li>• Quotes will be sent directly to your email address</li>
+                      <li>• You can compare offers and choose the best option</li>
+                    </ul>
+                  </div>
+                </div>
+
+                <div className="p-6 border-t bg-gray-50 flex space-x-3">
+                  <button
+                    onClick={() => setShowSuccessModalState(false)}
+                    className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                  >
+                    Done
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowSuccessModalState(false);
+                      window.location.href = '/dashboard';
+                    }}
+                    className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
+                  >
+                    Back to Dashboard
                   </button>
                 </div>
               </div>
