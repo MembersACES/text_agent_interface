@@ -24,6 +24,463 @@ interface InfoToolPageProps {
   initialExtraFields?: { [key: string]: any };
 }
 
+interface DemandResponseData {
+  demandCapacityInvoice: string;
+  demandCapacityUnit: string;
+  demandCapacityRate: string;
+  highestDemandKW: string;
+  peakDemandPeriod: string;
+  highestDemandKVA: string;
+  peakDemandPeriodKVA: string;
+  notes: string;
+  invoiceLink: string;
+  intervalDataLink: string;
+  siteAddress: string;
+  nmi: string;
+  invoiceNumber: string;
+}
+
+function DemandResponseModal({ 
+  isOpen, 
+  onClose, 
+  invoiceData, 
+  intervalData, 
+  comparisons,
+  session,
+  token
+}: { 
+  isOpen: boolean; 
+  onClose: () => void; 
+  invoiceData: any; 
+  intervalData: any; 
+  comparisons: any[];
+  session: any;
+  token: string;
+}) {
+  const [formData, setFormData] = useState<DemandResponseData>({
+    demandCapacityInvoice: '',
+    demandCapacityUnit: 'kW',
+    notes: '', 
+    demandCapacityRate: '',
+    highestDemandKW: '',
+    peakDemandPeriod: '',
+    highestDemandKVA: '',
+    peakDemandPeriodKVA: '',
+    invoiceLink: '',
+    intervalDataLink: '',
+    siteAddress: '',
+    nmi: '',
+    invoiceNumber: ''
+  });
+
+  const [sending, setSending] = useState(false);
+
+  // Populate form data when modal opens
+  useEffect(() => {
+    if (isOpen && invoiceData && intervalData) {
+      const invoiceDetails = invoiceData?.electricity_ci_invoice_details || 
+                            invoiceData?.electricity_sme_invoice_details;
+      const latestInterval = Array.isArray(intervalData) && intervalData.length > 0 ? intervalData[0] : null;
+  
+      // Add logging to see what's in the invoice details
+      console.log('Full invoiceData:', invoiceData);
+      console.log('Extracted invoiceDetails:', invoiceDetails);
+      console.log('Invoice Number from details:', invoiceDetails?.invoice_number);
+      console.log('Invoice ID from details:', invoiceDetails?.invoice_id);
+      console.log('All available invoice detail keys:', invoiceDetails ? Object.keys(invoiceDetails) : 'No invoice details');
+  
+      setFormData({
+        demandCapacityInvoice: invoiceDetails?.demand_capacity || '',
+        demandCapacityUnit: 'kW',
+        highestDemandKW: latestInterval?.["Highest Demand (kW)"] || '',
+        demandCapacityRate: '',
+        notes: '', 
+        peakDemandPeriod: latestInterval?.["Peak Demand Period"] ? new Date(latestInterval["Peak Demand Period"]).toLocaleDateString() : '',
+        highestDemandKVA: latestInterval?.["Highest Demand (kVA)"] || '',
+        peakDemandPeriodKVA: latestInterval?.["Peak Demand Period kVA"] ? new Date(latestInterval["Peak Demand Period kVA"]).toLocaleDateString() : '',
+        invoiceLink: invoiceDetails?.invoice_link || '',
+        intervalDataLink: latestInterval?.["Interval Data File ID"] ? `https://drive.google.com/file/d/${latestInterval["Interval Data File ID"]}/view` : '',
+        siteAddress: invoiceDetails?.site_address || '',
+        nmi: invoiceDetails?.nmi || '',
+        invoiceNumber: invoiceDetails?.invoice_number || ''
+      });
+    }
+  }, [isOpen, invoiceData, intervalData]);
+
+  const handleInputChange = (field: keyof DemandResponseData, value: string) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const generateTableHTML = () => {
+    // Calculate costs
+    const invoiceQuantity = parseFloat(formData.demandCapacityInvoice) || 0;
+    const rate = parseFloat(formData.demandCapacityRate) || 0;
+    const invoiceCost = (invoiceQuantity * rate).toFixed(2);
+    
+    // Get interval quantity based on invoice unit type
+    const intervalQuantity = formData.demandCapacityUnit === 'kVA' 
+      ? parseFloat(formData.highestDemandKVA) || 0
+      : parseFloat(formData.highestDemandKW) || 0;
+    const intervalCost = (intervalQuantity * rate).toFixed(2);
+    
+    // Calculate difference and determine if it's savings or cost increase
+    const difference = parseFloat(invoiceCost) - parseFloat(intervalCost);
+    const costLine = difference > 0 
+      ? `Potential Savings: $${difference.toFixed(2)}`
+      : `Cost Increase: $${Math.abs(difference).toFixed(2)}`;
+    
+    // Use the appropriate peak demand period based on invoice unit
+    const peakPeriod = formData.demandCapacityUnit === 'kVA' 
+      ? formData.peakDemandPeriodKVA 
+      : formData.peakDemandPeriod;
+    
+    // Include notes as its own line if they exist
+    const notesLine = formData.notes.trim() ? `\nNotes: ${formData.notes}` : '';
+    
+    return `DEMAND RESPONSE REVIEW
+  
+  BUSINESS DETAILS
+  Site Address: ${formData.siteAddress}
+  NMI: ${formData.nmi}
+  
+  DEMAND COST ANALYSIS
+  Invoice Demand: ${formData.demandCapacityInvoice} ${formData.demandCapacityUnit} @ $${formData.demandCapacityRate}/${formData.demandCapacityUnit} = $${invoiceCost}
+  Interval Demand: ${intervalQuantity} ${formData.demandCapacityUnit} @ $${formData.demandCapacityRate}/${formData.demandCapacityUnit} = $${intervalCost}
+  ${costLine}
+  Peak Demand Period: ${peakPeriod} (Interval Data)${notesLine}`;
+  };
+
+  const copyToClipboard = () => {
+    const tableText = generateTableHTML();
+    navigator.clipboard.writeText(tableText).then(() => {
+      alert('Email-friendly table copied to clipboard! You can now paste this directly into Gmail.');
+    });
+  };
+
+  const sendDemandResponseReview = async () => {
+    setSending(true);
+    try {
+      const tableHTML = generateTableHTML();
+      
+      // Determine which demand values to send based on the selected unit
+      const isKVA = formData.demandCapacityUnit === 'kVA';
+      
+      // Prepare the payload with user information and demand data
+      const payload: any = {
+        // User information from session
+        user_email: session?.user?.email || '',
+        user_name: session?.user?.name || '',
+        user_id: session?.user?.id || '',
+        
+        // Existing demand response data
+        site_address: formData.siteAddress,
+        nmi: formData.nmi,
+        table_html: tableHTML,
+        notes: formData.notes,
+        demand_capacity_invoice: formData.demandCapacityInvoice,
+        demand_capacity_unit: formData.demandCapacityUnit,
+        demand_capacity_rate: formData.demandCapacityRate,
+        invoice_link: formData.invoiceLink,
+        interval_data_link: formData.intervalDataLink,
+        invoice_number: formData.invoiceNumber,
+        
+        // Timestamp for tracking
+        timestamp: new Date().toISOString()
+      };
+
+      // Add the appropriate demand values based on unit type
+      if (isKVA) {
+        payload.highest_demand_kva = formData.highestDemandKVA;
+        payload.peak_demand_period_kva = formData.peakDemandPeriodKVA;
+        payload.highest_demand_kw = '';
+        payload.peak_demand_period = '';
+      } else {
+        payload.highest_demand_kw = formData.highestDemandKW;
+        payload.peak_demand_period = formData.peakDemandPeriod;
+        payload.highest_demand_kva = '';
+        payload.peak_demand_period_kva = '';
+      }
+      
+      const response = await fetch('https://membersaces.app.n8n.cloud/webhook/generate-maximum-demand-review', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (response.ok) {
+        alert('Demand Response Review sent successfully!');
+        onClose();
+      } else {
+        throw new Error('Failed to send review');
+      }
+    } catch (error) {
+      console.error('Error sending demand response review:', error);
+      alert('Failed to send review. Please try again.');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 1000
+    }}>
+      <div style={{
+        backgroundColor: 'white',
+        borderRadius: 8,
+        padding: 24,
+        maxWidth: '95vw',
+        width: '1200px',
+        maxHeight: '90vh',
+        overflow: 'auto',
+        boxShadow: '0 10px 25px rgba(0, 0, 0, 0.3)'
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+          <h2 style={{ margin: 0, fontSize: 24, fontWeight: 600 }}>Demand Response Review</h2>
+          <button 
+            onClick={onClose}
+            style={{
+              background: 'none',
+              border: 'none',
+              fontSize: 24,
+              cursor: 'pointer',
+              color: '#666'
+            }}
+          >
+            ×
+          </button>
+        </div>
+
+        <div style={{ marginBottom: 20 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #ddd' }}>
+          <thead>
+            <tr style={{ backgroundColor: '#f5f5f5' }}>
+              <th style={{ padding: 12, textAlign: 'left', border: '1px solid #ddd' }}>Metric</th>
+              <th style={{ padding: 12, textAlign: 'left', border: '1px solid #ddd' }}>Value</th>
+              <th style={{ padding: 12, textAlign: 'left', border: '1px solid #ddd' }}>Unit & Source</th>
+            </tr>
+          </thead>
+            <tbody>
+            <tr>
+              <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>Site Address</td>
+              <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                <div style={{ padding: 4, fontSize: 14, fontWeight: 600, color: '#111827' }}>
+                  {formData.siteAddress || 'N/A'}
+                </div>
+              </td>
+              <td style={{ padding: 8, border: '1px solid #ddd' }}>Invoice</td>
+            </tr>
+            <tr>
+              <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>NMI</td>
+              <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                <div style={{ padding: 4, fontSize: 14, fontWeight: 600, color: '#111827' }}>
+                  {formData.nmi || 'N/A'}
+                </div>
+              </td>
+              <td style={{ padding: 8, border: '1px solid #ddd' }}>Invoice</td>
+            </tr>
+              <tr>
+                <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>Invoice Link</td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                  {formData.invoiceLink ? (
+                    <a 
+                      href={formData.invoiceLink} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      style={{ color: '#2563eb', textDecoration: 'underline' }}
+                    >
+                      View Invoice PDF
+                    </a>
+                  ) : (
+                    <span style={{ color: '#6b7280' }}>No invoice link available</span>
+                  )}
+                </td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>Invoice</td>
+              </tr>
+              <tr>
+                <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>Interval Data Link</td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                  {formData.intervalDataLink ? (
+                    <a 
+                      href={formData.intervalDataLink} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      style={{ color: '#2563eb', textDecoration: 'underline' }}
+                    >
+                      View Interval Data File
+                    </a>
+                  ) : (
+                    <span style={{ color: '#6b7280' }}>No interval data link available</span>
+                  )}
+                </td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>Interval Data</td>
+              </tr>
+              <tr style={{ backgroundColor: '#e6f3ff' }}>
+                <td colSpan={3} style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600, textAlign: 'center' }}>
+                  Demand Metrics
+                </td>
+              </tr>
+              <tr>
+                <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>Demand Capacity</td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                  <input
+                    type="text"
+                    value={formData.demandCapacityInvoice}
+                    onChange={(e) => handleInputChange('demandCapacityInvoice', e.target.value)}
+                    style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4 }}
+                    placeholder="N/A"
+                  />
+                </td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                  <select
+                    value={formData.demandCapacityUnit}
+                    onChange={(e) => handleInputChange('demandCapacityUnit', e.target.value)}
+                    style={{ padding: 4, border: '1px solid #ccc', borderRadius: 4, marginRight: 8 }}
+                  >
+                    <option value="kW">kW</option>
+                    <option value="kVA">kVA</option>
+                  </select>
+                  (Invoice)
+                </td>
+              </tr>
+              <tr>
+                <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>Demand Capacity Rate</td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                  <input
+                    type="text"
+                    value={formData.demandCapacityRate}
+                    onChange={(e) => handleInputChange('demandCapacityRate', e.target.value)}
+                    style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4 }}
+                    placeholder="$/kW or $/kVA"
+                  />
+                </td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>$ per unit (Invoice)</td>
+              </tr>
+              <tr>
+                <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>Highest Demand</td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                  <input
+                    type="text"
+                    value={formData.highestDemandKW}
+                    onChange={(e) => handleInputChange('highestDemandKW', e.target.value)}
+                    style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4 }}
+                    placeholder="N/A"
+                  />
+                </td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>kW (Interval Data)</td>
+              </tr>
+              <tr>
+                <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>Peak Demand Period</td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                  <input
+                    type="text"
+                    value={formData.peakDemandPeriod}
+                    onChange={(e) => handleInputChange('peakDemandPeriod', e.target.value)}
+                    style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4 }}
+                    placeholder="N/A"
+                  />
+                </td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>Date (Interval Data)</td>
+              </tr>
+              <tr>
+                <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>Highest Demand</td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                  <input
+                    type="text"
+                    value={formData.highestDemandKVA}
+                    onChange={(e) => handleInputChange('highestDemandKVA', e.target.value)}
+                    style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4 }}
+                    placeholder="N/A"
+                  />
+                </td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>kVA (Interval Data)</td>
+              </tr>
+              <tr>
+                <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>Peak Demand Period</td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                  <input
+                    type="text"
+                    value={formData.peakDemandPeriodKVA}
+                    onChange={(e) => handleInputChange('peakDemandPeriodKVA', e.target.value)}
+                    style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4 }}
+                    placeholder="N/A"
+                  />
+                </td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>Date kVA (Interval Data)</td>
+              </tr>
+              <tr>
+                <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>Notes</td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                  <textarea
+                    value={formData.notes}
+                    onChange={(e) => handleInputChange('notes', e.target.value)}
+                    style={{ 
+                      width: '100%', 
+                      padding: 4, 
+                      border: '1px solid #ccc', 
+                      borderRadius: 4,
+                      minHeight: '60px',
+                      resize: 'vertical'
+                    }}
+                    placeholder="Optional notes..."
+                  />
+                </td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>Optional</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+        <button
+          onClick={copyToClipboard}
+          style={{
+            padding: '8px 16px',
+            backgroundColor: '#6b7280',
+            color: 'white',
+            border: 'none',
+            borderRadius: 4,
+            cursor: 'pointer',
+            fontWeight: 600
+          }}
+        >
+          Copy for Gmail
+        </button>
+          <button
+            onClick={sendDemandResponseReview}
+            disabled={sending}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: sending ? '#9ca3af' : '#2563eb',
+              color: 'white',
+              border: 'none',
+              borderRadius: 4,
+              cursor: sending ? 'not-allowed' : 'pointer',
+              fontWeight: 600
+            }}
+          >
+            {sending ? 'Sending...' : 'Send Demand Response Review'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ResultMessage({ message }: { message: string }) {
   // Split into lines and process
   const lines = message
@@ -183,7 +640,19 @@ function InvoiceResult({ result }: { result: any }) {
 }
 
 // Data Comparison Component
-function DataComparisonSection({ invoiceData, intervalData, title }: { invoiceData: any, intervalData: any, title: string }) {
+function DataComparisonSection({ 
+  invoiceData, 
+  intervalData, 
+  title, 
+  session, 
+  token 
+}: { 
+  invoiceData: any, 
+  intervalData: any, 
+  title: string,
+  session: any,
+  token: string
+}) {
   // Helper functions
   const parseNumber = (value: any): number | null => {
     if (!value || value === "-") return null;
@@ -224,6 +693,7 @@ function DataComparisonSection({ invoiceData, intervalData, title }: { invoiceDa
     }
   };
 
+  const [showDemandModal, setShowDemandModal] = useState(false);
   // Extract comparison metrics
   // Get invoice details
   const invoiceDetails = invoiceData?.electricity_ci_invoice_details || 
@@ -453,13 +923,54 @@ function DataComparisonSection({ invoiceData, intervalData, title }: { invoiceDa
             Large differences may indicate billing errors, meter reading issues, or data quality problems that warrant investigation.
           </div>
         </div>
+        {/* Demand Response Review Button - only show for C&I electricity */}
+        {title.toLowerCase().includes('electricity') && title.toLowerCase().includes('c&i') && (
+          <button
+            onClick={() => setShowDemandModal(true)}
+            style={{
+              marginTop: 16,
+              padding: '8px 16px',
+              backgroundColor: '#2563eb',
+              color: 'white',
+              border: 'none',
+              borderRadius: 4,
+              cursor: 'pointer',
+              fontWeight: 600
+            }}
+          >
+            Demand Response Review
+          </button>
+        )}
+
+        {/* Modal - Updated to include session and token */}
+        <DemandResponseModal
+          isOpen={showDemandModal}
+          onClose={() => setShowDemandModal(false)}
+          invoiceData={invoiceData}
+          intervalData={intervalData}
+          comparisons={comparisons}
+          session={session}
+          token={token}
+        />
       </div>
     </div>
   );
 }
 
 // Interval Data Component
-function IntervalDataSection({ title, identifier, result }: { title: string, identifier: string, result: any }) {
+function IntervalDataSection({ 
+  title, 
+  identifier, 
+  result, 
+  session, 
+  token 
+}: { 
+  title: string, 
+  identifier: string, 
+  result: any,
+  session: any,
+  token: string
+}) {
   const [intervalData, setIntervalData] = useState<any>(null);
   const [intervalLoading, setIntervalLoading] = useState(false);
   const [intervalError, setIntervalError] = useState<string | null>(null);
@@ -732,6 +1243,8 @@ function IntervalDataSection({ title, identifier, result }: { title: string, ide
           invoiceData={result}
           intervalData={intervalData}
           title={title}
+          session={session}
+          token={token}
         />
       )}
     </>
@@ -977,6 +1490,8 @@ export default function InfoToolPage({ title, description, endpoint, extraFields
           title={title}
           identifier={getIdentifierForIntervalData()!}
           result={result}
+          session={session}
+          token={token}
         />
       )}
     </div>
