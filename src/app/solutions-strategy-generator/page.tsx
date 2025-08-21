@@ -336,7 +336,7 @@ export default function IndividualStrategyEmailPage() {
     // AI Bots
     {
       id: "assisted_scrubber",
-      name: "Assisted Scrubber",
+      name: "Assisted Scrubber (CS)",
       description: "AI-powered assisted scrubbing solutions for automated cleaning",
       presentationId: "1VqfPbIWfHwx11fXFfi8Z5qq0-AzgvMzooM1fV-FWtGs",
       enabled: true,
@@ -344,7 +344,7 @@ export default function IndividualStrategyEmailPage() {
     },
     {
       id: "scrubber_ai_bot",
-      name: "Scrubber-Assisted AI Bot",
+      name: "Scrubber-Assisted AI Bot (SH1)",
       description: "Advanced AI bot for intelligent scrubbing operations",
       presentationId: "1c0s191tvwa1ZenWPG5Ghdo5J4c0SPf3GbbjtDPO5lXE",
       enabled: true,
@@ -352,7 +352,7 @@ export default function IndividualStrategyEmailPage() {
     },
     {
       id: "vacuum_mopping_ai_bot",
-      name: "Vacuum-Mopping AI Bot",
+      name: "Vacuum-Mopping AI Bot (CC1)",
       description: "Comprehensive vacuum and mopping AI bot system",
       presentationId: "1DCNrBY1AA-B4OLuMFIXvEhkN-rTA287J1TbESkD-3ts",
       enabled: true,
@@ -368,7 +368,7 @@ export default function IndividualStrategyEmailPage() {
     },
     {
       id: "filtering_cleaning_bot",
-      name: "Filtering & Cleaning Assisted Bot",
+      name: "Oil Filtering & Cleaning Assisted Unit",
       description: "Advanced filtering and cleaning assistance through AI automation",
       presentationId: "10srsHl936u9unxOE30EyGQKmsQU4XEpGbQcBhOG8_Gc",
       enabled: true,
