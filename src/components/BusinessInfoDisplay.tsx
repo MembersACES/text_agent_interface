@@ -572,19 +572,34 @@ export default function BusinessInfoDisplay({ info, onLinkUtility }: BusinessInf
                 // Special handling for Cleaning & Telecommunication
                 if (key === "Cleaning" || key === "Telecommunication") {
                   const retailer = retailers[realKey] || '';
-                  const statusLabel = value === true ? "In File" : (value ? "Available" : "Not available");
                   const filingType = key === "Cleaning" ? "cleaning_invoice_upload" : "telecommunication_invoice_upload";
+                  
+                  // Check for invoice file
+                  const invoiceFileKey = `invoice_${key}`;
+                  const hasInvoiceFile = info._processed_file_ids?.[invoiceFileKey];
+                  
+                  // Determine status based on file availability
+                  let statusLabel = "Not available";
+                  if (hasInvoiceFile) {
+                    statusLabel = "Invoice Available";
+                  } else if (value === true) {
+                    statusLabel = "In File";
+                  } else if (value) {
+                    statusLabel = "Available";
+                  }
                 
                   return (
                     <div key={key} className="border rounded-lg p-3 bg-gray-50">
                       <div className="font-semibold text-gray-800 mb-2">{key}</div>
-                      <div className="text-sm text-gray-600 mb-2">{statusLabel}</div>
+                      <div className={`text-sm mb-2 ${hasInvoiceFile ? 'text-gray-800' : 'text-gray-400'}`}>
+                        {statusLabel}
+                      </div>
                       {retailer && (
                         <div className="text-xs text-gray-500 mb-2">Provider: {retailer}</div>
                       )}
-                      {info._processed_file_ids?.[`invoice_${key}`] && (
+                      {hasInvoiceFile && (
                         <div className="mb-2">
-                          <FileLink label="Invoice File" url={info._processed_file_ids[`invoice_${key}`]} />
+                          <FileLink label="View Invoice" url={hasInvoiceFile} />
                         </div>
                       )}
                       <button
@@ -595,7 +610,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility }: BusinessInf
                           setShowDriveModal(true);
                         }}
                       >
-                        Upload Invoice
+                        {hasInvoiceFile ? "Replace Invoice" : "Upload Invoice"}
                       </button>
                     </div>
                   );
