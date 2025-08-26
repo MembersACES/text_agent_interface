@@ -52,6 +52,7 @@ function mapUtilityKey(key: string): string {
 interface BusinessInfoDisplayProps {
   info: any;
   onLinkUtility?: () => void;
+  setInfo?: (info: any) => void;
 }
 
 function FileLink({ label, url }: { label: string; url?: string }) {
@@ -68,7 +69,7 @@ function FileLink({ label, url }: { label: string; url?: string }) {
   );
 }
 
-export default function BusinessInfoDisplay({ info, onLinkUtility }: BusinessInfoDisplayProps) {
+export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: BusinessInfoDisplayProps) {
   if (!info) return null;
   const business = info.business_details || {};
   const contact = info.contact_information || {};
@@ -953,6 +954,19 @@ export default function BusinessInfoDisplay({ info, onLinkUtility }: BusinessInf
                   const data = await res.json();
                   if (data.status === 'success') {
                     setDriveModalResult('File(s) successfully uploaded!');
+
+                    // 🔹 Immediately re-fetch updated business info
+                    if (business.name && token && typeof setInfo === "function") {
+                      try {
+                        const refreshed = await fetch(
+                          `${getApiBaseUrl()}/api/business-info?business_name=${encodeURIComponent(business.name)}&token=${encodeURIComponent(token)}`
+                        );
+                        const newInfo = await refreshed.json();
+                        setInfo(newInfo);
+                      } catch (refreshErr) {
+                        console.error("Error refreshing business info:", refreshErr);
+                      }
+                    }
                   } else {
                     setDriveModalResult(`Error: ${data.message}`);
                   }
