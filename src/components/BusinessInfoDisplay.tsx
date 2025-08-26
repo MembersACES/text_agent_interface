@@ -727,6 +727,8 @@ export default function BusinessInfoDisplay({ info, onLinkUtility }: BusinessInf
                   "small gas",
                   "waste",
                   "oil",
+                  "cleaning",
+                  "telecommunication",
                 ].includes(util.toLowerCase()) ||
                 util.toLowerCase().startsWith("robot")
               ) {
