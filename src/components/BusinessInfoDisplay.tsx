@@ -524,14 +524,54 @@ export default function BusinessInfoDisplay({ info, onLinkUtility }: BusinessInf
         { key: "Waste", label: "Account Number", tool: "waste", param: "account_number", requestType: "waste" },
         { key: "Oil", label: "Account Name", tool: "oil", param: "business_name", requestType: "oil" },
         { key: "Robot", label: "Robot Number", tool: "robot", param: "robot_number", requestType: "robot_data" },
+        { key: "Cleaning", label: "Service Provider", tool: "cleaning", param: "business_name", requestType: "cleaning" },
+        { key: "Telecommunication", label: "Account Number", tool: "telecommunication", param: "account_number", requestType: "telecommunication" },
       ]
       .filter(Boolean)
+      
       .map((item) => {
-        // Type guard for sourceKey
         const realKey = 'sourceKey' in item && item.sourceKey ? item.sourceKey : item.key;
         const { key, label, tool, param, requestType } = item;
         const value = linked[realKey];
-        if (!value) return null;
+
+        // Always show Cleaning & Telecommunication (even if not linked)
+        if (key === "Cleaning" || key === "Telecommunication") {
+          const retailer = retailers[realKey] || '';
+          const statusLabel =
+            value === true ? "In File" : (value ? "Available" : "Not available");
+          const filingType =
+            key === "Cleaning" ? "cleaning_invoice_upload" : "telecommunication_invoice_upload";
+        
+          return (
+            <div key={key} className="mb-3">
+              <div className="font-semibold text-gray-700 text-base mb-1">{key}:</div>
+              <div className="flex items-center ml-4 mb-1">
+                <span className="min-w-[120px] text-sm">{statusLabel}</span>
+                {retailer && (
+                  <span className="ml-2 text-gray-500 text-xs">
+                    Provider: <span className="font-medium">{retailer}</span>
+                  </span>
+                )}
+                {info._processed_file_ids?.[`invoice_${key}`] && (
+                  <span className="ml-3">
+                    <FileLink label="Invoice in File" url={info._processed_file_ids[`invoice_${key}`]} />
+                  </span>
+                )}
+                <button
+                  className="ml-3 px-2 py-1 border border-gray-300 rounded text-xs text-gray-700 hover:bg-gray-100 focus:outline-none"
+                  title={`Upload ${key.toLowerCase()} invoice`}
+                  onClick={() => {
+                    setDriveModalFilingType(filingType);
+                    setDriveModalBusinessName(business.name || "");
+                    setShowDriveModal(true);
+                  }}
+                >
+                  Upload Invoice
+                </button>
+              </div>
+            </div>
+          );
+        }
         const identifiers = typeof value === "string"
           ? value.split(",").map((v: string) => v.trim()).filter(Boolean)
           : Array.isArray(value) ? value : [];
@@ -750,6 +790,8 @@ export default function BusinessInfoDisplay({ info, onLinkUtility }: BusinessInf
                           'SC Waste': 'contract_Waste',
                           'SC Oil': 'contract_Oil',
                           'SC DMA': 'contract_DMA',
+                          'Cleaning Invoice': 'invoice_Cleaning',
+                          'Telecommunication:': 'invoice_Telecommunication',
                         };
                         const mappedFileIds: { [key: string]: string } = {};
                         if (Array.isArray(fileIds) && fileIds.length > 0) {
