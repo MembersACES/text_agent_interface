@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { getApiBaseUrl } from "@/lib/utils";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
+import { combineFilesIntoPdf } from "@/lib/combineFiles";
 
 function InfoRow({
   label,
@@ -97,6 +98,8 @@ export default function BusinessInfoDisplay({ info, onLinkUtility }: BusinessInf
   const [driveModalFilingType, setDriveModalFilingType] = useState("");
   const [driveModalBusinessName, setDriveModalBusinessName] = useState("");
   const [driveModalFile, setDriveModalFile] = useState<File | null>(null);
+  const [driveModalFiles, setDriveModalFiles] = useState<File[]>([]);
+  const [driveModalMultipleFiles, setDriveModalMultipleFiles] = useState(false);
   const [driveModalLoading, setDriveModalLoading] = useState(false);
   const [driveModalResult, setDriveModalResult] = useState<string | null>(null);
 
@@ -302,11 +305,53 @@ export default function BusinessInfoDisplay({ info, onLinkUtility }: BusinessInf
       const timer = setTimeout(() => {
         setShowDriveModal(false);
         setDriveModalFile(null);
+        setDriveModalFiles([]);
+        setDriveModalMultipleFiles(false);
         setDriveModalResult(null);
       }, 3000);
       return () => clearTimeout(timer);
     }
   }, [driveModalResult]);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (driveModalMultipleFiles) {
+      setDriveModalFiles(files);
+      setDriveModalFile(null);
+    } else {
+      setDriveModalFile(files[0] || null);
+      setDriveModalFiles([]);
+    }
+  };
+
+  const resetDriveModal = () => {
+    setShowDriveModal(false);
+    setDriveModalFile(null);
+    setDriveModalFiles([]);
+    setDriveModalMultipleFiles(false);
+    setDriveModalResult(null);
+  };
+
+  // Helper function to check if a document has a file
+  const getDocumentFileUrl = (doc: string) => {
+    const specialKeyMap: { [key: string]: string } = {
+      'Floor Plan (Exit Map)': 'business_site_map_upload'
+    };
+    const docKey = `business_${doc}`;
+    const normalizedDocKey = `business_${doc.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`;
+    const specialMappedKey = specialKeyMap[doc];
+    
+    return info._processed_file_ids?.[docKey] 
+        || info._processed_file_ids?.[normalizedDocKey] 
+        || (specialMappedKey ? info._processed_file_ids?.[specialMappedKey] : undefined);
+  };
+
+  // Helper function to check if a contract has a file
+  const getContractFileUrl = (key: string) => {
+    const originalKey = `contract_${key}`;
+    const mappedKey = `contract_${key.replace('C&I', 'CI').replace('SME', 'SME').replace(' ', '_')}`;
+    return info._processed_file_ids?.[originalKey] || info._processed_file_ids?.[mappedKey];
+  };
 
   return (
     <>
@@ -422,76 +467,77 @@ export default function BusinessInfoDisplay({ info, onLinkUtility }: BusinessInf
               <h3 className="font-semibold text-gray-800 text-base mb-4">Business Documents</h3>
               {Object.keys(docs).length === 0 && <div className="text-xs text-gray-400 mb-4">No business documents available</div>}
               <div className="space-y-2">
-                {Object.entries(docs).map(([doc, status]) => {
-                  const specialKeyMap: { [key: string]: string } = {
-                    'Floor Plan (Exit Map)': 'business_site_map_upload'
-                  };
-                  const docKey = `business_${doc}`;
-                  const normalizedDocKey = `business_${doc.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`;
-                  const specialMappedKey = specialKeyMap[doc];
-                  
-                  const fileUrl = info._processed_file_ids?.[docKey] 
-                              || info._processed_file_ids?.[normalizedDocKey] 
-                              || (specialMappedKey ? info._processed_file_ids?.[specialMappedKey] : undefined);
+                {/* Create array including WIP, sort by file availability */}
+                {[
+                  ...Object.entries(docs),
+                  ['Work in Progress (WIP)', 'wip']
+                ]
+                  .sort(([docA], [docB]) => {
+                    const fileUrlA = docA === 'Work in Progress (WIP)' 
+                      ? info._processed_file_ids?.["business_WIP"]
+                      : getDocumentFileUrl(docA);
+                    const fileUrlB = docB === 'Work in Progress (WIP)'
+                      ? info._processed_file_ids?.["business_WIP"]
+                      : getDocumentFileUrl(docB);
 
-                  return (
-                    <div key={doc} className="flex items-center justify-between p-2 rounded bg-gray-50 hover:bg-gray-100">
-                      <div className="flex-1">
-                        <div className="text-sm font-medium">{doc}</div>
-                        <div className="text-xs text-gray-500">
-                          {fileUrl ? <FileLink label="View File" url={fileUrl} /> : "Not available"}
+                    // Files with URLs first (return -1), files without URLs last (return 1)
+                    if (fileUrlA && !fileUrlB) return -1;
+                    if (!fileUrlA && fileUrlB) return 1;
+                    return 0;
+                  })
+                  .map(([doc, status]) => {
+                    const isWIP = doc === 'Work in Progress (WIP)';
+                    const fileUrl = isWIP 
+                      ? info._processed_file_ids?.["business_WIP"]
+                      : getDocumentFileUrl(doc);
+
+                    return (
+                      <div key={doc} className="flex items-center justify-between p-2 rounded bg-gray-50 hover:bg-gray-100">
+                        <div className="flex-1">
+                          <div className="text-sm font-medium">{doc}</div>
+                          <div className="text-xs text-gray-500">
+                            {fileUrl ? <FileLink label="View File" url={fileUrl} /> : "Not available"}
+                          </div>
+                        </div>
+                        <div className="flex gap-1">
+                          {!isWIP && (
+                            <button
+                              className="px-2 py-1 border border-gray-300 rounded text-xs text-gray-700 hover:bg-gray-200"
+                              onClick={() => {
+                                  let filingType = doc.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+                                  if (filingType === 'site_profling') filingType = 'site_profiling';
+                                  if (filingType === 'service_fee_agreement') filingType = 'savings';
+                                  if (filingType.includes('exit_map') || filingType.includes('exitmap') || filingType.includes('floor_plan_exit_map')) filingType = 'site_map_upload';
+                                  setDriveModalFilingType(filingType);
+                                  setDriveModalBusinessName(business.name || "");
+                                  setShowDriveModal(true);
+                                }}
+                            >
+                              File
+                            </button>
+                          )}
+                          
+                          {doc === "Initial Strategy" && (
+                            <button
+                              className="px-2 py-1 border border-green-300 bg-green-50 rounded text-xs text-green-700 hover:bg-green-100"
+                              onClick={openInitialStrategyGenerator}
+                            >
+                              Generate
+                            </button>
+                          )}
+                          
+                          {doc === "Site Profling" && (
+                            <button
+                              className="px-2 py-1 border border-blue-300 bg-blue-50 rounded text-xs text-blue-700 hover:bg-blue-100"
+                              onClick={handleOpenSiteProfiling}
+                            >
+                              New
+                            </button>
+                          )}
                         </div>
                       </div>
-                      <div className="flex gap-1">
-                        <button
-                          className="px-2 py-1 border border-gray-300 rounded text-xs text-gray-700 hover:bg-gray-200"
-                          onClick={() => {
-                              let filingType = doc.toLowerCase().replace(/[^a-z0-9]+/g, '_');
-                              if (filingType === 'site_profling') filingType = 'site_profiling';
-                              if (filingType === 'service_fee_agreement') filingType = 'savings';
-                              if (filingType.includes('exit_map') || filingType.includes('exitmap') || filingType.includes('floor_plan_exit_map')) filingType = 'site_map_upload';
-                              setDriveModalFilingType(filingType);
-                              setDriveModalBusinessName(business.name || "");
-                              setShowDriveModal(true);
-                            }}
-                        >
-                          File
-                        </button>
-                        
-                        {doc === "Initial Strategy" && (
-                          <button
-                            className="px-2 py-1 border border-green-300 bg-green-50 rounded text-xs text-green-700 hover:bg-green-100"
-                            onClick={openInitialStrategyGenerator}
-                          >
-                            Generate
-                          </button>
-                        )}
-                        
-                        {doc === "Site Profling" && (
-                          <button
-                            className="px-2 py-1 border border-blue-300 bg-blue-50 rounded text-xs text-blue-700 hover:bg-blue-100"
-                            onClick={handleOpenSiteProfiling}
-                          >
-                            New
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-                
-                {/* WIP Document */}
-                <div className="flex items-center justify-between p-2 rounded bg-gray-50 hover:bg-gray-100">
-                  <div className="flex-1">
-                    <div className="text-sm font-medium">Work in Progress (WIP)</div>
-                    <div className="text-xs text-gray-500">
-                      {info._processed_file_ids?.["business_WIP"] ? 
-                        <FileLink label="View File" url={info._processed_file_ids["business_WIP"]} /> : 
-                        "Not available"
-                      }
-                    </div>
-                  </div>
-                </div>
+                    );
+                  })}
               </div>
             </div>
 
@@ -499,42 +545,49 @@ export default function BusinessInfoDisplay({ info, onLinkUtility }: BusinessInf
             <div>
               <h3 className="font-semibold text-gray-800 text-base mb-4">Signed Contracts</h3>
               <div className="space-y-2">
-                {contracts.map(({ key }) => {
-                  const contractKeyMap: { [key: string]: string } = {
-                    'C&I Electricity': 'signed_CI_E',
-                    'SME Electricity': 'signed_SME_E',
-                    'C&I Gas': 'signed_CI_G',
-                    'SME Gas': 'signed_SME_G',
-                    'Waste': 'signed_WASTE',
-                    'Oil': 'signed_OIL',
-                    'DMA': 'signed_DMA',
-                  };
-                  const originalKey = `contract_${key}`;
-                  const mappedKey = `contract_${key.replace('C&I', 'CI').replace('SME', 'SME').replace(' ', '_')}`;
-                  const url = info._processed_file_ids?.[originalKey] || info._processed_file_ids?.[mappedKey];
+                {contracts
+                  .sort((a, b) => {
+                    // Sort by file availability - files with URLs first
+                    const urlA = getContractFileUrl(a.key);
+                    const urlB = getContractFileUrl(b.key);
+                    if (urlA && !urlB) return -1;
+                    if (!urlA && urlB) return 1;
+                    return 0;
+                  })
+                  .map(({ key }) => {
+                    const contractKeyMap: { [key: string]: string } = {
+                      'C&I Electricity': 'signed_CI_E',
+                      'SME Electricity': 'signed_SME_E',
+                      'C&I Gas': 'signed_CI_G',
+                      'SME Gas': 'signed_SME_G',
+                      'Waste': 'signed_WASTE',
+                      'Oil': 'signed_OIL',
+                      'DMA': 'signed_DMA',
+                    };
+                    const url = getContractFileUrl(key);
 
-                  return (
-                    <div key={key} className="flex items-center justify-between p-2 rounded bg-gray-50 hover:bg-gray-100">
-                      <div className="flex-1">
-                        <div className="text-sm font-medium">{key}</div>
-                        <div className="text-xs text-gray-500">
-                          {url ? <FileLink label="View File" url={url} /> : "Not available"}
+                    return (
+                      <div key={key} className="flex items-center justify-between p-2 rounded bg-gray-50 hover:bg-gray-100">
+                        <div className="flex-1">
+                          <div className="text-sm font-medium">{key}</div>
+                          <div className="text-xs text-gray-500">
+                            {url ? <FileLink label="View File" url={url} /> : "Not available"}
+                          </div>
                         </div>
+                        <button
+                          className="px-2 py-1 border border-gray-300 rounded text-xs text-gray-700 hover:bg-gray-200"
+                          onClick={() => {
+                            const filingType = contractKeyMap[key as keyof typeof contractKeyMap] || key.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+                            setDriveModalFilingType(filingType);
+                            setDriveModalBusinessName(business.name || "");
+                            setShowDriveModal(true);
+                          }}
+                        >
+                          File
+                        </button>
                       </div>
-                      <button
-                        className="px-2 py-1 border border-gray-300 rounded text-xs text-gray-700 hover:bg-gray-200"
-                        onClick={() => {
-                          const filingType = contractKeyMap[key as keyof typeof contractKeyMap] || key.toLowerCase().replace(/[^a-z0-9]+/g, '_');
-                          setDriveModalFilingType(filingType);
-                          setDriveModalBusinessName(business.name || "");
-                          setShowDriveModal(true);
-                        }}
-                      >
-                        File
-                      </button>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
               </div>
             </div>
           </div>
@@ -544,6 +597,8 @@ export default function BusinessInfoDisplay({ info, onLinkUtility }: BusinessInf
         <div id="utilities" className="border-t pt-6">
           <h2 className="text-lg font-bold text-gray-800 mb-4">Linked Utilities and Retailers</h2>
           {Object.keys(linked).length === 0 && <div className="text-sm text-gray-400 mb-4">No linked utilities</div>}
+          
+          {/* Main Utilities Grid */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {[
               { key: "C&I Electricity", label: "NMI", tool: "ci-electricity", param: "nmi", requestType: "electricity_ci" },
@@ -560,8 +615,6 @@ export default function BusinessInfoDisplay({ info, onLinkUtility }: BusinessInf
               { key: "Waste", label: "Account Number", tool: "waste", param: "account_number", requestType: "waste" },
               { key: "Oil", label: "Account Name", tool: "oil", param: "business_name", requestType: "oil" },
               { key: "Robot", label: "Robot Number", tool: "robot", param: "robot_number", requestType: "robot_data" },
-              { key: "Cleaning", label: "Service Provider", tool: "cleaning", param: "business_name", requestType: "cleaning" },
-              { key: "Telecommunication", label: "Account Number", tool: "telecommunication", param: "account_number", requestType: "telecommunication" },
             ]
             .filter(Boolean)
             .map((item) => {
@@ -569,60 +622,11 @@ export default function BusinessInfoDisplay({ info, onLinkUtility }: BusinessInf
                 const { key, label, tool, param, requestType } = item;
                 const value = linked[realKey];
 
-                // Special handling for Cleaning & Telecommunication
-                if (key === "Cleaning" || key === "Telecommunication") {
-                  const retailer = retailers[realKey] || '';
-                  const filingType = key === "Cleaning" ? "cleaning_invoice_upload" : "telecommunication_invoice_upload";
-                  
-                  // Check for invoice file
-                  const invoiceFileKey = `invoice_${key}`;
-                  const hasInvoiceFile = info._processed_file_ids?.[invoiceFileKey];
-                  
-                  // Determine status based on file availability
-                  let statusLabel = "Not available";
-                  if (hasInvoiceFile) {
-                    statusLabel = "Invoice Available";
-                  } else if (value === true) {
-                    statusLabel = "In File";
-                  } else if (value) {
-                    statusLabel = "Available";
-                  }
-                
-                  return (
-                    <div key={key} className="border rounded-lg p-3 bg-gray-50">
-                      <div className="font-semibold text-gray-800 mb-2">{key}</div>
-                      <div className={`text-sm mb-2 ${hasInvoiceFile ? 'text-gray-800' : 'text-gray-400'}`}>
-                        {statusLabel}
-                      </div>
-                      {retailer && (
-                        <div className="text-xs text-gray-500 mb-2">Provider: {retailer}</div>
-                      )}
-                      {hasInvoiceFile && (
-                        <div className="mb-2">
-                          <FileLink label="View Invoice" url={hasInvoiceFile} />
-                        </div>
-                      )}
-                      <button
-                        className="px-2 py-1 border border-gray-300 rounded text-xs text-gray-700 hover:bg-gray-100 w-full"
-                        onClick={() => {
-                          setDriveModalFilingType(filingType);
-                          setDriveModalBusinessName(business.name || "");
-                          setShowDriveModal(true);
-                        }}
-                      >
-                        {hasInvoiceFile ? "Replace Invoice" : "Upload Invoice"}
-                      </button>
-                    </div>
-                  );
-                }
-
                 const identifiers = typeof value === "string"
                   ? value.split(",").map((v: string) => v.trim()).filter(Boolean)
                   : Array.isArray(value) ? value : [];
 
-                // ✅ only keep robot identifiers that have data in robotData
                 const filteredIdentifiers = identifiers;
-                
                 let retailerList = retailers[realKey];
 
                 return identifiers.length > 0 ? (
@@ -720,10 +724,9 @@ export default function BusinessInfoDisplay({ info, onLinkUtility }: BusinessInf
                   "sme electricity",
                   "c&i gas",
                   "sme gas",
+                  "small gas",
                   "waste",
                   "oil",
-                  "cleaning",
-                  "telecommunication",
                 ].includes(util.toLowerCase()) ||
                 util.toLowerCase().startsWith("robot")
               ) {
@@ -752,6 +755,77 @@ export default function BusinessInfoDisplay({ info, onLinkUtility }: BusinessInf
               );
             })}
           </div>
+
+          {/* Additional Services Section - Always show Cleaning & Telecommunication */}
+          <div className="mt-8">
+            {/* Visual separator */}
+            <div className="flex items-center mb-6">
+              <div className="flex-1 border-t border-gray-300"></div>
+              <span className="px-4 text-sm font-semibold text-gray-600 bg-white">
+                Additional Utilities
+              </span>
+              <div className="flex-1 border-t border-gray-300"></div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {["Cleaning", "Telecommunication"].map((serviceKey) => {
+                // find the actual key in any case form (optional)
+                const realKey = Object.keys(linked).find(
+                  (k) => k.toLowerCase() === serviceKey.toLowerCase()
+                ) || serviceKey;
+
+                const value = linked[realKey];
+                const retailer = retailers[realKey] || "";
+                const filingType =
+                  serviceKey === "Cleaning"
+                    ? "cleaning_invoice_upload"
+                    : "telecommunication_invoice_upload";
+
+                // Check for invoice file
+                const invoiceFileKey = `invoice_${serviceKey}`;
+                const hasInvoiceFile = info._processed_file_ids?.[invoiceFileKey];
+
+                // Determine status
+                let statusLabel = "Not available";
+                if (hasInvoiceFile) statusLabel = "Invoice Available";
+                else if (value === true) statusLabel = "In File";
+                else if (value) statusLabel = "Available";
+
+                return (
+                  <div key={serviceKey} className="border rounded-lg p-3 bg-gray-50">
+                    <div className="font-semibold text-gray-800 mb-2">{serviceKey}</div>
+                    <div
+                      className={`text-sm mb-2 ${
+                        hasInvoiceFile ? "text-gray-800" : "text-gray-400"
+                      }`}
+                    >
+                      {statusLabel}
+                    </div>
+                    {retailer && (
+                      <div className="text-xs text-gray-500 mb-2">
+                        Provider: {retailer}
+                      </div>
+                    )}
+                    {hasInvoiceFile && (
+                      <div className="mb-2">
+                        <FileLink label="View Invoice" url={hasInvoiceFile} />
+                      </div>
+                    )}
+                    <button
+                      className="px-2 py-1 border border-gray-300 rounded text-xs text-gray-700 hover:bg-gray-100 w-full"
+                      onClick={() => {
+                        setDriveModalFilingType(filingType);
+                        setDriveModalBusinessName(business.name || "");
+                        setShowDriveModal(true);
+                      }}
+                    >
+                      {hasInvoiceFile ? "Replace Invoice" : "Upload Invoice"}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -759,31 +833,86 @@ export default function BusinessInfoDisplay({ info, onLinkUtility }: BusinessInf
     {/* Drive Filing Modal */}
     {showDriveModal && (
       <div className="fixed inset-0 bg-black bg-opacity-25 z-50 flex items-center justify-center">
-        <div className="bg-white rounded-lg p-8 min-w-[340px] shadow-lg focus:outline-none" tabIndex={-1}>
+        <div className="bg-white rounded-lg p-8 min-w-[400px] shadow-lg focus:outline-none" tabIndex={-1}>
           <h3 className="text-lg font-semibold text-gray-800 mb-4">File in Drive</h3>
+          
           <div className="mb-4">
             <label className="font-semibold">Business Name:</label>
-            <input type="text" value={driveModalBusinessName} readOnly className="ml-2 px-2 py-1 rounded border border-gray-300 min-w-[180px] bg-gray-50" />
+            <input 
+              type="text" 
+              value={driveModalBusinessName} 
+              readOnly 
+              className="ml-2 px-2 py-1 rounded border border-gray-300 min-w-[180px] bg-gray-50" 
+            />
           </div>
+          
           <div className="mb-4">
             <label className="font-semibold">Filing Type:</label>
-            <input type="text" value={driveModalFilingType} readOnly className="ml-2 px-2 py-1 rounded border border-gray-300 min-w-[180px] bg-gray-50" />
+            <input 
+              type="text" 
+              value={driveModalFilingType} 
+              readOnly 
+              className="ml-2 px-2 py-1 rounded border border-gray-300 min-w-[180px] bg-gray-50" 
+            />
           </div>
-          <div className="mb-6">
-            <label className="font-semibold">File:</label>
-            <input type="file" onChange={e => setDriveModalFile(e.target.files?.[0] || null)} className="ml-2" />
-          </div>
-          {driveModalResult && (
-            <div className="bg-green-50 text-green-700 px-4 py-2 rounded mb-4 font-medium text-sm">{driveModalResult}</div>
+
+          {/* Multiple Files Checkbox - only show for floor plan related files */}
+          {(driveModalFilingType.includes('site_map') || driveModalFilingType.includes('floor') || driveModalFilingType.includes('exit')) && (
+            <div className="mb-4">
+              <label className="flex items-center">
+                <input
+                  type="checkbox"
+                  checked={driveModalMultipleFiles}
+                  onChange={(e) => {
+                    setDriveModalMultipleFiles(e.target.checked);
+                    // Clear existing files when toggling
+                    setDriveModalFile(null);
+                    setDriveModalFiles([]);
+                  }}
+                  className="mr-2"
+                />
+                <span className="font-semibold">Multiple Files?</span>
+                <span className="ml-2 text-sm text-gray-600">(for multiple exit plans)</span>
+              </label>
+            </div>
           )}
+          
+          <div className="mb-6">
+            <label className="font-semibold">
+              {driveModalMultipleFiles ? 'Files:' : 'File:'}
+            </label>
+            <input 
+              type="file" 
+              multiple={driveModalMultipleFiles}
+              onChange={handleFileChange}
+              className="ml-2" 
+            />
+            {driveModalMultipleFiles && driveModalFiles.length > 0 && (
+              <div className="mt-2 text-sm text-gray-600">
+                Selected files: {driveModalFiles.map(f => f.name).join(', ')}
+              </div>
+            )}
+            {!driveModalMultipleFiles && driveModalFile && (
+              <div className="mt-2 text-sm text-gray-600">
+                Selected file: {driveModalFile.name}
+              </div>
+            )}
+          </div>
+          
+          {driveModalResult && (
+            <div className={`px-4 py-2 rounded mb-4 font-medium text-sm ${
+              driveModalResult.includes('success') || driveModalResult.includes('successfully')
+                ? 'bg-green-50 text-green-700'
+                : 'bg-red-50 text-red-700'
+            }`}>
+              {driveModalResult}
+            </div>
+          )}
+          
           <div className="flex justify-end space-x-2">
             <button
               className="px-4 py-2 border border-gray-300 rounded text-gray-700 bg-white hover:bg-gray-100 focus:outline-none"
-              onClick={() => {
-                setShowDriveModal(false);
-                setDriveModalFile(null);
-                setDriveModalResult(null);
-              }}
+              onClick={resetDriveModal}
               disabled={driveModalLoading}
             >
               Cancel
@@ -791,33 +920,47 @@ export default function BusinessInfoDisplay({ info, onLinkUtility }: BusinessInf
             <button
               className="px-4 py-2 rounded bg-blue-600 text-white font-semibold hover:bg-blue-700 focus:outline-none"
               onClick={async () => {
-                if (!driveModalFile) return;
+                const filesToUpload = driveModalMultipleFiles ? driveModalFiles : (driveModalFile ? [driveModalFile] : []);
+                
+                if (filesToUpload.length === 0) return;
+                
                 setDriveModalLoading(true);
                 setDriveModalResult(null);
-                const formData = new FormData();
-                formData.append('business_name', driveModalBusinessName);
-                formData.append('filing_type', driveModalFilingType);
-                formData.append("gdrive_url", info?.gdrive?.folder_url || "");
-                formData.append('file', driveModalFile);
+                
                 try {
+                  const formData = new FormData();
+                  formData.append('business_name', driveModalBusinessName);
+                  formData.append('filing_type', driveModalFilingType);
+                  formData.append("gdrive_url", info?.gdrive?.folder_url || "");
+                  
+                  if (driveModalMultipleFiles && filesToUpload.length > 1) {
+                    // 🔹 Merge into one PDF
+                    const combined = await combineFilesIntoPdf(filesToUpload);
+                    formData.append("file", combined);
+                  } else {
+                    // Single file upload
+                    formData.append("file", filesToUpload[0]);
+                  }
+                  
                   const res = await fetch(`${getApiBaseUrl()}/api/drive-filing?token=${encodeURIComponent(token)}`, {
                     method: 'POST',
                     headers: { Authorization: `Bearer ${token}` },
                     body: formData,
                   });
+                  
                   const data = await res.json();
                   if (data.status === 'success') {
-                    setDriveModalResult('File successfully uploaded!');
+                    setDriveModalResult('File(s) successfully uploaded!');
                   } else {
                     setDriveModalResult(`Error: ${data.message}`);
                   }
                 } catch (err: any) {
-                  setDriveModalResult(`Error uploading file: ${err.message}`);
+                  setDriveModalResult(`Error uploading file(s): ${err.message}`);
                 } finally {
                   setDriveModalLoading(false);
                 }
               }}
-              disabled={!driveModalFile || driveModalLoading}
+              disabled={(driveModalMultipleFiles ? driveModalFiles.length === 0 : !driveModalFile) || driveModalLoading}
             >
               {driveModalLoading ? 'Uploading...' : 'Upload'}
             </button>
