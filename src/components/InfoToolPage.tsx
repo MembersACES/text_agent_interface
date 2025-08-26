@@ -40,6 +40,23 @@ interface DemandResponseData {
   invoiceNumber: string;
 }
 
+interface DMAData {
+  meteringRate: string;
+  meteringCost: string;
+  meteringDays: string;
+  meteringCostType: 'daily' | 'annual';
+  dmaPrice: string;
+  vasPrice: string;
+  startDate: string;
+  periodYears: string;
+  endDate: string;
+  notes: string;
+  invoiceLink: string;
+  siteAddress: string;
+  nmi: string;
+  invoiceNumber: string;
+}
+
 function DemandResponseModal({ 
   isOpen, 
   onClose, 
@@ -476,6 +493,500 @@ function DemandResponseModal({
             {sending ? 'Sending...' : 'Send Demand Response Review'}
           </button>
         </div>
+        </div>
+    </div>
+  );
+}
+
+function DMAModal({ 
+  isOpen, 
+  onClose, 
+  invoiceData, 
+  session,
+  token
+}: { 
+  isOpen: boolean; 
+  onClose: () => void; 
+  invoiceData: any; 
+  session: any;
+  token: string;
+}) {
+  const [formData, setFormData] = useState<DMAData>({
+    meteringRate: '',
+    meteringCost: '',
+    meteringDays: '',
+    meteringCostType: 'daily',
+    dmaPrice: '700',
+    vasPrice: '200',
+    startDate: new Date().toISOString().split('T')[0],
+    periodYears: '5',
+    endDate: '',
+    notes: '',
+    invoiceLink: '',
+    siteAddress: '',
+    nmi: '',
+    invoiceNumber: ''
+  });
+
+  const [sending, setSending] = useState(false);
+
+  // Calculate end date based on start date and period
+  useEffect(() => {
+    if (formData.startDate && formData.periodYears) {
+      const startDate = new Date(formData.startDate);
+      const years = parseInt(formData.periodYears);
+      if (!isNaN(years)) {
+        const endDate = new Date(startDate);
+        endDate.setFullYear(startDate.getFullYear() + years);
+        setFormData(prev => ({ 
+          ...prev, 
+          endDate: endDate.toISOString().split('T')[0] 
+        }));
+      }
+    }
+  }, [formData.startDate, formData.periodYears]);
+
+  // Populate form data when modal opens
+  useEffect(() => {
+    if (isOpen && invoiceData) {
+      const invoiceDetails = invoiceData?.electricity_ci_invoice_details;
+      
+      console.log('DMA Modal - Full invoiceData:', invoiceData);
+      console.log('DMA Modal - Extracted invoiceDetails:', invoiceDetails);
+      
+      setFormData(prev => ({
+        ...prev,
+        meteringRate: invoiceDetails?.metering_rate || '',
+        meteringCost: '',
+        meteringDays: '',
+        meteringCostType: 'daily',
+        invoiceLink: invoiceDetails?.invoice_link || '',
+        siteAddress: invoiceDetails?.site_address || '',
+        nmi: invoiceDetails?.nmi || '',
+        invoiceNumber: invoiceDetails?.invoice_number || ''
+      }));
+    }
+  }, [isOpen, invoiceData]);
+
+  const handleInputChange = (field: keyof (DMAData & { meteringCostType: 'daily' | 'annual' }), value: string) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
+  // Calculate daily rate from annual cost or vice versa
+  const getCalculatedDailyRate = (): number => {
+    if (formData.meteringCostType === 'daily') {
+      return parseFloat(formData.meteringRate) || 0;
+    } else {
+      // Calculate daily from annual
+      const annualCost = parseFloat(formData.meteringRate) || 0;
+      return annualCost / 365;
+    }
+  };
+
+  const getCalculatedAnnualCost = (): number => {
+    if (formData.meteringCostType === 'annual') {
+      return parseFloat(formData.meteringRate) || 0;
+    } else {
+      // Calculate annual from daily
+      const dailyRate = parseFloat(formData.meteringRate) || 0;
+      return dailyRate * 365;
+    }
+  };
+
+  const generateDMATableHTML = () => {
+    const dmaPrice = parseFloat(formData.dmaPrice) || 0;
+    const vasPrice = parseFloat(formData.vasPrice) || 0;
+    const totalReplacementCost = dmaPrice + vasPrice;
+    const currentAnnualCost = getCalculatedAnnualCost();
+    const dailyRate = getCalculatedDailyRate();
+    const annualSavings = currentAnnualCost - totalReplacementCost;
+    const totalSavingsOverPeriod = annualSavings * (parseInt(formData.periodYears) || 0);
+    
+    const notesLine = formData.notes.trim() ? `\nNotes: ${formData.notes}` : '';
+    
+    return `DMA (DATA METERING ANALYSIS) REVIEW
+  
+  BUSINESS DETAILS
+  Site Address: ${formData.siteAddress}
+  NMI: ${formData.nmi}
+  
+  CURRENT METERING COSTS
+  Current Metering Rate: $${dailyRate.toFixed(2)}/day
+  Current Annual Cost: $${currentAnnualCost.toFixed(2)}
+  
+  PROPOSED DMA SOLUTION
+  DMA Price: $${formData.dmaPrice}
+  VAS Price: $${formData.vasPrice}
+  Total Replacement Cost: $${totalReplacementCost.toFixed(2)}
+  
+  PROJECT TIMELINE
+  Start Date: ${formData.startDate}
+  Period: ${formData.periodYears} years
+  End Date: ${formData.endDate}
+  
+  FINANCIAL ANALYSIS
+  Annual Savings: $${annualSavings.toFixed(2)}
+  Total Savings Over ${formData.periodYears} Years: $${totalSavingsOverPeriod.toFixed(2)}${notesLine}`;
+  };
+
+  const copyToClipboard = () => {
+    const tableText = generateDMATableHTML();
+    navigator.clipboard.writeText(tableText).then(() => {
+      alert('DMA analysis copied to clipboard! You can now paste this directly into Gmail.');
+    });
+  };
+
+  const sendDMAReview = async () => {
+    setSending(true);
+    try {
+      const tableHTML = generateDMATableHTML();
+      const dailyRate = getCalculatedDailyRate();
+      const annualCost = getCalculatedAnnualCost();
+      
+      const payload = {
+        // User information from session
+        user_email: session?.user?.email || '',
+        user_name: session?.user?.name || '',
+        user_id: session?.user?.id || '',
+        
+        // DMA specific data
+        site_address: formData.siteAddress,
+        nmi: formData.nmi,
+        table_html: tableHTML,
+        notes: formData.notes,
+        metering_rate: dailyRate.toFixed(2), // Always send as daily rate
+        metering_rate_annual: annualCost.toFixed(2), // Also send annual for reference
+        metering_cost_type: formData.meteringCostType,
+        metering_cost: formData.meteringCost,
+        metering_days: formData.meteringDays,
+        dma_price: formData.dmaPrice,
+        vas_price: formData.vasPrice,
+        start_date: formData.startDate,
+        period_years: formData.periodYears,
+        end_date: formData.endDate,
+        invoice_link: formData.invoiceLink,
+        invoice_number: formData.invoiceNumber,
+        
+        // Timestamp for tracking
+        timestamp: new Date().toISOString()
+      };
+      
+      const response = await fetch('https://membersaces.app.n8n.cloud/webhook/generate-dma-comparaison-review', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (response.ok) {
+        alert('DMA Review sent successfully!');
+        onClose();
+      } else {
+        throw new Error('Failed to send DMA review');
+      }
+    } catch (error) {
+      console.error('Error sending DMA review:', error);
+      alert('Failed to send DMA review. Please try again.');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  const dailyRate = getCalculatedDailyRate();
+  const annualCost = getCalculatedAnnualCost();
+
+  return (
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 1000
+    }}>
+      <div style={{
+        backgroundColor: 'white',
+        borderRadius: 8,
+        padding: 24,
+        maxWidth: '95vw',
+        width: '1200px',
+        maxHeight: '90vh',
+        overflow: 'auto',
+        boxShadow: '0 10px 25px rgba(0, 0, 0, 0.3)'
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+          <h2 style={{ margin: 0, fontSize: 24, fontWeight: 600 }}>DMA (Data Metering Analysis) Review</h2>
+          <button 
+            onClick={onClose}
+            style={{
+              background: 'none',
+              border: 'none',
+              fontSize: 24,
+              cursor: 'pointer',
+              color: '#666'
+            }}
+          >
+            ×
+          </button>
+        </div>
+
+        <div style={{ marginBottom: 20 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #ddd' }}>
+            <thead>
+              <tr style={{ backgroundColor: '#f5f5f5' }}>
+                <th style={{ padding: 12, textAlign: 'left', border: '1px solid #ddd' }}>Field</th>
+                <th style={{ padding: 12, textAlign: 'left', border: '1px solid #ddd' }}>Value</th>
+                <th style={{ padding: 12, textAlign: 'left', border: '1px solid #ddd' }}>Source</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>Site Address</td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                  <div style={{ padding: 4, fontSize: 14, fontWeight: 600, color: '#111827' }}>
+                    {formData.siteAddress || 'N/A'}
+                  </div>
+                </td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>Invoice</td>
+              </tr>
+              <tr>
+                <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>NMI</td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                  <div style={{ padding: 4, fontSize: 14, fontWeight: 600, color: '#111827' }}>
+                    {formData.nmi || 'N/A'}
+                  </div>
+                </td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>Invoice</td>
+              </tr>
+              <tr>
+                <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>Invoice Link</td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                  {formData.invoiceLink ? (
+                    <a 
+                      href={formData.invoiceLink} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      style={{ color: '#2563eb', textDecoration: 'underline' }}
+                    >
+                      View Invoice PDF
+                    </a>
+                  ) : (
+                    <span style={{ color: '#6b7280' }}>No invoice link available</span>
+                  )}
+                </td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>Invoice</td>
+              </tr>
+              <tr style={{ backgroundColor: '#e6f3ff' }}>
+                <td colSpan={3} style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600, textAlign: 'center' }}>
+                  Current Metering Costs
+                </td>
+              </tr>
+              <tr>
+                <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>Cost Type</td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                  <select
+                    value={formData.meteringCostType}
+                    onChange={(e) => handleInputChange('meteringCostType', e.target.value as 'daily' | 'annual')}
+                    style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4 }}
+                  >
+                    <option value="daily">Daily Rate</option>
+                    <option value="annual">Annual Cost</option>
+                  </select>
+                </td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>Cost Structure</td>
+              </tr>
+              <tr>
+                <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>
+                  {formData.meteringCostType === 'daily' ? 'Metering Rate (Daily)' : 'Metering Cost (Annual)'}
+                </td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                  <input
+                    type="text"
+                    value={formData.meteringRate}
+                    onChange={(e) => handleInputChange('meteringRate', e.target.value)}
+                    style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4 }}
+                    placeholder={formData.meteringCostType === 'daily' ? '$/day' : '$/year'}
+                  />
+                </td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                  {formData.meteringCostType === 'daily' ? '$/day (Invoice)' : '$/year (Invoice)'}
+                </td>
+              </tr>
+              {/* Show calculated values */}
+              {formData.meteringRate && (
+                <>
+                  <tr style={{ backgroundColor: '#f8fafc' }}>
+                    <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600, fontStyle: 'italic' }}>
+                      Calculated Daily Rate
+                    </td>
+                    <td style={{ padding: 8, border: '1px solid #ddd', fontStyle: 'italic' }}>
+                      ${dailyRate.toFixed(2)}
+                    </td>
+                    <td style={{ padding: 8, border: '1px solid #ddd', fontStyle: 'italic' }}>
+                      {formData.meteringCostType === 'daily' ? 'From input' : 'Annual ÷ 365'}
+                    </td>
+                  </tr>
+                  <tr style={{ backgroundColor: '#f8fafc' }}>
+                    <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600, fontStyle: 'italic' }}>
+                      Calculated Annual Cost
+                    </td>
+                    <td style={{ padding: 8, border: '1px solid #ddd', fontStyle: 'italic' }}>
+                      ${annualCost.toFixed(2)}
+                    </td>
+                    <td style={{ padding: 8, border: '1px solid #ddd', fontStyle: 'italic' }}>
+                      {formData.meteringCostType === 'annual' ? 'From input' : 'Daily × 365'}
+                    </td>
+                  </tr>
+                </>
+              )}
+              <tr>
+                <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>Metering Days</td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                  <input
+                    type="text"
+                    value={formData.meteringDays}
+                    onChange={(e) => handleInputChange('meteringDays', e.target.value)}
+                    style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4 }}
+                    placeholder="Number of days"
+                  />
+                </td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>Days (Invoice Period)</td>
+              </tr>
+              <tr style={{ backgroundColor: '#f0f9ff' }}>
+                <td colSpan={3} style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600, textAlign: 'center' }}>
+                  Proposed DMA Solution
+                </td>
+              </tr>
+              <tr>
+                <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>DMA Price</td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                  <input
+                    type="text"
+                    value={formData.dmaPrice}
+                    onChange={(e) => handleInputChange('dmaPrice', e.target.value)}
+                    style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4 }}
+                    placeholder="700"
+                  />
+                </td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>$ (Per Annum)</td>
+              </tr>
+              <tr>
+                <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>VAS Price</td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                  <input
+                    type="text"
+                    value={formData.vasPrice}
+                    onChange={(e) => handleInputChange('vasPrice', e.target.value)}
+                    style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4 }}
+                    placeholder="200"
+                  />
+                </td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>$ (Per Annum)</td>
+              </tr>
+              <tr style={{ backgroundColor: '#fefce8' }}>
+                <td colSpan={3} style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600, textAlign: 'center' }}>
+                  Project Timeline
+                </td>
+              </tr>
+              <tr>
+                <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>Start Date</td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                  <input
+                    type="date"
+                    value={formData.startDate}
+                    onChange={(e) => handleInputChange('startDate', e.target.value)}
+                    style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4 }}
+                  />
+                </td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>DMA Start Date</td>
+              </tr>
+              <tr>
+                <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>Period (Years)</td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                  <input
+                    type="number"
+                    value={formData.periodYears}
+                    onChange={(e) => handleInputChange('periodYears', e.target.value)}
+                    style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4 }}
+                    placeholder="5"
+                    min="1"
+                  />
+                </td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>DMA Period</td>
+              </tr>
+              <tr>
+                <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>End Date</td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                  <input
+                    type="date"
+                    value={formData.endDate}
+                    onChange={(e) => handleInputChange('endDate', e.target.value)}
+                    style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4 }}
+                  />
+                </td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>DMA End Date - Auto-calculated</td>
+              </tr>
+              <tr>
+                <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>Notes</td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                  <textarea
+                    value={formData.notes}
+                    onChange={(e) => handleInputChange('notes', e.target.value)}
+                    style={{ 
+                      width: '100%', 
+                      padding: 4, 
+                      border: '1px solid #ccc', 
+                      borderRadius: 4,
+                      minHeight: '60px',
+                      resize: 'vertical'
+                    }}
+                    placeholder="Optional notes..."
+                  />
+                </td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>Optional</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+          <button
+            onClick={copyToClipboard}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: '#6b7280',
+              color: 'white',
+              border: 'none',
+              borderRadius: 4,
+              cursor: 'pointer',
+              fontWeight: 600
+            }}
+          >
+            Copy for Gmail
+          </button>
+          <button
+            onClick={sendDMAReview}
+            disabled={sending}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: sending ? '#9ca3af' : '#2563eb',
+              color: 'white',
+              border: 'none',
+              borderRadius: 4,
+              cursor: sending ? 'not-allowed' : 'pointer',
+              fontWeight: 600
+            }}
+          >
+            {sending ? 'Sending...' : 'Send DMA Review'}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -548,7 +1059,8 @@ function ResultMessage({ message }: { message: string }) {
   );
 }
 
-function InvoiceResult({ result }: { result: any }) {
+function InvoiceResult({ result, session, token }: { result: any; session: any; token: string }) {
+  const [showDMAModal, setShowDMAModal] = useState(false);
   // Detect which invoice type is present
   const types = [
     { key: 'electricity_ci_invoice_details', label: 'C&I Electricity Invoice' },
@@ -634,7 +1146,39 @@ function InvoiceResult({ result }: { result: any }) {
           {details.total_invoice_cost && <Field label="Total Invoice Cost ($)" value={details.total_invoice_cost} />}
           {details.invoice_link && <Field label="Invoice PDF" value={details.invoice_link} isLink />}
         </div>
+        
+        {/* DMA Button for C&I Electricity only */}
+        {type.key === 'electricity_ci_invoice_details' && (
+          <div style={{ marginTop: 16 }}>
+            <button
+              onClick={() => setShowDMAModal(true)}
+              style={{
+                padding: '8px 16px',
+                backgroundColor: '#059669',
+                color: 'white',
+                border: 'none',
+                borderRadius: 4,
+                cursor: 'pointer',
+                fontWeight: 600,
+                fontSize: 14
+              }}
+            >
+              DMA
+            </button>
+          </div>
+        )}
       </div>
+      
+      {/* DMA Modal */}
+      {type.key === 'electricity_ci_invoice_details' && (
+        <DMAModal
+          isOpen={showDMAModal}
+          onClose={() => setShowDMAModal(false)}
+          invoiceData={result}
+          session={session}
+          token={token}
+        />
+      )}
     </div>
   );
 }
@@ -1479,7 +2023,7 @@ export default function InfoToolPage({ title, description, endpoint, extraFields
               <ResultMessage message={result.message} />
             </div>
           ) : (
-            <InvoiceResult result={result} />
+            <InvoiceResult result={result} session={session} token={token} />
           )}
         </div>
       )}

@@ -370,9 +370,6 @@ export default function BusinessInfoDisplay({ info, onLinkUtility }: BusinessInf
       <h2 className="text-lg font-semibold text-gray-800 mb-4">Business Documents</h2>
       {Object.keys(docs).length === 0 && <div className="text-sm text-gray-400 mb-4">No business documents available</div>}
       <div className="space-y-2">
-        
-
-        {/* Rest of the documents */}
         {Object.entries(docs).map(([doc, status]) => {
           const specialKeyMap: { [key: string]: string } = {
             'Floor Plan (Exit Map)': 'business_site_map_upload'
@@ -435,6 +432,26 @@ export default function BusinessInfoDisplay({ info, onLinkUtility }: BusinessInf
             </div>
           );
         })}
+        
+        {/* Add WIP as a separate document line */}
+        <div className="flex items-center mb-2">
+          <InfoRow
+            label="Work in Progress (WIP)"
+            value={(() => {
+              // Debug logging for WIP
+              console.log('=== WIP DEBUG ===');
+              console.log('Full info object:', info);
+              console.log('_processed_file_ids:', info._processed_file_ids);
+              console.log('Looking for business_WIP:', info._processed_file_ids?.["business_WIP"]);
+              console.log('All keys in _processed_file_ids:', info._processed_file_ids ? Object.keys(info._processed_file_ids) : 'undefined');
+              console.log('=== END WIP DEBUG ===');
+              
+              return info._processed_file_ids?.["business_WIP"] ? 
+                <FileLink label="In File" url={info._processed_file_ids["business_WIP"]} /> : 
+                <span className="text-sm text-gray-400">Not available</span>;
+            })()}
+          />
+        </div>
       </div>
       <hr className="my-4 border-gray-200" />
       <h2 className="text-lg font-semibold text-gray-800 mb-4">Signed Contracts</h2>
@@ -725,6 +742,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility }: BusinessInf
                           'Site Profiling': 'business_Site Profling',
                           'Service Fee Agreement': 'business_Service Fee Agreement',
                           'Initial Strategy': 'business_Initial Strategy',
+                          'WIP': 'business_WIP',
                           'SC C&I E': 'contract_C&I Electricity',
                           'SC SME E': 'contract_SME Electricity',
                           'SC C&I G': 'contract_C&I Gas',
