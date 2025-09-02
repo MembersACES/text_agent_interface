@@ -523,14 +523,6 @@ export default function LoaUploadPage() {
             <button className="bg-gray-400 text-white px-3 py-1 rounded" onClick={() => handleFolderPrompt(false)}>No</button>
           </div>
         )}
-        
-        {authError && (
-          <Alert
-            variant="error"
-            title="Session Expired"
-            description="Invalid token: Please re-authenticate. Log out and log in again."
-          />
-        )}
       </div>
     );
   }
@@ -612,14 +604,6 @@ export default function LoaUploadPage() {
             <button className="bg-green-600 text-white px-3 py-1 rounded mr-2" onClick={() => handleUtilityPrompt(true)}>Yes</button>
             <button className="bg-gray-400 text-white px-3 py-1 rounded" onClick={() => handleUtilityPrompt(false)}>No</button>
           </div>
-        )}
-        
-        {authError && (
-          <Alert
-            variant="error"
-            title="Session Expired"
-            description="Invalid token: Please re-authenticate. Log out and log in again."
-          />
         )}
       </div>
     );

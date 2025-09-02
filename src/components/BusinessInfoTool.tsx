@@ -2,7 +2,17 @@ import React, { useState } from "react";
 import BusinessInfoDisplay from "./BusinessInfoDisplay";
 import { getApiBaseUrl } from "@/lib/utils";
 
-export default function BusinessInfoTool({ token }: { token: string }) {
+interface BusinessInfoToolProps {
+  token: string;
+  onTokenExpired?: () => Promise<void>;
+  getValidToken?: () => Promise<string | null>;
+}
+
+export default function BusinessInfoTool({ 
+  token, 
+  onTokenExpired, 
+  getValidToken 
+}: BusinessInfoToolProps) {
   const [businessName, setBusinessName] = useState("Frankston RSL");
   const [businessInfo, setBusinessInfo] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
@@ -16,14 +26,31 @@ export default function BusinessInfoTool({ token }: { token: string }) {
     setBusinessInfo(null);
     setLoading(true);
     console.log("🔍 About to make fetch request...");
+    
     try {
+      // Get a fresh token if available
+      let currentToken = token;
+      if (getValidToken) {
+        const freshToken = await getValidToken();
+        if (freshToken) {
+          currentToken = freshToken;
+        }
+      }
+
+      // If we still don't have a token, trigger re-authentication
+      if (!currentToken && onTokenExpired) {
+        await onTokenExpired();
+        setError("Authentication required. Please try again.");
+        return;
+      }
+
       const res = await fetch(
         `${getApiBaseUrl()}/api/get-business-info`,
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`, 
+            "Authorization": `Bearer ${currentToken}`, 
           },
           body: JSON.stringify({ business_name: businessName }),
         }
@@ -32,21 +59,24 @@ export default function BusinessInfoTool({ token }: { token: string }) {
       
       // Check for 401 Unauthorized status
       if (res.status === 401) {
-        console.log("🔍 401 Unauthorized - dispatching reauthentication event");
+        console.log("🔍 401 Unauthorized - triggering token refresh");
         
-        // Dispatch custom event to trigger automatic reauthentication
-        const apiErrorEvent = new CustomEvent('api-error', {
-          detail: { 
-            error: 'REAUTHENTICATION_REQUIRED',
-            status: 401,
-            message: 'Authentication expired'
-          }
-        });
-        window.dispatchEvent(apiErrorEvent);
-        
-        // Set a user-friendly error message
-        setError("Session expired. Please wait while we refresh your authentication...");
-        return; // Don't throw error, just return
+        if (onTokenExpired) {
+          await onTokenExpired();
+          setError("Session expired. Authentication refreshed - please try again.");
+        } else {
+          // Fallback to custom event if onTokenExpired not available
+          const apiErrorEvent = new CustomEvent('api-error', {
+            detail: { 
+              error: 'REAUTHENTICATION_REQUIRED',
+              status: 401,
+              message: 'Authentication expired'
+            }
+          });
+          window.dispatchEvent(apiErrorEvent);
+          setError("Session expired. Please wait while we refresh your authentication...");
+        }
+        return;
       }
       
       if (!res.ok) {
@@ -109,6 +139,7 @@ export default function BusinessInfoTool({ token }: { token: string }) {
             <BusinessInfoDisplay 
               info={businessInfo} 
               onLinkUtility={handleLinkUtility}
+              setInfo={setBusinessInfo}
             />
           ) : (
             <pre>{JSON.stringify(businessInfo, null, 2)}</pre>
