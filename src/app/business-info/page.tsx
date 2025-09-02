@@ -8,29 +8,14 @@ export default function BusinessInfoPage() {
   const [token, setToken] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Function to get a fresh token
+  // Function to handle re-authentication
   const refreshToken = async () => {
     setIsRefreshing(true);
     try {
-      // Call your token refresh endpoint
-      const response = await fetch('/api/auth/refresh-token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include', // Include cookies for session
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setToken(data.token);
-      } else {
-        // If refresh fails, force re-authentication
-        window.location.href = '/api/auth/signin';
-      }
+      // Simply redirect to sign-in - no need for complex refresh logic
+      window.location.href = '/api/auth/signin';
     } catch (error) {
-      console.error("Token refresh failed:", error);
-      // Fallback to re-authentication
+      console.error("Re-authentication failed:", error);
       window.location.href = '/api/auth/signin';
     }
     setIsRefreshing(false);
@@ -38,8 +23,11 @@ export default function BusinessInfoPage() {
 
   useEffect(() => {
     if (session) {
-      const currentToken = session?.id_token || session?.accessToken || null;
+      // Use ID token for basic authentication
+      const currentToken = session?.id_token || null;
       setToken(currentToken);
+      console.log("🔍 Session:", session);
+      console.log("🔍 Using ID token:", currentToken ? "Present" : "Missing");
     }
   }, [session]);
 
@@ -47,23 +35,22 @@ export default function BusinessInfoPage() {
   const getValidToken = async () => {
     if (!token) {
       await refreshToken();
-      return token;
+      return null;
     }
 
-    // Optional: Add token expiration check here
-    // You can decode JWT and check exp claim
+    // Check if token is expired
     try {
       const tokenPayload = JSON.parse(atob(token.split('.')[1]));
       const isExpired = tokenPayload.exp * 1000 < Date.now();
       
       if (isExpired) {
         await refreshToken();
-        return token;
+        return null;
       }
     } catch (error) {
-      // If token parsing fails, refresh anyway
+      // If token parsing fails, assume it's invalid
       await refreshToken();
-      return token;
+      return null;
     }
 
     return token;
