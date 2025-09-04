@@ -46,14 +46,19 @@ export const authOptions: NextAuthOptions = {
           ? account.expires_at * 1000 
           : Date.now() + 3600 * 1000; // Default to 1 hour if not provided
         
+        // Set ID token expiration (typically 1 hour)
+        token.idTokenExpires = Date.now() + 3600 * 1000;
+        
         console.log("Initial token set, expires at:", new Date(token.accessTokenExpires as number));
+        console.log("ID token expires at:", new Date(token.idTokenExpires as number));
         return token;
       }
 
-      // Return previous token if the access token has not expired yet
-      // Add some buffer time (5 minutes) to refresh before actual expiration
+      // Check if access token has expired
       const bufferTime = 5 * 60 * 1000; // 5 minutes in milliseconds
-      if (Date.now() < ((token.accessTokenExpires as number) - bufferTime)) {
+      const accessTokenValid = Date.now() < ((token.accessTokenExpires as number) - bufferTime);
+      
+      if (accessTokenValid) {
         return token;
       }
 
@@ -106,6 +111,8 @@ async function refreshAccessToken(token: any) {
       ...token,
       accessToken: refreshedTokens.access_token,
       accessTokenExpires: Date.now() + (refreshedTokens.expires_in * 1000),
+      id_token: refreshedTokens.id_token ?? token.id_token, // Keep existing ID token if not refreshed
+      idTokenExpires: refreshedTokens.id_token ? Date.now() + 3600 * 1000 : token.idTokenExpires,
       refreshToken: refreshedTokens.refresh_token ?? token.refreshToken,
       error: undefined, // Clear any previous errors
     };

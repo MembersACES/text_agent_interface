@@ -11,10 +11,6 @@ import type { Metadata } from "next";
 import NextTopLoader from "nextjs-toploader";
 import type { PropsWithChildren } from "react";
 import { Providers } from "./providers";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { redirect } from "next/navigation";
-
 export const metadata: Metadata = {
   title: {
     template: "%s | ACES Dashboard Kit",
@@ -24,17 +20,7 @@ export const metadata: Metadata = {
     "ACES admin dashboard toolkit with 200+ templates, UI components, and integrations for fast dashboard development.",
 };
 
-export default async function RootLayout({ children }: PropsWithChildren) {
-  const session = await getServerSession(authOptions);
-
-  // Only allow users from a specific Google Workspace domain
-  const allowedDomain = "acesolutions.com.au"; // TODO: Replace with your domain
-  const userEmail = session?.user?.email || "";
-  const userDomain = userEmail.split("@")[1];
-
-  if (!session || userDomain !== allowedDomain) {
-    redirect("/api/auth/signin");
-  }
+export default function RootLayout({ children }: PropsWithChildren) {
 
   return (
     <html lang="en" suppressHydrationWarning>

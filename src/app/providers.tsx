@@ -10,7 +10,9 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (status === "unauthenticated") {
-      signIn("google");
+      // Preserve the current URL when redirecting to sign in
+      const currentUrl = window.location.pathname + window.location.search;
+      signIn("google", { callbackUrl: currentUrl });
     }
   }, [status]);
 
@@ -18,9 +20,17 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (session?.error === "RefreshAccessTokenError") {
       console.log("Token refresh failed, redirecting to sign in...");
-      signIn("google"); // Force re-authentication
+      // Preserve the current URL when redirecting to sign in
+      const currentUrl = window.location.pathname + window.location.search;
+      signIn("google", { callbackUrl: currentUrl }); // Force re-authentication
     }
   }, [session]);
+
+  // Check domain validation
+  const allowedDomain = "acesolutions.com.au";
+  const userEmail = session?.user?.email || "";
+  const userDomain = userEmail.split("@")[1];
+  const isDomainValid = session && userDomain === allowedDomain;
 
   if (status === "loading") {
     return (
@@ -39,10 +49,36 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         <div className="text-center">
           <p className="text-lg mb-4">Redirecting to sign in...</p>
           <button 
-            onClick={() => signIn("google")}
+            onClick={() => {
+              const currentUrl = window.location.pathname + window.location.search;
+              signIn("google", { callbackUrl: currentUrl });
+            }}
             className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
           >
             Sign In with Google
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Check if user is from allowed domain
+  if (session && !isDomainValid) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <p className="text-lg mb-4">Access Denied</p>
+          <p className="text-gray-600 mb-4">
+            You must be signed in with an @{allowedDomain} email address to access this application.
+          </p>
+          <button 
+            onClick={() => {
+              const currentUrl = window.location.pathname + window.location.search;
+              signIn("google", { callbackUrl: currentUrl });
+            }}
+            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+          >
+            Sign In with Different Account
           </button>
         </div>
       </div>

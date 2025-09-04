@@ -30,12 +30,19 @@ export default function BusinessInfoTool({
     try {
       // Get a fresh token if available
       let currentToken = token;
+      console.log("🔍 Initial token:", currentToken ? "Present" : "Missing");
+      
       if (getValidToken) {
         const freshToken = await getValidToken();
+        console.log("🔍 Fresh token from getValidToken:", freshToken ? "Present" : "Missing");
         if (freshToken) {
           currentToken = freshToken;
+          console.log("🔍 Using fresh token");
         }
       }
+      
+      console.log("🔍 Final token being used:", currentToken ? "Present" : "Missing");
+      console.log("🔍 Token preview:", currentToken ? currentToken.substring(0, 50) + "..." : "No token");
 
       // If we still don't have a token, trigger re-authentication
       if (!currentToken && onTokenExpired) {
@@ -65,16 +72,10 @@ export default function BusinessInfoTool({
           await onTokenExpired();
           setError("Session expired. Authentication refreshed - please try again.");
         } else {
-          // Fallback to custom event if onTokenExpired not available
-          const apiErrorEvent = new CustomEvent('api-error', {
-            detail: { 
-              error: 'REAUTHENTICATION_REQUIRED',
-              status: 401,
-              message: 'Authentication expired'
-            }
-          });
-          window.dispatchEvent(apiErrorEvent);
-          setError("Session expired. Please wait while we refresh your authentication...");
+          // Fallback: redirect to sign in with current page as callback
+          const currentUrl = window.location.pathname + window.location.search;
+          window.location.href = `/api/auth/signin?callbackUrl=${encodeURIComponent(currentUrl)}`;
+          setError("Session expired. Redirecting to sign in...");
         }
         return;
       }
