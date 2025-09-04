@@ -571,6 +571,7 @@ function DMAModal({
   const handleInputChange = (field: keyof (DMAData & { meteringCostType: 'daily' | 'annual' }), value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
+
   // Calculate daily rate from annual cost or vice versa
   const getCalculatedDailyRate = (): number => {
     if (formData.meteringCostType === 'daily') {
@@ -804,7 +805,7 @@ function DMAModal({
               </tr>
               <tr>
                 <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>
-                  {formData.meteringCostType === 'daily' ? 'Metering Rate (Daily)' : 'Metering Cost (Annual)'}
+                  {formData.meteringCostType === 'daily' ? 'Metering Rate (Daily)' : 'Metering Rate (Annual)'}
                 </td>
                 <td style={{ padding: 8, border: '1px solid #ddd' }}>
                   <input
@@ -816,7 +817,7 @@ function DMAModal({
                   />
                 </td>
                 <td style={{ padding: 8, border: '1px solid #ddd' }}>
-                  {formData.meteringCostType === 'daily' ? '$/day (Invoice)' : '$/year (Invoice)'}
+                  {formData.meteringCostType === 'daily' ? '$/day (Editable)' : '$/year (Editable)'}
                 </td>
               </tr>
               {/* Show calculated values */}
@@ -834,14 +835,30 @@ function DMAModal({
                     </td>
                   </tr>
                   <tr style={{ backgroundColor: '#f8fafc' }}>
-                    <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600, fontStyle: 'italic' }}>
-                      Calculated Annual Cost
+                    <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>
+                      Annual Cost (Editable) - Required for comparison
                     </td>
-                    <td style={{ padding: 8, border: '1px solid #ddd', fontStyle: 'italic' }}>
-                      ${annualCost.toFixed(2)}
+                    <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                      <input
+                        type="text"
+                        value={annualCost.toFixed(2)}
+                        onChange={(e) => {
+                          const newAnnualValue = e.target.value;
+                          // Update the meteringRate based on the new annual value
+                          if (formData.meteringCostType === 'annual') {
+                            handleInputChange('meteringRate', newAnnualValue);
+                          } else {
+                            // Convert annual back to daily and update meteringRate
+                            const dailyFromAnnual = (parseFloat(newAnnualValue) || 0) / 365;
+                            handleInputChange('meteringRate', dailyFromAnnual.toString());
+                          }
+                        }}
+                        style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4 }}
+                        placeholder="Annual cost"
+                      />
                     </td>
-                    <td style={{ padding: 8, border: '1px solid #ddd', fontStyle: 'italic' }}>
-                      {formData.meteringCostType === 'annual' ? 'From input' : 'Daily × 365'}
+                    <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                      $/year (Editable for comparison)
                     </td>
                   </tr>
                 </>
