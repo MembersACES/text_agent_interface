@@ -84,6 +84,56 @@ interface CIElectricityOfferData {
   notes: string;
 }
 
+interface CIGasOfferData {
+  invoiceId: string;
+  siteAddress: string;
+  mrin: string;
+  gasRateInvoice: string;
+  gasUsageInvoice: string;
+  totalMonthlyUsage: string;
+  invoiceNumber: string;
+  
+  // Business Information
+  businessName: string;
+  businessAbn: string;
+  businessTradingName: string;
+  businessIndustry: string;
+  businessWebsite: string;
+  postalAddress: string;
+  contactPhone: string;
+  contactEmail: string;
+  contactName: string;
+  contactPosition: string;
+  loaSignDate: string;
+  
+  // New structure for offers
+  offer1Retailer: string;
+  offer1Validity: string;
+  offer1Type: 'smoothed' | 'stepped';
+  offer1PeriodYears: string;
+  offer1StartDate: string;
+  offer1GasRate: string;
+  
+  offer2Retailer: string;
+  offer2Validity: string;
+  offer2Type: 'smoothed' | 'stepped';
+  offer2PeriodYears: string;
+  offer2StartDate: string;
+  offer2GasRate: string;
+  
+  offer3Retailer: string;
+  offer3Validity: string;
+  offer3Type: 'smoothed' | 'stepped';
+  offer3PeriodYears: string;
+  offer3StartDate: string;
+  offer3GasRate: string;
+  
+  // Dynamic period fields - allows for period-specific data
+  [key: string]: string;
+  
+  notes: string;
+}
+
 interface ElectricityInvoiceData {
   invoice_id: string;
   nmi: string;
@@ -329,16 +379,18 @@ function CIElectricityOfferModal({
   const handleInputChange = (field: keyof CIElectricityOfferData, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
     
-    if (field.includes('PeriodYears')) {
-      const offerMatch = field.match(/offer(\d+)PeriodYears/);
+    const fieldStr = String(field); // Convert to string
+    
+    if (fieldStr.includes('PeriodYears')) {
+      const offerMatch = fieldStr.match(/offer(\d+)PeriodYears/);
       if (offerMatch) {
         const offerNum = parseInt(offerMatch[1]);
         setTimeout(() => initializePeriodData(offerNum, value), 0);
       }
     }
     
-    if (field.includes('StartDate') && !field.includes('Period')) {
-      const offerMatch = field.match(/offer(\d+)StartDate/);
+    if (fieldStr.includes('StartDate') && !fieldStr.includes('Period')) {
+      const offerMatch = fieldStr.match(/offer(\d+)StartDate/);
       if (offerMatch) {
         const offerNum = parseInt(offerMatch[1]);
         
