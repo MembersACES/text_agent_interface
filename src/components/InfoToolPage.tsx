@@ -24,6 +24,1058 @@ interface InfoToolPageProps {
   initialExtraFields?: { [key: string]: any };
 }
 
+interface CIElectricityOfferData {
+  invoiceId: string;
+  siteAddress: string;
+  nmi: string;
+  peakRateInvoice: string;
+  offPeakRateInvoice: string;
+  shoulderRateInvoice: string;
+  peakUsageInvoice: string;
+  offPeakUsageInvoice: string;
+  shoulderUsageInvoice: string;
+  totalMonthlyUsage: string;
+  invoiceNumber: string;
+  
+  // Business Information
+  businessName: string;
+  businessAbn: string;
+  businessTradingName: string;
+  businessIndustry: string;
+  businessWebsite: string;
+  postalAddress: string;
+  contactPhone: string;
+  contactEmail: string;
+  contactName: string;
+  contactPosition: string;
+  loaSignDate: string;
+  
+  // New structure for offers
+  offer1Retailer: string;
+  offer1Validity: string;
+  offer1Type: 'smoothed' | 'stepped';
+  offer1PeriodYears: string;
+  offer1StartDate: string;
+  offer1PeakRate: string;
+  offer1OffPeakRate: string;
+  offer1ShoulderRate: string;
+  
+  offer2Retailer: string;
+  offer2Validity: string;
+  offer2Type: 'smoothed' | 'stepped';
+  offer2PeriodYears: string;
+  offer2StartDate: string;
+  offer2PeakRate: string;
+  offer2OffPeakRate: string;
+  offer2ShoulderRate: string;
+  
+  offer3Retailer: string;
+  offer3Validity: string;
+  offer3Type: 'smoothed' | 'stepped';
+  offer3PeriodYears: string;
+  offer3StartDate: string;
+  offer3PeakRate: string;
+  offer3OffPeakRate: string;
+  offer3ShoulderRate: string;
+  
+  // Dynamic period fields - allows for period-specific data
+  [key: string]: string;
+  
+  notes: string;
+}
+
+interface ElectricityInvoiceData {
+  invoice_id: string;
+  nmi: string;
+  invoice_review_period: string;
+  business_name: string;
+  site_address: string;
+  retailer: string;
+  monthly_usage: string;
+  peak_rate: string;
+  offpeak_rate: string;
+  metering_rate: string;
+  demand_capacity: string;
+  average_cost: string;
+  total_invoice_cost: string;
+  invoice_link: string;
+  full_invoice_data: {
+    'Retail Quantity Peak (kWh)': number;
+    'Retail Quantity Off-Peak (kWh)': number;
+    'Retail Rate Peak (c/kWh)': number;
+    'Retail Rate Off-Peak (c/kWh)': number;
+    'Monthly Consumption': number;
+    'Yearly Consumption Est': number;
+    'DUOS - Network Demand Charge Quantity (KVA)': number;
+    'Network Charges': number;
+    'Environmental Charges': number;
+    'Retail Charges': number;
+    'Total Invoice Cost:': number;
+    // Add these new fields:
+    'Retail Quantity Shoulder (kWh)'?: number;
+    'MLF': number;
+    'DLF': number;
+    'NW Provider': string;
+    'NW - Tariff': string;
+    'DUOS - Network Demand Charge Rate ($/KVA)': number;
+    'NW - Volume Peak Quantity': number;
+    'NW - Volume Off-Peak Quantity': number;
+    'NW - Volume Peak Rate': number;
+    'NW - Volume Off-Peak Rate': number;
+    'AEMO Participant Charge Quantity': number;
+    'AEMO Participant Charge Rate': number;
+    'AEMO Ancillary Charge Q': number;
+    'AEMO Ancillary Charge R': number;
+    'AEMO FRC Operations Q': number;
+    'AEMO FRC Operations R': number;
+    'Regulated Charges': number;
+    'Environmental - SREC Charge Q': number;
+    'Environmental - SREC Charge R': number;
+    'SREC Certificate %': number;
+    'Environmental - LREC Charge Q': number;
+    'Environmental - LREC Charge R': number;
+    'LREC Certificate %': number;
+    'Environmental - VEET Charge Q': number;
+    'Environmental - VEET Charge R': number;
+    'VEET Certificate %': number;
+    'Metering Charges Quantity': number;
+    'Meter Rate': number;
+    'Metering Charges': number;
+    'Retail Service Fee Quantity': number;
+    'Retail Service Fee Rate': number;
+    'Retail Service Charges': number;
+    Postcode: string;
+    State: string;
+    'Suburb Identified': string;
+    'Average Cost': number;
+    startDate: string;
+  };
+}
+
+
+function CIElectricityOfferModal({ 
+  isOpen, 
+  onClose, 
+  invoiceData, 
+  session,
+  token,
+  businessInfo
+}: { 
+  isOpen: boolean; 
+  onClose: () => void; 
+  invoiceData: any; 
+  session: any;
+  token: string;
+  businessInfo?: any;
+}) {
+  const [formData, setFormData] = useState<CIElectricityOfferData>({
+    invoiceId: '',
+    siteAddress: '',
+    nmi: '',
+    peakRateInvoice: '',
+    offPeakRateInvoice: '',
+    shoulderRateInvoice: '',
+    peakUsageInvoice: '',
+    offPeakUsageInvoice: '',
+    shoulderUsageInvoice: '',
+    totalMonthlyUsage: '',
+    invoiceNumber: '',
+    
+    // Business Information
+    businessName: '',
+    businessAbn: '',
+    businessTradingName: '',
+    businessIndustry: '',
+    businessWebsite: '',
+    postalAddress: '',
+    contactPhone: '',
+    contactEmail: '',
+    contactName: '',
+    contactPosition: '',
+    loaSignDate: '',
+    
+    offer1Retailer: '',
+    offer1Validity: '',
+    offer1Type: 'smoothed',
+    offer1PeriodYears: '3',
+    offer1StartDate: new Date().toISOString().split('T')[0],
+    offer1PeakRate: '',
+    offer1OffPeakRate: '',
+    offer1ShoulderRate: '',
+    
+    offer2Retailer: '',
+    offer2Validity: '',
+    offer2Type: 'smoothed',
+    offer2PeriodYears: '3',
+    offer2StartDate: new Date().toISOString().split('T')[0],
+    offer2PeakRate: '',
+    offer2OffPeakRate: '',
+    offer2ShoulderRate: '',
+    
+    offer3Retailer: '',
+    offer3Validity: '',
+    offer3Type: 'smoothed',
+    offer3PeriodYears: '3',
+    offer3StartDate: new Date().toISOString().split('T')[0],
+    offer3PeakRate: '',
+    offer3OffPeakRate: '',
+    offer3ShoulderRate: '',
+    
+    notes: ''
+  });
+
+  const [sending, setSending] = useState(false);
+  const [numOffers, setNumOffers] = useState(1);
+  
+  const calculateEndDate = (startDate: string): string => {
+    if (!startDate) return '';
+    const start = new Date(startDate);
+    const end = new Date(start);
+    end.setMonth(start.getMonth() + 12);
+    end.setDate(end.getDate() - 1);
+    return end.toISOString().split('T')[0];
+  };
+  
+  const getPeriodStartDate = (offerStartDate: string, periodIndex: number): string => {
+    if (!offerStartDate) return '';
+    const start = new Date(offerStartDate);
+    start.setFullYear(start.getFullYear() + periodIndex);
+    return start.toISOString().split('T')[0];
+  };
+  
+  const initializePeriodData = (offerNum: number, periodYears: string) => {
+    const years = parseInt(periodYears) || 0;
+    const offerStartDate = formData[`offer${offerNum}StartDate` as keyof CIElectricityOfferData];
+    
+    for (let i = 1; i <= years; i++) {
+      const startDate = getPeriodStartDate(offerStartDate, i - 1);
+      const endDate = calculateEndDate(startDate);
+      
+      setFormData(prev => ({
+        ...prev,
+        [`offer${offerNum}Period${i}StartDate`]: startDate,
+        [`offer${offerNum}Period${i}EndDate`]: endDate,
+        [`offer${offerNum}Period${i}PeakRate`]: '',
+        [`offer${offerNum}Period${i}OffPeakRate`]: '',
+        [`offer${offerNum}Period${i}ShoulderRate`]: ''
+      }));
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen && invoiceData) {
+      const invoiceDetails = invoiceData?.electricity_ci_invoice_details;
+      const businessDetails = invoiceData?.business_details || {};
+      const contactInfo = invoiceData?.contact_information || {};
+      const repDetails = invoiceData?.representative_details || {};
+      
+      console.log('C&I Offer Modal - Full invoiceData:', invoiceData);
+      console.log('C&I Offer Modal - Extracted invoiceDetails:', invoiceDetails);
+      console.log('C&I Offer Modal - Business Details:', businessDetails);
+      console.log('C&I Offer Modal - Contact Info:', contactInfo);
+      console.log('C&I Offer Modal - Rep Details:', repDetails);
+      console.log('C&I Offer Modal - Business Info:', businessInfo);
+      console.log('C&I Offer Modal - All keys in invoiceData:', Object.keys(invoiceData || {}));
+      console.log('C&I Offer Modal - All keys in businessInfo:', Object.keys(businessInfo || {}));
+      
+      setFormData(prev => ({
+        ...prev,
+        invoiceId: invoiceDetails?.invoice_id || '',
+        siteAddress: invoiceDetails?.site_address || '',
+        nmi: invoiceDetails?.nmi || '',
+        invoiceNumber: invoiceDetails?.invoice_number || '',
+        peakRateInvoice: invoiceDetails?.peak_rate || '',
+        offPeakRateInvoice: invoiceDetails?.offpeak_rate || '',
+        shoulderRateInvoice: invoiceDetails?.shoulder_rate || '',
+        peakUsageInvoice: invoiceDetails?.full_invoice_data?.['Retail Quantity Peak (kWh)']?.toString() || '',
+        offPeakUsageInvoice: invoiceDetails?.full_invoice_data?.['Retail Quantity Off-Peak (kWh)']?.toString() || '',
+        shoulderUsageInvoice: invoiceDetails?.full_invoice_data?.['Retail Quantity Shoulder (kWh)']?.toString() || '',
+        totalMonthlyUsage: invoiceDetails?.monthly_usage || invoiceDetails?.full_invoice_data?.['Monthly Consumption']?.toString() || '',
+        
+        // Business Information - try multiple possible locations including URL parameters and businessInfo
+        businessName: businessDetails?.name || invoiceData?.business_name || invoiceDetails?.business_name || businessInfo?.business_name || '',
+        businessAbn: businessDetails?.abn || invoiceData?.business_abn || invoiceDetails?.business_abn || businessInfo?.business_abn || '',
+        businessTradingName: businessDetails?.trading_name || invoiceData?.business_trading_name || invoiceDetails?.business_trading_name || businessInfo?.business_trading_name || '',
+        businessIndustry: businessDetails?.industry || invoiceData?.business_industry || invoiceDetails?.business_industry || businessInfo?.business_industry || '',
+        businessWebsite: businessDetails?.website || invoiceData?.business_website || invoiceDetails?.business_website || businessInfo?.business_website || '',
+        postalAddress: contactInfo?.postal_address || invoiceData?.postal_address || invoiceDetails?.postal_address || businessInfo?.postal_address || '',
+        contactPhone: contactInfo?.telephone || invoiceData?.contact_phone || invoiceDetails?.contact_phone || businessInfo?.contact_phone || '',
+        contactEmail: contactInfo?.email || invoiceData?.contact_email || invoiceDetails?.contact_email || businessInfo?.contact_email || '',
+        contactName: repDetails?.contact_name || invoiceData?.contact_name || invoiceDetails?.contact_name || businessInfo?.contact_name || '',
+        contactPosition: repDetails?.position || invoiceData?.contact_position || invoiceDetails?.contact_position || businessInfo?.contact_position || '',
+        loaSignDate: repDetails?.loa_sign_date || invoiceData?.loa_sign_date || invoiceDetails?.loa_sign_date || businessInfo?.loa_sign_date || '',
+      }));
+    }
+  }, [isOpen, invoiceData]);
+
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('keydown', handleEscape);
+      document.body.style.overflow = 'hidden';
+    }
+
+    return () => {
+      document.removeEventListener('keydown', handleEscape);
+      document.body.style.overflow = 'unset';
+    };
+  }, [isOpen, onClose]);
+
+  const handleInputChange = (field: keyof CIElectricityOfferData, value: string) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+    
+    if (field.includes('PeriodYears')) {
+      const offerMatch = field.match(/offer(\d+)PeriodYears/);
+      if (offerMatch) {
+        const offerNum = parseInt(offerMatch[1]);
+        setTimeout(() => initializePeriodData(offerNum, value), 0);
+      }
+    }
+    
+    if (field.includes('StartDate') && !field.includes('Period')) {
+      const offerMatch = field.match(/offer(\d+)StartDate/);
+      if (offerMatch) {
+        const offerNum = parseInt(offerMatch[1]);
+        
+        setTimeout(() => {
+          setFormData(prevData => {
+            const periodYears = parseInt(prevData[`offer${offerNum}PeriodYears` as keyof CIElectricityOfferData]) || 0;
+            const updatedData = { ...prevData };
+            
+            for (let i = 1; i <= periodYears; i++) {
+              const startDate = getPeriodStartDate(value, i - 1);
+              const endDate = calculateEndDate(startDate);
+              
+              updatedData[`offer${offerNum}Period${i}StartDate`] = startDate;
+              updatedData[`offer${offerNum}Period${i}EndDate`] = endDate;
+            }
+            
+            return updatedData;
+          });
+        }, 0);
+      }
+    }
+  };
+
+  const generateOfferTableHTML = () => {
+    const offers = [];
+    
+    for (let i = 1; i <= numOffers; i++) {
+      const retailer = formData[`offer${i}Retailer` as keyof CIElectricityOfferData] || '';
+      const validity = formData[`offer${i}Validity` as keyof CIElectricityOfferData] || '';
+      const type = formData[`offer${i}Type` as keyof CIElectricityOfferData] || '';
+      const periodYears = parseInt(formData[`offer${i}PeriodYears` as keyof CIElectricityOfferData]) || 0;
+      const startDate = formData[`offer${i}StartDate` as keyof CIElectricityOfferData] || '';
+      const peakRate = formData[`offer${i}PeakRate` as keyof CIElectricityOfferData] || '';
+      const offPeakRate = formData[`offer${i}OffPeakRate` as keyof CIElectricityOfferData] || '';
+      const shoulderRate = formData[`offer${i}ShoulderRate` as keyof CIElectricityOfferData] || '';
+      
+      if (retailer || peakRate || offPeakRate || shoulderRate) {
+        let offerText = `Offer ${i} - ${retailer}:
+      Validity: ${validity}
+      Type: ${type}
+      Period: ${periodYears} years
+      Start Date: ${startDate}`;
+        
+        if (type === 'smoothed') {
+          offerText += `
+      Peak Rate: ${peakRate} c/kWh
+      Off-Peak Rate: ${offPeakRate} c/kWh
+      Shoulder Rate: ${shoulderRate} c/kWh
+      (Same rates for all ${periodYears} periods)`;
+        } else {
+          offerText += `
+      Overall Rates:
+      Peak Rate: ${peakRate} c/kWh
+      Off-Peak Rate: ${offPeakRate} c/kWh
+      Shoulder Rate: ${shoulderRate} c/kWh`;
+          
+          for (let period = 1; period <= periodYears; period++) {
+            const periodStartDate = formData[`offer${i}Period${period}StartDate`] || '';
+            const periodEndDate = formData[`offer${i}Period${period}EndDate`] || '';
+            const periodPeakRate = formData[`offer${i}Period${period}PeakRate`] || '';
+            const periodOffPeakRate = formData[`offer${i}Period${period}OffPeakRate`] || '';
+            const periodShoulderRate = formData[`offer${i}Period${period}ShoulderRate`] || '';
+            
+            offerText += `
+      
+      Period ${period} (${periodStartDate} to ${periodEndDate}):`;
+            if (periodPeakRate || periodOffPeakRate || periodShoulderRate) {
+              offerText += `
+        Peak Rate: ${periodPeakRate || 'TBA'} c/kWh
+        Off-Peak Rate: ${periodOffPeakRate || 'TBA'} c/kWh
+        Shoulder Rate: ${periodShoulderRate || 'TBA'} c/kWh`;
+            } else {
+              offerText += `
+        Rates: To be advised`;
+            }
+          }
+        }
+        
+        offers.push(offerText);
+      }
+    }
+    
+    const notesLine = formData.notes.trim() ? `\nNotes: ${formData.notes}` : '';
+    
+    return `C&I ELECTRICITY OFFER COMPARISON
+    
+    BUSINESS DETAILS
+    Site Address: ${formData.siteAddress}
+    NMI: ${formData.nmi}
+    Invoice Number: ${formData.invoiceNumber}
+    
+    ${offers.join('\n\n  ')}${notesLine}`;
+  };
+
+  const copyToClipboard = () => {
+    const tableText = generateOfferTableHTML();
+    navigator.clipboard.writeText(tableText).then(() => {
+      alert('C&I Electricity offer comparison copied to clipboard! You can now paste this directly into Gmail.');
+    });
+  };
+
+  const sendCIElectricityOffer = async () => {
+    setSending(true);
+    try {
+      const tableHTML = generateOfferTableHTML();
+      
+      // Helper function to check if an offer has data (retailer is not empty)
+      const hasOfferData = (offerNum: number) => {
+        return formData[`offer${offerNum}Retailer` as keyof CIElectricityOfferData]?.trim() !== '';
+      };
+      
+      // Helper function to get offer data only if it exists
+      const getOfferData = (offerNum: number) => {
+        if (!hasOfferData(offerNum)) {
+          return {
+            [`offer_${offerNum}_retailer`]: '',
+            [`offer_${offerNum}_validity`]: '',
+            [`offer_${offerNum}_type`]: '',
+            [`offer_${offerNum}_period_years`]: '',
+            [`offer_${offerNum}_start_date`]: '',
+            [`offer_${offerNum}_peak_rate`]: '',
+            [`offer_${offerNum}_off_peak_rate`]: '',
+            [`offer_${offerNum}_shoulder_rate`]: ''
+          };
+        }
+        
+        return {
+          [`offer_${offerNum}_retailer`]: formData[`offer${offerNum}Retailer` as keyof CIElectricityOfferData],
+          [`offer_${offerNum}_validity`]: formData[`offer${offerNum}Validity` as keyof CIElectricityOfferData],
+          [`offer_${offerNum}_type`]: formData[`offer${offerNum}Type` as keyof CIElectricityOfferData],
+          [`offer_${offerNum}_period_years`]: formData[`offer${offerNum}PeriodYears` as keyof CIElectricityOfferData],
+          [`offer_${offerNum}_start_date`]: formData[`offer${offerNum}StartDate` as keyof CIElectricityOfferData],
+          [`offer_${offerNum}_peak_rate`]: formData[`offer${offerNum}PeakRate` as keyof CIElectricityOfferData],
+          [`offer_${offerNum}_off_peak_rate`]: formData[`offer${offerNum}OffPeakRate` as keyof CIElectricityOfferData],
+          [`offer_${offerNum}_shoulder_rate`]: formData[`offer${offerNum}ShoulderRate` as keyof CIElectricityOfferData]
+        };
+      };
+      
+      // Helper function to get period data only for offers that have data
+      const getPeriodData = () => {
+        const periodData: { [key: string]: string } = {};
+        
+        for (let offerNum = 1; offerNum <= 3; offerNum++) {
+          if (hasOfferData(offerNum)) {
+            const periodYears = parseInt(formData[`offer${offerNum}PeriodYears` as keyof CIElectricityOfferData]) || 0;
+            const offerType = formData[`offer${offerNum}Type` as keyof CIElectricityOfferData];
+            
+            // Get the main offer rates for smoothed offers
+            const mainPeakRate = formData[`offer${offerNum}PeakRate` as keyof CIElectricityOfferData] || '';
+            const mainOffPeakRate = formData[`offer${offerNum}OffPeakRate` as keyof CIElectricityOfferData] || '';
+            const mainShoulderRate = formData[`offer${offerNum}ShoulderRate` as keyof CIElectricityOfferData] || '';
+            
+            for (let period = 1; period <= periodYears; period++) {
+              periodData[`offer_${offerNum}_period_${period}_start_date`] = formData[`offer${offerNum}Period${period}StartDate`] || '';
+              periodData[`offer_${offerNum}_period_${period}_end_date`] = formData[`offer${offerNum}Period${period}EndDate`] || '';
+              
+              // For smoothed offers, use the main rates for all periods
+              // For stepped offers, use period-specific rates if available, otherwise fall back to main rates
+              if (offerType === 'smoothed') {
+                periodData[`offer_${offerNum}_period_${period}_peak_rate`] = mainPeakRate;
+                periodData[`offer_${offerNum}_period_${period}_off_peak_rate`] = mainOffPeakRate;
+                periodData[`offer_${offerNum}_period_${period}_shoulder_rate`] = mainShoulderRate;
+              } else {
+                // For stepped offers, use period-specific rates if available
+                periodData[`offer_${offerNum}_period_${period}_peak_rate`] = formData[`offer${offerNum}Period${period}PeakRate`] || mainPeakRate;
+                periodData[`offer_${offerNum}_period_${period}_off_peak_rate`] = formData[`offer${offerNum}Period${period}OffPeakRate`] || mainOffPeakRate;
+                periodData[`offer_${offerNum}_period_${period}_shoulder_rate`] = formData[`offer${offerNum}Period${period}ShoulderRate`] || mainShoulderRate;
+              }
+            }
+          } else {
+            // For offers without data, set all period fields to empty
+            for (let period = 1; period <= 3; period++) {
+              periodData[`offer_${offerNum}_period_${period}_start_date`] = '';
+              periodData[`offer_${offerNum}_period_${period}_end_date`] = '';
+              periodData[`offer_${offerNum}_period_${period}_peak_rate`] = '';
+              periodData[`offer_${offerNum}_period_${period}_off_peak_rate`] = '';
+              periodData[`offer_${offerNum}_period_${period}_shoulder_rate`] = '';
+            }
+          }
+        }
+        
+        return periodData;
+      };
+      
+      const payload = {
+        user_email: session?.user?.email || '',
+        user_name: session?.user?.name || '',
+        user_id: session?.user?.id || '',
+        
+        invoice_id: formData.invoiceId,
+        site_address: formData.siteAddress,
+        nmi: formData.nmi,
+        invoice_number: formData.invoiceNumber,
+        peak_rate_invoice: formData.peakRateInvoice,
+        off_peak_rate_invoice: formData.offPeakRateInvoice,
+        shoulder_rate_invoice: formData.shoulderRateInvoice,
+        peak_usage_invoice: formData.peakUsageInvoice,
+        off_peak_usage_invoice: formData.offPeakUsageInvoice,
+        shoulder_usage_invoice: formData.shoulderUsageInvoice,
+        total_monthly_usage: formData.totalMonthlyUsage,
+        
+        // Business Information
+        business_name: formData.businessName,
+        business_abn: formData.businessAbn,
+        business_trading_name: formData.businessTradingName,
+        business_industry: formData.businessIndustry,
+        business_website: formData.businessWebsite,
+        postal_address: formData.postalAddress,
+        contact_phone: formData.contactPhone,
+        contact_email: formData.contactEmail,
+        contact_name: formData.contactName,
+        contact_position: formData.contactPosition,
+        loa_sign_date: formData.loaSignDate,
+        
+        ...getOfferData(1),
+        ...getOfferData(2),
+        ...getOfferData(3),
+        ...getPeriodData(),
+        
+        notes: formData.notes,
+        table_html: tableHTML,
+        full_invoice_data: invoiceData,
+        timestamp: new Date().toISOString()
+      };
+      
+      const response = await fetch('https://membersaces.app.n8n.cloud/webhook/generate-electricity-ci-comparaison', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        const pdfLink = result.pdf_document_link;
+        const spreadsheetLink = result.spreadsheet_document_link;
+        
+        let message = 'C&I Electricity Offer Comparison sent successfully!';
+        if (pdfLink) message += `\nPDF: ${pdfLink}`;
+        if (spreadsheetLink) message += `\nSpreadsheet: ${spreadsheetLink}`;
+        
+        alert(message);
+        onClose();
+      } else {
+        throw new Error('Failed to send C&I Electricity offer comparison');
+      }
+    } catch (error) {
+      console.error('Error sending C&I Electricity offer comparison:', error);
+      alert('Failed to send offer comparison. Please try again.');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div 
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 9999,
+        padding: '20px'
+      }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <div style={{
+        backgroundColor: 'white',
+        borderRadius: 8,
+        padding: 24,
+        width: '100%',
+        maxWidth: '1200px',
+        maxHeight: '90vh',
+        overflow: 'auto',
+        boxShadow: '0 25px 50px rgba(0, 0, 0, 0.25)',
+        position: 'relative'
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+          <h2 style={{ margin: 0, fontSize: 24, fontWeight: 600 }}>C&I Electricity Offer Comparison</h2>
+          <button 
+            onClick={onClose}
+            style={{
+              background: 'none',
+              border: 'none',
+              fontSize: 24,
+              cursor: 'pointer',
+              color: '#666'
+            }}
+          >
+            ×
+          </button>
+        </div>
+
+        <div style={{ marginBottom: 20 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #ddd' }}>
+            <thead>
+              <tr style={{ backgroundColor: '#f5f5f5' }}>
+                <th style={{ padding: 12, textAlign: 'left', border: '1px solid #ddd' }}>Field</th>
+                <th style={{ padding: 12, textAlign: 'left', border: '1px solid #ddd' }}>Value</th>
+                <th style={{ padding: 12, textAlign: 'left', border: '1px solid #ddd' }}>Source</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>Site Address</td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                  <div style={{ padding: 4, fontSize: 14, fontWeight: 600, color: '#111827' }}>
+                    {formData.siteAddress || 'N/A'}
+                  </div>
+                </td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>Invoice</td>
+              </tr>
+              <tr>
+                <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>NMI</td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                  <div style={{ padding: 4, fontSize: 14, fontWeight: 600, color: '#111827' }}>
+                    {formData.nmi || 'N/A'}
+                  </div>
+                </td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>Invoice</td>
+              </tr>
+              <tr>
+                <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>Invoice Link</td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                  {invoiceData?.electricity_ci_invoice_details?.invoice_link ? (
+                    <a 
+                      href={invoiceData.electricity_ci_invoice_details.invoice_link} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      style={{ color: '#2563eb', textDecoration: 'underline' }}
+                    >
+                      View Invoice PDF
+                    </a>
+                  ) : (
+                    <span style={{ color: '#6b7280' }}>No invoice link available</span>
+                  )}
+                </td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>Invoice</td>
+              </tr>
+
+              {/* Invoice Details Section */}
+              <tr style={{ backgroundColor: '#fff3cd' }}>
+                <td colSpan={3} style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600, textAlign: 'center' }}>
+                  Invoice Details
+                </td>
+              </tr>
+              <tr>
+                <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>Current Rates (c/kWh)</td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                    <div>
+                      <div style={{ fontSize: 12, marginBottom: 4, textAlign: 'center', fontWeight: 600 }}>Peak</div>
+                      <input
+                        type="text"
+                        value={formData.peakRateInvoice}
+                        onChange={(e) => handleInputChange('peakRateInvoice', e.target.value)}
+                        style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4, textAlign: 'center' }}
+                        placeholder="Current peak rate"
+                      />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 12, marginBottom: 4, textAlign: 'center', fontWeight: 600 }}>Off-Peak</div>
+                      <input
+                        type="text"
+                        value={formData.offPeakRateInvoice}
+                        onChange={(e) => handleInputChange('offPeakRateInvoice', e.target.value)}
+                        style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4, textAlign: 'center' }}
+                        placeholder="Current off-peak rate"
+                      />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 12, marginBottom: 4, textAlign: 'center', fontWeight: 600 }}>Shoulder</div>
+                      <input
+                        type="text"
+                        value={formData.shoulderRateInvoice}
+                        onChange={(e) => handleInputChange('shoulderRateInvoice', e.target.value)}
+                        style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4, textAlign: 'center' }}
+                        placeholder="Current shoulder rate"
+                      />
+                    </div>
+                  </div>
+                </td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>c/kWh (Current Invoice)</td>
+              </tr>
+              <tr>
+                <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>Usage (kWh)</td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                    <div>
+                      <div style={{ fontSize: 12, marginBottom: 4, textAlign: 'center', fontWeight: 600 }}>Peak</div>
+                      <input
+                        type="text"
+                        value={formData.peakUsageInvoice}
+                        onChange={(e) => handleInputChange('peakUsageInvoice', e.target.value)}
+                        style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4, textAlign: 'center' }}
+                        placeholder="Peak usage"
+                      />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 12, marginBottom: 4, textAlign: 'center', fontWeight: 600 }}>Off-Peak</div>
+                      <input
+                        type="text"
+                        value={formData.offPeakUsageInvoice}
+                        onChange={(e) => handleInputChange('offPeakUsageInvoice', e.target.value)}
+                        style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4, textAlign: 'center' }}
+                        placeholder="Off-peak usage"
+                      />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 12, marginBottom: 4, textAlign: 'center', fontWeight: 600 }}>Shoulder</div>
+                      <input
+                        type="text"
+                        value={formData.shoulderUsageInvoice}
+                        onChange={(e) => handleInputChange('shoulderUsageInvoice', e.target.value)}
+                        style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4, textAlign: 'center' }}
+                        placeholder="Shoulder usage"
+                      />
+                    </div>
+                  </div>
+                </td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>kWh (Invoice)</td>
+              </tr>
+              <tr>
+                <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>Total Monthly Usage</td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                  <input
+                    type="text"
+                    value={formData.totalMonthlyUsage || ''}
+                    onChange={(e) => handleInputChange('totalMonthlyUsage', e.target.value)}
+                    style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4 }}
+                    placeholder="Total monthly usage"
+                  />
+                </td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>kWh (Invoice)</td>
+              </tr>
+
+              {/* Number of Offers Selection */}
+              <tr style={{ backgroundColor: '#f0f9ff' }}>
+                <td colSpan={3} style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600, textAlign: 'center' }}>
+                  Number of Offers: 
+                  <select
+                    value={numOffers}
+                    onChange={(e) => setNumOffers(parseInt(e.target.value))}
+                    style={{ marginLeft: 8, padding: 4, border: '1px solid #ccc', borderRadius: 4 }}
+                  >
+                    <option value={1}>1</option>
+                    <option value={2}>2</option>
+                    <option value={3}>3</option>
+                  </select>
+                </td>
+              </tr>
+
+              {/* Offer sections */}
+              {Array.from({ length: numOffers }, (_, index) => {
+                const periodYears = parseInt(formData[`offer${index + 1}PeriodYears` as keyof CIElectricityOfferData]) || 0;
+                const offerNum = index + 1;
+                const bgColor = offerNum === 1 ? '#fefce8' : offerNum === 2 ? '#f0fdf4' : '#fef2f2';
+                
+                return (
+                  <React.Fragment key={offerNum}>
+                    <tr style={{ backgroundColor: bgColor }}>
+                      <td colSpan={3} style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600, textAlign: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                          <span>Offer {offerNum} - Retailer:</span>
+                          <input
+                            type="text"
+                            value={formData[`offer${offerNum}Retailer` as keyof CIElectricityOfferData]}
+                            onChange={(e) => handleInputChange(`offer${offerNum}Retailer` as keyof CIElectricityOfferData, e.target.value)}
+                            style={{ padding: 4, border: '1px solid #ccc', borderRadius: 4, minWidth: 200 }}
+                            placeholder="Retailer name"
+                          />
+                        </div>
+                      </td>
+                      </tr>
+                    <tr>
+                      <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>Offer Validity</td>
+                      <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                        <input
+                          type="text"
+                          value={formData[`offer${offerNum}Validity` as keyof CIElectricityOfferData]}
+                          onChange={(e) => handleInputChange(`offer${offerNum}Validity` as keyof CIElectricityOfferData, e.target.value)}
+                          style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4 }}
+                          placeholder="e.g., 30 days"
+                        />
+                      </td>
+                      <td style={{ padding: 8, border: '1px solid #ddd' }}>Offer Period</td>
+                    </tr>
+                    <tr>
+                      <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>Offer Type</td>
+                      <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                        <select
+                          value={formData[`offer${offerNum}Type` as keyof CIElectricityOfferData]}
+                          onChange={(e) => handleInputChange(`offer${offerNum}Type` as keyof CIElectricityOfferData, e.target.value)}
+                          style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4 }}
+                        >
+                          <option value="smoothed">Smoothed (Same rates all periods)</option>
+                          <option value="stepped">Stepped (Different rates per period)</option>
+                        </select>
+                      </td>
+                      <td style={{ padding: 8, border: '1px solid #ddd' }}>Rate Structure</td>
+                    </tr>
+                    <tr>
+                      <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>Offer Period</td>
+                      <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                        <input
+                          type="text"
+                          value={formData[`offer${offerNum}PeriodYears` as keyof CIElectricityOfferData]}
+                          onChange={(e) => handleInputChange(`offer${offerNum}PeriodYears` as keyof CIElectricityOfferData, e.target.value)}
+                          style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4 }}
+                          placeholder="3"
+                        />
+                      </td>
+                      <td style={{ padding: 8, border: '1px solid #ddd' }}>Years</td>
+                    </tr>
+                    <tr>
+                      <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>Start Date</td>
+                      <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                        <input
+                          type="date"
+                          value={formData[`offer${offerNum}StartDate` as keyof CIElectricityOfferData]}
+                          onChange={(e) => handleInputChange(`offer${offerNum}StartDate` as keyof CIElectricityOfferData, e.target.value)}
+                          style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4 }}
+                        />
+                      </td>
+                      <td style={{ padding: 8, border: '1px solid #ddd' }}>Contract Start</td>
+                    </tr>
+                    {formData[`offer${offerNum}Type` as keyof CIElectricityOfferData] === 'smoothed' && (
+                    <tr>
+                      <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>
+                      {formData[`offer${offerNum}Type` as keyof CIElectricityOfferData] === 'smoothed' ? 'Rates (All Periods)' : null}
+                      </td>
+                      <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                          <div>
+                            <div style={{ fontSize: 12, marginBottom: 4, textAlign: 'center', fontWeight: 600 }}>Peak</div>
+                            <input
+                              type="text"
+                              value={formData[`offer${offerNum}PeakRate` as keyof CIElectricityOfferData]}
+                              onChange={(e) => handleInputChange(`offer${offerNum}PeakRate` as keyof CIElectricityOfferData, e.target.value)}
+                              style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4, textAlign: 'center' }}
+                              placeholder="c/kWh"
+                            />
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 12, marginBottom: 4, textAlign: 'center', fontWeight: 600 }}>Off-Peak</div>
+                            <input
+                              type="text"
+                              value={formData[`offer${offerNum}OffPeakRate` as keyof CIElectricityOfferData]}
+                              onChange={(e) => handleInputChange(`offer${offerNum}OffPeakRate` as keyof CIElectricityOfferData, e.target.value)}
+                              style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4, textAlign: 'center' }}
+                              placeholder="c/kWh"
+                            />
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 12, marginBottom: 4, textAlign: 'center', fontWeight: 600 }}>Shoulder</div>
+                            <input
+                              type="text"
+                              value={formData[`offer${offerNum}ShoulderRate` as keyof CIElectricityOfferData]}
+                              onChange={(e) => handleInputChange(`offer${offerNum}ShoulderRate` as keyof CIElectricityOfferData, e.target.value)}
+                              style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4, textAlign: 'center' }}
+                              placeholder="c/kWh"
+                            />
+                          </div>
+                        </div>
+                        {formData[`offer${offerNum}Type` as keyof CIElectricityOfferData] === 'smoothed' ? (
+                          <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4, textAlign: 'center' }}>
+                            Same rates apply for all contract periods
+                          </div>
+                        ) : null}
+                      </td>
+                      <td style={{ padding: 8, border: '1px solid #ddd' }}>c/kWh</td>
+                    </tr>
+                    )}
+                    {/* Period-Specific Rates */}
+                    {periodYears > 0 && (formData[`offer${offerNum}Type` as keyof CIElectricityOfferData] === 'stepped' || periodYears > 1) && (
+                      <>
+                        <tr style={{ backgroundColor: '#f0f0f0' }}>
+                          <td colSpan={3} style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600, textAlign: 'center' }}>
+                            Period-Specific Details ({periodYears} periods)
+                          </td>
+                        </tr>
+                        {Array.from({ length: periodYears }, (_, periodIndex) => {
+                          const periodNum = periodIndex + 1;
+                          return (
+                            <React.Fragment key={`${offerNum}-period-${periodNum}`}>
+                              <tr>
+                                <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>
+                                  Period {periodNum} Dates
+                                </td>
+                                <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                                    <div>
+                                      <div style={{ fontSize: 12, marginBottom: 4, fontWeight: 600 }}>Start Date</div>
+                                      <input
+                                        type="date"
+                                        value={formData[`offer${offerNum}Period${periodNum}StartDate`] || ''}
+                                        onChange={(e) => handleInputChange(`offer${offerNum}Period${periodNum}StartDate` as keyof CIElectricityOfferData, e.target.value)}
+                                        style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4 }}
+                                      />
+                                    </div>
+                                    <div>
+                                      <div style={{ fontSize: 12, marginBottom: 4, fontWeight: 600 }}>End Date</div>
+                                      <input
+                                        type="date"
+                                        value={formData[`offer${offerNum}Period${periodNum}EndDate`] || ''}
+                                        onChange={(e) => handleInputChange(`offer${offerNum}Period${periodNum}EndDate` as keyof CIElectricityOfferData, e.target.value)}
+                                        style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4 }}
+                                      />
+                                    </div>
+                                  </div>
+                                </td>
+                                <td style={{ padding: 8, border: '1px solid #ddd' }}>Period {periodNum} Timeline</td>
+                              </tr>
+                              
+                              {formData[`offer${offerNum}Type` as keyof CIElectricityOfferData] === 'stepped' && (
+                                <tr>
+                                  <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>
+                                    Period {periodNum} Rates
+                                  </td>
+                                  <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                                      <div>
+                                        <div style={{ fontSize: 12, marginBottom: 4, textAlign: 'center', fontWeight: 600 }}>Peak</div>
+                                        <input
+                                          type="text"
+                                          value={formData[`offer${offerNum}Period${periodNum}PeakRate`] || ''}
+                                          onChange={(e) => handleInputChange(`offer${offerNum}Period${periodNum}PeakRate` as keyof CIElectricityOfferData, e.target.value)}
+                                          style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4, textAlign: 'center' }}
+                                          placeholder="c/kWh"
+                                        />
+                                      </div>
+                                      <div>
+                                        <div style={{ fontSize: 12, marginBottom: 4, textAlign: 'center', fontWeight: 600 }}>Off-Peak</div>
+                                        <input
+                                          type="text"
+                                          value={formData[`offer${offerNum}Period${periodNum}OffPeakRate`] || ''}
+                                          onChange={(e) => handleInputChange(`offer${offerNum}Period${periodNum}OffPeakRate` as keyof CIElectricityOfferData, e.target.value)}
+                                          style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4, textAlign: 'center' }}
+                                          placeholder="c/kWh"
+                                        />
+                                      </div>
+                                      <div>
+                                        <div style={{ fontSize: 12, marginBottom: 4, textAlign: 'center', fontWeight: 600 }}>Shoulder</div>
+                                        <input
+                                          type="text"
+                                          value={formData[`offer${offerNum}Period${periodNum}ShoulderRate`] || ''}
+                                          onChange={(e) => handleInputChange(`offer${offerNum}Period${periodNum}ShoulderRate` as keyof CIElectricityOfferData, e.target.value)}
+                                          style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4, textAlign: 'center' }}
+                                          placeholder="c/kWh"
+                                        />
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td style={{ padding: 8, border: '1px solid #ddd' }}>c/kWh (Period {periodNum})</td>
+                                </tr>
+                              )}
+                            </React.Fragment>
+                          );
+                        })}
+                      </>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+
+              <tr>
+                <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>Notes</td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                  <textarea
+                    value={formData.notes}
+                    onChange={(e) => handleInputChange('notes', e.target.value)}
+                    style={{ 
+                      width: '100%', 
+                      padding: 4, 
+                      border: '1px solid #ccc', 
+                      borderRadius: 4,
+                      minHeight: '60px',
+                      resize: 'vertical'
+                    }}
+                    placeholder="Optional notes..."
+                  />
+                </td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>Optional</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+          <button
+            onClick={copyToClipboard}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: '#6b7280',
+              color: 'white',
+              border: 'none',
+              borderRadius: 4,
+              cursor: 'pointer',
+              fontWeight: 600
+            }}
+          >
+            Copy for Gmail
+          </button>
+          <button
+            onClick={sendCIElectricityOffer}
+            disabled={sending}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: sending ? '#9ca3af' : '#2563eb',
+              color: 'white',
+              border: 'none',
+              borderRadius: 4,
+              cursor: sending ? 'not-allowed' : 'pointer',
+              fontWeight: 600
+            }}
+          >
+            {sending ? 'Sending...' : 'Send C&I Electricity Offer'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 interface DemandResponseData {
   demandCapacityInvoice: string;
   demandCapacityUnit: string;
@@ -244,18 +1296,26 @@ function DemandResponseModal({
   if (!isOpen) return null;
 
   return (
-    <div style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: 'rgba(0, 0, 0, 0.5)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 1000
-    }}>
+    <div 
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 9999,
+        padding: '20px'
+      }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+    >
       <div style={{
         backgroundColor: 'white',
         borderRadius: 8,
@@ -546,6 +1606,25 @@ function DMAModal({
     }
   }, [formData.startDate, formData.periodYears]);
 
+  // Add escape key handler
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('keydown', handleEscape);
+      document.body.style.overflow = 'hidden';
+    }
+
+    return () => {
+      document.removeEventListener('keydown', handleEscape);
+      document.body.style.overflow = 'unset';
+    };
+  }, [isOpen, onClose]);
+
   // Populate form data when modal opens
   useEffect(() => {
     if (isOpen && invoiceData) {
@@ -700,27 +1779,36 @@ function DMAModal({
   const annualCost = getCalculatedAnnualCost();
 
   return (
-    <div style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: 'rgba(0, 0, 0, 0.5)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 1000
-    }}>
+    <div 
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 9999,
+        padding: '20px'
+      }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+    >
       <div style={{
         backgroundColor: 'white',
         borderRadius: 8,
         padding: 24,
-        maxWidth: '95vw',
-        width: '1200px',
+        width: '100%',
+        maxWidth: '1200px',
         maxHeight: '90vh',
         overflow: 'auto',
-        boxShadow: '0 10px 25px rgba(0, 0, 0, 0.3)'
+        boxShadow: '0 25px 50px rgba(0, 0, 0, 0.25)',
+        position: 'relative'
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <h2 style={{ margin: 0, fontSize: 24, fontWeight: 600 }}>DMA (Data Metering Analysis) Review</h2>
@@ -1076,8 +2164,130 @@ function ResultMessage({ message }: { message: string }) {
   );
 }
 
+const EnhancedInvoiceDetails = ({ electricityData }: { electricityData: ElectricityInvoiceData }) => {
+  if (!electricityData || !electricityData.full_invoice_data) return null;
+
+  const fullData = electricityData.full_invoice_data;
+
+  const formatCurrency = (value: string | number) => {
+    const num = typeof value === 'string' ? parseFloat(value) : value;
+    return new Intl.NumberFormat('en-AU', {
+      style: 'currency',
+      currency: 'AUD'
+    }).format(num);
+  };
+
+  const formatNumber = (value: string | number, decimals = 2) => {
+    const num = typeof value === 'string' ? parseFloat(value) : value;
+    return num.toLocaleString('en-AU', { 
+      minimumFractionDigits: decimals, 
+      maximumFractionDigits: decimals 
+    });
+  };
+
+  return (
+    <div style={{ marginTop: 16, padding: 16, backgroundColor: '#f8fafc', borderRadius: 6, border: '1px solid #e2e8f0' }}>
+      <div style={{ display: 'grid', gap: 16, gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))' }}>
+        {/* Consumption Overview */}
+        <div style={{ background: 'white', padding: 16, borderRadius: 6, border: '1px solid #e5e7eb' }}>
+          <h4 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: '#111827', display: 'flex', alignItems: 'center' }}>
+            ⚡ Consumption Overview
+          </h4>
+          <div style={{ display: 'grid', gap: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: '#6b7280' }}>Peak Usage:</span>
+              <span style={{ fontWeight: 600 }}>{formatNumber(fullData['Retail Quantity Peak (kWh)'])} kWh</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: '#6b7280' }}>Off-Peak Usage:</span>
+              <span style={{ fontWeight: 600 }}>{formatNumber(fullData['Retail Quantity Off-Peak (kWh)'])} kWh</span>
+            </div>
+            {fullData['Retail Quantity Shoulder (kWh)'] && (
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#6b7280' }}>Shoulder Usage:</span>
+                <span style={{ fontWeight: 600 }}>{formatNumber(fullData['Retail Quantity Shoulder (kWh)'])} kWh</span>
+              </div>
+            )}
+            <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 8, marginTop: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#6b7280' }}>Monthly Total:</span>
+                <span style={{ fontWeight: 600, color: '#2563eb' }}>{formatNumber(fullData['Monthly Consumption'])} kWh</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#6b7280' }}>Annual Est:</span>
+                <span style={{ fontWeight: 600, color: '#059669' }}>{formatNumber(fullData['Yearly Consumption Est'])} kWh</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Rate Information */}
+        <div style={{ background: 'white', padding: 16, borderRadius: 6, border: '1px solid #e5e7eb' }}>
+          <h4 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: '#111827', display: 'flex', alignItems: 'center' }}>
+            💰 Rate Structure
+          </h4>
+          <div style={{ display: 'grid', gap: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: '#6b7280' }}>Peak Rate:</span>
+              <span style={{ fontWeight: 600 }}>{fullData['Retail Rate Peak (c/kWh)']}¢/kWh</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: '#6b7280' }}>Off-Peak Rate:</span>
+              <span style={{ fontWeight: 600 }}>{fullData['Retail Rate Off-Peak (c/kWh)']}¢/kWh</span>
+            </div>
+            <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 8, marginTop: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#6b7280' }}>Avg Cost:</span>
+                <span style={{ fontWeight: 600 }}>{formatCurrency(electricityData.average_cost)}/kWh</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#6b7280' }}>Demand Capacity:</span>
+                <span style={{ fontWeight: 600 }}>{formatNumber(fullData['DUOS - Network Demand Charge Quantity (KVA)'])} KVA</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Charges Breakdown */}
+        <div style={{ background: 'white', padding: 16, borderRadius: 6, border: '1px solid #e5e7eb' }}>
+          <h4 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: '#111827', display: 'flex', alignItems: 'center' }}>
+            📊 Charges Breakdown
+          </h4>
+          <div style={{ display: 'grid', gap: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: '#6b7280' }}>Retail Charges:</span>
+              <span style={{ fontWeight: 600 }}>{formatCurrency(fullData['Retail Charges'])}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: '#6b7280' }}>Network Charges:</span>
+              <span style={{ fontWeight: 600 }}>{formatCurrency(fullData['Network Charges'])}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: '#6b7280' }}>Environmental:</span>
+              <span style={{ fontWeight: 600 }}>{formatCurrency(fullData['Environmental Charges'])}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: '#6b7280' }}>Regulated:</span>
+              <span style={{ fontWeight: 600 }}>{formatCurrency(fullData['Regulated Charges'])}</span>
+            </div>
+            <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 8, marginTop: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#6b7280' }}>Total Cost:</span>
+                <span style={{ fontWeight: 600, color: '#059669' }}>{formatCurrency(fullData['Total Invoice Cost:'])}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 function InvoiceResult({ result, session, token }: { result: any; session: any; token: string }) {
   const [showDMAModal, setShowDMAModal] = useState(false);
+  const [showCIOfferModal, setShowCIOfferModal] = useState(false);
+  const [expandedDetails, setExpandedDetails] = useState(false); // Add this line
+  
   // Detect which invoice type is present
   const types = [
     { key: 'electricity_ci_invoice_details', label: 'C&I Electricity Invoice' },
@@ -1163,12 +2373,11 @@ function InvoiceResult({ result, session, token }: { result: any; session: any; 
           {details.total_invoice_cost && <Field label="Total Invoice Cost ($)" value={details.total_invoice_cost} />}
           {details.invoice_link && <Field label="Invoice PDF" value={details.invoice_link} isLink />}
         </div>
-        
-        {/* DMA Button for C&I Electricity only */}
+        {/* Enhanced Invoice Details for C&I Electricity */}
         {type.key === 'electricity_ci_invoice_details' && (
           <div style={{ marginTop: 16 }}>
             <button
-              onClick={() => setShowDMAModal(true)}
+              onClick={() => setExpandedDetails(!expandedDetails)}
               style={{
                 padding: '8px 16px',
                 backgroundColor: '#059669',
@@ -1177,14 +2386,71 @@ function InvoiceResult({ result, session, token }: { result: any; session: any; 
                 borderRadius: 4,
                 cursor: 'pointer',
                 fontWeight: 600,
-                fontSize: 14
+                fontSize: 14,
+                marginLeft: 8
               }}
             >
-              DMA
+              {expandedDetails ? 'Hide' : 'Show'} Enhanced Details
             </button>
+            
+            {expandedDetails && (
+              <EnhancedInvoiceDetails electricityData={details} />
+            )}
+          </div>
+        )}
+        {/* Comparison Section for C&I Electricity only */}
+        {type.key === 'electricity_ci_invoice_details' && (
+          <div style={{ marginTop: 20 }}>
+            <h4 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: '#111827' }}>
+              Comparison
+            </h4>
+            <div style={{ display: 'flex', gap: 12 }}>
+              <button
+                onClick={() => setShowCIOfferModal(true)}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#7c3aed',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: 4,
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  fontSize: 14
+                }}
+              >
+                C&I E Offer
+              </button>
+              <button
+                onClick={() => setShowDMAModal(true)}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#059669',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: 4,
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  fontSize: 14
+                }}
+              >
+                DMA
+              </button>
+            </div>
           </div>
         )}
       </div>
+      
+      {/* C&I Electricity Offer Modal */}
+      {type.key === 'electricity_ci_invoice_details' && (
+        <CIElectricityOfferModal
+          isOpen={showCIOfferModal}
+          onClose={() => setShowCIOfferModal(false)}
+          invoiceData={result}
+          session={session}
+          token={token}
+          businessInfo={result}
+        />
+      )}
       
       {/* DMA Modal */}
       {type.key === 'electricity_ci_invoice_details' && (
@@ -1199,7 +2465,6 @@ function InvoiceResult({ result, session, token }: { result: any; session: any; 
     </div>
   );
 }
-
 // Data Comparison Component
 function DataComparisonSection({ 
   invoiceData, 
@@ -1889,7 +3154,18 @@ export default function InfoToolPage({ title, description, endpoint, extraFields
       }
   
       const data = await res.json();
-      setResult(data);
+      
+      // Include initialExtraFields in the result data
+      const resultWithBusinessInfo = {
+        ...data,
+        ...fields, // Include all fields including business information from URL parameters
+      };
+      
+      console.log('InfoToolPage - API Response:', data);
+      console.log('InfoToolPage - Fields (including business info):', fields);
+      console.log('InfoToolPage - Result with business info:', resultWithBusinessInfo);
+      
+      setResult(resultWithBusinessInfo);
     } catch (err: any) {
       if (err.name === "AbortError") {
         setError("The request is taking longer than expected. Please wait or check the backend logs.");
