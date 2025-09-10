@@ -966,19 +966,108 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                   
                   const data = await res.json();
                   if (data.status === 'success') {
-                    setDriveModalResult('File(s) successfully uploaded!');
-
-                    // 🔹 Immediately re-fetch updated business info
-                    if (business.name && token && typeof setInfo === "function") {
+                    // 🔹 Call n8n webhook to get updated file IDs
+                    if (business.name && typeof setInfo === "function") {
                       try {
-                        const refreshed = await fetch(
-                          `${getApiBaseUrl()}/api/business-info?business_name=${encodeURIComponent(business.name)}&token=${encodeURIComponent(token)}`
-                        );
-                        const newInfo = await refreshed.json();
-                        setInfo(newInfo);
-                      } catch (refreshErr) {
-                        console.error("Error refreshing business info:", refreshErr);
+                        const webhookResponse = await fetch('https://membersaces.app.n8n.cloud/webhook/return_fileIDs', {
+                          method: 'POST',
+                          headers: {
+                            'Content-Type': 'application/json',
+                          },
+                          body: JSON.stringify({
+                            business_name: business.name
+                          })
+                        });
+                        
+                        const updatedData = await webhookResponse.json();
+                        console.log('Updated data from n8n:', updatedData);
+                        
+                        // Check if we got valid data back
+                        if (updatedData && Array.isArray(updatedData) && updatedData.length > 0) {
+                          const businessData = updatedData[0];
+                          console.log('Raw business data from n8n:', businessData);
+                          
+                          // Map the flat n8n structure to your expected _processed_file_ids structure
+                          const mappedFileIds: any = {};
+                          
+                          // Map LOA
+                          if (businessData['LOA File ID']) {
+                            mappedFileIds['business_LOA'] = `https://drive.google.com/file/d/${businessData['LOA File ID']}/view?usp=drivesdk`;
+                          }
+                          
+                          // Map WIP
+                          if (businessData['WIP']) {
+                            mappedFileIds['business_WIP'] = `https://drive.google.com/file/d/${businessData['WIP']}/view?usp=drivesdk`;
+                          }
+                          
+                          // Map contracts
+                          if (businessData['SC C&I E']) {
+                            mappedFileIds['contract_C&I Electricity'] = `https://drive.google.com/file/d/${businessData['SC C&I E']}/view?usp=drivesdk`;
+                          }
+                          if (businessData['SC SME E']) {
+                            mappedFileIds['contract_SME Electricity'] = `https://drive.google.com/file/d/${businessData['SC SME E']}/view?usp=drivesdk`;
+                          }
+                          if (businessData['SC C&I G']) {
+                            mappedFileIds['contract_C&I Gas'] = `https://drive.google.com/file/d/${businessData['SC C&I G']}/view?usp=drivesdk`;
+                          }
+                          if (businessData['SC SME G']) {
+                            mappedFileIds['contract_SME Gas'] = `https://drive.google.com/file/d/${businessData['SC SME G']}/view?usp=drivesdk`;
+                          }
+                          if (businessData['SC Waste']) {
+                            mappedFileIds['contract_Waste'] = `https://drive.google.com/file/d/${businessData['SC Waste']}/view?usp=drivesdk`;
+                          }
+                          if (businessData['SC Oil']) {
+                            mappedFileIds['contract_Oil'] = `https://drive.google.com/file/d/${businessData['SC Oil']}/view?usp=drivesdk`;
+                          }
+                          if (businessData['SC DMA']) {
+                            mappedFileIds['contract_DMA'] = `https://drive.google.com/file/d/${businessData['SC DMA']}/view?usp=drivesdk`;
+                          }
+                          
+                          // Map other documents
+                          if (businessData['Floor Plan']) {
+                            mappedFileIds['business_site_map_upload'] = `https://drive.google.com/file/d/${businessData['Floor Plan']}/view?usp=drivesdk`;
+                          }
+                          if (businessData['Site Profiling']) {
+                            mappedFileIds['business_site_profiling'] = `https://drive.google.com/file/d/${businessData['Site Profiling']}/view?usp=drivesdk`;
+                          }
+                          if (businessData['Service Fee Agreement']) {
+                            mappedFileIds['business_service_fee_agreement'] = `https://drive.google.com/file/d/${businessData['Service Fee Agreement']}/view?usp=drivesdk`;
+                          }
+                          if (businessData['Initial Strategy']) {
+                            mappedFileIds['business_initial_strategy'] = `https://drive.google.com/file/d/${businessData['Initial Strategy']}/view?usp=drivesdk`;
+                          }
+                          
+                          // Map invoices
+                          if (businessData['Cleaning Invoice']) {
+                            mappedFileIds['invoice_Cleaning'] = `https://drive.google.com/file/d/${businessData['Cleaning Invoice']}/view?usp=drivesdk`;
+                          }
+                          if (businessData['Oil Invoice']) {
+                            mappedFileIds['invoice_Oil'] = `https://drive.google.com/file/d/${businessData['Oil Invoice']}/view?usp=drivesdk`;
+                          }
+                          
+                          console.log('Mapped file IDs:', mappedFileIds);
+                          
+                          // Update only the file IDs, keep everything else the same
+                          setInfo((prevInfo: any) => ({
+                            ...prevInfo,
+                            _processed_file_ids: {
+                              ...prevInfo._processed_file_ids,
+                              ...mappedFileIds
+                            }
+                          }));
+                        }
+                        
+                        // Set the exact message that triggers modal close
+                        setDriveModalResult('File successfully uploaded and Drive links updated!');
+                        
+                      } catch (webhookErr) {
+                        console.error("Error calling n8n webhook:", webhookErr);
+                        // Still close modal even if webhook fails
+                        setDriveModalResult('File successfully uploaded and Drive links updated!');
                       }
+                    } else {
+                      // Fallback if no setInfo function
+                      setDriveModalResult('File successfully uploaded and Drive links updated!');
                     }
                   } else {
                     setDriveModalResult(`Error: ${data.message}`);
