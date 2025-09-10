@@ -2967,14 +2967,23 @@ const EnhancedInvoiceDetails = ({ electricityData }: { electricityData: Electric
     }).format(num);
   };
 
-  const formatNumber = (value: string | number, decimals = 2) => {
+  const formatNumber = (value: string | number | null | undefined, decimals = 2) => {
+    if (value === null || value === undefined || value === '') {
+      return ''; // or '0.00' if you prefer
+    }
+  
     const num = typeof value === 'string' ? parseFloat(value) : value;
-    return num.toLocaleString('en-AU', { 
-      minimumFractionDigits: decimals, 
-      maximumFractionDigits: decimals 
+  
+    if (isNaN(num)) {
+      return ''; // handle invalid strings like "abc"
+    }
+  
+    return num.toLocaleString('en-AU', {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
     });
   };
-
+  
   return (
     <div style={{ marginTop: 16, padding: 16, backgroundColor: '#f8fafc', borderRadius: 6, border: '1px solid #e2e8f0' }}>
       <div style={{ display: 'grid', gap: 16, gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))' }}>
@@ -3086,11 +3095,20 @@ const EnhancedGasInvoiceDetails = ({ gasData }: { gasData: any }) => {
     }).format(num);
   };
 
-  const formatNumber = (value: string | number, decimals = 2) => {
+  const formatNumber = (value: string | number | null | undefined, decimals = 2) => {
+    if (value === null || value === undefined || value === '') {
+      return ''; // or '0.00' if you prefer
+    }
+  
     const num = typeof value === 'string' ? parseFloat(value) : value;
-    return num.toLocaleString('en-AU', { 
-      minimumFractionDigits: decimals, 
-      maximumFractionDigits: decimals 
+  
+    if (isNaN(num)) {
+      return ''; // handle invalid strings like "abc"
+    }
+  
+    return num.toLocaleString('en-AU', {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
     });
   };
 
