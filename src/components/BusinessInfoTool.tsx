@@ -8,6 +8,8 @@ interface BusinessInfoToolProps {
   getValidToken?: () => Promise<string | null>;
 }
 
+
+
 export default function BusinessInfoTool({ 
   token, 
   onTokenExpired, 
