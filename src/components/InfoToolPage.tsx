@@ -1610,6 +1610,744 @@ function DemandResponseModal({
   );
 }
 
+function CIGasOfferModal({ 
+  isOpen, 
+  onClose, 
+  invoiceData, 
+  session,
+  token,
+  businessInfo
+}: { 
+  isOpen: boolean; 
+  onClose: () => void; 
+  invoiceData: any; 
+  session: any;
+  token: string;
+  businessInfo?: any;
+}) {
+  const [formData, setFormData] = useState<CIGasOfferData>({
+    invoiceId: '',
+    siteAddress: '',
+    mrin: '',
+    gasRateInvoice: '',
+    gasUsageInvoice: '',
+    totalMonthlyUsage: '',
+    invoiceNumber: '',
+    
+    // Business Information
+    businessName: '',
+    businessAbn: '',
+    businessTradingName: '',
+    businessIndustry: '',
+    businessWebsite: '',
+    postalAddress: '',
+    contactPhone: '',
+    contactEmail: '',
+    contactName: '',
+    contactPosition: '',
+    loaSignDate: '',
+    
+    offer1Retailer: '',
+    offer1Validity: '',
+    offer1Type: 'smoothed',
+    offer1PeriodYears: '3',
+    offer1StartDate: new Date().toISOString().split('T')[0],
+    offer1GasRate: '',
+    
+    offer2Retailer: '',
+    offer2Validity: '',
+    offer2Type: 'smoothed',
+    offer2PeriodYears: '3',
+    offer2StartDate: new Date().toISOString().split('T')[0],
+    offer2GasRate: '',
+    
+    offer3Retailer: '',
+    offer3Validity: '',
+    offer3Type: 'smoothed',
+    offer3PeriodYears: '3',
+    offer3StartDate: new Date().toISOString().split('T')[0],
+    offer3GasRate: '',
+    
+    notes: ''
+  });
+
+  const [sending, setSending] = useState(false);
+  const [numOffers, setNumOffers] = useState(1);
+  
+  const calculateEndDate = (startDate: string): string => {
+    if (!startDate) return '';
+    const start = new Date(startDate);
+    const end = new Date(start);
+    end.setMonth(start.getMonth() + 12);
+    end.setDate(end.getDate() - 1);
+    return end.toISOString().split('T')[0];
+  };
+  
+  const getPeriodStartDate = (offerStartDate: string, periodIndex: number): string => {
+    if (!offerStartDate) return '';
+    const start = new Date(offerStartDate);
+    start.setFullYear(start.getFullYear() + periodIndex);
+    return start.toISOString().split('T')[0];
+  };
+
+  const initializePeriodData = (offerNum: number, periodYears: string) => {
+    const years = parseInt(periodYears) || 0;
+    const offerStartDate = formData[`offer${offerNum}StartDate` as keyof CIGasOfferData];
+    
+    for (let i = 1; i <= years; i++) {
+      const startDate = getPeriodStartDate(offerStartDate, i - 1);
+      const endDate = calculateEndDate(startDate);
+      
+      setFormData(prev => ({
+        ...prev,
+        [`offer${offerNum}Period${i}StartDate`]: startDate,
+        [`offer${offerNum}Period${i}EndDate`]: endDate,
+        [`offer${offerNum}Period${i}GasRate`]: ''
+      }));
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen && invoiceData) {
+      const invoiceDetails = invoiceData?.gas_invoice_details;
+      const businessDetails = invoiceData?.business_details || {};
+      const contactInfo = invoiceData?.contact_information || {};
+      const repDetails = invoiceData?.representative_details || {};
+      
+      console.log('C&I Gas Offer Modal - Full invoiceData:', invoiceData);
+      console.log('C&I Gas Offer Modal - Extracted invoiceDetails:', invoiceDetails);
+      console.log('C&I Gas Offer Modal - Business Details:', businessDetails);
+      console.log('C&I Gas Offer Modal - Contact Info:', contactInfo);
+      console.log('C&I Gas Offer Modal - Rep Details:', repDetails);
+      console.log('C&I Gas Offer Modal - Business Info:', businessInfo);
+      console.log('C&I Gas Offer Modal - All keys in invoiceData:', Object.keys(invoiceData || {}));
+      console.log('C&I Gas Offer Modal - All keys in businessInfo:', Object.keys(businessInfo || {}));
+      
+      setFormData(prev => ({
+        ...prev,
+        invoiceId: invoiceDetails?.invoice_id || '',
+        siteAddress: invoiceDetails?.site_address || '',
+        mrin: invoiceDetails?.mrin || '',
+        invoiceNumber: invoiceDetails?.invoice_number || '',
+        gasRateInvoice: invoiceDetails?.energy_charge_rate || '',
+        gasUsageInvoice: invoiceDetails?.energy_charge_quantity || '',
+        totalMonthlyUsage: invoiceDetails?.energy_charge_quantity || '',
+        
+        // Business Information - try multiple possible locations including URL parameters and businessInfo
+        businessName: businessDetails?.name || invoiceData?.business_name || invoiceDetails?.business_name || businessInfo?.business_name || '',
+        businessAbn: businessDetails?.abn || invoiceData?.business_abn || invoiceDetails?.business_abn || businessInfo?.business_abn || '',
+        businessTradingName: businessDetails?.trading_name || invoiceData?.business_trading_name || invoiceDetails?.business_trading_name || businessInfo?.business_trading_name || '',
+        businessIndustry: businessDetails?.industry || invoiceData?.business_industry || invoiceDetails?.business_industry || businessInfo?.business_industry || '',
+        businessWebsite: businessDetails?.website || invoiceData?.business_website || invoiceDetails?.business_website || businessInfo?.business_website || '',
+        postalAddress: contactInfo?.postal_address || invoiceData?.postal_address || invoiceDetails?.postal_address || businessInfo?.postal_address || '',
+        contactPhone: contactInfo?.telephone || invoiceData?.contact_phone || invoiceDetails?.contact_phone || businessInfo?.contact_phone || '',
+        contactEmail: contactInfo?.email || invoiceData?.contact_email || invoiceDetails?.contact_email || businessInfo?.contact_email || '',
+        contactName: repDetails?.contact_name || invoiceData?.contact_name || invoiceDetails?.contact_name || businessInfo?.contact_name || '',
+        contactPosition: repDetails?.position || invoiceData?.contact_position || invoiceDetails?.contact_position || businessInfo?.contact_position || '',
+        loaSignDate: repDetails?.loa_sign_date || invoiceData?.loa_sign_date || invoiceDetails?.loa_sign_date || businessInfo?.loa_sign_date || '',
+      }));
+    }
+  }, [isOpen, invoiceData, businessInfo]);
+
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('keydown', handleEscape);
+      document.body.style.overflow = 'hidden';
+    }
+
+    return () => {
+      document.removeEventListener('keydown', handleEscape);
+      document.body.style.overflow = 'unset';
+    };
+  }, [isOpen, onClose]);
+
+  const handleInputChange = (field: keyof CIGasOfferData, value: string) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+    
+    const fieldStr = String(field); // Convert to string
+    
+    if (fieldStr.includes('PeriodYears')) {
+      const offerMatch = fieldStr.match(/offer(\d+)PeriodYears/);
+      if (offerMatch) {
+        const offerNum = parseInt(offerMatch[1]);
+        setTimeout(() => initializePeriodData(offerNum, value), 0);
+      }
+    }
+    
+    if (fieldStr.includes('StartDate') && !fieldStr.includes('Period')) {
+      const offerMatch = fieldStr.match(/offer(\d+)StartDate/);
+      if (offerMatch) {
+        const offerNum = parseInt(offerMatch[1]);
+        
+        setTimeout(() => {
+          setFormData(prevData => {
+            const periodYears = parseInt(prevData[`offer${offerNum}PeriodYears` as keyof CIGasOfferData]) || 0;
+            const updatedData = { ...prevData };
+            
+            for (let i = 1; i <= periodYears; i++) {
+              const startDate = getPeriodStartDate(value, i - 1);
+              const endDate = calculateEndDate(startDate);
+              
+              updatedData[`offer${offerNum}Period${i}StartDate`] = startDate;
+              updatedData[`offer${offerNum}Period${i}EndDate`] = endDate;
+            }
+            
+            return updatedData;
+          });
+        }, 0);
+      }
+    }
+  };
+
+  const generateOfferTableHTML = () => {
+    const offers = [];
+    
+    for (let i = 1; i <= numOffers; i++) {
+      const retailer = formData[`offer${i}Retailer` as keyof CIGasOfferData];
+      if (!retailer?.trim()) continue;
+      
+      const validity = formData[`offer${i}Validity` as keyof CIGasOfferData];
+      const type = formData[`offer${i}Type` as keyof CIGasOfferData];
+      const periodYears = formData[`offer${i}PeriodYears` as keyof CIGasOfferData];
+      const startDate = formData[`offer${i}StartDate` as keyof CIGasOfferData];
+      const gasRate = formData[`offer${i}GasRate` as keyof CIGasOfferData];
+      
+      let offerText = `Offer ${i} - ${retailer}:
+      Validity: ${validity}
+      Type: ${type}
+      Period: ${periodYears} years
+      Start Date: ${startDate}`;
+      
+      if (type === 'smoothed') {
+        offerText += `
+      Gas Rate: ${gasRate} $/GJ
+      (Same rate for all ${periodYears} periods)`;
+      } else {
+        offerText += `
+      Overall Gas Rate: ${gasRate} $/GJ`;
+        
+        for (let period = 1; period <= parseInt(periodYears); period++) {
+          const periodStartDate = formData[`offer${i}Period${period}StartDate`] || '';
+          const periodEndDate = formData[`offer${i}Period${period}EndDate`] || '';
+          const periodGasRate = formData[`offer${i}Period${period}GasRate`] || '';
+          
+          offerText += `
+      
+      Period ${period} (${periodStartDate} to ${periodEndDate}):`;
+          if (periodGasRate) {
+            offerText += `
+        Gas Rate: ${periodGasRate} $/GJ`;
+          } else {
+            offerText += `
+        Gas Rate: To be advised`;
+          }
+        }
+      }
+      
+      offers.push(offerText);
+    }
+    
+    const notesLine = formData.notes.trim() ? `\nNotes: ${formData.notes}` : '';
+    
+    return `C&I GAS OFFER COMPARISON
+    
+BUSINESS DETAILS
+Site Address: ${formData.siteAddress}
+MRIN: ${formData.mrin}
+Invoice Number: ${formData.invoiceNumber}
+
+${offers.join('\n\n  ')}${notesLine}`;
+  };
+
+  const copyToClipboard = () => {
+    const tableText = generateOfferTableHTML();
+    navigator.clipboard.writeText(tableText).then(() => {
+      alert('C&I Gas offer comparison copied to clipboard! You can now paste this directly into Gmail.');
+    });
+  };
+
+  const sendCIGasOffer = async () => {
+    setSending(true);
+    try {
+      const tableHTML = generateOfferTableHTML();
+      
+      // Helper function to check if an offer has data (retailer is not empty)
+      const hasOfferData = (offerNum: number) => {
+        return formData[`offer${offerNum}Retailer` as keyof CIGasOfferData]?.trim() !== '';
+      };
+      
+      // Helper function to get offer data only if it exists
+      const getOfferData = (offerNum: number) => {
+        if (!hasOfferData(offerNum)) {
+          return {
+            [`offer_${offerNum}_retailer`]: '',
+            [`offer_${offerNum}_validity`]: '',
+            [`offer_${offerNum}_type`]: '',
+            [`offer_${offerNum}_period_years`]: '',
+            [`offer_${offerNum}_start_date`]: '',
+            [`offer_${offerNum}_gas_rate`]: ''
+          };
+        }
+        
+        return {
+          [`offer_${offerNum}_retailer`]: formData[`offer${offerNum}Retailer` as keyof CIGasOfferData],
+          [`offer_${offerNum}_validity`]: formData[`offer${offerNum}Validity` as keyof CIGasOfferData],
+          [`offer_${offerNum}_type`]: formData[`offer${offerNum}Type` as keyof CIGasOfferData],
+          [`offer_${offerNum}_period_years`]: formData[`offer${offerNum}PeriodYears` as keyof CIGasOfferData],
+          [`offer_${offerNum}_start_date`]: formData[`offer${offerNum}StartDate` as keyof CIGasOfferData],
+          [`offer_${offerNum}_gas_rate`]: formData[`offer${offerNum}GasRate` as keyof CIGasOfferData]
+        };
+      };
+      
+      // Helper function to get period data only for offers that have data
+      const getPeriodData = () => {
+        const periodData: { [key: string]: string } = {};
+        
+        for (let offerNum = 1; offerNum <= 3; offerNum++) {
+          if (hasOfferData(offerNum)) {
+            const periodYears = parseInt(formData[`offer${offerNum}PeriodYears` as keyof CIGasOfferData]) || 0;
+            const offerType = formData[`offer${offerNum}Type` as keyof CIGasOfferData];
+            
+            // Get the main offer rate for smoothed offers
+            const mainGasRate = formData[`offer${offerNum}GasRate` as keyof CIGasOfferData] || '';
+            
+            for (let period = 1; period <= periodYears; period++) {
+              periodData[`offer_${offerNum}_period_${period}_start_date`] = formData[`offer${offerNum}Period${period}StartDate`] || '';
+              periodData[`offer_${offerNum}_period_${period}_end_date`] = formData[`offer${offerNum}Period${period}EndDate`] || '';
+              
+              // For smoothed offers, use the main rate for all periods
+              // For stepped offers, use period-specific rates if available, otherwise fall back to main rate
+              if (offerType === 'smoothed') {
+                periodData[`offer_${offerNum}_period_${period}_gas_rate`] = mainGasRate;
+              } else {
+                // For stepped offers, use period-specific rates if available
+                periodData[`offer_${offerNum}_period_${period}_gas_rate`] = formData[`offer${offerNum}Period${period}GasRate`] || mainGasRate;
+              }
+            }
+          } else {
+            // For offers without data, set all period fields to empty
+            for (let period = 1; period <= 3; period++) {
+              periodData[`offer_${offerNum}_period_${period}_start_date`] = '';
+              periodData[`offer_${offerNum}_period_${period}_end_date`] = '';
+              periodData[`offer_${offerNum}_period_${period}_gas_rate`] = '';
+            }
+          }
+        }
+        
+        return periodData;
+      };
+      
+      const payload = {
+        user_email: session?.user?.email || '',
+        user_name: session?.user?.name || '',
+        user_id: session?.user?.id || '',
+        
+        invoice_id: formData.invoiceId,
+        site_address: formData.siteAddress,
+        mrin: formData.mrin,
+        invoice_number: formData.invoiceNumber,
+        gas_rate_invoice: formData.gasRateInvoice,
+        gas_usage_invoice: formData.gasUsageInvoice,
+        total_monthly_usage: formData.totalMonthlyUsage,
+        
+        // Business Information
+        business_name: formData.businessName,
+        business_abn: formData.businessAbn,
+        business_trading_name: formData.businessTradingName,
+        business_industry: formData.businessIndustry,
+        business_website: formData.businessWebsite,
+        postal_address: formData.postalAddress,
+        contact_phone: formData.contactPhone,
+        contact_email: formData.contactEmail,
+        contact_name: formData.contactName,
+        contact_position: formData.contactPosition,
+        loa_sign_date: formData.loaSignDate,
+        
+        ...getOfferData(1),
+        ...getOfferData(2),
+        ...getOfferData(3),
+        ...getPeriodData(),
+        
+        notes: formData.notes,
+        table_html: tableHTML,
+        full_invoice_data: invoiceData,
+        timestamp: new Date().toISOString()
+      };
+      
+      const response = await fetch('https://membersaces.app.n8n.cloud/webhook/generate-gas-ci-comparaison', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        const pdfLink = result.pdf_document_link;
+        const spreadsheetLink = result.spreadsheet_document_link;
+        
+        let message = 'C&I Gas Offer Comparison sent successfully!';
+        if (pdfLink) message += `\nPDF: ${pdfLink}`;
+        if (spreadsheetLink) message += `\nSpreadsheet: ${spreadsheetLink}`;
+        
+        alert(message);
+        onClose();
+      } else {
+        throw new Error('Failed to send C&I Gas offer comparison');
+      }
+    } catch (error) {
+      console.error('Error sending C&I Gas offer comparison:', error);
+      alert('Failed to send offer comparison. Please try again.');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 1000
+    }}>
+      <div style={{
+        backgroundColor: 'white',
+        borderRadius: 8,
+        padding: 24,
+        maxWidth: '90vw',
+        maxHeight: '90vh',
+        overflow: 'auto',
+        width: '100%'
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+          <h2 style={{ margin: 0, fontSize: 24, fontWeight: 600 }}>C&I Gas Offer Comparison</h2>
+          <button
+            onClick={onClose}
+            style={{
+              background: 'none',
+              border: 'none',
+              fontSize: 24,
+              cursor: 'pointer',
+              padding: 4
+            }}
+          >
+            ×
+          </button>
+        </div>
+
+        <div style={{ marginBottom: 20 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #ddd' }}>
+            <thead>
+              <tr style={{ backgroundColor: '#f5f5f5' }}>
+                <th style={{ padding: 12, textAlign: 'left', border: '1px solid #ddd' }}>Field</th>
+                <th style={{ padding: 12, textAlign: 'left', border: '1px solid #ddd' }}>Value</th>
+                <th style={{ padding: 12, textAlign: 'left', border: '1px solid #ddd' }}>Source</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>Site Address</td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                  <div style={{ padding: 4, fontSize: 14, fontWeight: 600, color: '#111827' }}>
+                    {formData.siteAddress || 'N/A'}
+                  </div>
+                </td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>Invoice</td>
+              </tr>
+              <tr>
+                <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>MRIN</td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                  <div style={{ padding: 4, fontSize: 14, fontWeight: 600, color: '#111827' }}>
+                    {formData.mrin || 'N/A'}
+                  </div>
+                </td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>Invoice</td>
+              </tr>
+              <tr>
+                <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>Gas Rate ($/GJ)</td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                  <div style={{ padding: 4, fontSize: 14, fontWeight: 600, color: '#111827' }}>
+                    {formData.gasRateInvoice || 'N/A'}
+                  </div>
+                </td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>Invoice</td>
+              </tr>
+              <tr>
+                <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>Gas Usage (GJ)</td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                  <div style={{ padding: 4, fontSize: 14, fontWeight: 600, color: '#111827' }}>
+                    {formData.gasUsageInvoice || 'N/A'}
+                  </div>
+                </td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>Invoice</td>
+              </tr>
+              <tr>
+                <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>Invoice Link</td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                  {invoiceData?.gas_invoice_details?.invoice_link ? (
+                    <a 
+                      href={invoiceData.gas_invoice_details.invoice_link} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      style={{ color: '#2563eb', textDecoration: 'underline' }}
+                    >
+                      View Invoice PDF
+                    </a>
+                  ) : (
+                    <span style={{ color: '#6b7280' }}>No invoice link available</span>
+                  )}
+                </td>
+                <td style={{ padding: 8, border: '1px solid #ddd' }}>Invoice</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div style={{ marginBottom: 20 }}>
+
+          {/* Offer sections */}
+          <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #ddd' }}>
+            <tbody>
+              {Array.from({ length: numOffers }, (_, index) => {
+            const periodYears = parseInt(formData[`offer${index + 1}PeriodYears` as keyof CIGasOfferData]) || 0;
+            const offerNum = index + 1;
+            const bgColor = offerNum === 1 ? '#fefce8' : offerNum === 2 ? '#f0fdf4' : '#fef2f2';
+            
+            return (
+              <React.Fragment key={offerNum}>
+                <tr style={{ backgroundColor: bgColor }}>
+                <td colSpan={3} style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600, textAlign: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                    {offerNum === 1 && (
+                      <>
+                        <span>Number of Offers:</span>
+                        <select
+                          value={numOffers}
+                          onChange={(e) => setNumOffers(parseInt(e.target.value))}
+                          style={{ padding: 4, border: '1px solid #ccc', borderRadius: 4, marginRight: 16 }}
+                        >
+                          <option value={1}>1</option>
+                          <option value={2}>2</option>
+                          <option value={3}>3</option>
+                        </select>
+                      </>
+                    )}
+                    <span>Offer {offerNum} - Retailer:</span>
+                    <input
+                      type="text"
+                      value={formData[`offer${offerNum}Retailer` as keyof CIGasOfferData]}
+                      onChange={(e) => handleInputChange(`offer${offerNum}Retailer` as keyof CIGasOfferData, e.target.value)}
+                      style={{ padding: 4, border: '1px solid #ccc', borderRadius: 4, minWidth: 200 }}
+                      placeholder="Retailer name"
+                    />
+                  </div>
+                </td>
+              </tr>
+                <tr>
+                  <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>Offer Validity</td>
+                  <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                    <input
+                      type="text"
+                      value={formData[`offer${offerNum}Validity` as keyof CIGasOfferData]}
+                      onChange={(e) => handleInputChange(`offer${offerNum}Validity` as keyof CIGasOfferData, e.target.value)}
+                      style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4 }}
+                      placeholder="e.g., 30 days"
+                    />
+                  </td>
+                  <td style={{ padding: 8, border: '1px solid #ddd' }}>Offer Period</td>
+                </tr>
+                <tr>
+                  <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>Offer Type</td>
+                  <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                    <select
+                      value={formData[`offer${offerNum}Type` as keyof CIGasOfferData]}
+                      onChange={(e) => handleInputChange(`offer${offerNum}Type` as keyof CIGasOfferData, e.target.value as 'smoothed' | 'stepped')}
+                      style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4 }}
+                    >
+                      <option value="smoothed">Smoothed (Same rates all periods)</option>
+                      <option value="stepped">Stepped (Different rates per period)</option>
+                    </select>
+                  </td>
+                  <td style={{ padding: 8, border: '1px solid #ddd' }}>Rate Structure</td>
+                </tr>
+                <tr>
+                  <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>Offer Period</td>
+                  <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                    <input
+                      type="text"
+                      value={formData[`offer${offerNum}PeriodYears` as keyof CIGasOfferData]}
+                      onChange={(e) => handleInputChange(`offer${offerNum}PeriodYears` as keyof CIGasOfferData, e.target.value)}
+                      style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4 }}
+                      placeholder="3"
+                    />
+                  </td>
+                  <td style={{ padding: 8, border: '1px solid #ddd' }}>Years</td>
+                </tr>
+                <tr>
+                  <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>Start Date</td>
+                  <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                    <input
+                      type="date"
+                      value={formData[`offer${offerNum}StartDate` as keyof CIGasOfferData]}
+                      onChange={(e) => handleInputChange(`offer${offerNum}StartDate` as keyof CIGasOfferData, e.target.value)}
+                      style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4 }}
+                    />
+                  </td>
+                  <td style={{ padding: 8, border: '1px solid #ddd' }}>Contract Start</td>
+                </tr>
+                {formData[`offer${offerNum}Type` as keyof CIGasOfferData] === 'smoothed' && (
+                <tr>
+                  <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>
+                    Gas Rate (All Periods)
+                  </td>
+                  <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                    <input
+                      type="text"
+                      value={formData[`offer${offerNum}GasRate` as keyof CIGasOfferData]}
+                      onChange={(e) => handleInputChange(`offer${offerNum}GasRate` as keyof CIGasOfferData, e.target.value)}
+                      style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4 }}
+                      placeholder="$/GJ"
+                    />
+                    <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4, textAlign: 'center' }}>
+                      Same rate applies for all contract periods
+                    </div>
+                  </td>
+                  <td style={{ padding: 8, border: '1px solid #ddd' }}>$/GJ</td>
+                </tr>
+                )}
+                
+                {/* Period-Specific Rates */}
+                {periodYears > 0 && (formData[`offer${offerNum}Type` as keyof CIGasOfferData] === 'stepped' || periodYears > 1) && (
+                  <>
+                    <tr style={{ backgroundColor: '#f0f0f0' }}>
+                      <td colSpan={3} style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600, textAlign: 'center' }}>
+                        Period-Specific Details ({periodYears} periods)
+                      </td>
+                    </tr>
+                    {Array.from({ length: periodYears }, (_, periodIndex) => {
+                      const periodNum = periodIndex + 1;
+                      return (
+                        <React.Fragment key={`${offerNum}-period-${periodNum}`}>
+                          <tr>
+                            <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>
+                              Period {periodNum} Dates
+                            </td>
+                            <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                                <div>
+                                  <div style={{ fontSize: 12, marginBottom: 4, fontWeight: 600 }}>Start Date</div>
+                                  <input
+                                    type="date"
+                                    value={formData[`offer${offerNum}Period${periodNum}StartDate`] || ''}
+                                    onChange={(e) => handleInputChange(`offer${offerNum}Period${periodNum}StartDate` as keyof CIGasOfferData, e.target.value)}
+                                    style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4 }}
+                                  />
+                                </div>
+                                <div>
+                                  <div style={{ fontSize: 12, marginBottom: 4, fontWeight: 600 }}>End Date</div>
+                                  <input
+                                    type="date"
+                                    value={formData[`offer${offerNum}Period${periodNum}EndDate`] || ''}
+                                    onChange={(e) => handleInputChange(`offer${offerNum}Period${periodNum}EndDate` as keyof CIGasOfferData, e.target.value)}
+                                    style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4 }}
+                                  />
+                                </div>
+                              </div>
+                            </td>
+                            <td style={{ padding: 8, border: '1px solid #ddd' }}>Period {periodNum} Timeline</td>
+                          </tr>
+                          
+                          {formData[`offer${offerNum}Type` as keyof CIGasOfferData] === 'stepped' && (
+                            <tr>
+                              <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>
+                                Period {periodNum} Gas Rate
+                              </td>
+                              <td style={{ padding: 8, border: '1px solid #ddd' }}>
+                                <input
+                                  type="text"
+                                  value={formData[`offer${offerNum}Period${periodNum}GasRate`] || ''}
+                                  onChange={(e) => handleInputChange(`offer${offerNum}Period${periodNum}GasRate` as keyof CIGasOfferData, e.target.value)}
+                                  style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4, textAlign: 'center' }}
+                                  placeholder="$/GJ"
+                                />
+                              </td>
+                              <td style={{ padding: 8, border: '1px solid #ddd' }}>$/GJ (Period {periodNum})</td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
+                  </>
+                )}
+              </React.Fragment>
+            );
+          })}
+            </tbody>
+          </table>
+        </div>
+
+        <div style={{ marginBottom: 20 }}>
+          <label style={{ display: 'block', marginBottom: 8, fontWeight: 600 }}>Notes:</label>
+          <textarea
+            value={formData.notes}
+            onChange={(e) => handleInputChange('notes', e.target.value)}
+            style={{ width: '100%', padding: 8, border: '1px solid #ccc', borderRadius: 4, minHeight: 80 }}
+            placeholder="Additional notes..."
+          />
+        </div>
+
+        <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+          <button
+            onClick={copyToClipboard}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: '#6b7280',
+              color: 'white',
+              border: 'none',
+              borderRadius: 4,
+              cursor: 'pointer',
+              fontWeight: 600
+            }}
+          >
+            Copy to Clipboard
+          </button>
+          <button
+            onClick={sendCIGasOffer}
+            disabled={sending}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: sending ? '#9ca3af' : '#7c3aed',
+              color: 'white',
+              border: 'none',
+              borderRadius: 4,
+              cursor: sending ? 'not-allowed' : 'pointer',
+              fontWeight: 600
+            }}
+          >
+            {sending ? 'Sending...' : 'Send Gas Offer Comparison'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DMAModal({ 
   isOpen, 
   onClose, 
@@ -2335,9 +3073,169 @@ const EnhancedInvoiceDetails = ({ electricityData }: { electricityData: Electric
   );
 };
 
+const EnhancedGasInvoiceDetails = ({ gasData }: { gasData: any }) => {
+  if (!gasData || !gasData.full_invoice_data) return null;
+
+  const fullData = gasData.full_invoice_data;
+
+  const formatCurrency = (value: string | number) => {
+    const num = typeof value === 'string' ? parseFloat(value) : value;
+    return new Intl.NumberFormat('en-AU', {
+      style: 'currency',
+      currency: 'AUD'
+    }).format(num);
+  };
+
+  const formatNumber = (value: string | number, decimals = 2) => {
+    const num = typeof value === 'string' ? parseFloat(value) : value;
+    return num.toLocaleString('en-AU', { 
+      minimumFractionDigits: decimals, 
+      maximumFractionDigits: decimals 
+    });
+  };
+
+  return (
+    <div style={{ marginTop: 16, padding: 16, backgroundColor: '#f8fafc', borderRadius: 6, border: '1px solid #e2e8f0' }}>
+      <div style={{ display: 'grid', gap: 16, gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))' }}>
+        {/* Gas Consumption Overview */}
+        <div style={{ background: 'white', padding: 16, borderRadius: 6, border: '1px solid #e5e7eb' }}>
+          <h4 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: '#111827', display: 'flex', alignItems: 'center' }}>
+            🔥 Gas Consumption Overview
+          </h4>
+          <div style={{ display: 'grid', gap: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: '#6b7280' }}>Energy Charge Quantity:</span>
+              <span style={{ fontWeight: 600 }}>{formatNumber(fullData['Energy Charge Quantity in GJ'])} GJ</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: '#6b7280' }}>Invoice Period:</span>
+              <span style={{ fontWeight: 600 }}>{fullData['Invoice Review Number of Days']} days</span>
+            </div>
+            <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 8, marginTop: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#6b7280' }}>Estimated Annual Usage:</span>
+                <span style={{ fontWeight: 600, color: '#059669' }}>{formatNumber(fullData['Estimated Annual Usage:'])} GJ</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Distribution & Network */}
+        <div style={{ background: 'white', padding: 16, borderRadius: 6, border: '1px solid #e5e7eb' }}>
+          <h4 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: '#111827', display: 'flex', alignItems: 'center' }}>
+            🏗️ Distribution & Network
+          </h4>
+          <div style={{ display: 'grid', gap: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: '#6b7280' }}>Network Provider:</span>
+              <span style={{ fontWeight: 600 }}>{fullData['Distribution Network Service Provider']}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: '#6b7280' }}>Distribution Zone:</span>
+              <span style={{ fontWeight: 600 }}>{fullData['Distribution Zone']}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: '#6b7280' }}>Tariff:</span>
+              <span style={{ fontWeight: 600 }}>{fullData['Tariff']}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: '#6b7280' }}>Fixed Base Charge:</span>
+              <span style={{ fontWeight: 600 }}>{fullData['Distribution - Fixed Base Charge in c/day']}¢/day</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Volume Rates */}
+        <div style={{ background: 'white', padding: 16, borderRadius: 6, border: '1px solid #e5e7eb' }}>
+          <h4 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: '#111827', display: 'flex', alignItems: 'center' }}>
+            📏 Volume Rate Structure
+          </h4>
+          <div style={{ display: 'grid', gap: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: '#6b7280' }}>First Rate:</span>
+              <span style={{ fontWeight: 600 }}>{formatCurrency(fullData['Volume - First Rate in $/GJ'])}/GJ</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: '#6b7280' }}>Next Rate:</span>
+              <span style={{ fontWeight: 600 }}>{formatCurrency(fullData['Volume - Next Rate in $/GJ.'])}/GJ</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: '#6b7280' }}>Balance Rate:</span>
+              <span style={{ fontWeight: 600 }}>{formatCurrency(fullData['Volume - Balance Rate in $/GJ'])}/GJ</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Transmission Charges */}
+        <div style={{ background: 'white', padding: 16, borderRadius: 6, border: '1px solid #e5e7eb' }}>
+          <h4 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: '#111827', display: 'flex', alignItems: 'center' }}>
+            🔌 Transmission Charges
+          </h4>
+          <div style={{ display: 'grid', gap: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: '#6b7280' }}>Anytime Volume Rate:</span>
+              <span style={{ fontWeight: 600 }}>{fullData['Transmission Charges - Anytime Volume Charge in c/GJ']}¢/GJ</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: '#6b7280' }}>Peak Injection Rate:</span>
+              <span style={{ fontWeight: 600 }}>{fullData['Transmission Charges - Peak Injection Charge in c/GJ']}¢/GJ</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: '#6b7280' }}>Peak Injection Quantity:</span>
+              <span style={{ fontWeight: 600 }}>{formatNumber(fullData['Transmission Charges - Peak Injection Charge in GJ/Year'])} GJ/Year</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Charges Breakdown */}
+        <div style={{ background: 'white', padding: 16, borderRadius: 6, border: '1px solid #e5e7eb' }}>
+          <h4 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: '#111827', display: 'flex', alignItems: 'center' }}>
+            📊 Charges Breakdown
+          </h4>
+          <div style={{ display: 'grid', gap: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: '#6b7280' }}>Energy Charges:</span>
+              <span style={{ fontWeight: 600 }}>{formatCurrency(fullData['Energy Charges in $'])}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: '#6b7280' }}>Transmission:</span>
+              <span style={{ fontWeight: 600 }}>{formatCurrency(fullData['Transmission Charges in $'])}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: '#6b7280' }}>Distribution:</span>
+              <span style={{ fontWeight: 600 }}>{formatCurrency(fullData['Distribution Charges in $'])}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: '#6b7280' }}>Environmental:</span>
+              <span style={{ fontWeight: 600 }}>{formatCurrency(fullData['Environmental Charges in $'])}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: '#6b7280' }}>Regulated:</span>
+              <span style={{ fontWeight: 600 }}>{formatCurrency(fullData['Regulated Charges in $'])}</span>
+            </div>
+            {fullData['Additional Charges, Credits & Adjustments in $'] && (
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#6b7280' }}>Additional Charges:</span>
+                <span style={{ fontWeight: 600 }}>{formatCurrency(fullData['Additional Charges, Credits & Adjustments in $'])}</span>
+              </div>
+            )}
+            <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 8, marginTop: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#6b7280' }}>Total Cost:</span>
+                <span style={{ fontWeight: 600, color: '#059669' }}>{formatCurrency(fullData['Total Invoice Cost:'])}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 function InvoiceResult({ result, session, token }: { result: any; session: any; token: string }) {
   const [showDMAModal, setShowDMAModal] = useState(false);
   const [showCIOfferModal, setShowCIOfferModal] = useState(false);
+  const [showCIGasOfferModal, setShowCIGasOfferModal] = useState(false);
   const [expandedDetails, setExpandedDetails] = useState(false); // Add this line
   
   // Detect which invoice type is present
@@ -2450,6 +3348,31 @@ function InvoiceResult({ result, session, token }: { result: any; session: any; 
             )}
           </div>
         )}
+        {/* Enhanced Invoice Details for Gas */}
+        {type.key === 'gas_invoice_details' && (
+          <div style={{ marginTop: 16 }}>
+            <button
+              onClick={() => setExpandedDetails(!expandedDetails)}
+              style={{
+                padding: '8px 16px',
+                backgroundColor: '#dc2626',
+                color: 'white',
+                border: 'none',
+                borderRadius: 4,
+                cursor: 'pointer',
+                fontWeight: 600,
+                fontSize: 14,
+                marginLeft: 8
+              }}
+            >
+              {expandedDetails ? 'Hide' : 'Show'} Enhanced Details
+            </button>
+            
+            {expandedDetails && (
+              <EnhancedGasInvoiceDetails gasData={details} />
+            )}
+          </div>
+        )}
         {/* Comparison Section for C&I Electricity only */}
         {type.key === 'electricity_ci_invoice_details' && (
           <div style={{ marginTop: 20 }}>
@@ -2490,6 +3413,32 @@ function InvoiceResult({ result, session, token }: { result: any; session: any; 
             </div>
           </div>
         )}
+        
+        {/* Comparison Section for C&I Gas only */}
+        {type.key === 'gas_invoice_details' && (
+          <div style={{ marginTop: 20 }}>
+            <h4 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: '#111827' }}>
+              Comparison
+            </h4>
+            <div style={{ display: 'flex', gap: 12 }}>
+              <button
+                onClick={() => setShowCIGasOfferModal(true)}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#dc2626',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: 4,
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  fontSize: 14
+                }}
+              >
+                C&I Gas Offer
+              </button>
+            </div>
+          </div>
+        )}
       </div>
       
       {/* C&I Electricity Offer Modal */}
@@ -2497,6 +3446,18 @@ function InvoiceResult({ result, session, token }: { result: any; session: any; 
         <CIElectricityOfferModal
           isOpen={showCIOfferModal}
           onClose={() => setShowCIOfferModal(false)}
+          invoiceData={result}
+          session={session}
+          token={token}
+          businessInfo={result}
+        />
+      )}
+      
+      {/* C&I Gas Offer Modal */}
+      {type.key === 'gas_invoice_details' && (
+        <CIGasOfferModal
+          isOpen={showCIGasOfferModal}
+          onClose={() => setShowCIGasOfferModal(false)}
           invoiceData={result}
           session={session}
           token={token}
@@ -2523,13 +3484,17 @@ function DataComparisonSection({
   intervalData, 
   title, 
   session, 
-  token 
+  token,
+  showDemandModal,
+  setShowDemandModal
 }: { 
   invoiceData: any, 
   intervalData: any, 
   title: string,
   session: any,
-  token: string
+  token: string,
+  showDemandModal: boolean,
+  setShowDemandModal: (show: boolean) => void
 }) {
   // Helper functions
   const parseNumber = (value: any): number | null => {
@@ -2571,7 +3536,6 @@ function DataComparisonSection({
     }
   };
 
-  const [showDemandModal, setShowDemandModal] = useState(false);
   // Extract comparison metrics
   // Get invoice details
   const invoiceDetails = invoiceData?.electricity_ci_invoice_details || 
@@ -2801,24 +3765,6 @@ function DataComparisonSection({
             Large differences may indicate billing errors, meter reading issues, or data quality problems that warrant investigation.
           </div>
         </div>
-        {/* Demand Response Review Button - only show for C&I electricity */}
-        {title.toLowerCase().includes('electricity') && title.toLowerCase().includes('c&i') && (
-          <button
-            onClick={() => setShowDemandModal(true)}
-            style={{
-              marginTop: 16,
-              padding: '8px 16px',
-              backgroundColor: '#2563eb',
-              color: 'white',
-              border: 'none',
-              borderRadius: 4,
-              cursor: 'pointer',
-              fontWeight: 600
-            }}
-          >
-            Demand Response Review
-          </button>
-        )}
 
         {/* Modal - Updated to include session and token */}
         <DemandResponseModal
@@ -2841,13 +3787,17 @@ function IntervalDataSection({
   identifier, 
   result, 
   session, 
-  token 
+  token,
+  showDemandModal,
+  setShowDemandModal
 }: { 
   title: string, 
   identifier: string, 
   result: any,
   session: any,
-  token: string
+  token: string,
+  showDemandModal: boolean,
+  setShowDemandModal: (show: boolean) => void
 }) {
   const [intervalData, setIntervalData] = useState<any>(null);
   const [intervalLoading, setIntervalLoading] = useState(false);
@@ -2856,7 +3806,7 @@ function IntervalDataSection({
   // Helper to determine if this page should show interval data
   const shouldShowIntervalData = () => {
     const titleLower = title.toLowerCase();
-    return (titleLower.includes('electricity') || titleLower.includes('gas')) && 
+    return titleLower.includes('electricity') && 
            (titleLower.includes('c&i') || titleLower.includes('ci'));
   };
 
@@ -3115,6 +4065,26 @@ function IntervalDataSection({
         </div>
       </div>
       
+      {/* Demand Response Review Button - only show for C&I electricity, placed above comparison */}
+      {title.toLowerCase().includes('electricity') && title.toLowerCase().includes('c&i') && (
+        <div style={{ marginTop: 16, textAlign: 'center' }}>
+          <button
+            onClick={() => setShowDemandModal(true)}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: '#2563eb',
+              color: 'white',
+              border: 'none',
+              borderRadius: 4,
+              cursor: 'pointer',
+              fontWeight: 600
+            }}
+          >
+            Demand Response Review
+          </button>
+        </div>
+      )}
+      
       {/* Add Data Comparison Section if we have both invoice and interval data */}
       {hasValidIntervalData && result && (
         <DataComparisonSection 
@@ -3123,6 +4093,8 @@ function IntervalDataSection({
           title={title}
           session={session}
           token={token}
+          showDemandModal={showDemandModal}
+          setShowDemandModal={setShowDemandModal}
         />
       )}
     </>
@@ -3139,6 +4111,7 @@ export default function InfoToolPage({ title, description, endpoint, extraFields
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [showDemandModal, setShowDemandModal] = useState(false);
   const formElement = formRef || useRef<HTMLFormElement>(null);
 
   const handleFieldChange = (name: string, value: any) => {
@@ -3381,6 +4354,8 @@ export default function InfoToolPage({ title, description, endpoint, extraFields
           result={result}
           session={session}
           token={token}
+          showDemandModal={showDemandModal}
+          setShowDemandModal={setShowDemandModal}
         />
       )}
     </div>
