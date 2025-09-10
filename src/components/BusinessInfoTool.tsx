@@ -23,7 +23,7 @@ export default function BusinessInfoTool({
     console.log("🔍 Full URL:", `${getApiBaseUrl()}/api/get-business-info`);
     console.log("🔍 Environment:", process.env.NEXT_PUBLIC_API_BASE_URL);
     setError(null);
-    setBusinessInfo(null);
+    //setBusinessInfo(null);
     setLoading(true);
     console.log("🔍 About to make fetch request...");
     

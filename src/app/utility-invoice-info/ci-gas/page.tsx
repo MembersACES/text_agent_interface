@@ -11,6 +11,32 @@ export default function CIGasInvoiceInfoPage() {
   const autoSubmit = searchParams.get("autoSubmit") === "1";
   const formRef = useRef<any>(null);
 
+  // Extract business information from URL parameters
+  const initialExtraFields = {
+    business_abn: searchParams.get("business_abn") || "",
+    business_trading_name: searchParams.get("business_trading_name") || "",
+    business_industry: searchParams.get("business_industry") || "",
+    business_website: searchParams.get("business_website") || "",
+    postal_address: searchParams.get("postal_address") || "",
+    contact_phone: searchParams.get("contact_phone") || "",
+    contact_email: searchParams.get("contact_email") || "",
+    contact_name: searchParams.get("contact_name") || "",
+    contact_position: searchParams.get("contact_position") || "",
+    loa_sign_date: searchParams.get("loa_sign_date") || "",
+  };
+
+  // Debug logging
+  console.log('C&I Gas Page - URL Parameters:', {
+    business_name: businessName,
+    mrin: mrin,
+    business_abn: searchParams.get("business_abn"),
+    business_trading_name: searchParams.get("business_trading_name"),
+    contact_email: searchParams.get("contact_email"),
+    contact_phone: searchParams.get("contact_phone"),
+    postal_address: searchParams.get("postal_address"),
+  });
+  console.log('C&I Gas Page - initialExtraFields:', initialExtraFields);
+
   return (
     <InfoToolPage
       title="C&I Gas Invoice Information"
@@ -21,6 +47,7 @@ export default function CIGasInvoiceInfoPage() {
       initialSecondaryValue={mrin}
       autoSubmit={autoSubmit}
       formRef={formRef}
+      initialExtraFields={initialExtraFields}
     />
   );
 } 
