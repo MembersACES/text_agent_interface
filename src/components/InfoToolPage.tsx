@@ -2082,18 +2082,52 @@ ${offers.join('\n\n  ')}${notesLine}`;
               <tr>
                 <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>Gas Rate ($/GJ)</td>
                 <td style={{ padding: 8, border: '1px solid #ddd' }}>
-                  <div style={{ padding: 4, fontSize: 14, fontWeight: 600, color: '#111827' }}>
-                    {formData.gasRateInvoice || 'N/A'}
-                  </div>
+                <input
+                  type="text"
+                  value={formData.gasRateInvoice || ""}
+                  onChange={(e) =>
+                    setFormData((prev: any) => ({
+                      ...prev,
+                      gasRateInvoice: e.target.value,
+                    }))
+                  }
+                  style={{
+                    padding: 4,
+                    fontSize: 14,
+                    fontWeight: 600,
+                    color: '#111827',
+                    border: "1px solid #ddd",
+                    borderRadius: 4,
+                    width: "100%"
+                  }}
+                />
+
                 </td>
                 <td style={{ padding: 8, border: '1px solid #ddd' }}>Invoice</td>
               </tr>
               <tr>
                 <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>Gas Usage (GJ)</td>
                 <td style={{ padding: 8, border: '1px solid #ddd' }}>
-                  <div style={{ padding: 4, fontSize: 14, fontWeight: 600, color: '#111827' }}>
-                    {formData.gasUsageInvoice || 'N/A'}
-                  </div>
+                <input
+                  type="text"
+                  value={formData.gasUsageInvoice || ""}
+                  onChange={(e) =>
+                    setFormData((prev: any) => ({
+                      ...prev,
+                      gasUsageInvoice: e.target.value,
+                    }))
+                  }
+                  style={{
+                    padding: 4,
+                    fontSize: 14,
+                    fontWeight: 600,
+                    color: '#111827',
+                    border: "1px solid #ddd",
+                    borderRadius: 4,
+                    width: "100%"
+                  }}
+                />
+
                 </td>
                 <td style={{ padding: 8, border: '1px solid #ddd' }}>Invoice</td>
               </tr>
