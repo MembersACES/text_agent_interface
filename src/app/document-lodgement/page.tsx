@@ -14,8 +14,8 @@ type UtilityKey =
   | "GAS_SME"
   | "GREASE_TRAP"
   | "WATER"
-  | "ELECTRICITY_CI_INTERVAL"; // data type (more coming later)
-
+  | "ELECTRICITY_CI_INTERVAL"
+  | "EOI";
 // ---- Catalogs ----
 const LABELS: Record<UtilityKey, string> = {
   WASTE: "WASTE",
@@ -27,6 +27,7 @@ const LABELS: Record<UtilityKey, string> = {
   GREASE_TRAP: "GREASE TRAP",
   WATER: "WATER",
   ELECTRICITY_CI_INTERVAL: "C&I E Interval Data",
+  EOI: "EOI",
 };
 
 const API_ENDPOINTS: Record<UtilityKey, string> = {
@@ -46,6 +47,7 @@ const API_ENDPOINTS: Record<UtilityKey, string> = {
   WATER: "https://aces-api-63gwbzzcdq-km.a.run.app/v1/water/process-invoice",
   ELECTRICITY_CI_INTERVAL:
     "https://aces-invoice-api-672026052958.australia-southeast2.run.app/v1/interval-ci-electricity/process-interval-ci-electricity-data",
+  EOI: "https://aces-invoice-api-672026052958.australia-southeast2.run.app/v1/eoi/process-eoi",
 };
 
 // File accept strings
@@ -53,6 +55,7 @@ const ACCEPTS: Record<UtilityKey, string> = {
   // DATA category accepts spreadsheet/text files
   ELECTRICITY_CI_INTERVAL:
     ".csv,.xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv",
+  EOI: "application/pdf",
   // INVOICE category accepts PDF
   WASTE: "application/pdf",
   COOKING_OIL: "application/pdf",
@@ -67,6 +70,7 @@ const ACCEPTS: Record<UtilityKey, string> = {
 // Friendly upload labels
 const FRIENDLY_UPLOAD_LABEL: Record<UtilityKey, string> = {
   ELECTRICITY_CI_INTERVAL: "Upload Interval Data (CSV/XLS/XLSX)",
+  EOI: "Upload EOI (PDF)",
   WASTE: "Upload Invoice (PDF)",
   COOKING_OIL: "Upload Invoice (PDF)",
   ELECTRICITY_CI: "Upload Invoice (PDF)",
@@ -90,7 +94,8 @@ const INVOICE_UTILS: UtilityKey[] = [
 ];
 
 const DATA_UTILS: UtilityKey[] = [
-  "ELECTRICITY_CI_INTERVAL", // ← add more here as you build them
+  "ELECTRICITY_CI_INTERVAL",
+  "EOI",
 ];
 
 export default function UtilityInvoiceLodgementPage() {
