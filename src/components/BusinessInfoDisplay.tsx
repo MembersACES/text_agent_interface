@@ -354,76 +354,73 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
     }
   }, [eoiResult]);
   // Load EOI data on mount - Dynamic version
+  const [eoiRefreshing, setEoiRefreshing] = React.useState(false);
+
+  const fetchEOIData = async () => {
+    if (!(business.name && typeof setInfo === "function")) return;
+    try {
+      const res = await fetch('https://membersaces.app.n8n.cloud/webhook/return_EOIIDs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ business_name: business.name })
+      });
+      const data = await res.json();
+      console.log('EOI webhook response:', data);
+      if (data && Array.isArray(data) && data.length > 0) {
+        const businessData = data[0];
+        const mappedFileIds: any = {};
+        console.log('Processing EOI data:', businessData);
+        // Process each row in the data array
+        data.forEach((row: any, index: number) => {
+          const eoiType = row['EOI Type'];
+          const eoiFileId = row['EOI File ID'];
+          // Only process if EOI Type and File ID exist
+          if (eoiType && typeof eoiType === 'string' && eoiFileId && typeof eoiFileId === 'string') {
+            console.log(`Processing EOI row ${index}: Type="${eoiType}", File ID="${eoiFileId}"`);
+            // Only process if the file ID looks like a Google Drive file ID
+            const googleDriveIdPattern = /^[a-zA-Z0-9_-]{10,}$/;
+            if (googleDriveIdPattern.test(eoiFileId)) {
+              // Use the EOI Type as the key name
+              const cleanKey = eoiType.trim().replace(/\s+/g, '_');
+              const mappedKey = `eoi_${cleanKey}`;
+              // Create Google Drive URL
+              mappedFileIds[mappedKey] = `https://drive.google.com/file/d/${eoiFileId}/view?usp=drivesdk`;
+              console.log(`✅ Mapped EOI: "${eoiType}" -> "${mappedKey}" -> ${eoiFileId}`);
+            } else {
+              console.log(`Skipping EOI "${eoiType}" - File ID "${eoiFileId}" doesn't look like a Google Drive file ID`);
+            }
+          } else {
+            console.log(`Skipping EOI row ${index} - missing EOI Type or File ID`);
+          }
+        });
+        console.log('Final mapped EOI file IDs:', mappedFileIds);
+        // Only update if we actually found valid EOI files
+        if (Object.keys(mappedFileIds).length > 0) {
+          setInfo((prevInfo: any) => ({
+            ...prevInfo,
+            _processed_file_ids: {
+              ...prevInfo._processed_file_ids,
+              ...mappedFileIds
+            }
+          }));
+        } else {
+          console.log('No valid EOI file IDs found');
+        }
+      } else {
+        console.log('No EOI data found for business:', business.name);
+      }
+    } catch (err) {
+      console.error('Error loading EOI data:', err);
+    }
+  };
+
   React.useEffect(() => {
     if (business.name && typeof setInfo === "function") {
       console.log('Loading EOI data for business:', business.name);
       
       // Add a small delay to prevent rapid successive calls
       const timeoutId = setTimeout(() => {
-        fetch('https://membersaces.app.n8n.cloud/webhook/return_EOIIDs', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ business_name: business.name })
-        })
-      .then(res => res.json())
-      .then(data => {
-        console.log('EOI webhook response:', data);
-        
-        if (data && Array.isArray(data) && data.length > 0) {
-          const businessData = data[0];
-          const mappedFileIds: any = {};
-          
-          console.log('Processing EOI data:', businessData);
-          
-          // Process each row in the data array
-          data.forEach((row, index) => {
-            const eoiType = row['EOI Type'];
-            const eoiFileId = row['EOI File ID'];
-            
-            // Only process if EOI Type and File ID exist
-            if (eoiType && typeof eoiType === 'string' && eoiFileId && typeof eoiFileId === 'string') {
-              console.log(`Processing EOI row ${index}: Type="${eoiType}", File ID="${eoiFileId}"`);
-              
-              // Only process if the file ID looks like a Google Drive file ID
-              const googleDriveIdPattern = /^[a-zA-Z0-9_-]{10,}$/;
-              if (googleDriveIdPattern.test(eoiFileId)) {
-                // Use the EOI Type as the key name
-                const cleanKey = eoiType.trim().replace(/\s+/g, '_');
-                const mappedKey = `eoi_${cleanKey}`;
-                
-                // Create Google Drive URL
-                mappedFileIds[mappedKey] = `https://drive.google.com/file/d/${eoiFileId}/view?usp=drivesdk`;
-                
-                console.log(`✅ Mapped EOI: "${eoiType}" -> "${mappedKey}" -> ${eoiFileId}`);
-              } else {
-                console.log(`Skipping EOI "${eoiType}" - File ID "${eoiFileId}" doesn't look like a Google Drive file ID`);
-              }
-            } else {
-              console.log(`Skipping EOI row ${index} - missing EOI Type or File ID`);
-            }
-          });
-          
-          console.log('Final mapped EOI file IDs:', mappedFileIds);
-          
-          // Only update if we actually found valid EOI files
-          if (Object.keys(mappedFileIds).length > 0) {
-            setInfo((prevInfo: any) => ({
-              ...prevInfo,
-              _processed_file_ids: { 
-                ...prevInfo._processed_file_ids, 
-                ...mappedFileIds 
-              }
-            }));
-          } else {
-            console.log('No valid EOI file IDs found');
-          }
-        } else {
-          console.log('No EOI data found for business:', business.name);
-        }
-      })
-      .catch(err => {
-        console.error('Error loading EOI data:', err);
-      });
+        fetchEOIData();
       }, 100); // 100ms delay to prevent rapid successive calls
       
       return () => clearTimeout(timeoutId);
@@ -826,12 +823,28 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
             <div>
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-semibold text-gray-800 text-base">Signed EOIs</h3>
-                <button
-                  onClick={() => setShowEOIModal(true)}
-                  className="px-3 py-1.5 rounded bg-orange-600 text-white text-xs font-medium hover:bg-orange-700"
-                >
-                  Lodge EOI
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={async () => {
+                      if (eoiRefreshing) return;
+                      setEoiRefreshing(true);
+                      try {
+                        await fetchEOIData();
+                      } finally {
+                        setEoiRefreshing(false);
+                      }
+                    }}
+                    className="px-2 py-1 rounded border border-gray-300 text-xs text-gray-700 hover:bg-gray-100"
+                  >
+                    {eoiRefreshing ? 'Refreshing…' : 'Refresh'}
+                  </button>
+                  <button
+                    onClick={() => setShowEOIModal(true)}
+                    className="px-3 py-1.5 rounded bg-orange-600 text-white text-xs font-medium hover:bg-orange-700"
+                  >
+                    Lodge EOI
+                  </button>
+                </div>
               </div>
               <div className="space-y-2">
                 {(() => {
