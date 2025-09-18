@@ -1,8 +1,9 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import { getApiBaseUrl } from "@/lib/utils";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { combineFilesIntoPdf } from "@/lib/combineFiles";
+
 
 function InfoRow({
   label,
@@ -77,14 +78,19 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
   const docs: Record<string, any> = (info && typeof info.business_documents === 'object' && info.business_documents !== null && !Array.isArray(info.business_documents)) ? info.business_documents : {};
   console.log('docs object:', docs);
   console.log('info.business_documents:', info.business_documents);
-  const contracts = [
-    { key: "C&I Electricity", url: info._processed_file_ids?.["contract_C&I Electricity"] },
-    { key: "SME Electricity", url: info._processed_file_ids?.["contract_SME Electricity"] },
-    { key: "C&I Gas", url: info._processed_file_ids?.["contract_C&I Gas"] },
-    { key: "SME Gas", url: info._processed_file_ids?.["contract_SME Gas"] },
-    { key: "Waste", url: info._processed_file_ids?.["contract_Waste"] },
-    { key: "Oil", url: info._processed_file_ids?.["contract_Oil"] },
-    { key: "DMA", url: info._processed_file_ids?.["contract_DMA"] },
+  const getFileUrl = (key: string): string | undefined => {
+    const value = info._processed_file_ids?.[key];
+    return (value && typeof value === 'string') ? value : undefined;
+  };
+  
+  const contracts: { key: string; url?: string }[] = [
+    { key: "C&I Electricity", url: getFileUrl("contract_C&I Electricity") },
+    { key: "SME Electricity", url: getFileUrl("contract_SME Electricity") },
+    { key: "C&I Gas", url: getFileUrl("contract_C&I Gas") },
+    { key: "SME Gas", url: getFileUrl("contract_SME Gas") },
+    { key: "Waste", url: getFileUrl("contract_Waste") },
+    { key: "Oil", url: getFileUrl("contract_Oil") },
+    { key: "DMA", url: getFileUrl("contract_DMA") },
   ];
   const driveUrl = info.gdrive?.folder_url;
 
@@ -129,6 +135,10 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
     nmis = ciElectricity;
   }
 
+  const [showEOIModal, setShowEOIModal] = useState(false);
+  const [eoiFile, setEOIFile] = useState<File | null>(null);
+  const [eoiLoading, setEOILoading] = useState(false);
+  const [eoiResult, setEOIResult] = useState<string | null>(null);
   // Helper to render sub-details for utilities
   function renderUtilityDetails(util: string, details: any) {
     if (typeof details === 'string' || typeof details === 'number') {
@@ -141,6 +151,25 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
     }
     return null;
   }
+
+  // Add this function to extract EOI files dynamically
+  const getEOIFiles = () => {
+    if (!info._processed_file_ids) return [];
+    
+    return Object.entries(info._processed_file_ids)
+      .filter(([key]) => key.startsWith('eoi_'))
+      .map(([key, url]) => ({
+        key: key.replace('eoi_', '').replace(/_/g, ' '), // Convert eoi_C&I_Electricity to C&I Electricity
+        displayName: key.replace('eoi_', '').replace(/_/g, ' ') + ' EOI',
+        url
+      }))
+      .sort((a, b) => {
+        // Sort by whether they have URLs (files with URLs first)
+        if (a.url && !b.url) return -1;
+        if (!a.url && b.url) return 1;
+        return a.displayName.localeCompare(b.displayName);
+      });
+  };
 
   const handleOpenSiteProfiling = () => {
     const params = new URLSearchParams();
@@ -313,7 +342,90 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
       return () => clearTimeout(timer);
     }
   }, [driveModalResult]);
+  // EOI Modal auto-close effect
+  React.useEffect(() => {
+    if (eoiResult === 'EOI successfully processed and uploaded!') {
+      const timer = setTimeout(() => {
+        setShowEOIModal(false);
+        setEOIFile(null);
+        setEOIResult(null);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [eoiResult]);
+  // Load EOI data on mount - Dynamic version
+  const [eoiRefreshing, setEoiRefreshing] = React.useState(false);
 
+  const fetchEOIData = async () => {
+    if (!(business.name && typeof setInfo === "function")) return;
+    try {
+      const res = await fetch('https://membersaces.app.n8n.cloud/webhook/return_EOIIDs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ business_name: business.name })
+      });
+      const data = await res.json();
+      console.log('EOI webhook response:', data);
+      if (data && Array.isArray(data) && data.length > 0) {
+        const businessData = data[0];
+        const mappedFileIds: any = {};
+        console.log('Processing EOI data:', businessData);
+        // Process each row in the data array
+        data.forEach((row: any, index: number) => {
+          const eoiType = row['EOI Type'];
+          const eoiFileId = row['EOI File ID'];
+          // Only process if EOI Type and File ID exist
+          if (eoiType && typeof eoiType === 'string' && eoiFileId && typeof eoiFileId === 'string') {
+            console.log(`Processing EOI row ${index}: Type="${eoiType}", File ID="${eoiFileId}"`);
+            // Only process if the file ID looks like a Google Drive file ID
+            const googleDriveIdPattern = /^[a-zA-Z0-9_-]{10,}$/;
+            if (googleDriveIdPattern.test(eoiFileId)) {
+              // Use the EOI Type as the key name
+              const cleanKey = eoiType.trim().replace(/\s+/g, '_');
+              const mappedKey = `eoi_${cleanKey}`;
+              // Create Google Drive URL
+              mappedFileIds[mappedKey] = `https://drive.google.com/file/d/${eoiFileId}/view?usp=drivesdk`;
+              console.log(`✅ Mapped EOI: "${eoiType}" -> "${mappedKey}" -> ${eoiFileId}`);
+            } else {
+              console.log(`Skipping EOI "${eoiType}" - File ID "${eoiFileId}" doesn't look like a Google Drive file ID`);
+            }
+          } else {
+            console.log(`Skipping EOI row ${index} - missing EOI Type or File ID`);
+          }
+        });
+        console.log('Final mapped EOI file IDs:', mappedFileIds);
+        // Only update if we actually found valid EOI files
+        if (Object.keys(mappedFileIds).length > 0) {
+          setInfo((prevInfo: any) => ({
+            ...prevInfo,
+            _processed_file_ids: {
+              ...prevInfo._processed_file_ids,
+              ...mappedFileIds
+            }
+          }));
+        } else {
+          console.log('No valid EOI file IDs found');
+        }
+      } else {
+        console.log('No EOI data found for business:', business.name);
+      }
+    } catch (err) {
+      console.error('Error loading EOI data:', err);
+    }
+  };
+
+  React.useEffect(() => {
+    if (business.name && typeof setInfo === "function") {
+      console.log('Loading EOI data for business:', business.name);
+      
+      // Add a small delay to prevent rapid successive calls
+      const timeoutId = setTimeout(() => {
+        fetchEOIData();
+      }, 100); // 100ms delay to prevent rapid successive calls
+      
+      return () => clearTimeout(timeoutId);
+    }
+  }, [business.name]); // Removed setInfo from dependencies to prevent multiple calls
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (driveModalMultipleFiles) {
@@ -322,6 +434,122 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
     } else {
       setDriveModalFile(files[0] || null);
       setDriveModalFiles([]);
+    }
+  };
+
+  const handleEOIFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setEOIFile(e.target.files?.[0] || null);
+  };
+  
+  const resetEOIModal = () => {
+    setShowEOIModal(false);
+    setEOIFile(null);
+    setEOIResult(null);
+  };
+  
+  // Handle EOI submission
+  const handleEOISubmit = async () => {
+    if (!eoiFile) {
+      setEOIResult("No file selected.");
+      return;
+    }
+  
+    if (!eoiFile.name.toLowerCase().endsWith('.pdf')) {
+      setEOIResult("Please upload a PDF file.");
+      return;
+    }
+  
+    setEOILoading(true);
+    setEOIResult("");
+  
+    const formData = new FormData();
+    formData.append("file", eoiFile);
+  
+    try {
+      const res = await fetch("https://aces-invoice-api-672026052958.australia-southeast2.run.app/v1/eoi/process-eoi", {
+        method: "POST",
+        body: formData,
+      });
+  
+      let data: any;
+      try {
+        data = await res.json();
+      } catch {
+        const text = await res.text();
+        setEOIResult(`Error parsing JSON: ${res.status} ${res.statusText}\n${text}`);
+        setEOILoading(false);
+        return;
+      }
+      
+      if (res.ok) {
+        // Refresh EOI data dynamically
+        if (business.name && typeof setInfo === "function") {
+          try {
+            const response = await fetch('https://membersaces.app.n8n.cloud/webhook/return_EOIIDs', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ business_name: business.name })
+            });
+            const data = await response.json();
+            
+             if (data && Array.isArray(data) && data.length > 0) {
+               const mappedFileIds: any = {};
+               
+               console.log('Processing refresh EOI data:', data);
+               
+               // Process each row in the data array
+               data.forEach((row, index) => {
+                 const eoiType = row['EOI Type'];
+                 const eoiFileId = row['EOI File ID'];
+                 
+                 // Only process if EOI Type and File ID exist
+                 if (eoiType && typeof eoiType === 'string' && eoiFileId && typeof eoiFileId === 'string') {
+                   console.log(`Processing refresh EOI row ${index}: Type="${eoiType}", File ID="${eoiFileId}"`);
+                   
+                   // Only process if the file ID looks like a Google Drive file ID
+                   const googleDriveIdPattern = /^[a-zA-Z0-9_-]{10,}$/;
+                   if (googleDriveIdPattern.test(eoiFileId)) {
+                     // Use the EOI Type as the key name
+                     const cleanKey = eoiType.trim().replace(/\s+/g, '_');
+                     const mappedKey = `eoi_${cleanKey}`;
+                     
+                     // Create Google Drive URL
+                     mappedFileIds[mappedKey] = `https://drive.google.com/file/d/${eoiFileId}/view?usp=drivesdk`;
+                     
+                     console.log(`✅ Refresh mapped EOI: "${eoiType}" -> "${mappedKey}" -> ${eoiFileId}`);
+                   } else {
+                     console.log(`Skipping refresh EOI "${eoiType}" - File ID "${eoiFileId}" doesn't look like a Google Drive file ID`);
+                   }
+                 } else {
+                   console.log(`Skipping refresh EOI row ${index} - missing EOI Type or File ID`);
+                 }
+               });
+              
+              // Only update if we found valid EOI files
+              if (Object.keys(mappedFileIds).length > 0) {
+                setInfo((prevInfo: any) => ({
+                  ...prevInfo,
+                  _processed_file_ids: { 
+                    ...prevInfo._processed_file_ids, 
+                    ...mappedFileIds 
+                  }
+                }));
+                
+                console.log('EOI data refreshed after upload:', mappedFileIds);
+              }
+            }
+          } catch (err) {
+            console.error('Error refreshing EOI data:', err);
+          }
+        }
+        setEOIResult("EOI successfully processed and uploaded!");
+      } else {
+        setEOIResult(`Upload failed: ${data.message || res.statusText}`);
+      }
+    } catch (error: any) {
+      setEOIResult(`Error: ${error.message}`);
+    } finally {
+      setEOILoading(false);
     }
   };
 
@@ -396,6 +624,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
             >
               Strategy
             </button>
+            
             {onLinkUtility && (
               <button
                 onClick={onLinkUtility}
@@ -412,7 +641,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
       <div className="border-b bg-gray-50">
         <nav className="flex px-6">
           {[
-            { key: 'documents', label: 'Business Documents & Signed Agreements', count: Object.keys(docs).length + contracts.filter(c => c.url).length },
+            { key: 'documents', label: 'Business Documents & Signed Agreements', count: Object.keys(docs).length + contracts.filter(c => c.url).length + Object.keys(info._processed_file_ids || {}).filter(key => key.startsWith('eoi_')).length },
             { key: 'utilities', label: 'Linked Utilities', count: Object.keys(linked).length }
           ].map((section) => (
             <button
@@ -462,7 +691,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
         {/* Documents Section */}
         <div id="documents" className="border-t pt-6">
           <h2 className="text-lg font-bold text-gray-800 mb-4">Documents</h2>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Business Documents */}
             <div>
               <h3 className="font-semibold text-gray-800 text-base mb-4">Business Documents</h3>
@@ -541,7 +770,6 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                   })}
               </div>
             </div>
-
             {/* Signed Contracts */}
             <div>
               <h3 className="font-semibold text-gray-800 text-base mb-4">Signed Contracts</h3>
@@ -590,10 +818,75 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                     );
                   })}
               </div>
-            </div>
-          </div>
-        </div>
+              </div>
+            {/* Signed EOIs */}
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold text-gray-800 text-base">Signed EOIs</h3>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={async () => {
+                      if (eoiRefreshing) return;
+                      setEoiRefreshing(true);
+                      try {
+                        await fetchEOIData();
+                      } finally {
+                        setEoiRefreshing(false);
+                      }
+                    }}
+                    className="px-2 py-1 rounded border border-gray-300 text-xs text-gray-700 hover:bg-gray-100"
+                  >
+                    {eoiRefreshing ? 'Refreshing…' : 'Refresh'}
+                  </button>
+                  <button
+                    onClick={() => setShowEOIModal(true)}
+                    className="px-3 py-1.5 rounded bg-orange-600 text-white text-xs font-medium hover:bg-orange-700"
+                  >
+                    Lodge EOI
+                  </button>
+                </div>
+              </div>
+              <div className="space-y-2">
+                {(() => {
+                  // Get all EOI files dynamically from _processed_file_ids
+                  const eoiFiles = Object.entries(info._processed_file_ids || {})
+                    .filter(([key]) => key.startsWith('eoi_'))
+                    .map(([key, url]) => {
+                      // Remove eoi_ prefix and convert underscores to spaces
+                      let displayName = key.replace('eoi_', '').replace(/_/g, ' ');
+                      
+                      // Only add "EOI" if it's not already in the name
+                      if (!displayName.toLowerCase().includes('eoi') && !displayName.toLowerCase().includes('expression')) {
+                        displayName += ' EOI';
+                      }
+                      
+                      return { key, displayName, url: (url && typeof url === 'string') ? url : undefined };
+                    })
+                    .sort((a, b) => {
+                      // Sort by file availability - files with URLs first
+                      if (a.url && !b.url) return -1;
+                      if (!a.url && b.url) return 1;
+                      return a.displayName.localeCompare(b.displayName);
+                    });
 
+                  if (eoiFiles.length === 0) {
+                    return <div className="text-xs text-gray-400 mb-4">No EOI files available</div>;
+                  }
+
+                  return eoiFiles.map(({ key, displayName, url }) => (
+                    <div key={key} className="flex items-center justify-between p-2 rounded bg-gray-50 hover:bg-gray-100">
+                      <div className="flex-1">
+                        <div className="text-sm font-medium">{displayName}</div>
+                        <div className="text-xs text-gray-500">
+                          {url ? <FileLink label="View File" url={url} /> : "Not available"}
+                        </div>
+                      </div>
+                    </div>
+                  ));
+                })()}
+              </div>
+            </div>
+        </div>
         {/* Utilities Section */}
         <div id="utilities" className="border-t pt-6">
           <h2 className="text-lg font-bold text-gray-800 mb-4">Linked Utilities and Retailers</h2>
@@ -1123,6 +1416,58 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
         </div>
       </div>
         )}
-    </>
-  );
-}
+  {/* EOI Modal */}
+  {showEOIModal && (
+    <div className="fixed inset-0 bg-black bg-opacity-25 z-50 flex items-center justify-center">
+      <div className="bg-white rounded-lg p-8 min-w-[400px] shadow-lg focus:outline-none" tabIndex={-1}>
+        <h3 className="text-lg font-semibold text-gray-800 mb-4">Lodge EOI</h3>
+        
+        <div className="mb-6">
+          <label className="font-semibold">EOI File:</label>
+          <input 
+            type="file" 
+            accept="application/pdf"
+            onChange={handleEOIFileChange}
+            className="ml-2" 
+          />
+          <p className="text-xs text-gray-500 mt-1">Accepted: PDF files only</p>
+          {eoiFile && (
+            <div className="mt-2 text-sm text-gray-600">
+              Selected file: {eoiFile.name}
+            </div>
+          )}
+        </div>
+        
+        {eoiResult && (
+          <div className={`px-4 py-2 rounded mb-4 font-medium text-sm ${
+            eoiResult.includes('success') || eoiResult.includes('successfully')
+              ? 'bg-green-50 text-green-700'
+              : 'bg-red-50 text-red-700'
+          }`}>
+            {eoiResult}
+          </div>
+        )}
+        
+        <div className="flex justify-end space-x-2">
+          <button
+            className="px-4 py-2 border border-gray-300 rounded text-gray-700 bg-white hover:bg-gray-100 focus:outline-none"
+            onClick={resetEOIModal}
+            disabled={eoiLoading}
+          >
+            Cancel
+          </button>
+          <button
+            className="px-4 py-2 rounded bg-orange-600 text-white font-semibold hover:bg-orange-700 focus:outline-none"
+            onClick={handleEOISubmit}
+            disabled={!eoiFile || eoiLoading}
+          >
+            {eoiLoading ? 'Uploading...' : 'Submit EOI'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )}
+      </div>
+      </>
+    );
+  }
