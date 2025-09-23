@@ -2998,6 +2998,16 @@ const EnhancedInvoiceDetails = ({ electricityData }: { electricityData: Electric
 
   const fullData = electricityData.full_invoice_data;
 
+  console.log('Environmental debugging:', {
+    'SREC Q': fullData['Environmental - SREC Charge Q'],
+    'SREC R': fullData['Environmental - SREC Charge R'],
+    'LREC Q': fullData['Environmental - LREC Charge Q'], 
+    'LREC R': fullData['Environmental - LREC Charge R'],
+    'VEET Q': fullData['Environmental - VEET Charge Q'],
+    'VEET R': fullData['Environmental - VEET Charge R'],
+    'All Environmental Keys': Object.keys(fullData).filter(key => key.toLowerCase().includes('environmental'))
+  });
+
   const formatCurrency = (value: string | number) => {
     const num = typeof value === 'string' ? parseFloat(value) : value;
     return new Intl.NumberFormat('en-AU', {
@@ -3067,6 +3077,7 @@ const EnhancedInvoiceDetails = ({ electricityData }: { electricityData: Electric
 
   const state = extractStateFromAddress(electricityData.site_address || '');
   const stateBenchmark = benchmarkData?.find((b: any) => b.State === state);
+  console.log('Debug benchmark:', stateBenchmark);
   
   return (
     <div style={{ marginTop: 16, padding: 16, backgroundColor: '#f8fafc', borderRadius: 6, border: '1px solid #e2e8f0' }}>
@@ -3168,7 +3179,7 @@ const EnhancedInvoiceDetails = ({ electricityData }: { electricityData: Electric
           </div>
         </div>
 
-        {/* Environmental Charges - Fixed calculation */}
+       {/* Environmental Charges - Using rates in c/kWh */}
         <div style={{ background: '#f0fdf4', padding: 20, borderRadius: 8, border: '1px solid #bbf7d0' }}>
           <h4 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16, color: '#111827' }}>
             🌱 Environmental Charges
@@ -3177,30 +3188,24 @@ const EnhancedInvoiceDetails = ({ electricityData }: { electricityData: Electric
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span style={{ color: '#6b7280', fontSize: 14 }}>SREC ({fullData['SREC Certificate %'] || 0}%):</span>
               <span style={{ fontWeight: 600, fontSize: 14 }}>
-                {formatCurrency(fullData['Environmental - SREC Charge Q'] && fullData['Environmental - SREC Charge R'] 
-                  ? fullData['Environmental - SREC Charge Q'] * fullData['Environmental - SREC Charge R']
-                  : (fullData['Environmental Charges'] || 0) * 0.4)}
+                {(fullData['Environmental - SREC Charge R'] || 0).toFixed(2)}¢/kWh
               </span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span style={{ color: '#6b7280', fontSize: 14 }}>LREC ({fullData['LREC Certificate %'] || 0}%):</span>
               <span style={{ fontWeight: 600, fontSize: 14 }}>
-                {formatCurrency(fullData['Environmental - LREC Charge Q'] && fullData['Environmental - LREC Charge R']
-                  ? fullData['Environmental - LREC Charge Q'] * fullData['Environmental - LREC Charge R'] 
-                  : (fullData['Environmental Charges'] || 0) * 0.4)}
+                {(fullData['Environmental - LREC Charge R'] || 0).toFixed(2)}¢/kWh
               </span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span style={{ color: '#6b7280', fontSize: 14 }}>VEET ({fullData['VEET Certificate %'] || 0}%):</span>
               <span style={{ fontWeight: 600, fontSize: 14 }}>
-                {formatCurrency(fullData['Environmental - VEET Charge Q'] && fullData['Environmental - VEET Charge R']
-                  ? fullData['Environmental - VEET Charge Q'] * fullData['Environmental - VEET Charge R']
-                  : (fullData['Environmental Charges'] || 0) * 0.2)}
+                {(fullData['Environmental - VEET Charge R'] || 0).toFixed(2)}¢/kWh
               </span>
             </div>
             <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 12, marginTop: 12 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: '#6b7280', fontSize: 14 }}>Total Environmental:</span>
+                <span style={{ color: '#6b7280', fontSize: 14 }}>Total Environmental (Invoice):</span>
                 <span style={{ fontWeight: 600, fontSize: 14 }}>{formatCurrency(fullData['Environmental Charges'])}</span>
               </div>
             </div>
@@ -3258,131 +3263,224 @@ const EnhancedInvoiceDetails = ({ electricityData }: { electricityData: Electric
 
       {/* Industry Comparison Section */}
       <div style={{ borderTop: '2px solid #e5e7eb', paddingTop: 24 }}>
-        <h4 style={{ fontSize: 18, fontWeight: 600, color: '#111827', marginBottom: 20, display: 'flex', alignItems: 'center' }}>
-          <span style={{ marginRight: 8 }}>📊</span>
-          Industry Comparison
-        </h4>
-        
-        {benchmarkLoading && (
-          <div style={{ textAlign: 'center', padding: 16, color: '#6b7280' }}>
-            Loading benchmark data...
-          </div>
-        )}
-        
-        {benchmarkError && (
-          <div style={{ 
-            background: '#fef2f2', 
-            border: '1px solid #fecaca', 
-            borderRadius: 6, 
-            padding: 12,
-            marginBottom: 12 
-          }}>
-            <div style={{ color: '#991b1b', fontWeight: 600 }}>Error loading benchmark data:</div>
-            <div style={{ color: '#dc2626', fontSize: 14, marginTop: 4 }}>{benchmarkError}</div>
-          </div>
-        )}
-        
-        {!benchmarkLoading && !benchmarkError && (
-          <div style={{ background: '#f8fafc', padding: 20, borderRadius: 8, border: '1px solid #e2e8f0' }}>
-            {state ? (
-              <div style={{ marginBottom: 16 }}>
-                <div style={{ fontSize: 14, fontWeight: 600, color: '#374151', marginBottom: 12 }}>
-                  State: {state} (extracted from site address)
+              <h4 style={{ fontSize: 18, fontWeight: 600, color: '#111827', marginBottom: 20, display: 'flex', alignItems: 'center' }}>
+                <span style={{ marginRight: 8 }}>📊</span>
+                Industry Comparison
+              </h4>
+              
+              {benchmarkLoading && (
+                <div style={{ textAlign: 'center', padding: 16, color: '#6b7280' }}>
+                  Loading benchmark data...
                 </div>
-                {stateBenchmark ? (
-                  <div style={{ display: 'grid', gap: 16 }}>
-                    {/* Peak Rate Comparison */}
-                    <div style={{ background: 'white', padding: 16, borderRadius: 6, border: '1px solid #e5e7eb' }}>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, alignItems: 'center' }}>
-                        <div>
-                          <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Industry Peak Rate</div>
-                          <div style={{ fontSize: 16, fontWeight: 600 }}>{((parseFloat(stateBenchmark['Peak $']) || 0) * 100).toFixed(4)}¢/kWh</div>
-                        </div>
-                        <div>
-                          <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Your Peak Rate</div>
-                          <div style={{ fontSize: 16, fontWeight: 600 }}>{fullData['Retail Rate Peak (c/kWh)']?.toString() || ''}¢/kWh</div>
-                        </div>
-                        <div>
-                          <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Difference</div>
-                          <div style={{ 
-                            fontSize: 16, 
-                            fontWeight: 600,
-                            color: (fullData['Retail Rate Peak (c/kWh)'] || 0) > ((parseFloat(stateBenchmark['Peak $']) * 100) || 0) ? '#dc2626' : '#059669'
-                          }}>
-                            {((fullData['Retail Rate Peak (c/kWh)'] || 0) - ((parseFloat(stateBenchmark['Peak $']) || 0) * 100)).toFixed(4)}¢/kWh
-                          </div>
-                        </div>
+              )}
+              
+              {benchmarkError && (
+                <div style={{ 
+                  background: '#fef2f2', 
+                  border: '1px solid #fecaca', 
+                  borderRadius: 6, 
+                  padding: 12,
+                  marginBottom: 12 
+                }}>
+                  <div style={{ color: '#991b1b', fontWeight: 600 }}>Error loading benchmark data:</div>
+                  <div style={{ color: '#dc2626', fontSize: 14, marginTop: 4 }}>{benchmarkError}</div>
+                </div>
+              )}
+              
+              {!benchmarkLoading && !benchmarkError && (
+                <div style={{ background: '#f8fafc', padding: 20, borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                  {state ? (
+                    <div style={{ marginBottom: 16 }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: '#374151', marginBottom: 12 }}>
+                        State: {state} (extracted from site address)
                       </div>
-                    </div>
-
-                    {/* Off-Peak Rate Comparison */}
-                    <div style={{ background: 'white', padding: 16, borderRadius: 6, border: '1px solid #e5e7eb' }}>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, alignItems: 'center' }}>
-                        <div>
-                          <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Industry Off-Peak Rate</div>
-                          <div style={{ fontSize: 16, fontWeight: 600 }}>{((parseFloat(stateBenchmark['Off Peak $']) || 0) * 100).toFixed(4)}¢/kWh</div>
-                        </div>
-                        <div>
-                          <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Your Off-Peak Rate</div>
-                          <div style={{ fontSize: 16, fontWeight: 600 }}>{fullData['Retail Rate Off-Peak (c/kWh)']?.toString() || ''}¢/kWh</div>
-                        </div>
-                        <div>
-                          <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Difference</div>
-                          <div style={{ 
-                            fontSize: 16, 
-                            fontWeight: 600,
-                            color: (fullData['Retail Rate Off-Peak (c/kWh)'] || 0) > ((parseFloat(stateBenchmark['Off Peak $']) || 0) * 100) ? '#dc2626' : '#059669'
-                          }}>
-                            {((fullData['Retail Rate Off-Peak (c/kWh)'] || 0) - ((parseFloat(stateBenchmark['Off Peak $']) || 0) * 100)).toFixed(4)}¢/kWh
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Only show shoulder if it exists */}
-                    {stateBenchmark['Shoulder $'] && fullData['Retail Rate Shoulder (c/kWh)'] && fullData['Retail Rate Shoulder (c/kWh)'] > 0 && (
-                      <div style={{ background: 'white', padding: 16, borderRadius: 6, border: '1px solid #e5e7eb' }}>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, alignItems: 'center' }}>
-                          <div>
-                            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Industry Shoulder Rate</div>
-                            <div style={{ fontSize: 16, fontWeight: 600 }}>{((parseFloat(stateBenchmark['Shoulder $']) || 0) * 100).toFixed(4)}¢/kWh</div>
-                          </div>
-                          <div>
-                            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Your Shoulder Rate</div>
-                            <div style={{ fontSize: 16, fontWeight: 600 }}>{fullData['Retail Rate Shoulder (c/kWh)']?.toString() || ''}¢/kWh</div>
-                          </div>
-                          <div>
-                            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Difference</div>
-                            <div style={{ 
-                              fontSize: 16, 
-                              fontWeight: 600,
-                              color: (fullData['Retail Rate Shoulder (c/kWh)'] || 0) > ((parseFloat(stateBenchmark['Shoulder $']) || 0) * 100) ? '#dc2626' : '#059669'
-                            }}>
-                              {((fullData['Retail Rate Shoulder (c/kWh)'] || 0) - ((parseFloat(stateBenchmark['Shoulder $']) || 0) * 100)).toFixed(4)}¢/kWh
+                      {stateBenchmark ? (
+                        <div style={{ display: 'grid', gap: 16 }}>
+                          {/* Peak Rate Comparison */}
+                          <div style={{ background: 'white', padding: 16, borderRadius: 6, border: '1px solid #e5e7eb' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, alignItems: 'center' }}>
+                              <div>
+                                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Invoice Peak Rate</div>
+                                <div style={{ fontSize: 16, fontWeight: 600 }}>{fullData['Retail Rate Peak (c/kWh)']?.toString() || ''}¢/kWh</div>
+                              </div>
+                              <div>
+                                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Industry Peak Rate</div>
+                                <div style={{ fontSize: 16, fontWeight: 600 }}>{((parseFloat(stateBenchmark['Peak $']) || 0) * 100).toFixed(4)}¢/kWh</div>
+                              </div>
+                              <div>
+                                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Difference</div>
+                                <div style={{ 
+                                  fontSize: 16, 
+                                  fontWeight: 600,
+                                  color: (fullData['Retail Rate Peak (c/kWh)'] || 0) > ((parseFloat(stateBenchmark['Peak $']) * 100) || 0) ? '#dc2626' : '#059669'
+                                }}>
+                                  {((fullData['Retail Rate Peak (c/kWh)'] || 0) - ((parseFloat(stateBenchmark['Peak $']) || 0) * 100)).toFixed(4)}¢/kWh
+                                </div>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      </div>
-                    )}
 
-                    <div style={{ fontSize: 12, color: '#6b7280', marginTop: 16, fontStyle: 'italic' }}>
-                      Last updated: {stateBenchmark['Latest Agreement Date'] || 'N/A'}
+                          {/* Peak Cost Comparison */}
+                          <div style={{ background: 'white', padding: 16, borderRadius: 6, border: '1px solid #e5e7eb' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, alignItems: 'center' }}>
+                              <div>
+                                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Invoice Peak Cost</div>
+                                <div style={{ fontSize: 16, fontWeight: 600 }}>
+                                  {formatCurrency(((fullData['Retail Rate Peak (c/kWh)'] || 0) * (fullData['Retail Quantity Peak (kWh)'] || 0)) / 100)}
+                                </div>
+                              </div>
+                              <div>
+                                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Industry Peak Cost</div>
+                                <div style={{ fontSize: 16, fontWeight: 600 }}>
+                                  {formatCurrency(((parseFloat(stateBenchmark['Peak $']) || 0) * (fullData['Retail Quantity Peak (kWh)'] || 0)))}
+                                </div>
+                              </div>
+                              <div>
+                                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Cost Difference</div>
+                                <div style={{ 
+                                  fontSize: 16, 
+                                  fontWeight: 600,
+                                  color: (((fullData['Retail Rate Peak (c/kWh)'] || 0) * (fullData['Retail Quantity Peak (kWh)'] || 0)) / 100) > 
+                                        ((parseFloat(stateBenchmark['Peak $']) || 0) * (fullData['Retail Quantity Peak (kWh)'] || 0)) ? '#dc2626' : '#059669'
+                                }}>
+                                  {formatCurrency((((fullData['Retail Rate Peak (c/kWh)'] || 0) * (fullData['Retail Quantity Peak (kWh)'] || 0)) / 100) - 
+                                                  ((parseFloat(stateBenchmark['Peak $']) || 0) * (fullData['Retail Quantity Peak (kWh)'] || 0)))}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Off-Peak Rate Comparison */}
+                          <div style={{ background: 'white', padding: 16, borderRadius: 6, border: '1px solid #e5e7eb' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, alignItems: 'center' }}>
+                              <div>
+                                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Invoice Off-Peak Rate</div>
+                                <div style={{ fontSize: 16, fontWeight: 600 }}>{fullData['Retail Rate Off-Peak (c/kWh)']?.toString() || ''}¢/kWh</div>
+                              </div>
+                              <div>
+                                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Industry Off-Peak Rate</div>
+                                <div style={{ fontSize: 16, fontWeight: 600 }}>{((parseFloat(stateBenchmark['Off Peak $']) || 0) * 100).toFixed(4)}¢/kWh</div>
+                              </div>
+                              <div>
+                                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Difference</div>
+                                <div style={{ 
+                                  fontSize: 16, 
+                                  fontWeight: 600,
+                                  color: (fullData['Retail Rate Off-Peak (c/kWh)'] || 0) > ((parseFloat(stateBenchmark['Off Peak $']) || 0) * 100) ? '#dc2626' : '#059669'
+                                }}>
+                                  {((fullData['Retail Rate Off-Peak (c/kWh)'] || 0) - ((parseFloat(stateBenchmark['Off Peak $']) || 0) * 100)).toFixed(4)}¢/kWh
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Off-Peak Cost Comparison */}
+                          <div style={{ background: 'white', padding: 16, borderRadius: 6, border: '1px solid #e5e7eb' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, alignItems: 'center' }}>
+                              <div>
+                                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Invoice Off-Peak Cost</div>
+                                <div style={{ fontSize: 16, fontWeight: 600 }}>
+                                  {formatCurrency(((fullData['Retail Rate Off-Peak (c/kWh)'] || 0) * (fullData['Retail Quantity Off-Peak (kWh)'] || 0)) / 100)}
+                                </div>
+                              </div>
+                              <div>
+                                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Industry Off-Peak Cost</div>
+                                <div style={{ fontSize: 16, fontWeight: 600 }}>
+                                  {formatCurrency(((parseFloat(stateBenchmark['Off Peak $']) || 0) * (fullData['Retail Quantity Off-Peak (kWh)'] || 0)))}
+                                </div>
+                              </div>
+                              <div>
+                                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Cost Difference</div>
+                                <div style={{ 
+                                  fontSize: 16, 
+                                  fontWeight: 600,
+                                  color: (((fullData['Retail Rate Off-Peak (c/kWh)'] || 0) * (fullData['Retail Quantity Off-Peak (kWh)'] || 0)) / 100) > 
+                                        ((parseFloat(stateBenchmark['Off Peak $']) || 0) * (fullData['Retail Quantity Off-Peak (kWh)'] || 0)) ? '#dc2626' : '#059669'
+                                }}>
+                                  {formatCurrency((((fullData['Retail Rate Off-Peak (c/kWh)'] || 0) * (fullData['Retail Quantity Off-Peak (kWh)'] || 0)) / 100) - 
+                                                  ((parseFloat(stateBenchmark['Off Peak $']) || 0) * (fullData['Retail Quantity Off-Peak (kWh)'] || 0)))}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Only show shoulder if it exists */}
+                          {parseFloat(stateBenchmark['Shoulder $'] || '0') > 0 &&
+                           (fullData['Retail Rate Shoulder (c/kWh)'] ?? 0) > 0 && (
+                            <>
+                              <div style={{ background: 'white', padding: 16, borderRadius: 6, border: '1px solid #e5e7eb' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, alignItems: 'center' }}>
+                                  <div>
+                                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Invoice Shoulder Rate</div>
+                                    <div style={{ fontSize: 16, fontWeight: 600 }}>{fullData['Retail Rate Shoulder (c/kWh)']?.toString() || ''}¢/kWh</div>
+                                  </div>
+                                  <div>
+                                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Industry Shoulder Rate</div>
+                                    <div style={{ fontSize: 16, fontWeight: 600 }}>{((parseFloat(stateBenchmark['Shoulder $']) || 0) * 100).toFixed(4)}¢/kWh</div>
+                                  </div>
+                                  <div>
+                                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Difference</div>
+                                    <div style={{ 
+                                      fontSize: 16, 
+                                      fontWeight: 600,
+                                      color: (fullData['Retail Rate Shoulder (c/kWh)'] || 0) > ((parseFloat(stateBenchmark['Shoulder $']) || 0) * 100) ? '#dc2626' : '#059669'
+                                    }}>
+                                      {((fullData['Retail Rate Shoulder (c/kWh)'] || 0) - ((parseFloat(stateBenchmark['Shoulder $']) || 0) * 100)).toFixed(4)}¢/kWh
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Shoulder Cost Comparison */}
+                              <div style={{ background: 'white', padding: 16, borderRadius: 6, border: '1px solid #e5e7eb' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, alignItems: 'center' }}>
+                                  <div>
+                                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Invoice Shoulder Cost</div>
+                                    <div style={{ fontSize: 16, fontWeight: 600 }}>
+                                      {formatCurrency(((fullData['Retail Rate Shoulder (c/kWh)'] || 0) * (fullData['Retail Quantity Shoulder (kWh)'] || 0)) / 100)}
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Industry Shoulder Cost</div>
+                                    <div style={{ fontSize: 16, fontWeight: 600 }}>
+                                      {formatCurrency(((parseFloat(stateBenchmark['Shoulder $']) || 0) * (fullData['Retail Quantity Shoulder (kWh)'] || 0)))}
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Cost Difference</div>
+                                    <div style={{ 
+                                      fontSize: 16, 
+                                      fontWeight: 600,
+                                      color: (((fullData['Retail Rate Shoulder (c/kWh)'] || 0) * (fullData['Retail Quantity Shoulder (kWh)'] || 0)) / 100) > 
+                                            ((parseFloat(stateBenchmark['Shoulder $']) || 0) * (fullData['Retail Quantity Shoulder (kWh)'] || 0)) ? '#dc2626' : '#059669'
+                                    }}>
+                                      {formatCurrency((((fullData['Retail Rate Shoulder (c/kWh)'] || 0) * (fullData['Retail Quantity Shoulder (kWh)'] || 0)) / 100) - 
+                                                      ((parseFloat(stateBenchmark['Shoulder $']) || 0) * (fullData['Retail Quantity Shoulder (kWh)'] || 0)))}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </>
+                          )}
+
+                          <div style={{ fontSize: 12, color: '#6b7280', marginTop: 16, fontStyle: 'italic' }}>
+                            Last updated: {stateBenchmark['Latest Agreement Date'] || 'N/A'}
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ color: '#dc2626', fontSize: 14 }}>
+                          No benchmark data available for {state}
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ) : (
-                  <div style={{ color: '#dc2626', fontSize: 14 }}>
-                    No benchmark data available for {state}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div style={{ color: '#dc2626', fontSize: 14 }}>
-                Could not extract state from site address: {electricityData.site_address || 'N/A'}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+                  ) : (
+                    <div style={{ color: '#dc2626', fontSize: 14 }}>
+                      Could not extract state from site address: {electricityData.site_address || 'N/A'}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
     </div>
   );
 };
