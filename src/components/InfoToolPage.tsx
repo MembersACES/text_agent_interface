@@ -3462,7 +3462,36 @@ const EnhancedInvoiceDetails = ({ electricityData }: { electricityData: Electric
                               </div>
                             </>
                           )}
-
+                          {/* Performance Summary Message for Electricity */}
+                        <div style={{ 
+                          background: (fullData['Retail Rate Peak (c/kWh)'] || 0) > ((parseFloat(stateBenchmark['Peak $']) || 0) * 100) ? '#fef2f2' : '#f0fdf4',
+                          border: `1px solid ${(fullData['Retail Rate Peak (c/kWh)'] || 0) > ((parseFloat(stateBenchmark['Peak $']) || 0) * 100) ? '#fecaca' : '#bbf7d0'}`,
+                          borderRadius: 6, 
+                          padding: 16,
+                          textAlign: 'center',
+                          marginBottom: 16
+                        }}>
+                          <div style={{ 
+                            fontSize: 16, 
+                            fontWeight: 600,
+                            color: (fullData['Retail Rate Peak (c/kWh)'] || 0) > ((parseFloat(stateBenchmark['Peak $']) || 0) * 100) ? '#dc2626' : '#059669',
+                            marginBottom: 4
+                          }}>
+                            {(fullData['Retail Rate Peak (c/kWh)'] || 0) > ((parseFloat(stateBenchmark['Peak $']) || 0) * 100) ? 
+                              'Above Industry Benchmark' : 
+                              'Below Industry Benchmark'
+                            }
+                          </div>
+                          <div style={{ 
+                            fontSize: 14, 
+                            color: (fullData['Retail Rate Peak (c/kWh)'] || 0) > ((parseFloat(stateBenchmark['Peak $']) || 0) * 100) ? '#991b1b' : '#166534'
+                          }}>
+                            {(fullData['Retail Rate Peak (c/kWh)'] || 0) > ((parseFloat(stateBenchmark['Peak $']) || 0) * 100) ? 
+                              'Your electricity rate is higher than the industry benchmark - there may be opportunities for savings.' :
+                              'Your electricity rate is competitive compared to the industry benchmark.'
+                            }
+                          </div>
+                        </div>
                           <div style={{ fontSize: 12, color: '#6b7280', marginTop: 16, fontStyle: 'italic' }}>
                             Last updated: {stateBenchmark['Latest Agreement Date'] || 'N/A'}
                           </div>
@@ -3485,10 +3514,12 @@ const EnhancedInvoiceDetails = ({ electricityData }: { electricityData: Electric
   );
 };
 
+
 const EnhancedGasInvoiceDetails = ({ gasData }: { gasData: any }) => {
   const [benchmarkData, setBenchmarkData] = useState<any>(null);
   const [benchmarkLoading, setBenchmarkLoading] = useState(false);
   const [benchmarkError, setBenchmarkError] = useState<string | null>(null);
+  const [manualGasRate, setManualGasRate] = useState<number>(0);
 
   if (!gasData || !gasData.full_invoice_data) return null;
 
@@ -3527,7 +3558,6 @@ const EnhancedGasInvoiceDetails = ({ gasData }: { gasData: any }) => {
   };
 
   // Fetch gas benchmark data
-
   const fetchBenchmarkData = async () => {
     setBenchmarkLoading(true);
     setBenchmarkError(null);
@@ -3563,211 +3593,329 @@ const EnhancedGasInvoiceDetails = ({ gasData }: { gasData: any }) => {
   }, []);
 
   const state = extractStateFromAddress(gasData.site_address || '');
-  const stateBenchmark = benchmarkData?.find((b: any) => b.State === state);
+  const stateBenchmark = benchmarkData?.find((b: any) => b.State?.trim() === state);
 
-  // Calculate current gas rate from invoice (assuming it's in $/GJ)
-  const currentGasRate = parseFloat(gasData.energy_charge_rate || '0');
+  // Calculate current gas rate from invoice - try multiple field sources
+  const detectGasRate = parseFloat(gasData.energy_charge_rate || 
+      gasData.full_invoice_data?.['Energy Charge Rate'] || 
+      '0');
+  const currentGasRate = detectGasRate > 0 ? detectGasRate : manualGasRate;
 
   return (
     <div style={{ marginTop: 16, padding: 16, backgroundColor: '#f8fafc', borderRadius: 6, border: '1px solid #e2e8f0' }}>
-      <div style={{ display: 'grid', gap: 16, gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))' }}>
-        {/* Gas Consumption Overview */}
-        <div style={{ background: 'white', padding: 16, borderRadius: 6, border: '1px solid #e5e7eb' }}>
-          <h4 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: '#111827', display: 'flex', alignItems: 'center' }}>
+      {/* Enhanced detail cards grid */}
+      <div style={{ display: 'grid', gap: 20, gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', marginBottom: 32 }}>
+        
+        {/* Gas Consumption Overview - Enhanced with rate */}
+        <div style={{ background: 'white', padding: 20, borderRadius: 8, border: '1px solid #e5e7eb' }}>
+          <h4 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16, color: '#111827', display: 'flex', alignItems: 'center' }}>
             🔥 Gas Consumption Overview
           </h4>
-          <div style={{ display: 'grid', gap: 8 }}>
+          <div style={{ display: 'grid', gap: 12 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: '#6b7280' }}>Energy Charge Quantity:</span>
-              <span style={{ fontWeight: 600 }}>{formatNumber(fullData['Energy Charge Quantity in GJ'])} GJ</span>
+              <span style={{ color: '#6b7280', fontSize: 14 }}>Energy Charge Quantity:</span>
+              <span style={{ fontWeight: 600, fontSize: 14 }}>{formatNumber(fullData['Energy Charge Quantity in GJ'])} GJ</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: '#6b7280' }}>Invoice Period:</span>
-              <span style={{ fontWeight: 600 }}>{fullData['Invoice Review Number of Days']} days</span>
+              <span style={{ color: '#6b7280', fontSize: 14 }}>Current Gas Rate:</span>
+              <span style={{ fontWeight: 600, fontSize: 14 }}>
+                {currentGasRate > 0 ? `$${currentGasRate.toFixed(2)}/GJ` : 'Not detected'}
+              </span>
             </div>
-            <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 8, marginTop: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: '#6b7280', fontSize: 14 }}>Invoice Period:</span>
+              <span style={{ fontWeight: 600, fontSize: 14 }}>{fullData['Invoice Review Number of Days']} days</span>
+            </div>
+            <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 12, marginTop: 12 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: '#6b7280' }}>Estimated Annual Usage:</span>
-                <span style={{ fontWeight: 600, color: '#059669' }}>{formatNumber(fullData['Estimated Annual Usage:'])} GJ</span>
+                <span style={{ color: '#6b7280', fontSize: 14 }}>Estimated Annual Usage:</span>
+                <span style={{ fontWeight: 600, color: '#059669', fontSize: 14 }}>{formatNumber(fullData['Estimated Annual Usage:'])} GJ</span>
               </div>
             </div>
           </div>
         </div>
 
         {/* Distribution & Network */}
-        <div style={{ background: 'white', padding: 16, borderRadius: 6, border: '1px solid #e5e7eb' }}>
-          <h4 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: '#111827', display: 'flex', alignItems: 'center' }}>
+        <div style={{ background: 'white', padding: 20, borderRadius: 8, border: '1px solid #e5e7eb' }}>
+          <h4 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16, color: '#111827', display: 'flex', alignItems: 'center' }}>
             🏗️ Distribution & Network
           </h4>
-          <div style={{ display: 'grid', gap: 8 }}>
+          <div style={{ display: 'grid', gap: 12 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: '#6b7280' }}>Network Provider:</span>
-              <span style={{ fontWeight: 600 }}>{fullData['Distribution Network Service Provider']}</span>
+              <span style={{ color: '#6b7280', fontSize: 14 }}>Network Provider:</span>
+              <span style={{ fontWeight: 600, fontSize: 14 }}>{fullData['Distribution Network Service Provider']}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: '#6b7280' }}>Distribution Zone:</span>
-              <span style={{ fontWeight: 600 }}>{fullData['Distribution Zone']}</span>
+              <span style={{ color: '#6b7280', fontSize: 14 }}>Distribution Zone:</span>
+              <span style={{ fontWeight: 600, fontSize: 14 }}>{fullData['Distribution Zone']}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: '#6b7280' }}>Tariff:</span>
-              <span style={{ fontWeight: 600 }}>{fullData['Tariff']}</span>
+              <span style={{ color: '#6b7280', fontSize: 14 }}>Tariff:</span>
+              <span style={{ fontWeight: 600, fontSize: 14 }}>{fullData['Tariff']}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: '#6b7280' }}>Fixed Base Charge:</span>
-              <span style={{ fontWeight: 600 }}>{fullData['Distribution - Fixed Base Charge in c/day']}¢/day</span>
+              <span style={{ color: '#6b7280', fontSize: 14 }}>Fixed Base Charge:</span>
+              <span style={{ fontWeight: 600, fontSize: 14 }}>{fullData['Distribution - Fixed Base Charge in c/day']}¢/day</span>
             </div>
           </div>
         </div>
 
-        {/* Volume Rates */}
-        <div style={{ background: 'white', padding: 16, borderRadius: 6, border: '1px solid #e5e7eb' }}>
-          <h4 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: '#111827', display: 'flex', alignItems: 'center' }}>
+        {/* Volume Rate Structure */}
+        <div style={{ background: 'white', padding: 20, borderRadius: 8, border: '1px solid #e5e7eb' }}>
+          <h4 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16, color: '#111827', display: 'flex', alignItems: 'center' }}>
             📏 Volume Rate Structure
           </h4>
-          <div style={{ display: 'grid', gap: 8 }}>
+          <div style={{ display: 'grid', gap: 12 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: '#6b7280' }}>First Rate:</span>
-              <span style={{ fontWeight: 600 }}>{formatCurrency(fullData['Volume - First Rate in $/GJ'])}/GJ</span>
+              <span style={{ color: '#6b7280', fontSize: 14 }}>First Rate:</span>
+              <span style={{ fontWeight: 600, fontSize: 14 }}>{formatCurrency(fullData['Volume - First Rate in $/GJ'])}/GJ</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: '#6b7280' }}>Next Rate:</span>
-              <span style={{ fontWeight: 600 }}>{formatCurrency(fullData['Volume - Next Rate in $/GJ.'])}/GJ</span>
+              <span style={{ color: '#6b7280', fontSize: 14 }}>Next Rate:</span>
+              <span style={{ fontWeight: 600, fontSize: 14 }}>{formatCurrency(fullData['Volume - Next Rate in $/GJ.'])}/GJ</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: '#6b7280' }}>Balance Rate:</span>
-              <span style={{ fontWeight: 600 }}>{formatCurrency(fullData['Volume - Balance Rate in $/GJ'])}/GJ</span>
+              <span style={{ color: '#6b7280', fontSize: 14 }}>Balance Rate:</span>
+              <span style={{ fontWeight: 600, fontSize: 14 }}>{formatCurrency(fullData['Volume - Balance Rate in $/GJ'])}/GJ</span>
             </div>
           </div>
         </div>
 
-        {/* Industry Comparison */}
-        <div style={{ background: 'white', padding: 16, borderRadius: 6, border: '1px solid #e5e7eb' }}>
-          <h4 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: '#111827', display: 'flex', alignItems: 'center' }}>
-            🏢 Industry Comparison
-          </h4>
-          {benchmarkLoading && (
-            <div style={{ textAlign: 'center', padding: 16, color: '#6b7280' }}>
-              Loading benchmark data...
-            </div>
-          )}
-          {benchmarkError && (
-            <div style={{ 
-              background: '#fef2f2', 
-              border: '1px solid #fecaca', 
-              borderRadius: 6, 
-              padding: 12,
-              marginBottom: 12 
-            }}>
-              <div style={{ color: '#991b1b', fontWeight: 600 }}>Error loading benchmark data:</div>
-              <div style={{ color: '#dc2626', fontSize: 14, marginTop: 4 }}>{benchmarkError}</div>
-            </div>
-          )}
-          {!benchmarkLoading && !benchmarkError && (
-            <div>
-              {state ? (
-                <div style={{ marginBottom: 12 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: '#374151', marginBottom: 8 }}>
-                    State: {state} (extracted from site address)
-                  </div>
-                  {stateBenchmark ? (
-                    <div style={{ display: 'grid', gap: 8 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ color: '#6b7280' }}>Industry Rate (Step 1):</span>
-                        <span style={{ fontWeight: 600 }}>${parseFloat(stateBenchmark['Step1 Price'] || 0).toFixed(2)}/GJ</span>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ color: '#6b7280' }}>Your Current Rate:</span>
-                        <span style={{ fontWeight: 600 }}>${currentGasRate.toFixed(2)}/GJ</span>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ color: '#6b7280' }}>Rate Difference:</span>
-                        <span style={{ 
-                          fontWeight: 600,
-                          color: currentGasRate > parseFloat(stateBenchmark['Step1 Price'] || 0) ? '#dc2626' : '#059669'
-                        }}>
-                          ${(currentGasRate - parseFloat(stateBenchmark['Step1 Price'] || 0)).toFixed(2)}/GJ
-                        </span>
-                      </div>
-                      <div style={{ fontSize: 12, color: '#6b7280', marginTop: 8, fontStyle: 'italic' }}>
-                        Last updated: {stateBenchmark['Latest Agreement Date'] || 'N/A'}
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{ color: '#dc2626', fontSize: 14 }}>
-                      No benchmark data available for {state}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div style={{ color: '#dc2626', fontSize: 14 }}>
-                  Could not extract state from site address: {gasData.site_address || 'N/A'}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-        
         {/* Transmission Charges */}
-        <div style={{ background: 'white', padding: 16, borderRadius: 6, border: '1px solid #e5e7eb' }}>
-          <h4 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: '#111827', display: 'flex', alignItems: 'center' }}>
+        <div style={{ background: '#f8fafc', padding: 20, borderRadius: 8, border: '1px solid #e2e8f0' }}>
+          <h4 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16, color: '#111827' }}>
             🔌 Transmission Charges
           </h4>
-          <div style={{ display: 'grid', gap: 8 }}>
+          <div style={{ display: 'grid', gap: 12 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: '#6b7280' }}>Anytime Volume Rate:</span>
-              <span style={{ fontWeight: 600 }}>{fullData['Transmission Charges - Anytime Volume Charge in c/GJ']}¢/GJ</span>
+              <span style={{ color: '#6b7280', fontSize: 14 }}>Anytime Volume Rate:</span>
+              <span style={{ fontWeight: 600, fontSize: 14 }}>{fullData['Transmission Charges - Anytime Volume Charge in c/GJ']}¢/GJ</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: '#6b7280' }}>Peak Injection Rate:</span>
-              <span style={{ fontWeight: 600 }}>{fullData['Transmission Charges - Peak Injection Charge in c/GJ']}¢/GJ</span>
+              <span style={{ color: '#6b7280', fontSize: 14 }}>Peak Injection Rate:</span>
+              <span style={{ fontWeight: 600, fontSize: 14 }}>{fullData['Transmission Charges - Peak Injection Charge in c/GJ']}¢/GJ</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: '#6b7280' }}>Peak Injection Quantity:</span>
-              <span style={{ fontWeight: 600 }}>{formatNumber(fullData['Transmission Charges - Peak Injection Charge in GJ/Year'])} GJ/Year</span>
+              <span style={{ color: '#6b7280', fontSize: 14 }}>Peak Injection Quantity:</span>
+              <span style={{ fontWeight: 600, fontSize: 14 }}>{formatNumber(fullData['Transmission Charges - Peak Injection Charge in GJ/Year'])} GJ/Year</span>
             </div>
           </div>
         </div>
 
         {/* Charges Breakdown */}
-        <div style={{ background: 'white', padding: 16, borderRadius: 6, border: '1px solid #e5e7eb' }}>
-          <h4 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: '#111827', display: 'flex', alignItems: 'center' }}>
+        <div style={{ background: 'white', padding: 20, borderRadius: 8, border: '1px solid #e5e7eb' }}>
+          <h4 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16, color: '#111827', display: 'flex', alignItems: 'center' }}>
             📊 Charges Breakdown
           </h4>
-          <div style={{ display: 'grid', gap: 8 }}>
+          <div style={{ display: 'grid', gap: 12 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: '#6b7280' }}>Energy Charges:</span>
-              <span style={{ fontWeight: 600 }}>{formatCurrency(fullData['Energy Charges in $'])}</span>
+              <span style={{ color: '#6b7280', fontSize: 14 }}>Energy Charges:</span>
+              <span style={{ fontWeight: 600, fontSize: 14 }}>{formatCurrency(fullData['Energy Charges in $'])}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: '#6b7280' }}>Transmission:</span>
-              <span style={{ fontWeight: 600 }}>{formatCurrency(fullData['Transmission Charges in $'])}</span>
+              <span style={{ color: '#6b7280', fontSize: 14 }}>Transmission:</span>
+              <span style={{ fontWeight: 600, fontSize: 14 }}>{formatCurrency(fullData['Transmission Charges in $'])}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: '#6b7280' }}>Distribution:</span>
-              <span style={{ fontWeight: 600 }}>{formatCurrency(fullData['Distribution Charges in $'])}</span>
+              <span style={{ color: '#6b7280', fontSize: 14 }}>Distribution:</span>
+              <span style={{ fontWeight: 600, fontSize: 14 }}>{formatCurrency(fullData['Distribution Charges in $'])}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: '#6b7280' }}>Environmental:</span>
-              <span style={{ fontWeight: 600 }}>{formatCurrency(fullData['Environmental Charges in $'])}</span>
+              <span style={{ color: '#6b7280', fontSize: 14 }}>Environmental:</span>
+              <span style={{ fontWeight: 600, fontSize: 14 }}>{formatCurrency(fullData['Environmental Charges in $'])}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: '#6b7280' }}>Regulated:</span>
-              <span style={{ fontWeight: 600 }}>{formatCurrency(fullData['Regulated Charges in $'])}</span>
+              <span style={{ color: '#6b7280', fontSize: 14 }}>Regulated:</span>
+              <span style={{ fontWeight: 600, fontSize: 14 }}>{formatCurrency(fullData['Regulated Charges in $'])}</span>
             </div>
             {fullData['Additional Charges, Credits & Adjustments in $'] && (
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: '#6b7280' }}>Additional Charges:</span>
-                <span style={{ fontWeight: 600 }}>{formatCurrency(fullData['Additional Charges, Credits & Adjustments in $'])}</span>
+                <span style={{ color: '#6b7280', fontSize: 14 }}>Additional Charges:</span>
+                <span style={{ fontWeight: 600, fontSize: 14 }}>{formatCurrency(fullData['Additional Charges, Credits & Adjustments in $'])}</span>
               </div>
             )}
-            <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 8, marginTop: 8 }}>
+            <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 12, marginTop: 12 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: '#6b7280' }}>Total Cost:</span>
-                <span style={{ fontWeight: 600, color: '#059669' }}>{formatCurrency(fullData['Total Invoice Cost:'])}</span>
+                <span style={{ color: '#6b7280', fontSize: 14 }}>Total Cost:</span>
+                <span style={{ fontWeight: 600, color: '#059669', fontSize: 14 }}>{formatCurrency(fullData['Total Invoice Cost:'])}</span>
               </div>
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Industry Comparison Section - Moved to bottom with proper styling */}
+      <div style={{ borderTop: '2px solid #e5e7eb', paddingTop: 24 }}>
+        <h4 style={{ fontSize: 18, fontWeight: 600, color: '#111827', marginBottom: 20, display: 'flex', alignItems: 'center' }}>
+          <span style={{ marginRight: 8 }}>📊</span>
+          Industry Comparison
+        </h4>
+        
+        {benchmarkLoading && (
+          <div style={{ textAlign: 'center', padding: 16, color: '#6b7280' }}>
+            Loading benchmark data...
+          </div>
+        )}
+        
+        {benchmarkError && (
+          <div style={{ 
+            background: '#fef2f2', 
+            border: '1px solid #fecaca', 
+            borderRadius: 6, 
+            padding: 12,
+            marginBottom: 12 
+          }}>
+            <div style={{ color: '#991b1b', fontWeight: 600 }}>Error loading benchmark data:</div>
+            <div style={{ color: '#dc2626', fontSize: 14, marginTop: 4 }}>{benchmarkError}</div>
+          </div>
+        )}
+        
+        {!benchmarkLoading && !benchmarkError && (
+          <div style={{ background: '#f8fafc', padding: 20, borderRadius: 8, border: '1px solid #e2e8f0' }}>
+            {state ? (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: '#374151', marginBottom: 12 }}>
+                  State: {state} (extracted from site address)
+                </div>
+                {stateBenchmark ? (
+                  <div style={{ display: 'grid', gap: 16 }}>
+                    {/* Gas Rate Comparison */}
+                    <div style={{ background: 'white', padding: 16, borderRadius: 6, border: '1px solid #e5e7eb' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, alignItems: 'center' }}>
+                      <div>
+                        <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Invoice Gas Rate</div>
+                        {detectGasRate > 0 ? (
+                          <div style={{ fontSize: 16, fontWeight: 600 }}>
+                            ${detectGasRate.toFixed(2)}/GJ
+                          </div>
+                        ) : (
+                          <div>
+                            <input
+                              type="number"
+                              step="0.01"
+                              placeholder="Enter rate ($/GJ)"
+                              value={manualGasRate > 0 ? manualGasRate : ''}
+                              onChange={(e) => setManualGasRate(parseFloat(e.target.value) || 0)}
+                              style={{
+                                width: '140px',
+                                padding: '6px 8px',
+                                fontSize: '14px',
+                                border: '1px solid #d1d5db',
+                                borderRadius: '4px',
+                                textAlign: 'center',
+                                fontWeight: 600
+                              }}
+                            />
+                            <div style={{ fontSize: 11, color: '#dc2626', marginTop: 2 }}>
+                              Rate not detected - enter manually
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                        <div>
+                          <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Industry Rate (Step 1)</div>
+                          <div style={{ fontSize: 16, fontWeight: 600 }}>
+                            ${parseFloat(stateBenchmark['Step1 Price'] || 0).toFixed(2)}/GJ
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Rate Difference</div>
+                          {currentGasRate > 0 ? (
+                            <div style={{ 
+                              fontSize: 16, 
+                              fontWeight: 600,
+                              color: currentGasRate > parseFloat(stateBenchmark['Step1 Price'] || 0) ? '#dc2626' : '#059669'
+                            }}>
+                              ${(currentGasRate - parseFloat(stateBenchmark['Step1 Price'] || 0)).toFixed(2)}/GJ
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: 14, color: '#6b7280', fontStyle: 'italic' }}>
+                              Enter rate above to calculate
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Cost Comparison - only if we have a valid rate */}
+                    {currentGasRate > 0 && (
+                      <div style={{ background: 'white', padding: 16, borderRadius: 6, border: '1px solid #e5e7eb' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, alignItems: 'center' }}>
+                          <div>
+                            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Invoice Gas Cost</div>
+                            <div style={{ fontSize: 16, fontWeight: 600 }}>
+                              {formatCurrency(currentGasRate * (parseFloat(fullData['Energy Charge Quantity in GJ']) || 0))}
+                            </div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Industry Cost (at benchmark rate)</div>
+                            <div style={{ fontSize: 16, fontWeight: 600 }}>
+                              {formatCurrency((parseFloat(stateBenchmark['Step1 Price']) || 0) * (parseFloat(fullData['Energy Charge Quantity in GJ']) || 0))}
+                            </div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Cost Difference</div>
+                            <div style={{ 
+                              fontSize: 16, 
+                              fontWeight: 600,
+                              color: (currentGasRate * (parseFloat(fullData['Energy Charge Quantity in GJ']) || 0)) > 
+                                    ((parseFloat(stateBenchmark['Step1 Price']) || 0) * (parseFloat(fullData['Energy Charge Quantity in GJ']) || 0)) ? '#dc2626' : '#059669'
+                            }}>
+                              {formatCurrency((currentGasRate * (parseFloat(fullData['Energy Charge Quantity in GJ']) || 0)) - 
+                                              ((parseFloat(stateBenchmark['Step1 Price']) || 0) * (parseFloat(fullData['Energy Charge Quantity in GJ']) || 0)))}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {/* Performance Summary Message */}
+                    {currentGasRate > 0 && (
+                      <div style={{ 
+                        background: currentGasRate > parseFloat(stateBenchmark['Step1 Price'] || 0) ? '#fef2f2' : '#f0fdf4',
+                        border: `1px solid ${currentGasRate > parseFloat(stateBenchmark['Step1 Price'] || 0) ? '#fecaca' : '#bbf7d0'}`,
+                        borderRadius: 6, 
+                        padding: 16,
+                        textAlign: 'center'
+                      }}>
+                        <div style={{ 
+                          fontSize: 16, 
+                          fontWeight: 600,
+                          color: currentGasRate > parseFloat(stateBenchmark['Step1 Price'] || 0) ? '#dc2626' : '#059669',
+                          marginBottom: 4
+                        }}>
+                          {currentGasRate > parseFloat(stateBenchmark['Step1 Price'] || 0) ? 
+                            'Above Industry Benchmark' : 
+                            'Below Industry Benchmark'
+                          }
+                        </div>
+                        <div style={{ 
+                          fontSize: 14, 
+                          color: currentGasRate > parseFloat(stateBenchmark['Step1 Price'] || 0) ? '#991b1b' : '#166534'
+                        }}>
+                          {currentGasRate > parseFloat(stateBenchmark['Step1 Price'] || 0) ? 
+                            'Your gas rate is higher than the industry benchmark - there may be opportunities for savings.' :
+                            'Your gas rate is competitive compared to the industry benchmark.'
+                          }
+                        </div>
+                      </div>
+                    )}
+                    <div style={{ fontSize: 12, color: '#6b7280', marginTop: 16, fontStyle: 'italic' }}>
+                      Benchmark data last updated: {stateBenchmark['Latest Agreement Date'] || 'N/A'}
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ color: '#dc2626', fontSize: 14 }}>
+                    No benchmark data available for {state}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div style={{ color: '#dc2626', fontSize: 14 }}>
+                Could not extract state from site address: {gasData.site_address || 'N/A'}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
