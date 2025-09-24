@@ -2989,6 +2989,18 @@ function ResultMessage({ message }: { message: string }) {
   );
 }
 
+const formatBenchmarkDate = (dateString: string) => {
+  if (!dateString) return '';
+  
+  try {
+    // Handle format "15/05/2024 15:00:00" - extract just the date part
+    const datePart = dateString.split(' ')[0];
+    return datePart; // Already in dd/mm/yyyy format
+  } catch (error) {
+    return '';
+  }
+};
+
 const EnhancedInvoiceDetails = ({ electricityData }: { electricityData: ElectricityInvoiceData }) => {
   const [benchmarkData, setBenchmarkData] = useState<any>(null);
   const [benchmarkLoading, setBenchmarkLoading] = useState(false);
@@ -3710,9 +3722,28 @@ const EnhancedInvoiceDetails = ({ electricityData }: { electricityData: Electric
                     </div>
                   );
                 })()}
+                </div>
+                
+                {/* Benchmark Date */}
+                {stateBenchmark?.['Latest Agreement Date'] && (
+                  <div style={{ 
+                    textAlign: 'center', 
+                    marginTop: 12,
+                    padding: 8,
+                    background: '#f8fafc',
+                    borderRadius: 4,
+                    border: '1px solid #e2e8f0'
+                  }}>
+                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 2 }}>
+                      Industry benchmark data from:
+                    </div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
+                      {formatBenchmarkDate(stateBenchmark['Latest Agreement Date'])}
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
-          ) : (
+            ) : (
             <div style={{ color: '#dc2626', fontSize: 14 }}>
               Could not extract state from site address ({electricityData.site_address || 'N/A'})
             </div>
@@ -4189,6 +4220,24 @@ const EnhancedGasInvoiceDetails = ({ gasData }: { gasData: any }) => {
                 'Your gas rate is higher than the industry benchmark - there may be opportunities for savings.' :
                 'Your gas rate is competitive compared to the industry benchmark.'
               }
+            </div>
+          </div>
+        )}
+        {/* Benchmark Date */}
+        {stateBenchmark?.['Latest Agreement Date'] && (
+          <div style={{ 
+            textAlign: 'center', 
+            marginTop: 12,
+            padding: 8,
+            background: '#f8fafc',
+            borderRadius: 4,
+            border: '1px solid #e2e8f0'
+          }}>
+            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 2 }}>
+              Industry benchmark data from:
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
+              {formatBenchmarkDate(stateBenchmark?.['Latest Agreement Date'])}
             </div>
           </div>
         )}
