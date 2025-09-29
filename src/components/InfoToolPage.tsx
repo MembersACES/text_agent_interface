@@ -3013,6 +3013,7 @@ const EnhancedInvoiceDetails = ({ electricityData }: { electricityData: Electric
   const [manualBenchmarkOffPeak, setManualBenchmarkOffPeak] = useState<number>(0);
   const [manualShoulderRate, setManualShoulderRate] = useState<number>(0);
   const [manualBenchmarkShoulder, setManualBenchmarkShoulder] = useState<number>(0);
+  const [isAnnualView, setIsAnnualView] = useState<boolean>(false);
 
   if (!electricityData || !electricityData.full_invoice_data) return null;
 
@@ -3058,6 +3059,46 @@ const EnhancedInvoiceDetails = ({ electricityData }: { electricityData: Electric
     if (!address) return null;
     const stateMatch = address.match(/\b(NSW|VIC|QLD|SA|WA|TAS|NT|ACT)\b/i);
     return stateMatch ? stateMatch[0].toUpperCase() : null;
+  };
+
+  const getMeteringBenchmark = (dmaValue: number) => {
+    if (dmaValue < 1600) {
+      return {
+        setupCost: 700,
+        meterCost: 600,
+        vasCost: 100,
+        total: 1400,
+        dailyRate: 1400 / 365 // Convert annual to daily
+      };
+    } else {
+      return {
+        setupCost: 900,
+        meterCost: 600,
+        vasCost: 300,
+        total: 1800,
+        dailyRate: 1800 / 365 // Convert annual to daily
+      };
+    }
+  };
+  
+  const formatBenchmarkDate = (dateString: string) => {
+    if (!dateString) return 'N/A';
+    
+    // Handle the format "26/09/2025 15:00:00"
+    const parts = dateString.split(' ')[0]; // Get just the date part
+    const [day, month, year] = parts.split('/');
+    
+    if (!day || !month || !year) return 'Invalid Date';
+    
+    const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+    
+    if (isNaN(date.getTime())) return 'Invalid Date';
+    
+    return date.toLocaleDateString('en-AU', { 
+      day: '2-digit', 
+      month: '2-digit', 
+      year: 'numeric' 
+    });
   };
 
   // Fetch benchmark data
@@ -3659,70 +3700,250 @@ const EnhancedInvoiceDetails = ({ electricityData }: { electricityData: Electric
                       </div>
                     </div>
                   </div>
+                   {/* METERING RATE COMPARISON - FIXED */}
+                   <div style={{ background: 'white', padding: 20, borderRadius: 8, border: '1px solid #e5e7eb', width: '500px', margin: '0 20px' }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: '#111827', marginBottom: 16, textAlign: 'center', borderBottom: '2px solid #8b5cf6', paddingBottom: 8 }}>
+                        Metering Rate Analysis
+                      </div>
+                      
+                      {(() => {
+                        const currentMeterRate = fullData['Meter Rate'] || 0;
+                        const currentAnnualMeterCost = currentMeterRate * 365;
+                        const dmaValue = fullData['DUOS - Network Demand Charge Quantity (KVA)'] || 0;
+                        const benchmark = getMeteringBenchmark(dmaValue);
+                        const annualDifference = currentAnnualMeterCost - benchmark.total;
+                        
+                        return (
+                          <>
+                            {/* Current Invoice Metering */}
+                            <div style={{ background: 'white', padding: 16, borderRadius: 6, border: '1px solid #e5e7eb', marginBottom: 12 }}>
+                              <div style={{ fontSize: 14, fontWeight: 600, color: '#374151', marginBottom: 12, textAlign: 'center' }}>
+                                Current Invoice Metering
+                              </div>
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, justifyItems: 'center' }}>
+                                <div>
+                                  <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, textAlign: 'center' }}>Daily Rate</div>
+                                  <div style={{ padding: '6px 8px', fontSize: '14px', fontWeight: 600, textAlign: 'center', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '4px' }}>
+                                    {formatCurrency(currentMeterRate)}
+                                  </div>
+                                </div>
+                                <div>
+                                  <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, textAlign: 'center' }}>Annual Cost</div>
+                                  <div style={{ padding: '6px 8px', fontSize: '14px', fontWeight: 600, textAlign: 'center', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '4px' }}>
+                                    {formatCurrency(currentAnnualMeterCost)}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Industry Benchmark Metering */}
+                            <div style={{ background: 'white', padding: 16, borderRadius: 6, border: '1px solid #e5e7eb', marginBottom: 12 }}>
+                              <div style={{ fontSize: 14, fontWeight: 600, color: '#374151', marginBottom: 12, textAlign: 'center' }}>
+                                Industry Benchmark Metering
+                              </div>
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, justifyItems: 'center' }}>
+                                <div>
+                                  <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, textAlign: 'center' }}>Daily Rate</div>
+                                  <div style={{ padding: '6px 8px', fontSize: '14px', fontWeight: 600, textAlign: 'center', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '4px' }}>
+                                    {formatCurrency(benchmark.dailyRate)}
+                                  </div>
+                                </div>
+                                <div>
+                                  <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, textAlign: 'center' }}>Annual Cost</div>
+                                  <div style={{ padding: '6px 8px', fontSize: '14px', fontWeight: 600, textAlign: 'center', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '4px' }}>
+                                    {formatCurrency(benchmark.total)}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Metering Difference */}
+                            <div style={{ background: 'white', padding: 16, borderRadius: 6, border: '1px solid #e5e7eb' }}>
+                              <div style={{ fontSize: 14, fontWeight: 600, color: '#374151', marginBottom: 12, textAlign: 'center' }}>
+                                Metering Difference
+                              </div>
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, justifyItems: 'center' }}>
+                                <div>
+                                  <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, textAlign: 'center' }}>Daily Difference</div>
+                                  <div style={{ padding: '6px 8px', fontSize: '14px', fontWeight: 600, textAlign: 'center', borderRadius: '4px',
+                                    background: (currentMeterRate - benchmark.dailyRate) > 0 ? '#fef2f2' : '#f0fdf4',
+                                    border: `1px solid ${(currentMeterRate - benchmark.dailyRate) > 0 ? '#fecaca' : '#bbf7d0'}`,
+                                    color: (currentMeterRate - benchmark.dailyRate) > 0 ? '#dc2626' : '#059669'
+                                  }}>
+                                    {formatCurrency(currentMeterRate - benchmark.dailyRate)}
+                                  </div>
+                                </div>
+                                <div>
+                                  <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, textAlign: 'center' }}>Annual Savings</div>
+                                  <div style={{ padding: '6px 8px', fontSize: '14px', fontWeight: 600, textAlign: 'center', borderRadius: '4px',
+                                    background: annualDifference > 0 ? '#fef2f2' : '#f0fdf4',
+                                    border: `1px solid ${annualDifference > 0 ? '#fecaca' : '#bbf7d0'}`,
+                                    color: annualDifference > 0 ? '#dc2626' : '#059669'
+                                  }}>
+                                    {formatCurrency(Math.abs(annualDifference))}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </>
+                        );
+                      })()}
+                    </div>
                 </div>
               ) : (
                 <div style={{ color: '#dc2626', fontSize: 14 }}>
                   No benchmark data available for state
                 </div>
               )}
-              {/* Overall Performance Summary */}
-              <div style={{ background: 'white', padding: 20, borderRadius: 8, border: '2px solid #e5e7eb', marginTop: 20, maxWidth: '800px', margin: '20px auto 0 auto' }}>
-                <div style={{ fontSize: 16, fontWeight: 600, color: '#111827', marginBottom: 16, textAlign: 'center' }}>
-                  Overall Rate Performance Summary
+              {/* Overall Performance Summary - FIXED COLORS AND TOGGLE */}
+              <div style={{
+                background: 'white',
+                padding: 20,
+                borderRadius: 8,
+                border: '2px solid #e5e7eb',
+                marginTop: 20,
+                maxWidth: '800px',
+                margin: '20px auto 0 auto',
+              }}>
+                <div style={{
+                  fontSize: 16,
+                  fontWeight: 600,
+                  color: '#111827',
+                  marginBottom: 16,
+                  textAlign: 'center',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center'
+                }}>
+                  <span>Overall Rate Performance Summary</span>
+                  
+                  {/* Monthly/Annual Toggle */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 14, color: '#6b7280' }}>Monthly</span>
+                    <button
+                      onClick={() => setIsAnnualView(!isAnnualView)}
+                      style={{
+                        width: 44,
+                        height: 24,
+                        borderRadius: 12,
+                        border: 'none',
+                        background: isAnnualView ? '#059669' : '#d1d5db',
+                        position: 'relative',
+                        cursor: 'pointer',
+                        transition: 'background 0.2s'
+                      }}
+                    >
+                      <div style={{
+                        width: 20,
+                        height: 20,
+                        borderRadius: '50%',
+                        background: 'white',
+                        position: 'absolute',
+                        top: 2,
+                        left: isAnnualView ? 22 : 2,
+                        transition: 'left 0.2s'
+                      }} />
+                    </button>
+                    <span style={{ fontSize: 14, color: '#6b7280' }}>Annual</span>
+                  </div>
                 </div>
-                
+
                 {(() => {
-                  const peakDiff = ((manualPeakRate > 0 ? manualPeakRate : (fullData['Retail Rate Peak (c/kWh)'] || 0)) * (manualPeakQuantity > 0 ? manualPeakQuantity : (fullData['Retail Quantity Peak (kWh)'] || 0))) / 100 - 
-                    (((manualBenchmarkPeak > 0 ? manualBenchmarkPeak : ((parseFloat(stateBenchmark?.['Peak $'] || 0) * 100))) * (manualPeakQuantity > 0 ? manualPeakQuantity : (fullData['Retail Quantity Peak (kWh)'] || 0))) / 100);
+                  const peakDiff = ((manualPeakRate > 0 ? manualPeakRate : (fullData['Retail Rate Peak (c/kWh)'] || 0)) * (manualPeakQuantity > 0 ? manualPeakQuantity : (fullData['Retail Quantity Peak (kWh)'] || 0))) / 100 - (((manualBenchmarkPeak > 0 ? manualBenchmarkPeak : (parseFloat(stateBenchmark?.['Peak $'] || 0) * 100)) * (manualPeakQuantity > 0 ? manualPeakQuantity : (fullData['Retail Quantity Peak (kWh)'] || 0))) / 100);
+
+                  const offPeakDiff = (((manualOffPeakRate > 0 ? manualOffPeakRate : (fullData['Retail Rate Off-Peak (c/kWh)'] || 0)) * (manualOffPeakQuantity > 0 ? manualOffPeakQuantity : (fullData['Retail Quantity Off-Peak (kWh)'] || 0))) / 100) - (((manualBenchmarkOffPeak > 0 ? manualBenchmarkOffPeak : (parseFloat(stateBenchmark?.['Off Peak $'] || 0) * 100)) * (manualOffPeakQuantity > 0 ? manualOffPeakQuantity : (fullData['Retail Quantity Off-Peak (kWh)'] || 0))) / 100);
+
+                  const shoulderDiff = (fullData['Retail Quantity Shoulder (kWh)'] ?? 0) > 0 ? (((manualShoulderRate > 0 ? manualShoulderRate : (fullData['Retail Rate Shoulder (c/kWh)'] || 0)) * (fullData['Retail Quantity Shoulder (kWh)'] || 0)) / 100) - (((manualBenchmarkShoulder > 0 ? manualBenchmarkShoulder : (parseFloat(stateBenchmark?.['Shoulder $'] || 0) * 100)) * (fullData['Retail Quantity Shoulder (kWh)'] || 0)) / 100) : 0;
+
+                  const meteringDiff = (() => {
+                    const currentMeterRate = fullData['Meter Rate'] || 0;
+                    const currentAnnualMeterCost = currentMeterRate * 365;
+                    const dmaValue = fullData['DUOS - Network Demand Charge Quantity (KVA)'] || 0;
+                    const benchmark = getMeteringBenchmark(dmaValue);
+                    return (currentAnnualMeterCost - benchmark.total) / 12;
+                  })();
                   
-                  const offPeakDiff = (((manualOffPeakRate > 0 ? manualOffPeakRate : (fullData['Retail Rate Off-Peak (c/kWh)'] || 0)) * (manualOffPeakQuantity > 0 ? manualOffPeakQuantity : (fullData['Retail Quantity Off-Peak (kWh)'] || 0))) / 100) - 
-                    (((manualBenchmarkOffPeak > 0 ? manualBenchmarkOffPeak : ((parseFloat(stateBenchmark?.['Off Peak $'] || 0) * 100))) * (manualOffPeakQuantity > 0 ? manualOffPeakQuantity : (fullData['Retail Quantity Off-Peak (kWh)'] || 0))) / 100);
+                  const totalDiff = peakDiff + offPeakDiff + shoulderDiff + meteringDiff;
+                  const displayAmount = isAnnualView ? totalDiff * 12 : totalDiff;
+                  const timeLabel = isAnnualView ? 'per year' : 'per billing period';
                   
-                  const shoulderDiff = (fullData['Retail Quantity Shoulder (kWh)'] ?? 0) > 0 ? 
-                    (((manualShoulderRate > 0 ? manualShoulderRate : (fullData['Retail Rate Shoulder (c/kWh)'] || 0)) * (fullData['Retail Quantity Shoulder (kWh)'] || 0)) / 100) - 
-                    (((manualBenchmarkShoulder > 0 ? manualBenchmarkShoulder : ((parseFloat(stateBenchmark?.['Shoulder $'] || 0) * 100))) * (fullData['Retail Quantity Shoulder (kWh)'] || 0)) / 100) : 0;
-                  
-                  const totalDiff = peakDiff + offPeakDiff + shoulderDiff;
+                  // FIXED LOGIC: Above benchmark = paying more = RED (bad), Below benchmark = competitive rates = GREEN (good)
                   const isOverBenchmark = totalDiff > 0;
-                  
+                  const invoiceTotal = fullData['Total Invoice Cost:'] || 0;
+                  const percentDiff = invoiceTotal > 0 ? (totalDiff / invoiceTotal) * 100 : 0;
+
                   return (
-                    <div style={{ 
-                      padding: 16, 
-                      borderRadius: 8, 
-                      background: isOverBenchmark ? '#fef2f2' : '#f0fdf4',
-                      border: `2px solid ${isOverBenchmark ? '#fecaca' : '#bbf7d0'}`,
-                      textAlign: 'center'
+                    <div style={{
+                      padding: 16,
+                      borderRadius: 8,
+                      // CORRECTED: Above benchmark (overpaying) = GREEN for savings available
+                      background: isOverBenchmark ? '#f0fdf4' : '#fef2f2',
+                      border: `2px solid ${isOverBenchmark ? '#bbf7d0' : '#fecaca'}`,
+                      textAlign: 'center',
                     }}>
-                      <div style={{ 
-                        fontSize: 20, 
-                        fontWeight: 700, 
-                        color: isOverBenchmark ? '#dc2626' : '#059669',
-                        marginBottom: 8
-                      }}>
-                        {isOverBenchmark ? 'Above Industry Benchmark' : 'Below Industry Benchmark'}
+                      {/* Breakdown */}
+                      <div style={{ fontSize: 14, marginBottom: 12, textAlign: 'left' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span>Peak:</span>
+                          <span style={{ color: peakDiff > 0 ? '#dc2626' : '#059669' }}>
+                            {formatCurrency(isAnnualView ? peakDiff * 12 : peakDiff)}
+                          </span>
+                        </div>
+                        {shoulderDiff !== 0 && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span>Shoulder:</span>
+                            <span style={{ color: shoulderDiff > 0 ? '#dc2626' : '#059669' }}>
+                              {formatCurrency(isAnnualView ? shoulderDiff * 12 : shoulderDiff)}
+                            </span>
+                          </div>
+                        )}
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span>Off-Peak:</span>
+                          <span style={{ color: offPeakDiff > 0 ? '#dc2626' : '#059669' }}>
+                            {formatCurrency(isAnnualView ? offPeakDiff * 12 : offPeakDiff)}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span>Metering:</span>
+                          <span style={{ color: meteringDiff > 0 ? '#dc2626' : '#059669' }}>
+                            {formatCurrency(isAnnualView ? meteringDiff * 12 : meteringDiff)}
+                          </span>
+                        </div>
                       </div>
-                      <div style={{ 
-                        fontSize: 24, 
-                        fontWeight: 700, 
-                        color: isOverBenchmark ? '#991b1b' : '#166534',
-                        marginBottom: 8
+
+                      {/* Net Result */}
+                      <div style={{
+                        fontSize: 20,
+                        fontWeight: 700,
+                        color: isOverBenchmark ? '#059669' : '#dc2626',
+                        marginBottom: 4,
                       }}>
-                        {formatCurrency(totalDiff)} per billing period
+                        {isOverBenchmark
+                          ? 'Savings Available - Above Industry Benchmark'
+                          : 'Competitive Rates - Below Industry Benchmark'}
                       </div>
-                      <div style={{ 
-                        fontSize: 14, 
-                        color: isOverBenchmark ? '#991b1b' : '#166534',
-                        fontWeight: 500
+                      <div style={{
+                        fontSize: 24,
+                        fontWeight: 700,
+                        color: isOverBenchmark ? '#166534' : '#991b1b',
+                        marginBottom: 8,
                       }}>
-                        {isOverBenchmark ? 
-                          'Your electricity rates are higher than industry benchmarks. There may be opportunities for cost savings.' :
-                          'Your electricity rates are competitive compared to industry benchmarks.'
-                        }
+                        {formatCurrency(Math.abs(displayAmount))} {timeLabel}
+                      </div>
+
+                      <div style={{
+                        fontSize: 13,
+                        color: isOverBenchmark ? '#166534' : '#991b1b',
+                        fontWeight: 500,
+                      }}>
+                        {isOverBenchmark
+                          ? `${formatCurrency(Math.abs(displayAmount))} ${isAnnualView ? 'annual' : 'monthly'} savings opportunity (${Math.abs(percentDiff).toFixed(1)}% above benchmark)`
+                          : `${formatCurrency(Math.abs(displayAmount))} ${isAnnualView ? 'annual' : 'monthly'} competitive advantage (${Math.abs(percentDiff).toFixed(1)}% below benchmark)`}
                       </div>
                     </div>
                   );
                 })()}
-                </div>
+              </div>
                 
                 {/* Benchmark Date */}
                 {stateBenchmark?.['Latest Agreement Date'] && (
