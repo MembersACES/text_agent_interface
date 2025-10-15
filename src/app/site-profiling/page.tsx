@@ -137,6 +137,11 @@ const SiteProfilingForm = ({
         staff_members: responses.staff_members,
         surface_area: responses.surface_area,
         activity_start: responses.activity_start,
+        years_in_industry: responses.years_in_industry,
+        age_range: responses.age_range,
+        kitchen_location: responses.kitchen_location,
+        kitchen_operation: responses.kitchen_operation,
+        cooking_oil_applicable: responses.cooking_oil_applicable,
         operatingHours: responses.operatingHours,
         offer_provided: responses.offer_provided || {},
         communication: responses.communication || {},
@@ -469,7 +474,24 @@ const SiteProfilingForm = ({
             )}
           </div>
         )}
-        
+        {/* Cooking Oil Applicability */}
+        <div className="mt-6 pt-6 border-t border-gray-200">
+          <h4 className="font-semibold text-gray-800 mb-3">Additional Information</h4>
+          <label className="flex items-center space-x-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={responses.cooking_oil_applicable === "Yes"}
+              onChange={(e) => setResponses(prev => ({
+                ...prev,
+                cooking_oil_applicable: e.target.checked ? "Yes" : "No"
+              }))}
+              className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+            />
+            <span className="text-gray-700">
+              This site uses cooking oil (applicable for used cooking oil collection services)
+            </span>
+          </label>
+        </div>
         <button
           className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700"
           onClick={() => setStep("offer_provided")}
@@ -645,7 +667,7 @@ const SiteProfilingForm = ({
                 <button
                   key={option}
                   className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700"
-                  onClick={() => handleSelect("activity_start", option, "operating_hours")}
+                  onClick={() => handleSelect("activity_start", option, "experience_age")}
                 >
                   {option.replace('_', ' ').replace('-', '–')}
                 </button>
@@ -664,7 +686,131 @@ const SiteProfilingForm = ({
             </div>
           </div>
         )}
+        {/* Years in Industry and Age Range */}
+        {step === "experience_age" && (
+          <div className="space-y-6">
+            <h3 className="text-lg font-semibold">Decision Maker Information</h3>
+            
+            {/* Years in Industry */}
+            <div className="space-y-3">
+              <p className="text-gray-700 font-medium">How many years has the decision-maker been in this industry? *</p>
+              <div className="flex gap-3 flex-wrap">
+                {["Less than 5 years", "5-10 years", "10-20 years", "20+ years"].map(option => (
+                  <button
+                    key={option}
+                    className={`px-6 py-2 rounded border-2 transition-colors ${
+                      responses.years_in_industry === option
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
+                    }`}
+                    onClick={() => setResponses(prev => ({ ...prev, years_in_industry: option }))}
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+            </div>
 
+            {/* Age Range - Optional */}
+            <div className="space-y-3 pt-4 border-t border-gray-200">
+              <p className="text-gray-700 font-medium">
+                Age range of primary decision-maker? <span className="text-sm text-gray-500">(Optional - helps us tailor recommendations)</span>
+              </p>
+              <div className="flex gap-3 flex-wrap">
+                {["Under 35", "35-45", "45-55", "55-65", "65+", "Prefer not to say"].map(option => (
+                  <button
+                    key={option}
+                    className={`px-6 py-2 rounded border-2 transition-colors ${
+                      responses.age_range === option
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
+                    }`}
+                    onClick={() => setResponses(prev => ({ ...prev, age_range: option }))}
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-gray-500">
+                You can skip this field if the decision-maker prefers not to share.
+              </p>
+            </div>
+            
+            {/* Continue Button - only enabled if years_in_industry is selected */}
+            <button
+              className={`px-6 py-2 rounded font-medium ${
+                responses.years_in_industry
+                  ? 'bg-blue-600 text-white hover:bg-blue-700'
+                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              }`}
+              onClick={() => setStep("kitchen_info")}
+              disabled={!responses.years_in_industry}
+            >
+              ➡️ Continue to Kitchen Information
+            </button>
+          </div>
+        )}
+        {/* Kitchen Information */}
+        {step === "kitchen_info" && (
+          <div className="space-y-6">
+            <h3 className="text-lg font-semibold">Kitchen Information</h3>
+            
+            {/* Kitchen Location */}
+            <div className="space-y-3">
+              <p className="text-gray-700 font-medium">Is the kitchen internal or external?</p>
+              <div className="flex gap-3 flex-wrap">
+                {["Internal", "External", "Both", "No Kitchen"].map(option => (
+                  <button
+                    key={option}
+                    className={`px-6 py-2 rounded border-2 transition-colors ${
+                      responses.kitchen_location === option
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
+                    }`}
+                    onClick={() => setResponses(prev => ({ ...prev, kitchen_location: option }))}
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Kitchen Operation - Only show if they have a kitchen */}
+            {responses.kitchen_location && responses.kitchen_location !== "No Kitchen" && (
+              <div className="space-y-3 pt-4 border-t border-gray-200">
+                <p className="text-gray-700 font-medium">Is the kitchen operated in-house or leased?</p>
+                <div className="flex gap-3 flex-wrap">
+                  {["In-house", "Leased", "Mixed"].map(option => (
+                    <button
+                      key={option}
+                      className={`px-6 py-2 rounded border-2 transition-colors ${
+                        responses.kitchen_operation === option
+                          ? 'bg-blue-600 text-white border-blue-600'
+                          : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
+                      }`}
+                      onClick={() => setResponses(prev => ({ ...prev, kitchen_operation: option }))}
+                    >
+                      {option}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Continue Button */}
+            <button
+              className={`px-6 py-2 rounded font-medium ${
+                responses.kitchen_location
+                  ? 'bg-blue-600 text-white hover:bg-blue-700'
+                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              }`}
+              onClick={() => setStep("operating_hours")}
+              disabled={!responses.kitchen_location}
+            >
+              ➡️ Continue to Operating Hours
+            </button>
+          </div>
+        )}
         {/* Operating Hours */}
         {step === "operating_hours" && renderOperatingHours()}
 

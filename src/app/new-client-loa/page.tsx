@@ -139,11 +139,56 @@ export default function BlankLOAClientCreationPage() {
     <div className="max-w-4xl mx-auto mt-10 p-6 bg-white rounded-lg shadow-lg">
       <h1 className="text-3xl font-bold mb-8 text-gray-800">New Client Creation - LOA Generation</h1>
       
+       {/* Links Section */}
+      <div className="mb-6 bg-gray-50 border border-gray-200 rounded-lg p-4">
+        <h2 className="text-lg font-semibold text-gray-700 mb-2">🔗 Quick Access</h2>
+        <ul className="text-sm text-gray-600 space-y-1">
+          <li>
+            <span className="font-medium">Folder Link:</span>{' '}
+            <a
+              href="https://drive.google.com/drive/folders/1YQR8i2BOO8CGoztPT8e56Rx-2ZmtitiK"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 hover:underline"
+            >
+              Google Drive Folder
+            </a>
+          </li>
+          <li>
+            <span className="font-medium">Google Doc:</span>{' '}
+            <a
+              href="https://docs.google.com/document/d/14WVZD6bjBf34kKyQVy_xcPqGkbLbmimVHrcZaYJQDQ8/edit?tab=t.0"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 hover:underline"
+            >
+              Blank LOA Template
+            </a>
+          </li>
+          <li>
+            <span className="font-medium">PDF:</span>{' '}
+            <a
+              href="https://drive.google.com/file/d/1yeMALd-XPnXp5bYhLEZOWbEaphyifH5L/view?usp=drive_link"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 hover:underline"
+            >
+              Downloadable Blank LOA (PDF)
+            </a>
+          </li>
+        </ul>
+        <p className="text-xs text-gray-500 mt-2">
+          Use these if client details are unavailable and you need a blank LOA to send.
+        </p>
+      </div>
+
       <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
-        <h2 className="text-lg font-semibold text-blue-800 mb-2">📄 Letter of Authority</h2>
+        <h2 className="text-lg font-semibold text-blue-800 mb-2">
+          📄 Letter of Authority
+        </h2>
         <p className="text-blue-700 text-sm">
-          Create a Letter of Authority for a new client by filling out all their business information below. 
-          This document authorizes ACES to act on behalf of the business.
+          Create a Letter of Authority for a new client by filling out all their business
+          information below. This document authorizes ACES to act on behalf of the business.
         </p>
       </div>
 
