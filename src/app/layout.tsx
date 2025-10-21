@@ -2,15 +2,17 @@ import "@/css/satoshi.css";
 import "@/css/style.css";
 
 import { Sidebar } from "@/components/Layouts/sidebar";
+import { Header } from "@/components/Layouts/header";
+import FloatingAgentChat from "@/components/FloatingAgentChat";
 
 import "flatpickr/dist/flatpickr.min.css";
 import "jsvectormap/dist/jsvectormap.css";
 
-import { Header } from "@/components/Layouts/header";
 import type { Metadata } from "next";
 import NextTopLoader from "nextjs-toploader";
 import type { PropsWithChildren } from "react";
 import { Providers } from "./providers";
+
 export const metadata: Metadata = {
   title: {
     template: "%s | ACES Dashboard Kit",
@@ -21,7 +23,6 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: PropsWithChildren) {
-
   return (
     <html lang="en" suppressHydrationWarning>
       <body>
@@ -39,6 +40,9 @@ export default function RootLayout({ children }: PropsWithChildren) {
               </main>
             </div>
           </div>
+
+          {/* 👇 Floating Agent always available on all pages */}
+          <FloatingAgentChat />
         </Providers>
       </body>
     </html>
