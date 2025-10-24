@@ -2,6 +2,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { MessageSquare, X, Send, ArrowRight } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { linkifyPages } from "@/lib/floatingagent/utils/linkifyPages";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -16,24 +17,54 @@ export default function FloatingAgentChat() {
   const [input, setInput] = useState("");
   const chatEndRef = useRef<HTMLDivElement | null>(null);
 
+  // 🔁 Restore chat from session storage (so it persists when switching pages)
   useEffect(() => {
+    const saved = sessionStorage.getItem("floatingAgentChat");
+    if (saved) setMessages(JSON.parse(saved));
+  }, []);
+
+  // 💾 Save chat to session storage whenever it updates
+  useEffect(() => {
+    sessionStorage.setItem("floatingAgentChat", JSON.stringify(messages));
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // 🧭 Handle link clicks from assistant replies
+  useEffect(() => {
+    const handleLinkClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.tagName === "A" && target.getAttribute("href")?.startsWith("/")) {
+        e.preventDefault();
+        const href = target.getAttribute("href");
+        router.push(href!); // Navigate without closing chat
+      }
+    };
+    document.addEventListener("click", handleLinkClick);
+    return () => document.removeEventListener("click", handleLinkClick);
+  }, [router]);
+
+  // 🚀 Send message to the Floating Agent API
   async function sendMessage() {
     if (!input.trim()) return;
     const userMsg: ChatMessage = { role: "user", text: input };
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
 
-    const res = await fetch("/api/floatingagent", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: input }),
-    });
-
-    const data = await res.json();
-    setMessages((prev) => [...prev, data]);
+    try {
+      const res = await fetch("/api/floatingagent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: input }),
+      });
+      const data = await res.json();
+      setMessages((prev) => [...prev, data]);
+    } catch (err) {
+      console.error("Error sending message:", err);
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", text: "⚠️ Sorry, something went wrong while fetching a reply." },
+      ]);
+    }
   }
 
   return (
@@ -70,10 +101,13 @@ export default function FloatingAgentChat() {
                       ? "bg-emerald-600 text-white ml-auto self-end"
                       : "bg-gray-100 text-gray-800"
                   }`}
-                >
-                  {msg.text}
-                </div>
-
+                  dangerouslySetInnerHTML={{
+                    __html:
+                      msg.role === "assistant"
+                        ? linkifyPages(msg.text)
+                        : msg.text,
+                  }}
+                />
                 {msg.suggestedPage && (
                   <button
                     onClick={() => router.push(msg.suggestedPage!)}
