@@ -18,7 +18,9 @@ const filingTypes = [
   "signed_SME_G",
   "signed_WASTE",
   "signed_OIL",
-  "signed_DMA"
+  "signed_DMA",
+  "amortisation_excel",
+  "amortisation_pdf"
 ];
 
 export default function DriveFilingPage() {

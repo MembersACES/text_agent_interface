@@ -700,7 +700,8 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                 {/* Create array including WIP, sort by file availability */}
                 {[
                   ...Object.entries(docs),
-                  ['Work in Progress (WIP)', 'wip']
+                  ['Work in Progress (WIP)', 'wip'],
+                  ['Amortisation / Asset List', 'amortisation_asset_list']
                 ]
                   .sort(([docA], [docB]) => {
                     const fileUrlA = docA === 'Work in Progress (WIP)' 
@@ -717,21 +718,40 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                   })
                   .map(([doc, status]) => {
                     const isWIP = doc === 'Work in Progress (WIP)';
+                    const isAmortisationAssetList = doc === 'Amortisation / Asset List';
                     const fileUrl = isWIP 
                       ? info._processed_file_ids?.["business_WIP"]
-                      : getDocumentFileUrl(doc);
+                      : isAmortisationAssetList
+                        ? info._processed_file_ids?.["business_amortisation_pdf"] || info._processed_file_ids?.["business_amortisation_excel"]
+                        : getDocumentFileUrl(doc);
 
                     return (
                       <div key={doc} className="flex items-center justify-between p-2 rounded bg-gray-50 hover:bg-gray-100">
                         <div className="flex-1">
                           <div className="text-sm font-medium">{doc}</div>
                           <div className="text-xs text-gray-500">
-                            {fileUrl ? <FileLink label="View File" url={fileUrl} /> : "Not available"}
+                            {isAmortisationAssetList ? (
+                              <>
+                                {info._processed_file_ids?.["business_amortisation_excel"] && (
+                                  <>
+                                    <FileLink label="Excel" url={info._processed_file_ids["business_amortisation_excel"]} />
+                                    {info._processed_file_ids?.["business_amortisation_pdf"] && ' | '}
+                                  </>
+                                )}
+                                {info._processed_file_ids?.["business_amortisation_pdf"] && (
+                                  <FileLink label="PDF" url={info._processed_file_ids["business_amortisation_pdf"]} />
+                                )}
+                                {!info._processed_file_ids?.["business_amortisation_excel"] && !info._processed_file_ids?.["business_amortisation_pdf"] && "Not available"}
+                              </>
+                            ) : (
+                              fileUrl ? <FileLink label="View File" url={fileUrl} /> : "Not available"
+                            )}
                           </div>
                         </div>
                         <div className="flex gap-1">
-                          {!isWIP && (
-                            <button
+                          {!isWIP && !isAmortisationAssetList && (
+                            <>
+                              <button
                               className="px-2 py-1 border border-gray-300 rounded text-xs text-gray-700 hover:bg-gray-200"
                               onClick={() => {
                                   let filingType = doc.toLowerCase().replace(/[^a-z0-9]+/g, '_');
@@ -745,17 +765,32 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                             >
                               File
                             </button>
+                              </>
+                            )}
+                          {isAmortisationAssetList && (
+                            <>
+                              <button
+                                className="px-2 py-1 border border-blue-300 bg-blue-50 rounded text-xs text-blue-700 hover:bg-blue-100"
+                                onClick={() => {
+                                  setDriveModalFilingType('amortisation_excel');
+                                  setDriveModalBusinessName(business.name || "");
+                                  setShowDriveModal(true);
+                                }}
+                              >
+                                Excel
+                              </button>
+                              <button
+                                className="px-2 py-1 border border-red-300 bg-red-50 rounded text-xs text-red-700 hover:bg-red-100 ml-1"
+                                onClick={() => {
+                                  setDriveModalFilingType('amortisation_pdf');
+                                  setDriveModalBusinessName(business.name || "");
+                                  setShowDriveModal(true);
+                                }}
+                              >
+                                PDF
+                              </button>
+                            </>
                           )}
-                          
-                          {doc === "Initial Strategy" && (
-                            <button
-                              className="px-2 py-1 border border-green-300 bg-green-50 rounded text-xs text-green-700 hover:bg-green-100"
-                              onClick={openInitialStrategyGenerator}
-                            >
-                              Generate
-                            </button>
-                          )}
-                          
                           {doc === "Site Profling" && (
                             <button
                               className="px-2 py-1 border border-blue-300 bg-blue-50 rounded text-xs text-blue-700 hover:bg-blue-100"
@@ -1329,7 +1364,12 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                           if (businessData['Initial Strategy']) {
                             mappedFileIds['business_initial_strategy'] = `https://drive.google.com/file/d/${businessData['Initial Strategy']}/view?usp=drivesdk`;
                           }
-                          
+                          if (businessData['Amortisation Excel']) {
+                            mappedFileIds['business_amortisation_excel'] = `https://drive.google.com/file/d/${businessData['Amortisation Excel']}/view?usp=drivesdk`;
+                          }
+                          if (businessData['Amortisation PDF']) {
+                            mappedFileIds['business_amortisation_pdf'] = `https://drive.google.com/file/d/${businessData['Amortisation PDF']}/view?usp=drivesdk`;
+                          }
                           // Map invoices
                           if (businessData['Cleaning Invoice']) {
                             mappedFileIds['invoice_Cleaning'] = `https://drive.google.com/file/d/${businessData['Cleaning Invoice']}/view?usp=drivesdk`;
@@ -1339,7 +1379,13 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                           }
                           
                           console.log('Mapped file IDs:', mappedFileIds);
-                          
+
+                          if (businessData['Amortisation Excel']) {
+                            mappedFileIds['business_amortisation_excel'] = `https://drive.google.com/file/d/${businessData['Amortisation Excel']}/view?usp=drivesdk`;
+                          }
+                          if (businessData['Amortisation PDF']) {
+                            mappedFileIds['business_amortisation_pdf'] = `https://drive.google.com/file/d/${businessData['Amortisation PDF']}/view?usp=drivesdk`;
+                          }
                           // Update only the file IDs, keep everything else the same
                           setInfo((prevInfo: any) => ({
                             ...prevInfo,
