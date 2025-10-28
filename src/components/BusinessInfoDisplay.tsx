@@ -690,8 +690,8 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
 
         {/* Documents Section */}
         <div id="documents" className="border-t pt-6">
-          <h2 className="text-lg font-bold text-gray-800 mb-4">Documents</h2>
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <h2 className="text-2xl font-bold text-gray-800 mb-4 text-center">Business Documents & Agreements</h2>
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
             {/* Business Documents */}
             <div>
               <h3 className="font-semibold text-gray-800 text-base mb-4">Business Documents</h3>
@@ -856,31 +856,31 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
               </div>
             {/* Signed EOIs */}
             <div>
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold text-gray-800 text-base">Signed EOIs</h3>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={async () => {
-                      if (eoiRefreshing) return;
-                      setEoiRefreshing(true);
-                      try {
-                        await fetchEOIData();
-                      } finally {
-                        setEoiRefreshing(false);
-                      }
-                    }}
-                    className="px-2 py-1 rounded border border-gray-300 text-xs text-gray-700 hover:bg-gray-100"
-                  >
-                    {eoiRefreshing ? 'Refreshing…' : 'Refresh'}
-                  </button>
-                  <button
-                    onClick={() => setShowEOIModal(true)}
-                    className="px-3 py-1.5 rounded bg-orange-600 text-white text-xs font-medium hover:bg-orange-700"
-                  >
-                    Lodge EOI
-                  </button>
-                </div>
+            <div className="mb-4">
+              <h3 className="font-semibold text-gray-800 text-base mb-2">Signed EOIs</h3>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={async () => {
+                    if (eoiRefreshing) return;
+                    setEoiRefreshing(true);
+                    try {
+                      await fetchEOIData();
+                    } finally {
+                      setEoiRefreshing(false);
+                    }
+                  }}
+                  className="px-2 py-1 rounded border border-gray-300 text-xs text-gray-700 hover:bg-gray-100"
+                >
+                  {eoiRefreshing ? 'Refreshing…' : 'Refresh'}
+                </button>
+                <button
+                  onClick={() => setShowEOIModal(true)}
+                  className="px-3 py-1.5 rounded bg-orange-600 text-white text-xs font-medium hover:bg-orange-700"
+                >
+                  Lodge EOI
+                </button>
               </div>
+            </div>
               <div className="space-y-2">
                 {(() => {
                   // Get all EOI files dynamically from _processed_file_ids
@@ -921,10 +921,42 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                 })()}
               </div>
             </div>
+            {/* Signed Engagement Forms */}
+            <div>
+              <h3 className="font-semibold text-gray-800 text-base mb-4">Signed Engagement Forms</h3>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between p-2 rounded bg-gray-50 hover:bg-gray-100">
+                  <div className="flex-1">
+                    <div className="text-sm font-medium">Engagement Form</div>
+                    <div className="text-xs text-gray-500">
+                      {getFileUrl("signed_engagement_forms") ? (
+                        <FileLink label="View File" url={getFileUrl("signed_engagement_forms")} />
+                      ) : (
+                        "Not available"
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    className="px-2 py-1 border border-gray-300 rounded text-xs text-gray-700 hover:bg-gray-200"
+                    onClick={() => {
+                      setDriveModalFilingType("signed_engagement_forms");
+                      setDriveModalBusinessName(businessName);
+                      setDriveModalFile(null);
+                      setDriveModalFiles([]);
+                      setDriveModalMultipleFiles(false);
+                      setDriveModalResult(null);
+                      setShowDriveModal(true);
+                    }}
+                  >
+                    File
+                  </button>
+                </div>
+              </div>
+            </div>
         </div>
         {/* Utilities Section */}
         <div id="utilities" className="border-t pt-6">
-          <h2 className="text-lg font-bold text-gray-800 mb-4">Linked Utilities and Retailers</h2>
+          <h2 className="text-2xl font-bold text-gray-800 mb-4 text-center">Linked Utilities and Retailers</h2>
           {Object.keys(linked).length === 0 && <div className="text-sm text-gray-400 mb-4">No linked utilities</div>}
           
           {/* Main Utilities Grid */}
@@ -1099,20 +1131,14 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
               );
             })}
           </div>
-
+          {/* Section Separator */}
+          <div className="w-full border-t border-gray-300 my-8"></div>
           {/* Additional Services Section - Always show Cleaning & Telecommunication */}
           <div className="mt-8">
             {/* Visual separator */}
-            <div className="flex items-center mb-6">
-              <div className="flex-1 border-t border-gray-300"></div>
-              <span className="px-4 text-sm font-semibold text-gray-600 bg-white">
-                Additional Utilities
-              </span>
-              <div className="flex-1 border-t border-gray-300"></div>
-            </div>
-
+            <h2 className="text-2xl font-bold text-gray-800 mb-4 text-center">Additional Utilities</h2>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {["Cleaning", "Telecommunication"].map((serviceKey) => {
+              {["Cleaning", "Telecommunication", "Water"].map((serviceKey) => {
                 // find the actual key in any case form (optional)
                 const realKey = Object.keys(linked).find(
                   (k) => k.toLowerCase() === serviceKey.toLowerCase()
@@ -1123,7 +1149,9 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                 const filingType =
                   serviceKey === "Cleaning"
                     ? "cleaning_invoice_upload"
-                    : "telecommunication_invoice_upload";
+                    : serviceKey === "Telecommunication"
+                    ? "telecommunication_invoice_upload"
+                    : "water_invoice_upload";
 
                 // Check for invoice file
                 const invoiceFileKey = `invoice_${serviceKey}`;
@@ -1168,6 +1196,76 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                   </div>
                 );
               })}
+            </div>
+          </div>
+        </div>
+        {/* Section Separator */}
+        <div className="w-full border-t border-gray-300 my-8"></div>
+        {/* Discrepancy Adjustments Section */}
+        <div className="mt-8">
+        <h2 className="text-2xl font-bold text-gray-800 mb-4 text-center">Discrepancy Adjustments</h2>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="border rounded-lg p-3 bg-gray-50">
+              <div className="font-semibold text-gray-800 mb-2">Adjustments</div>
+              <div className={`text-sm mb-2 ${
+                getFileUrl("discrepancy_adjustments") ? "text-gray-800" : "text-gray-400"
+              }`}>
+                {getFileUrl("discrepancy_adjustments") ? "Document Available" : "Not available"}
+              </div>
+              {getFileUrl("discrepancy_adjustments") && (
+                <div className="mb-2">
+                  <FileLink label="View Document" url={getFileUrl("discrepancy_adjustments")} />
+                </div>
+              )}
+              <button
+                className="px-2 py-1 border border-gray-300 rounded text-xs text-gray-700 hover:bg-gray-100 w-full"
+                onClick={() => {
+                  setDriveModalFilingType("discrepancy_adjustments");
+                  setDriveModalBusinessName(business.name || "");
+                  setDriveModalFile(null);
+                  setDriveModalFiles([]);
+                  setDriveModalMultipleFiles(false);
+                  setDriveModalResult(null);
+                  setShowDriveModal(true);
+                }}
+              >
+                {getFileUrl("discrepancy_adjustments") ? "Replace Document" : "Upload Document"}
+              </button>
+            </div>
+          </div>
+        </div>
+        {/* Section Separator */}
+        <div className="w-full border-t border-gray-300 my-8"></div>        
+        {/* Advocacy Members Section */}
+        <div className="mt-8">
+        <h2 className="text-2xl font-bold text-gray-800 mb-4 text-center">Advocacy Members</h2>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="border rounded-lg p-3 bg-gray-50">
+              <div className="font-semibold text-gray-800 mb-2">Advocacy Members Information</div>
+              <div className={`text-sm mb-2 ${
+                getFileUrl("advocacy_members") ? "text-gray-800" : "text-gray-400"
+              }`}>
+                {getFileUrl("advocacy_members") ? "Document Available" : "Not available"}
+              </div>
+              {getFileUrl("advocacy_members") && (
+                <div className="mb-2">
+                  <FileLink label="View Document" url={getFileUrl("advocacy_members")} />
+                </div>
+              )}
+              <button
+                className="px-2 py-1 border border-gray-300 rounded text-xs text-gray-700 hover:bg-gray-100 w-full"
+                onClick={() => {
+                  setDriveModalFilingType("advocacy_members");
+                  setDriveModalBusinessName(business.name || "");
+                  setDriveModalFile(null);
+                  setDriveModalFiles([]);
+                  setDriveModalMultipleFiles(false);
+                  setDriveModalResult(null);
+                  setShowDriveModal(true);
+                }}
+              >
+                {getFileUrl("advocacy_members") ? "Replace Document" : "Upload Document"}
+              </button>
             </div>
           </div>
         </div>
