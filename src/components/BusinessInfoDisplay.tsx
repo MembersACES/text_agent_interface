@@ -109,6 +109,10 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
   const [driveModalMultipleFiles, setDriveModalMultipleFiles] = useState(false);
   const [driveModalLoading, setDriveModalLoading] = useState(false);
   const [driveModalResult, setDriveModalResult] = useState<string | null>(null);
+  const [discrepancyLoading, setDiscrepancyLoading] = useState(false);
+  const [discrepancyData, setDiscrepancyData] = useState<any>(null);
+  const [advocacyLoading, setAdvocacyLoading] = useState(false);
+  const [advocacyData, setAdvocacyData] = useState<any>(null);
 
   // Add state for Data Request modal
   const [showDataRequestModal, setShowDataRequestModal] = useState(false);
@@ -1199,76 +1203,205 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
             </div>
           </div>
         </div>
-        {/* Section Separator */}
-        <div className="w-full border-t border-gray-300 my-8"></div>
-        {/* Discrepancy Adjustments Section */}
-        <div className="mt-8">
-        <h2 className="text-2xl font-bold text-gray-800 mb-4 text-center">Discrepancy Adjustments</h2>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <div className="border rounded-lg p-3 bg-gray-50">
-              <div className="font-semibold text-gray-800 mb-2">Adjustments</div>
-              <div className={`text-sm mb-2 ${
-                getFileUrl("discrepancy_adjustments") ? "text-gray-800" : "text-gray-400"
-              }`}>
-                {getFileUrl("discrepancy_adjustments") ? "Document Available" : "Not available"}
-              </div>
-              {getFileUrl("discrepancy_adjustments") && (
-                <div className="mb-2">
-                  <FileLink label="View Document" url={getFileUrl("discrepancy_adjustments")} />
-                </div>
-              )}
-              <button
-                className="px-2 py-1 border border-gray-300 rounded text-xs text-gray-700 hover:bg-gray-100 w-full"
-                onClick={() => {
-                  setDriveModalFilingType("discrepancy_adjustments");
-                  setDriveModalBusinessName(business.name || "");
-                  setDriveModalFile(null);
-                  setDriveModalFiles([]);
-                  setDriveModalMultipleFiles(false);
-                  setDriveModalResult(null);
-                  setShowDriveModal(true);
-                }}
-              >
-                {getFileUrl("discrepancy_adjustments") ? "Replace Document" : "Upload Document"}
-              </button>
-            </div>
-          </div>
+       {/* Section Separator */}
+      <div className="w-full border-t border-gray-300 my-8"></div>
+
+      {/* Discrepancy Adjustments Section */}
+      <div className="mt-8">
+        <div className="flex items-center justify-center mb-4 gap-3">
+          <h2 className="text-2xl font-bold text-gray-800 text-center">
+            Discrepancy Adjustments
+          </h2>
+          <button
+            onClick={async () => {
+              try {
+                setDiscrepancyLoading(true);
+                
+                const wipUrl = info._processed_file_ids?.["business_WIP"];
+                let wipDocId = null;
+                
+                if (wipUrl) {
+                  const match = wipUrl.match(/\/d\/([^\/]+)/);
+                  if (match) {
+                    wipDocId = match[1];
+                  }
+                }
+
+                const payload = {
+                  business_name: business.name,
+                  sheet_name: "Discrepancy Adjustments",
+                  ...(wipDocId && { wip_document_id: wipDocId })
+                };
+
+                console.log('Sending discrepancy payload:', payload);
+
+                const response = await fetch('https://membersaces.app.n8n.cloud/webhook/pull_descrepancy_advocacy_WIP', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify(payload)
+                });
+                
+                const data = await response.json();
+                console.log('Discrepancy webhook response:', data);
+                
+                if (response.ok && data) {
+                  setDiscrepancyData(data);
+                } else {
+                  alert('No data found or error occurred');
+                }
+              } catch (error) {
+                console.error('Error calling webhook:', error);
+                alert('Error fetching data');
+              } finally {
+                setDiscrepancyLoading(false);
+              }
+            }}
+            disabled={discrepancyLoading}
+            className="px-2 py-1 rounded border border-gray-300 text-gray-600 text-xs font-medium hover:bg-gray-50 hover:border-blue-400 hover:text-blue-600 disabled:opacity-50 transition-colors flex items-center gap-1"
+          >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            {discrepancyLoading ? 'Loading...' : 'Refresh'}
+          </button>
         </div>
-        {/* Section Separator */}
-        <div className="w-full border-t border-gray-300 my-8"></div>        
-        {/* Advocacy Members Section */}
-        <div className="mt-8">
-        <h2 className="text-2xl font-bold text-gray-800 mb-4 text-center">Advocacy Members</h2>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <div className="border rounded-lg p-3 bg-gray-50">
-              <div className="font-semibold text-gray-800 mb-2">Advocacy Members Information</div>
-              <div className={`text-sm mb-2 ${
-                getFileUrl("advocacy_members") ? "text-gray-800" : "text-gray-400"
-              }`}>
-                {getFileUrl("advocacy_members") ? "Document Available" : "Not available"}
-              </div>
-              {getFileUrl("advocacy_members") && (
-                <div className="mb-2">
-                  <FileLink label="View Document" url={getFileUrl("advocacy_members")} />
+        
+        <div className="border rounded-lg p-4 bg-gray-50">
+          {discrepancyData && Array.isArray(discrepancyData) && discrepancyData.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {discrepancyData.map((item: any, idx: number) => (
+                <div key={idx} className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+                  {Object.entries(item)
+                    .filter(([key]) => key !== 'row_number')
+                    .map(([key, value]) => (
+                      <div key={key} className="mb-2 last:mb-0">
+                        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
+                          {key.replace(/_/g, ' ')}
+                        </div>
+                        <div className="text-sm font-medium text-gray-900">
+                          {String(value) || 'N/A'}
+                        </div>
+                      </div>
+                    ))}
                 </div>
-              )}
-              <button
-                className="px-2 py-1 border border-gray-300 rounded text-xs text-gray-700 hover:bg-gray-100 w-full"
-                onClick={() => {
-                  setDriveModalFilingType("advocacy_members");
-                  setDriveModalBusinessName(business.name || "");
-                  setDriveModalFile(null);
-                  setDriveModalFiles([]);
-                  setDriveModalMultipleFiles(false);
-                  setDriveModalResult(null);
-                  setShowDriveModal(true);
-                }}
-              >
-                {getFileUrl("advocacy_members") ? "Replace Document" : "Upload Document"}
-              </button>
+              ))}
             </div>
-          </div>
+          ) : (
+            <div className="text-center py-8 text-sm text-gray-400">
+              {discrepancyLoading ? (
+                <div className="flex items-center justify-center gap-2">
+                  <div className="animate-spin h-5 w-5 border-2 border-blue-600 border-t-transparent rounded-full"></div>
+                  Loading...
+                </div>
+              ) : (
+                'No data available - Click "Refresh" to fetch'
+              )}
+            </div>
+          )}
         </div>
+      </div>
+
+      {/* Section Separator */}
+      <div className="w-full border-t border-gray-300 my-8"></div>
+
+      {/* Advocacy Members Section */}
+      <div className="mt-8">
+        <div className="flex items-center justify-center mb-4 gap-3">
+          <h2 className="text-2xl font-bold text-gray-800 text-center">
+            Advocacy Members
+          </h2>
+          <button
+            onClick={async () => {
+              try {
+                setAdvocacyLoading(true);
+                
+                const wipUrl = info._processed_file_ids?.["business_WIP"];
+                let wipDocId = null;
+                
+                if (wipUrl) {
+                  const match = wipUrl.match(/\/d\/([^\/]+)/);
+                  if (match) {
+                    wipDocId = match[1];
+                  }
+                }
+
+                const payload = {
+                  business_name: business.name,
+                  sheet_name: "Advocacy Members",
+                  ...(wipDocId && { wip_document_id: wipDocId })
+                };
+
+                console.log('Sending advocacy payload:', payload);
+
+                const response = await fetch('https://membersaces.app.n8n.cloud/webhook/pull_descrepancy_advocacy_WIP', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify(payload)
+                });
+                
+                const data = await response.json();
+                console.log('Advocacy webhook response:', data);
+                
+                if (response.ok && data) {
+                  setAdvocacyData(data);
+                } else {
+                  alert('No data found or error occurred');
+                }
+              } catch (error) {
+                console.error('Error calling webhook:', error);
+                alert('Error fetching data');
+              } finally {
+                setAdvocacyLoading(false);
+              }
+            }}
+            disabled={advocacyLoading}
+            className="px-2 py-1 rounded border border-gray-300 text-gray-600 text-xs font-medium hover:bg-gray-50 hover:border-purple-400 hover:text-purple-600 disabled:opacity-50 transition-colors flex items-center gap-1"
+          >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            {advocacyLoading ? 'Loading...' : 'Refresh'}
+          </button>
+        </div>
+        
+        <div className="border rounded-lg p-4 bg-gray-50">
+          {advocacyData && Array.isArray(advocacyData) && advocacyData.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+              {advocacyData.map((item: any, idx: number) => (
+                <div key={idx} className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+                  {Object.entries(item)
+                    .filter(([key]) => key !== 'row_number')
+                    .map(([key, value]) => (
+                      <div key={key} className="mb-2 last:mb-0">
+                        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
+                          {key.replace(/_/g, ' ')}
+                        </div>
+                        <div className="text-sm font-medium text-gray-900">
+                          {String(value) || 'N/A'}
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-sm text-gray-400">
+              {advocacyLoading ? (
+                <div className="flex items-center justify-center gap-2">
+                  <div className="animate-spin h-5 w-5 border-2 border-purple-600 border-t-transparent rounded-full"></div>
+                  Loading...
+                </div>
+              ) : (
+                'No data available - Click "Refresh" to fetch'
+              )}
+            </div>
+          )}
+        </div>
+      </div>
       </div>
     </div>
 
@@ -1474,6 +1607,9 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                           }
                           if (businessData['Oil Invoice']) {
                             mappedFileIds['invoice_Oil'] = `https://drive.google.com/file/d/${businessData['Oil Invoice']}/view?usp=drivesdk`;
+                          }
+                          if (businessData['Water Invoice']) {
+                            mappedFileIds['invoice_Water'] = `https://drive.google.com/file/d/${businessData['Water Invoice']}/view?usp=drivesdk`;
                           }
                           
                           console.log('Mapped file IDs:', mappedFileIds);
