@@ -1298,16 +1298,32 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                 <div key={idx} className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
                   {Object.entries(item)
                     .filter(([key]) => key !== 'row_number')
-                    .map(([key, value]) => (
-                      <div key={key} className="mb-2 last:mb-0">
-                        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
-                          {key.replace(/_/g, ' ')}
+                    .map(([key, value]) => {
+                      // Format currency for discrepancy_amount field
+                      let displayValue = String(value) || 'N/A';
+                      if (key.toLowerCase().includes('amount') || key.toLowerCase().includes('discrepancy_amount')) {
+                        const numValue = parseFloat(String(value));
+                        if (!isNaN(numValue)) {
+                          displayValue = new Intl.NumberFormat('en-AU', {
+                            style: 'currency',
+                            currency: 'AUD',
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2
+                          }).format(numValue);
+                        }
+                      }
+                      
+                      return (
+                        <div key={key} className="mb-2 last:mb-0">
+                          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
+                            {key.replace(/_/g, ' ')}
+                          </div>
+                          <div className="text-sm font-medium text-gray-900">
+                            {displayValue}
+                          </div>
                         </div>
-                        <div className="text-sm font-medium text-gray-900">
-                          {String(value) || 'N/A'}
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                 </div>
               ))}
             </div>
