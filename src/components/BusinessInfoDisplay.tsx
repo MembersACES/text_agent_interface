@@ -1414,12 +1414,22 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
             Go to sheet
           </button>
         </div>
-        
         <div className="border rounded-lg p-4 bg-gray-50">
           {advocacyData && Array.isArray(advocacyData) && advocacyData.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
               {advocacyData.map((item: any, idx: number) => (
-                <div key={idx} className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+                <button
+                  key={idx}
+                  onClick={() => {
+                    // Extract the business name from the advocacy member data
+                    const businessName = item.advocacy_member || item.ADVOCACY_MEMBER || item['Advocacy Member'] || '';
+                    if (businessName) {
+                      // Open business info page in new tab with pre-filled business name
+                      window.open(`/business-info?businessName=${encodeURIComponent(businessName)}`, '_blank');
+                    }
+                  }}
+                  className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow cursor-pointer hover:border-blue-400 text-left"
+                >
                   {Object.entries(item)
                     .filter(([key]) => key !== 'row_number')
                     .map(([key, value]) => (
@@ -1432,7 +1442,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                         </div>
                       </div>
                     ))}
-                </div>
+                </button>
               ))}
             </div>
           ) : (
