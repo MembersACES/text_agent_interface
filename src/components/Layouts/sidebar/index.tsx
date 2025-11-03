@@ -64,7 +64,7 @@ export function Sidebar() {
               <img
                 src={typeof ACES_BRAND.logo === "string" ? ACES_BRAND.logo : ACES_BRAND.logo.src}
                 alt="ACES Logo"
-                className="h-12 w-auto mb-1"
+                className="h-20 w-auto mb-1"
               />
               <span className="text-base font-semibold text-gray-900 dark:text-white">
                 ACES Portal

@@ -1,5 +1,5 @@
 import * as Icons from "../icons";
-import ACESLogo from "@/../public/images/logo/ACES Logo.png";
+import ACESLogo from "@/../public/images/logo/CARBON ZERO Logo.png";
 
 export const ACES_BRAND = {
   name: "ACES",

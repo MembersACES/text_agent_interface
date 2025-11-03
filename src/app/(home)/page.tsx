@@ -1,13 +1,13 @@
 "use client";
 import Link from "next/link";
 import Image from "next/image";
-import ACESLogo from "@/../public/images/logo/ACES Logo.png";
+import ACESLogo from "@/../public/images/logo/CARBON ZERO Logo.png";
 
 export default function Home() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-white px-4 text-center dark:bg-gray-900">
       <div className="mb-6">
-        <Image src={ACESLogo} alt="ACES Logo" width={100} height={100} priority />
+        <Image src={ACESLogo} alt="ACES Logo" width={200} height={200} priority />
       </div>
 
       <h1 className="text-4xl font-bold text-gray-800 dark:text-white">Welcome to the ACES Portal</h1>
