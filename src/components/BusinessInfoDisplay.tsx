@@ -113,6 +113,9 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
   const [discrepancyData, setDiscrepancyData] = useState<any>(null);
   const [advocacyLoading, setAdvocacyLoading] = useState(false);
   const [advocacyData, setAdvocacyData] = useState<any>(null);
+  const [advocacyMeetingDate, setAdvocacyMeetingDate] = useState<string>('');
+  const [advocacyMeetingTime, setAdvocacyMeetingTime] = useState<string>('');
+  const [advocacyMeetingCompleted, setAdvocacyMeetingCompleted] = useState<boolean>(false);
 
   // Add state for Data Request modal
   const [showDataRequestModal, setShowDataRequestModal] = useState(false);
@@ -1388,6 +1391,27 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                 
                 if (response.ok && data) {
                   setAdvocacyData(data);
+                  
+                  // Load existing meeting details from the main business row
+                  if (data && Array.isArray(data) && data.length > 0) {
+                    const mainBusinessRow = data.find((row: any) => {
+                      const memberName = row.advocacy_member || row.ADVOCACY_MEMBER || row['Advocacy Member'] || '';
+                      return memberName === business.name;
+                    });
+                    
+                    if (mainBusinessRow) {
+                      if (mainBusinessRow.advocacy_meeting_date || mainBusinessRow['Advocacy Meeting Date']) {
+                        setAdvocacyMeetingDate(mainBusinessRow.advocacy_meeting_date || mainBusinessRow['Advocacy Meeting Date'] || '');
+                      }
+                      if (mainBusinessRow.advocacy_meeting_time || mainBusinessRow['Advocacy Meeting Time']) {
+                        setAdvocacyMeetingTime(mainBusinessRow.advocacy_meeting_time || mainBusinessRow['Advocacy Meeting Time'] || '');
+                      }
+                      if (mainBusinessRow.advocacy_meeting_conducted || mainBusinessRow['Advocacy Meeting Conducted']) {
+                        const conducted = mainBusinessRow.advocacy_meeting_conducted || mainBusinessRow['Advocacy Meeting Conducted'] || '';
+                        setAdvocacyMeetingCompleted(conducted.toLowerCase() === 'yes');
+                      }
+                    }
+                  }
                 } else {
                   alert('No data found or error occurred');
                 }
@@ -1407,7 +1431,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
             {advocacyLoading ? 'Loading...' : 'Refresh'}
           </button>
           
-          {/* Go to Sheet Button - SEPARATE BUTTON */}
+          {/* Go to Sheet Button */}
           <button
             onClick={() => {
               const wipUrl = info._processed_file_ids?.["business_WIP"];
@@ -1415,7 +1439,6 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                 const match = wipUrl.match(/\/d\/([^\/]+)/);
                 if (match) {
                   const docId = match[1];
-                  // Replace with the actual gid for "Advocacy Members" sheet
                   window.open(`https://docs.google.com/spreadsheets/d/${docId}/edit#gid=46241003`, '_blank');
                 }
               } else {
@@ -1430,36 +1453,157 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
             Go to sheet
           </button>
         </div>
+
+        {/* Advocacy Meeting Form */}
+        {advocacyData && Array.isArray(advocacyData) && advocacyData.length > 0 && (
+          <div className="mb-6 p-4 border rounded-lg bg-blue-50 border-blue-200">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-lg font-semibold text-gray-800">
+                📅 Advocacy Meeting Details
+              </h3>
+              {/* Save Button moved to header */}
+              <button
+                onClick={async () => {
+                  try {
+                    const wipUrl = info._processed_file_ids?.["business_WIP"];
+                    let wipDocId = null;
+                    
+                    if (wipUrl) {
+                      const match = wipUrl.match(/\/d\/([^\/]+)/);
+                      if (match) {
+                        wipDocId = match[1];
+                      }
+                    }
+
+                    const payload = {
+                      business_name: business.name,
+                      advocacy_meeting_date: advocacyMeetingDate,
+                      advocacy_meeting_time: advocacyMeetingTime,
+                      advocacy_meeting_conducted: advocacyMeetingCompleted ? 'Yes' : 'No',
+                      ...(wipDocId && { wip_document_id: wipDocId })
+                    };
+
+                    console.log('Saving advocacy meeting details:', payload);
+
+                    const response = await fetch('https://membersaces.app.n8n.cloud/webhook/save_advocacy_WIP', {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                      },
+                      body: JSON.stringify(payload)
+                    });
+                    
+                    if (response.ok) {
+                      alert('Advocacy meeting details saved successfully!');
+                    } else {
+                      alert('Error saving meeting details');
+                    }
+                  } catch (error) {
+                    console.error('Error saving advocacy meeting:', error);
+                    alert('Error saving meeting details');
+                  }
+                }}
+                className="px-3 py-1.5 bg-purple-600 text-white rounded-md hover:bg-purple-700 font-medium text-sm"
+              >
+                Save Meeting Details
+              </button>
+            </div>
+            
+            <p className="text-sm text-gray-600 mb-4">
+              To qualify for advocacy referral benefits, an advocacy meeting must be organized and completed.
+            </p>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+              {/* Date Picker */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Meeting Date
+                </label>
+                <input
+                  type="date"
+                  value={advocacyMeetingDate}
+                  onChange={(e) => setAdvocacyMeetingDate(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+              
+              {/* Time Picker */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Meeting Time
+                </label>
+                <input
+                  type="time"
+                  value={advocacyMeetingTime}
+                  onChange={(e) => setAdvocacyMeetingTime(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+              
+              {/* Completed Checkbox */}
+              <div className="flex items-center gap-2 pb-2">
+                <input
+                  type="checkbox"
+                  id="advocacy-completed"
+                  checked={advocacyMeetingCompleted}
+                  onChange={(e) => setAdvocacyMeetingCompleted(e.target.checked)}
+                  className="w-5 h-5 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                />
+                <label htmlFor="advocacy-completed" className="text-sm font-medium text-gray-700">
+                  Meeting Completed
+                </label>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {/* Advocacy Members Cards */}
         <div className="border rounded-lg p-4 bg-gray-50">
           {advocacyData && Array.isArray(advocacyData) && advocacyData.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-              {advocacyData.map((item: any, idx: number) => (
-                <button
-                  key={idx}
-                  onClick={() => {
-                    // Extract the business name from the advocacy member data
-                    const businessName = item.advocacy_member || item.ADVOCACY_MEMBER || item['Advocacy Member'] || '';
-                    if (businessName) {
-                      // Open business info page in new tab with pre-filled business name
-                      window.open(`/business-info?businessName=${encodeURIComponent(businessName)}`, '_blank');
-                    }
-                  }}
-                  className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow cursor-pointer hover:border-blue-400 text-left"
-                >
-                  {Object.entries(item)
-                    .filter(([key]) => key !== 'row_number')
-                    .map(([key, value]) => (
-                      <div key={key} className="mb-2 last:mb-0">
-                        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
-                          {key.replace(/_/g, ' ')}
+              {advocacyData
+                .filter((item: any) => {
+                  const memberName = item.advocacy_member || item.ADVOCACY_MEMBER || item['Advocacy Member'] || '';
+                  return memberName !== business.name;
+                })
+                .map((item: any, idx: number) => (
+                  <button
+                    key={idx}
+                    onClick={() => {
+                      const businessName = item.advocacy_member || item.ADVOCACY_MEMBER || item['Advocacy Member'] || '';
+                      if (businessName) {
+                        window.open(`/business-info?businessName=${encodeURIComponent(businessName)}`, '_blank');
+                      }
+                    }}
+                    className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow cursor-pointer hover:border-blue-400 text-left"
+                  >
+                    {Object.entries(item)
+                      .filter(([key]) => {
+                        // Filter out row_number and meeting detail columns (case-insensitive)
+                        const keyLower = key.toLowerCase();
+                        const excludedPatterns = [
+                          'row_number',
+                          'meeting_date',
+                          'meeting_time', 
+                          'meeting_conducted',
+                          'advocacy meeting date',
+                          'advocacy meeting time',
+                          'advocacy meeting conducted'
+                        ];
+                        return !excludedPatterns.some(pattern => keyLower.includes(pattern));
+                      })
+                      .map(([key, value]) => (
+                        <div key={key} className="mb-2 last:mb-0">
+                          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
+                            {key.replace(/_/g, ' ')}
+                          </div>
+                          <div className="text-sm font-medium text-gray-900">
+                            {String(value) || 'N/A'}
+                          </div>
                         </div>
-                        <div className="text-sm font-medium text-gray-900">
-                          {String(value) || 'N/A'}
-                        </div>
-                      </div>
-                    ))}
-                </button>
-              ))}
+                      ))}
+                  </button>
+                ))}
             </div>
           ) : (
             <div className="text-center py-8 text-sm text-gray-400">
@@ -1475,8 +1619,8 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
           )}
         </div>
       </div>
-      </div>
     </div>
+  </div>
 
     {/* Drive Filing Modal */}
     {showDriveModal && (
