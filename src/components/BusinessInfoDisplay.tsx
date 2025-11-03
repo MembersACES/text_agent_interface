@@ -116,8 +116,8 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
   const [advocacyMeetingDate, setAdvocacyMeetingDate] = useState<string>('');
   const [advocacyMeetingTime, setAdvocacyMeetingTime] = useState<string>('');
   const [advocacyMeetingCompleted, setAdvocacyMeetingCompleted] = useState<boolean>(false);
-
-  // Add state for Data Request modal
+  const [automationLoading, setAutomationLoading] = useState(false);
+  const [automationData, setAutomationData] = useState<any>(null);
   const [showDataRequestModal, setShowDataRequestModal] = useState(false);
   const [dataRequestSummary, setDataRequestSummary] = useState<null | {
     businessName: string;
@@ -1206,6 +1206,130 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
             </div>
           </div>
         </div>
+       {/* Section Separator */}
+      <div className="w-full border-t border-gray-300 my-8"></div>
+
+      {/* Automation & LLMs Section */}
+      <div className="mt-8">
+        <div className="flex items-center justify-center mb-4 gap-3">
+          <h2 className="text-2xl font-bold text-gray-800 text-center">
+            Automation & LLMs
+          </h2>
+          <button
+            onClick={async () => {
+              try {
+                setAutomationLoading(true);
+                
+                const wipUrl = info._processed_file_ids?.["business_WIP"];
+                let wipDocId = null;
+                
+                if (wipUrl) {
+                  const match = wipUrl.match(/\/d\/([^\/]+)/);
+                  if (match) {
+                    wipDocId = match[1];
+                  }
+                }
+
+                const payload = {
+                  business_name: business.name,
+                  sheet_name: "Automation & LLMs",
+                  ...(wipDocId && { wip_document_id: wipDocId })
+                };
+
+                console.log('Sending automation payload:', payload);
+
+                const response = await fetch('https://membersaces.app.n8n.cloud/webhook/pull_descrepancy_advocacy_WIP', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify(payload)
+                });
+                
+                const data = await response.json();
+                console.log('Automation webhook response:', data);
+                
+                if (response.ok && data) {
+                  setAutomationData(data);
+                } else {
+                  alert('No data found or error occurred');
+                }
+              } catch (error) {
+                console.error('Error calling webhook:', error);
+                alert('Error fetching data');
+              } finally {
+                setAutomationLoading(false);
+              }
+            }}
+            disabled={automationLoading}
+            className="px-2 py-1 rounded border border-gray-300 text-gray-600 text-xs font-medium hover:bg-gray-50 hover:border-green-400 hover:text-green-600 disabled:opacity-50 transition-colors flex items-center gap-1"
+          >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            {automationLoading ? 'Loading...' : 'Refresh'}
+          </button>
+          
+          {/* Go to Sheet Button */}
+          <button
+            onClick={() => {
+              const wipUrl = info._processed_file_ids?.["business_WIP"];
+              if (wipUrl) {
+                const match = wipUrl.match(/\/d\/([^\/]+)/);
+                if (match) {
+                  const docId = match[1];
+                  // You'll need to replace gid=0 with the actual gid for "Automation & LLMs" sheet
+                  window.open(`https://docs.google.com/spreadsheets/d/${docId}/edit#gid=0`, '_blank');
+                }
+              } else {
+                alert('WIP document not available');
+              }
+            }}
+            className="px-2 py-1 rounded border border-green-300 bg-green-50 text-green-700 text-xs font-medium hover:bg-green-100 transition-colors flex items-center gap-1"
+          >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+            </svg>
+            Go to sheet
+          </button>
+        </div>
+        
+        <div className="border rounded-lg p-4 bg-gray-50">
+          {automationData && Array.isArray(automationData) && automationData.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {automationData.map((item: any, idx: number) => (
+                <div key={idx} className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+                  {Object.entries(item)
+                    .filter(([key]) => key !== 'row_number')
+                    .map(([key, value]) => (
+                      <div key={key} className="mb-2 last:mb-0">
+                        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
+                          {key.replace(/_/g, ' ')}
+                        </div>
+                        <div className="text-sm font-medium text-gray-900">
+                          {String(value) || 'N/A'}
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-sm text-gray-400">
+              {automationLoading ? (
+                <div className="flex items-center justify-center gap-2">
+                  <div className="animate-spin h-5 w-5 border-2 border-green-600 border-t-transparent rounded-full"></div>
+                  Loading...
+                </div>
+              ) : (
+                'No data available - Click "Refresh" to fetch'
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+       
+       
        {/* Section Separator */}
       <div className="w-full border-t border-gray-300 my-8"></div>
 
