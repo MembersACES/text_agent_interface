@@ -199,9 +199,77 @@ export default function EnhancedSolutionRangePage() {
                         {categoryDescriptions[category as SolutionCategory]}
                       </p>
                       <div className={viewMode === "grid" ? "grid grid-cols-1 lg:grid-cols-2 gap-4" : "space-y-3"}>
-                        {items.map((s) => (
-                          <SolutionCard key={s.id} solution={s} />
-                        ))}
+                      {items.map((s) => (
+                        <div key={s.id}>
+                          <SolutionCard solution={s} />
+                          {s.subSolutions && s.subSolutions.length > 0 && (
+                            <div className="mt-5 ml-6 pl-6 border-l-2 border-blue-100">
+                              <button
+                                onClick={() =>
+                                  setExpandedCategories((prev) =>
+                                    prev.includes(s.id)
+                                      ? prev.filter((c) => c !== s.id)
+                                      : [...prev, s.id]
+                                  )
+                                }
+                                className="flex items-center justify-between w-full text-sm font-medium text-gray-700 hover:text-gray-900 mb-3 transition-all"
+                              >
+                                <div className="flex items-center gap-2">
+                                  <svg
+                                    className="w-4 h-4 text-blue-500"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M9 5l7 7-7 7"
+                                    />
+                                  </svg>
+                                  <span className="text-blue-600">Linked AI Agents</span>
+                                  <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                                    {s.subSolutions.length}
+                                  </span>
+                                </div>
+                                <svg
+                                  className={`w-5 h-5 text-gray-400 transition-transform ${
+                                    expandedCategories.includes(s.id) ? "rotate-90" : ""
+                                  }`}
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M9 5l7 7-7 7"
+                                  />
+                                </svg>
+                              </button>
+
+                              {expandedCategories.includes(s.id) && (
+                                <div className="relative space-y-4 mt-2">
+                                  <div className="absolute -left-[6px] top-3 w-3 h-3 bg-blue-400 rounded-full shadow-sm"></div>
+                                  {s.subSolutions.map((sub) => (
+                                    <div
+                                      key={sub.id}
+                                      className="bg-gradient-to-br from-gray-50 to-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-0.5"
+                                    >
+                                      <div className="p-4">
+                                        <SolutionCard solution={sub} />
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                        </div>
+                      ))}
                       </div>
                     </div>
                   )}
@@ -221,9 +289,77 @@ export default function EnhancedSolutionRangePage() {
               </p>
             </div>
             <div className={viewMode === "grid" ? "grid grid-cols-1 lg:grid-cols-2 gap-4" : "space-y-3"}>
-              {filtered.map((s) => (
-                <SolutionCard key={s.id} solution={s} />
-              ))}
+            {filtered.map((s) => (
+              <div key={s.id}>
+                <SolutionCard solution={s} />
+                {s.subSolutions && s.subSolutions.length > 0 && (
+                  <div className="mt-5 ml-6 pl-6 border-l-2 border-blue-100">
+                    <button
+                      onClick={() =>
+                        setExpandedCategories((prev) =>
+                          prev.includes(s.id)
+                            ? prev.filter((c) => c !== s.id)
+                            : [...prev, s.id]
+                        )
+                      }
+                      className="flex items-center justify-between w-full text-sm font-medium text-gray-700 hover:text-gray-900 mb-3 transition-all"
+                    >
+                      <div className="flex items-center gap-2">
+                        <svg
+                          className="w-4 h-4 text-blue-500"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M9 5l7 7-7 7"
+                          />
+                        </svg>
+                        <span className="text-blue-600">Linked AI Agents</span>
+                        <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                          {s.subSolutions.length}
+                        </span>
+                      </div>
+                      <svg
+                        className={`w-5 h-5 text-gray-400 transition-transform ${
+                          expandedCategories.includes(s.id) ? "rotate-90" : ""
+                        }`}
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M9 5l7 7-7 7"
+                        />
+                      </svg>
+                    </button>
+
+                    {expandedCategories.includes(s.id) && (
+                      <div className="relative space-y-4 mt-2">
+                        <div className="absolute -left-[6px] top-3 w-3 h-3 bg-blue-400 rounded-full shadow-sm"></div>
+                        {s.subSolutions.map((sub) => (
+                          <div
+                            key={sub.id}
+                            className="bg-gradient-to-br from-gray-50 to-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-0.5"
+                          >
+                            <div className="p-4">
+                              <SolutionCard solution={sub} />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+              </div>
+            ))}
             </div>
           </div>
         )}

@@ -12,22 +12,26 @@ export type SolutionCategory =
   | "other_solutions"
   | "ghg";
 
-export interface SolutionOption {
-  id: string;
-  name: string;
-  description: string;
-  presentationId: string;
-  enabled: boolean;
-  category: SolutionCategory;
-  imageUrl?: string;
-  phoneNumber?: string;
-  agentCapabilities?: string[];
-}
+  export interface SolutionOption {
+    id: string;
+    name: string;
+    description: string;
+    presentationId: string;
+    enabled: boolean;
+    category: SolutionCategory;
+    imageUrl?: string;
+    phoneNumber?: string | {
+      production: string;
+      development: string;
+    };
+    agentCapabilities?: string[];
+    subSolutions?: Omit<SolutionOption, "presentationId" | "enabled" | "category">[];
+  }
 
 export const categoryLabels: Record<SolutionCategory, string> = {
   platform: "🌱 Sustainable Platform",
   ai_bots: "🤖 AI Cleaning Bots",
-  ai_automation: "📞 Digital Voice Agents",
+  ai_automation: "📞 Digital Voice Agents & Numbers",
   referral: "📅 Event Referral",
   profile_reset: "🔄 Profile Reset",
   renewable_energy: "☀️ Renewable Energy",
@@ -117,40 +121,114 @@ export const solutionOptions: SolutionOption[] = [
     imageUrl: "/solutions/oil-filtering-bot.png"
   },
 
+ // === DIGITAL VOICE AGENTS ===
   {
-    id: "phone_agent",
-    name: "Phone Agent",
-    description: "AI-powered phone agent for automated customer service and support",
+    id: "digital_voice_agents",
+    name: "Digital Inbound Receptionist",
+    description:
+      "AI-powered voice agents that handle calls, route enquiries, and assist with energy, cleaning, and general business operations.",
     presentationId: "13jOv5xfI-R2RYKPfjlRNLZmAiDeDl4rACikyp8NcmP8",
     enabled: true,
     category: "ai_automation",
-    imageUrl: "/solutions/phone-agent.png",
-    phoneNumber: "+61 3 XXXX XXXX",
-    agentCapabilities: [
-      "Answer general inquiries",
-      "Route calls to appropriate departments",
-      "Provide business information",
-      "Schedule callbacks",
-      "24/7 availability"
+    imageUrl: "/solutions/digital-voice-agents.png",
+    phoneNumber: {
+      production: "0340519216",
+      development: "0483902753"
+    },
+    subSolutions: [
+      {
+        id: "aces_receptionist",
+        name: "ACES Receptionist (Mary)",
+        description:
+          "Primary voice assistant for ACES handling all incoming calls, client enquiries, and transfers to specialist departments.",
+        agentCapabilities: [
+          "Greet callers and determine purpose of call",
+          "Transfer to Energy or Cleaning agents",
+          "Collect details and log enquiries",
+          "Escalate complex issues",
+          "Professional ACES representation"
+        ]
+      },
+      {
+        id: "energy_expert",
+        name: "Energy Expert (Alex)",
+        description:
+          "Voice agent specialising in commercial & industrial electricity and gas. Explains bills, metering, and contracts clearly and confidently.",
+        agentCapabilities: [
+          "Explain electricity and gas concepts (NMI, MIRN, etc.)",
+          "Clarify bill structures and tariffs",
+          "Escalate contract/pricing queries",
+          "Confirm customer details efficiently",
+          "C&I customers only"
+        ]
+      },
+      {
+        id: "cleaning_expert",
+        name: "Cleaning Expert (George)",
+        description:
+          "Voice agent specialising in autonomous cleaning robots, offering detailed guidance on technology and trials.",
+        agentCapabilities: [
+          "Explain robot functionality, safety, and efficiency",
+          "Discuss ROI and sustainability metrics",
+          "Collect trial enquiry details",
+          "Escalate procurement queries",
+          "Provide calm, informative explanations"
+        ]
+      }
     ]
   },
+
+  // === OUTBOUND VOICE AGENT ===
   {
-    id: "booking_digital_receptionist",
-    name: "Booking Digital Receptionist",
-    description: "Digital receptionist system for automated booking and appointment management",
-    presentationId: "1e3RfOAVz0ugegwSBUR2z8uVzqsQpFADgI1ZOgdK1sUY",
+    id: "outbound_agent",
+    name: "Outbound Voice Agent",
+    description:
+      "Logic-based outbound calling system that dynamically adjusts conversation flow depending on client data and intent.",
+    presentationId: "13jOv5xfI-R2RYKPfjlRNLZmAiDeDl4rACikyp8NcmP8",
     enabled: true,
     category: "ai_automation",
-    imageUrl: "/solutions/digital-receptionist.png",
-    phoneNumber: "+61 3 YYYY YYYY",
-    agentCapabilities: [
-      "Schedule appointments",
-      "Manage bookings",
-      "Send confirmations",
-      "Handle reschedules",
-      "Appointment reminders"
+    imageUrl: "/solutions/outbound-agent.png",
+    phoneNumber: {
+      production: "0482086553",
+      development: "0482086553"
+    },
+    subSolutions: [
+      {
+        id: "electricity_demand_response_flow",
+        name: "Electricity Demand Response Flow",
+        description:
+          "Conversational flow presenting tailored information about electricity demand response programs using dynamic data inputs and logic splits.",
+        agentCapabilities: [
+          "Logic split node based on user type and program eligibility",
+          "Dynamic presentation of demand response benefits",
+          "Follow-up prompts based on user engagement"
+        ]
+      },
+      {
+        id: "gas_discrepancy_review_flow",
+        name: "Gas Discrepancy Review Flow",
+        description:
+          "AI-driven flow for explaining gas discrepancies and gathering client confirmation to proceed with reviews.",
+        agentCapabilities: [
+          "Automatically presents discrepancy report data",
+          "Handles clarifying questions interactively",
+          "Collects user confirmation and closes loop with acknowledgment"
+        ]
+      },
+      {
+        id: "default_logic_flow",
+        name: "Default Logic & Fallback Flow",
+        description:
+          "Fallback conversational logic for unclassified or incomplete data situations, ensuring the user always receives relevant information.",
+        agentCapabilities: [
+          "Graceful fallback prompts for missing data",
+          "Route unrecognized cases to internal follow-up queue",
+          "Ensures consistent experience across call scenarios"
+        ]
+      }
     ]
   },
+
 
   {
     id: "event_referral",
