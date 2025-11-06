@@ -30,6 +30,15 @@ export const NAV_DATA = [
         ],
       },
       {
+        title: "Solution Range",
+        items: [
+          {
+            title: "Solution Range",
+            url: "/solution-range",
+          },
+        ],
+      },
+      {
         title: "Client & Strategy",
         items: [
           { title: "New Client LOA Generation", url: "/new-client-loa" },
