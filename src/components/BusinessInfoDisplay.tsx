@@ -109,8 +109,15 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
   const [driveModalMultipleFiles, setDriveModalMultipleFiles] = useState(false);
   const [driveModalLoading, setDriveModalLoading] = useState(false);
   const [driveModalResult, setDriveModalResult] = useState<string | null>(null);
-
-  // Add state for Data Request modal
+  const [discrepancyLoading, setDiscrepancyLoading] = useState(false);
+  const [discrepancyData, setDiscrepancyData] = useState<any>(null);
+  const [advocacyLoading, setAdvocacyLoading] = useState(false);
+  const [advocacyData, setAdvocacyData] = useState<any>(null);
+  const [advocacyMeetingDate, setAdvocacyMeetingDate] = useState<string>('');
+  const [advocacyMeetingTime, setAdvocacyMeetingTime] = useState<string>('');
+  const [advocacyMeetingCompleted, setAdvocacyMeetingCompleted] = useState<boolean>(false);
+  const [automationLoading, setAutomationLoading] = useState(false);
+  const [automationData, setAutomationData] = useState<any>(null);
   const [showDataRequestModal, setShowDataRequestModal] = useState(false);
   const [dataRequestSummary, setDataRequestSummary] = useState<null | {
     businessName: string;
@@ -690,7 +697,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
 
         {/* Documents Section */}
         <div id="documents" className="border-t pt-6">
-          <h2 className="text-lg font-bold text-gray-800 mb-4">Documents</h2>
+        <h2 className="text-2xl font-bold text-gray-800 mb-4 text-center">Business Documents & Agreements</h2>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Business Documents */}
             <div>
@@ -856,31 +863,31 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
               </div>
             {/* Signed EOIs */}
             <div>
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold text-gray-800 text-base">Signed EOIs</h3>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={async () => {
-                      if (eoiRefreshing) return;
-                      setEoiRefreshing(true);
-                      try {
-                        await fetchEOIData();
-                      } finally {
-                        setEoiRefreshing(false);
-                      }
-                    }}
-                    className="px-2 py-1 rounded border border-gray-300 text-xs text-gray-700 hover:bg-gray-100"
-                  >
-                    {eoiRefreshing ? 'Refreshing…' : 'Refresh'}
-                  </button>
-                  <button
-                    onClick={() => setShowEOIModal(true)}
-                    className="px-3 py-1.5 rounded bg-orange-600 text-white text-xs font-medium hover:bg-orange-700"
-                  >
-                    Lodge EOI
-                  </button>
-                </div>
+            <div className="mb-4">
+              <h3 className="font-semibold text-gray-800 text-base mb-2">Signed EOIs</h3>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={async () => {
+                    if (eoiRefreshing) return;
+                    setEoiRefreshing(true);
+                    try {
+                      await fetchEOIData();
+                    } finally {
+                      setEoiRefreshing(false);
+                    }
+                  }}
+                  className="px-2 py-1 rounded border border-gray-300 text-xs text-gray-700 hover:bg-gray-100"
+                >
+                  {eoiRefreshing ? 'Refreshing…' : 'Refresh'}
+                </button>
+                <button
+                  onClick={() => setShowEOIModal(true)}
+                  className="px-3 py-1.5 rounded bg-orange-600 text-white text-xs font-medium hover:bg-orange-700"
+                >
+                  Lodge EOI
+                </button>
               </div>
+            </div>
               <div className="space-y-2">
                 {(() => {
                   // Get all EOI files dynamically from _processed_file_ids
@@ -924,7 +931,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
         </div>
         {/* Utilities Section */}
         <div id="utilities" className="border-t pt-6">
-          <h2 className="text-lg font-bold text-gray-800 mb-4">Linked Utilities and Retailers</h2>
+          <h2 className="text-2xl font-bold text-gray-800 mb-4 text-center">Linked Utilities and Retailers</h2>
           {Object.keys(linked).length === 0 && <div className="text-sm text-gray-400 mb-4">No linked utilities</div>}
           
           {/* Main Utilities Grid */}
@@ -1099,20 +1106,14 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
               );
             })}
           </div>
-
+          {/* Section Separator */}
+          <div className="w-full border-t border-gray-300 my-8"></div>
           {/* Additional Services Section - Always show Cleaning & Telecommunication */}
           <div className="mt-8">
             {/* Visual separator */}
-            <div className="flex items-center mb-6">
-              <div className="flex-1 border-t border-gray-300"></div>
-              <span className="px-4 text-sm font-semibold text-gray-600 bg-white">
-                Additional Utilities
-              </span>
-              <div className="flex-1 border-t border-gray-300"></div>
-            </div>
-
+            <h2 className="text-2xl font-bold text-gray-800 mb-4 text-center">Additional Utilities</h2>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {["Cleaning", "Telecommunication"].map((serviceKey) => {
+              {["Cleaning", "Telecommunication", "Water"].map((serviceKey) => {
                 // find the actual key in any case form (optional)
                 const realKey = Object.keys(linked).find(
                   (k) => k.toLowerCase() === serviceKey.toLowerCase()
@@ -1123,7 +1124,9 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                 const filingType =
                   serviceKey === "Cleaning"
                     ? "cleaning_invoice_upload"
-                    : "telecommunication_invoice_upload";
+                    : serviceKey === "Telecommunication"
+                    ? "telecommunication_invoice_upload"
+                    : "water_invoice_upload";
 
                 // Check for invoice file
                 const invoiceFileKey = `invoice_${serviceKey}`;
@@ -1171,8 +1174,545 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
             </div>
           </div>
         </div>
+       {/* Section Separator */}
+      <div className="w-full border-t border-gray-300 my-8"></div>
+
+      {/* Automation & LLMs Section */}
+      <div className="mt-8">
+        <div className="flex items-center justify-center mb-4 gap-3">
+          <h2 className="text-2xl font-bold text-gray-800 text-center">
+            Automation & LLMs
+          </h2>
+          <button
+            onClick={async () => {
+              try {
+                setAutomationLoading(true);
+                
+                const wipUrl = info._processed_file_ids?.["business_WIP"];
+                let wipDocId = null;
+                
+                if (wipUrl) {
+                  const match = wipUrl.match(/\/d\/([^\/]+)/);
+                  if (match) {
+                    wipDocId = match[1];
+                  }
+                }
+
+                const payload = {
+                  business_name: business.name,
+                  sheet_name: "Automation & LLMs",
+                  ...(wipDocId && { wip_document_id: wipDocId })
+                };
+
+                console.log('Sending automation payload:', payload);
+
+                const response = await fetch('https://membersaces.app.n8n.cloud/webhook/pull_descrepancy_advocacy_WIP', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify(payload)
+                });
+                
+                const data = await response.json();
+                console.log('Automation webhook response:', data);
+                
+                if (response.ok && data) {
+                  setAutomationData(data);
+                } else {
+                  alert('No data found or error occurred');
+                }
+              } catch (error) {
+                console.error('Error calling webhook:', error);
+                alert('Error fetching data');
+              } finally {
+                setAutomationLoading(false);
+              }
+            }}
+            disabled={automationLoading}
+            className="px-2 py-1 rounded border border-gray-300 text-gray-600 text-xs font-medium hover:bg-gray-50 hover:border-green-400 hover:text-green-600 disabled:opacity-50 transition-colors flex items-center gap-1"
+          >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            {automationLoading ? 'Loading...' : 'Refresh'}
+          </button>
+          
+          {/* Go to Sheet Button */}
+          <button
+            onClick={() => {
+              const wipUrl = info._processed_file_ids?.["business_WIP"];
+              if (wipUrl) {
+                const match = wipUrl.match(/\/d\/([^\/]+)/);
+                if (match) {
+                  const docId = match[1];
+                  // You'll need to replace gid=0 with the actual gid for "Automation & LLMs" sheet
+                  window.open(`https://docs.google.com/spreadsheets/d/${docId}/edit#gid=0`, '_blank');
+                }
+              } else {
+                alert('WIP document not available');
+              }
+            }}
+            className="px-2 py-1 rounded border border-green-300 bg-green-50 text-green-700 text-xs font-medium hover:bg-green-100 transition-colors flex items-center gap-1"
+          >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+            </svg>
+            Go to sheet
+          </button>
+        </div>
+        
+        <div className="border rounded-lg p-4 bg-gray-50">
+          {automationData && Array.isArray(automationData) && automationData.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {automationData.map((item: any, idx: number) => (
+                <div key={idx} className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+                  {Object.entries(item)
+                    .filter(([key]) => key !== 'row_number')
+                    .map(([key, value]) => (
+                      <div key={key} className="mb-2 last:mb-0">
+                        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
+                          {key.replace(/_/g, ' ')}
+                        </div>
+                        <div className="text-sm font-medium text-gray-900">
+                          {String(value) || 'N/A'}
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-sm text-gray-400">
+              {automationLoading ? (
+                <div className="flex items-center justify-center gap-2">
+                  <div className="animate-spin h-5 w-5 border-2 border-green-600 border-t-transparent rounded-full"></div>
+                  Loading...
+                </div>
+              ) : (
+                'No data available - Click "Refresh" to fetch'
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+       
+       
+       {/* Section Separator */}
+      <div className="w-full border-t border-gray-300 my-8"></div>
+
+      {/* Discrepancy Adjustments Section */}
+      <div className="mt-8">
+        <div className="flex items-center justify-center mb-4 gap-3">
+          <h2 className="text-2xl font-bold text-gray-800 text-center">
+            Discrepancy Adjustments
+          </h2>
+          {/* Refresh Button */}
+          <button
+            onClick={async () => {
+              try {
+                setDiscrepancyLoading(true);
+                
+                const wipUrl = info._processed_file_ids?.["business_WIP"];
+                let wipDocId = null;
+                
+                if (wipUrl) {
+                  const match = wipUrl.match(/\/d\/([^\/]+)/);
+                  if (match) {
+                    wipDocId = match[1];
+                  }
+                }
+
+                const payload = {
+                  business_name: business.name,
+                  sheet_name: "Discrepancy Adjustments",
+                  ...(wipDocId && { wip_document_id: wipDocId })
+                };
+
+                console.log('Sending discrepancy payload:', payload);
+
+                const response = await fetch('https://membersaces.app.n8n.cloud/webhook/pull_descrepancy_advocacy_WIP', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify(payload)
+                });
+                
+                const data = await response.json();
+                console.log('Discrepancy webhook response:', data);
+                
+                if (response.ok && data) {
+                  setDiscrepancyData(data);
+                } else {
+                  alert('No data found or error occurred');
+                }
+              } catch (error) {
+                console.error('Error calling webhook:', error);
+                alert('Error fetching data');
+              } finally {
+                setDiscrepancyLoading(false);
+              }
+            }}
+            disabled={discrepancyLoading}
+            className="px-2 py-1 rounded border border-gray-300 text-gray-600 text-xs font-medium hover:bg-gray-50 hover:border-blue-400 hover:text-blue-600 disabled:opacity-50 transition-colors flex items-center gap-1"
+          >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            {discrepancyLoading ? 'Loading...' : 'Refresh'}
+          </button>
+          
+          {/* Go to Sheet Button - SEPARATE BUTTON */}
+          <button
+            onClick={() => {
+              const wipUrl = info._processed_file_ids?.["business_WIP"];
+              if (wipUrl) {
+                const match = wipUrl.match(/\/d\/([^\/]+)/);
+                if (match) {
+                  const docId = match[1];
+                  window.open(`https://docs.google.com/spreadsheets/d/${docId}/edit#gid=1576370139`, '_blank');
+                }
+              } else {
+                alert('WIP document not available');
+              }
+            }}
+            className="px-2 py-1 rounded border border-green-300 bg-green-50 text-green-700 text-xs font-medium hover:bg-green-100 transition-colors flex items-center gap-1"
+          >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+            </svg>
+            Go to sheet
+          </button>
+        </div>
+        
+        <div className="border rounded-lg p-4 bg-gray-50">
+          {discrepancyData && Array.isArray(discrepancyData) && discrepancyData.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {discrepancyData.map((item: any, idx: number) => (
+                <div key={idx} className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+                  {Object.entries(item)
+                    .filter(([key]) => key !== 'row_number')
+                    .map(([key, value]) => {
+                      // Format currency for discrepancy_amount field
+                      let displayValue = String(value) || 'N/A';
+                      if (key.toLowerCase().includes('amount') || key.toLowerCase().includes('discrepancy_amount')) {
+                        const numValue = parseFloat(String(value));
+                        if (!isNaN(numValue)) {
+                          displayValue = new Intl.NumberFormat('en-AU', {
+                            style: 'currency',
+                            currency: 'AUD',
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2
+                          }).format(numValue);
+                        }
+                      }
+                      
+                      return (
+                        <div key={key} className="mb-2 last:mb-0">
+                          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
+                            {key.replace(/_/g, ' ')}
+                          </div>
+                          <div className="text-sm font-medium text-gray-900">
+                            {displayValue}
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-sm text-gray-400">
+              {discrepancyLoading ? (
+                <div className="flex items-center justify-center gap-2">
+                  <div className="animate-spin h-5 w-5 border-2 border-blue-600 border-t-transparent rounded-full"></div>
+                  Loading...
+                </div>
+              ) : (
+                'No data available - Click "Refresh" to fetch'
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Section Separator */}
+      <div className="w-full border-t border-gray-300 my-8"></div>
+
+      {/* Advocacy Members Section */}
+      <div className="mt-8">
+        <div className="flex items-center justify-center mb-4 gap-3">
+          <h2 className="text-2xl font-bold text-gray-800 text-center">
+            Advocacy Members
+          </h2>
+          {/* Refresh Button */}
+          <button
+            onClick={async () => {
+              try {
+                setAdvocacyLoading(true);
+                
+                const wipUrl = info._processed_file_ids?.["business_WIP"];
+                let wipDocId = null;
+                
+                if (wipUrl) {
+                  const match = wipUrl.match(/\/d\/([^\/]+)/);
+                  if (match) {
+                    wipDocId = match[1];
+                  }
+                }
+
+                const payload = {
+                  business_name: business.name,
+                  sheet_name: "Advocacy Members",
+                  ...(wipDocId && { wip_document_id: wipDocId })
+                };
+
+                console.log('Sending advocacy payload:', payload);
+
+                const response = await fetch('https://membersaces.app.n8n.cloud/webhook/pull_descrepancy_advocacy_WIP', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify(payload)
+                });
+                
+                const data = await response.json();
+                console.log('Advocacy webhook response:', data);
+                
+                if (response.ok && data) {
+                  setAdvocacyData(data);
+                  
+                  // Load existing meeting details from the main business row
+                  if (data && Array.isArray(data) && data.length > 0) {
+                    const mainBusinessRow = data.find((row: any) => {
+                      const memberName = row.advocacy_member || row.ADVOCACY_MEMBER || row['Advocacy Member'] || '';
+                      return memberName === business.name;
+                    });
+                    
+                    if (mainBusinessRow) {
+                      if (mainBusinessRow.advocacy_meeting_date || mainBusinessRow['Advocacy Meeting Date']) {
+                        setAdvocacyMeetingDate(mainBusinessRow.advocacy_meeting_date || mainBusinessRow['Advocacy Meeting Date'] || '');
+                      }
+                      if (mainBusinessRow.advocacy_meeting_time || mainBusinessRow['Advocacy Meeting Time']) {
+                        setAdvocacyMeetingTime(mainBusinessRow.advocacy_meeting_time || mainBusinessRow['Advocacy Meeting Time'] || '');
+                      }
+                      if (mainBusinessRow.advocacy_meeting_conducted || mainBusinessRow['Advocacy Meeting Conducted']) {
+                        const conducted = mainBusinessRow.advocacy_meeting_conducted || mainBusinessRow['Advocacy Meeting Conducted'] || '';
+                        setAdvocacyMeetingCompleted(conducted.toLowerCase() === 'yes');
+                      }
+                    }
+                  }
+                } else {
+                  alert('No data found or error occurred');
+                }
+              } catch (error) {
+                console.error('Error calling webhook:', error);
+                alert('Error fetching data');
+              } finally {
+                setAdvocacyLoading(false);
+              }
+            }}
+            disabled={advocacyLoading}
+            className="px-2 py-1 rounded border border-gray-300 text-gray-600 text-xs font-medium hover:bg-gray-50 hover:border-purple-400 hover:text-purple-600 disabled:opacity-50 transition-colors flex items-center gap-1"
+          >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            {advocacyLoading ? 'Loading...' : 'Refresh'}
+          </button>
+          
+          {/* Go to Sheet Button */}
+          <button
+            onClick={() => {
+              const wipUrl = info._processed_file_ids?.["business_WIP"];
+              if (wipUrl) {
+                const match = wipUrl.match(/\/d\/([^\/]+)/);
+                if (match) {
+                  const docId = match[1];
+                  window.open(`https://docs.google.com/spreadsheets/d/${docId}/edit#gid=46241003`, '_blank');
+                }
+              } else {
+                alert('WIP document not available');
+              }
+            }}
+            className="px-2 py-1 rounded border border-green-300 bg-green-50 text-green-700 text-xs font-medium hover:bg-green-100 transition-colors flex items-center gap-1"
+          >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+            </svg>
+            Go to sheet
+          </button>
+        </div>
+
+        {/* Advocacy Meeting Form */}
+        {advocacyData && Array.isArray(advocacyData) && advocacyData.length > 0 && (
+          <div className="mb-6 p-4 border rounded-lg bg-blue-50 border-blue-200">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-lg font-semibold text-gray-800">
+                📅 Advocacy Meeting Details
+              </h3>
+              {/* Save Button moved to header */}
+              <button
+                onClick={async () => {
+                  try {
+                    const wipUrl = info._processed_file_ids?.["business_WIP"];
+                    let wipDocId = null;
+                    
+                    if (wipUrl) {
+                      const match = wipUrl.match(/\/d\/([^\/]+)/);
+                      if (match) {
+                        wipDocId = match[1];
+                      }
+                    }
+
+                    const payload = {
+                      business_name: business.name,
+                      advocacy_meeting_date: advocacyMeetingDate,
+                      advocacy_meeting_time: advocacyMeetingTime,
+                      advocacy_meeting_conducted: advocacyMeetingCompleted ? 'Yes' : 'No',
+                      ...(wipDocId && { wip_document_id: wipDocId })
+                    };
+
+                    console.log('Saving advocacy meeting details:', payload);
+
+                    const response = await fetch('https://membersaces.app.n8n.cloud/webhook/save_advocacy_WIP', {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                      },
+                      body: JSON.stringify(payload)
+                    });
+                    
+                    if (response.ok) {
+                      alert('Advocacy meeting details saved successfully!');
+                    } else {
+                      alert('Error saving meeting details');
+                    }
+                  } catch (error) {
+                    console.error('Error saving advocacy meeting:', error);
+                    alert('Error saving meeting details');
+                  }
+                }}
+                className="px-3 py-1.5 bg-purple-600 text-white rounded-md hover:bg-purple-700 font-medium text-sm"
+              >
+                Save Meeting Details
+              </button>
+            </div>
+            
+            <p className="text-sm text-gray-600 mb-4">
+              To qualify for advocacy referral benefits, an advocacy meeting must be organized and completed.
+            </p>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+              {/* Date Picker */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Meeting Date
+                </label>
+                <input
+                  type="date"
+                  value={advocacyMeetingDate}
+                  onChange={(e) => setAdvocacyMeetingDate(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+              
+              {/* Time Picker */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Meeting Time
+                </label>
+                <input
+                  type="time"
+                  value={advocacyMeetingTime}
+                  onChange={(e) => setAdvocacyMeetingTime(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+              
+              {/* Completed Checkbox */}
+              <div className="flex items-center gap-2 pb-2">
+                <input
+                  type="checkbox"
+                  id="advocacy-completed"
+                  checked={advocacyMeetingCompleted}
+                  onChange={(e) => setAdvocacyMeetingCompleted(e.target.checked)}
+                  className="w-5 h-5 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                />
+                <label htmlFor="advocacy-completed" className="text-sm font-medium text-gray-700">
+                  Meeting Completed
+                </label>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {/* Advocacy Members Cards */}
+        <div className="border rounded-lg p-4 bg-gray-50">
+          {advocacyData && Array.isArray(advocacyData) && advocacyData.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+              {advocacyData
+                .filter((item: any) => {
+                  const memberName = item.advocacy_member || item.ADVOCACY_MEMBER || item['Advocacy Member'] || '';
+                  return memberName !== business.name;
+                })
+                .map((item: any, idx: number) => (
+                  <button
+                    key={idx}
+                    onClick={() => {
+                      const businessName = item.advocacy_member || item.ADVOCACY_MEMBER || item['Advocacy Member'] || '';
+                      if (businessName) {
+                        window.open(`/business-info?businessName=${encodeURIComponent(businessName)}`, '_blank');
+                      }
+                    }}
+                    className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow cursor-pointer hover:border-blue-400 text-left"
+                  >
+                    {Object.entries(item)
+                      .filter(([key]) => {
+                        // Filter out row_number and meeting detail columns (case-insensitive)
+                        const keyLower = key.toLowerCase();
+                        const excludedPatterns = [
+                          'row_number',
+                          'meeting_date',
+                          'meeting_time', 
+                          'meeting_conducted',
+                          'advocacy meeting date',
+                          'advocacy meeting time',
+                          'advocacy meeting conducted'
+                        ];
+                        return !excludedPatterns.some(pattern => keyLower.includes(pattern));
+                      })
+                      .map(([key, value]) => (
+                        <div key={key} className="mb-2 last:mb-0">
+                          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
+                            {key.replace(/_/g, ' ')}
+                          </div>
+                          <div className="text-sm font-medium text-gray-900">
+                            {String(value) || 'N/A'}
+                          </div>
+                        </div>
+                      ))}
+                  </button>
+                ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-sm text-gray-400">
+              {advocacyLoading ? (
+                <div className="flex items-center justify-center gap-2">
+                  <div className="animate-spin h-5 w-5 border-2 border-purple-600 border-t-transparent rounded-full"></div>
+                  Loading...
+                </div>
+              ) : (
+                'No data available - Click "Refresh" to fetch'
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
+  </div>
 
     {/* Drive Filing Modal */}
     {showDriveModal && (
@@ -1376,6 +1916,9 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                           }
                           if (businessData['Oil Invoice']) {
                             mappedFileIds['invoice_Oil'] = `https://drive.google.com/file/d/${businessData['Oil Invoice']}/view?usp=drivesdk`;
+                          }
+                          if (businessData['Water Invoice']) {
+                            mappedFileIds['invoice_Water'] = `https://drive.google.com/file/d/${businessData['Water Invoice']}/view?usp=drivesdk`;
                           }
                           
                           console.log('Mapped file IDs:', mappedFileIds);

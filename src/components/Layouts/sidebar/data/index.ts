@@ -1,5 +1,5 @@
 import * as Icons from "../icons";
-import ACESLogo from "@/../public/images/logo/ACES Logo.png";
+import ACESLogo from "@/../public/images/logo/CARBON ZERO Logo.png";
 
 export const ACES_BRAND = {
   name: "ACES",
@@ -27,6 +27,15 @@ export const NAV_DATA = [
           { title: "Document Generation", url: "/document-generation" },
           { title: "Invoice & Data Lodgement", url: "/document-lodgement" },
           { title: "Signed Agreement Lodgement", url: "/signed-agreement-lodgement" },
+        ],
+      },
+      {
+        title: "Solution Range",
+        items: [
+          {
+            title: "Solution Range",
+            url: "/solution-range",
+          },
         ],
       },
       {

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import BusinessInfoDisplay from "./BusinessInfoDisplay";
 import { getApiBaseUrl } from "@/lib/utils";
 
@@ -7,8 +7,6 @@ interface BusinessInfoToolProps {
   onTokenExpired?: () => Promise<void>;
   getValidToken?: () => Promise<string | null>;
 }
-
-
 
 export default function BusinessInfoTool({ 
   token, 
@@ -19,6 +17,7 @@ export default function BusinessInfoTool({
   const [businessInfo, setBusinessInfo] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const hasAutoSubmitted = useRef(false);
 
   const getBusinessInfo = async () => {
     console.log("🔍 API Base URL:", getApiBaseUrl());
@@ -101,6 +100,25 @@ export default function BusinessInfoTool({
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!hasAutoSubmitted.current) {
+      const params = new URLSearchParams(window.location.search);
+      const urlBusinessName = params.get('businessName');
+      
+      if (urlBusinessName) {
+        setBusinessName(urlBusinessName);
+        hasAutoSubmitted.current = true;
+        
+        // Trigger search after a short delay to ensure state is updated
+        const timer = setTimeout(() => {
+          getBusinessInfo();
+        }, 300);
+        
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [businessName]); // Add businessName to dependencies
 
   const handleLinkUtility = () => {
     const params = new URLSearchParams();

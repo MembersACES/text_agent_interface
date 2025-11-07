@@ -40,6 +40,11 @@ const pageMap = {
       },
     },
   },
+  "Solution Range": {
+    path: "/solution-range",
+    description: "Explore our comprehensive range of sustainable solutions and services",
+  },
+
   "Client & Strategy": {
     path: "/client-strategy",
     pages: {
