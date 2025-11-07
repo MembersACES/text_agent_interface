@@ -698,7 +698,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
         {/* Documents Section */}
         <div id="documents" className="border-t pt-6">
         <h2 className="text-2xl font-bold text-gray-800 mb-4 text-center">Business Documents & Agreements</h2>
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Business Documents */}
             <div>
               <h3 className="font-semibold text-gray-800 text-base mb-4">Business Documents</h3>
@@ -926,38 +926,6 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                     </div>
                   ));
                 })()}
-              </div>
-            </div>
-            {/* Signed Engagement Forms */}
-            <div>
-              <h3 className="font-semibold text-gray-800 text-base mb-4">Signed Engagement Forms</h3>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between p-2 rounded bg-gray-50 hover:bg-gray-100">
-                  <div className="flex-1">
-                    <div className="text-sm font-medium">Engagement Form</div>
-                    <div className="text-xs text-gray-500">
-                      {getFileUrl("signed_engagement_forms") ? (
-                        <FileLink label="View File" url={getFileUrl("signed_engagement_forms")} />
-                      ) : (
-                        "Not available"
-                      )}
-                    </div>
-                  </div>
-                  <button
-                    className="px-2 py-1 border border-gray-300 rounded text-xs text-gray-700 hover:bg-gray-200"
-                    onClick={() => {
-                      setDriveModalFilingType("signed_engagement_forms");
-                      setDriveModalBusinessName(businessName);
-                      setDriveModalFile(null);
-                      setDriveModalFiles([]);
-                      setDriveModalMultipleFiles(false);
-                      setDriveModalResult(null);
-                      setShowDriveModal(true);
-                    }}
-                  >
-                    File
-                  </button>
-                </div>
               </div>
             </div>
         </div>
