@@ -19,14 +19,15 @@ export type SolutionCategory =
     presentationId: string;
     enabled: boolean;
     category: SolutionCategory;
+    agentType?: "aces" | "client";
     imageUrl?: string;
     phoneNumber?: string | {
       production: string;
       development: string;
     };
     agentCapabilities?: string[];
-    dynamicSheetUrl?: string;
-    apiOutputSheetUrl?: string;
+    customSheetUrl?: string;
+    customSheetLabel?: string;
     subSolutions?: Omit<SolutionOption, "presentationId" | "enabled" | "category">[];
   }
 
@@ -132,11 +133,14 @@ export const solutionOptions: SolutionOption[] = [
   presentationId: "13jOv5xfI-R2RYKPfjlRNLZmAiDeDl4rACikyp8NcmP8",
   enabled: true,
   category: "ai_automation",
+  agentType: "aces",
   imageUrl: "/solutions/digital-voice-agents.png",
   phoneNumber: {
     production: "0340 519 216",
     development: "0483 902 753"
   },
+  customSheetUrl: "https://docs.google.com/spreadsheets/d/1m2e_wnIZ62sD_C8j56bysma4Gaj6_ae3FJ_zZ9PdINQ/edit?gid=0#gid=0",
+  customSheetLabel: "Digital Receptionist Transcripts",
   subSolutions: [
     {
       id: "aces_receptionist",
@@ -183,18 +187,20 @@ export const solutionOptions: SolutionOption[] = [
 // === OUTBOUND VOICE AGENT ===
 {
   id: "outbound_agent",
-  name: "Dynamic Outbound Voice Agent (Andrew)",
+  name: "Dynamic Outbound (Andrew)",
   description:
     "Logic-based outbound calling system that dynamically adjusts conversation flow depending on client data and intent.",
   presentationId: "13jOv5xfI-R2RYKPfjlRNLZmAiDeDl4rACikyp8NcmP8",
   enabled: true,
   category: "ai_automation",
+  agentType: "aces",
   imageUrl: "/solutions/outbound-agent.png",
   phoneNumber: {
     production: "0482 086 553",
     development: "0482 086 553"
   },
-  dynamicSheetUrl: "https://docs.google.com/spreadsheets/d/1RCgBkK9hj4crZytiOxEooFxIa7xsA5J8I2_4LNKLPJQ/edit?gid=0#gid=0",
+  customSheetUrl: "https://docs.google.com/spreadsheets/d/1RCgBkK9hj4crZytiOxEooFxIa7xsA5J8I2_4LNKLPJQ/edit?gid=0#gid=0",
+  customSheetLabel: "Dynamic Sheet",
   subSolutions: [
     {
       id: "electricity_demand_response_flow",
@@ -237,20 +243,23 @@ export const solutionOptions: SolutionOption[] = [
   id: "dynamic_inbound_andrew",
   name: "Dynamic Inbound (Andrew)",
   description:
-    "Member-specific dynamic inbound agent using Twilio. Accesses dedicated member solution sheets for personalized gas member enquiries.",
+    "Member-specific dynamic inbound agent using Twilio integration. Handles personalized member and solution-specific enquiries with access to dedicated member sheets.",
   presentationId: "13jOv5xfI-R2RYKPfjlRNLZmAiDeDl4rACikyp8NcmP8",
   enabled: true,
   category: "ai_automation",
+  agentType: "aces",
   imageUrl: "/solutions/dynamic-inbound.png",
   phoneNumber: {
     production: "0468 050 399",
     development: "0468 050 399"
   },
-  dynamicSheetUrl: "https://docs.google.com/spreadsheets/d/1B4C12-ctkBuy8RN5oJquTV4xMYKjk-TLYGzRZ3bTyvY/edit?gid=0#gid=0",
+  customSheetUrl: "https://docs.google.com/spreadsheets/d/1B4C12-ctkBuy8RN5oJquTV4xMYKjk-TLYGzRZ3bTyvY/edit?gid=0#gid=0",
+  customSheetLabel: "Dynamic Sheet",
   agentCapabilities: [
     "Member-specific solution handling",
     "Dynamic routing based on member data",
     "Twilio-powered voice integration",
+    "Access to member-specific solution sheets",
     "Gas member enquiry management"
   ]
 },
@@ -264,11 +273,14 @@ export const solutionOptions: SolutionOption[] = [
   presentationId: "13jOv5xfI-R2RYKPfjlRNLZmAiDeDl4rACikyp8NcmP8",
   enabled: true,
   category: "ai_automation",
+  agentType: "client", 
   imageUrl: "/solutions/inbound-booking.png",
   phoneNumber: {
     production: "0418 004 047",
     development: "0418 004 047"
   },
+  customSheetUrl: "https://docs.google.com/spreadsheets/d/1KsASRS2AdJIdjBKuYGUGZbRygy1GbNNMChXmhTtcqk4/edit?gid=0#gid=0",
+  customSheetLabel: "Booking Examples & Transcripts",
   agentCapabilities: [
     "Frankston RSL booking management",
     "OBEE system integration",
@@ -286,12 +298,14 @@ export const solutionOptions: SolutionOption[] = [
   presentationId: "13jOv5xfI-R2RYKPfjlRNLZmAiDeDl4rACikyp8NcmP8",
   enabled: true,
   category: "ai_automation",
+  agentType: "client", 
   imageUrl: "/solutions/docket-reader.png",
   phoneNumber: {
     production: "0482 086 553",
     development: "0482 086 553"
   },
-  apiOutputSheetUrl: "https://docs.google.com/spreadsheets/d/1m1-Gq08L841Rqm39yvz_4nkyyFOzvI83BCvBRVVoJ38/edit?gid=0#gid=0",
+  customSheetUrl: "https://docs.google.com/spreadsheets/d/1m1-Gq08L841Rqm39yvz_4nkyyFOzvI83BCvBRVVoJ38/edit?gid=0#gid=0",
+  customSheetLabel: "API Output Sheet",
   agentCapabilities: [
     "SMS/MMS photo receipt via text message",
     "Automated OCR data extraction from oil dockets",

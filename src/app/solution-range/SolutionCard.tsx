@@ -152,7 +152,6 @@ export default function EnhancedSolutionCard({ solution }: { solution: SolutionL
               )}
             </div>
           )}
-
           {/* Action buttons for top-level only - moved below content */}
           {!isSubCard && "presentationId" in solution && solution.presentationId && (
             <div className="flex gap-2 mt-3">
@@ -181,15 +180,15 @@ export default function EnhancedSolutionCard({ solution }: { solution: SolutionL
                 </svg>
               </button>
               
-              {/* Dynamic Sheet button - only show if dynamicSheetUrl exists */}
-              {(solution as SolutionOption).dynamicSheetUrl && (
+              {/* Custom Sheet button - shows with custom label */}
+              {(solution as SolutionOption).customSheetUrl && (
                 <button
                   onClick={() =>
-                    window.open((solution as SolutionOption).dynamicSheetUrl, "_blank")
+                    window.open((solution as SolutionOption).customSheetUrl, "_blank")
                   }
                   className="flex-1 px-4 py-2 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg hover:from-green-700 hover:to-green-800 transition-all duration-200 text-sm font-medium flex items-center justify-center gap-2 shadow-md hover:shadow-lg"
                 >
-                  <span>Dynamic Sheet</span>
+                  <span>{(solution as SolutionOption).customSheetLabel || "Sheet"}</span>
                   <svg
                     className="w-4 h-4"
                     fill="none"
@@ -201,31 +200,6 @@ export default function EnhancedSolutionCard({ solution }: { solution: SolutionL
                       strokeLinejoin="round"
                       strokeWidth={2}
                       d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                    />
-                  </svg>
-                </button>
-              )}
-
-              {/* API Output Sheet button - only show if apiOutputSheetUrl exists */}
-              {(solution as SolutionOption).apiOutputSheetUrl && (
-                <button
-                  onClick={() =>
-                    window.open((solution as SolutionOption).apiOutputSheetUrl, "_blank")
-                  }
-                  className="flex-1 px-4 py-2 bg-gradient-to-r from-orange-600 to-orange-700 text-white rounded-lg hover:from-orange-700 hover:to-orange-800 transition-all duration-200 text-sm font-medium flex items-center justify-center gap-2 shadow-md hover:shadow-lg"
-                >
-                  <span>API Output Sheet</span>
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
                     />
                   </svg>
                 </button>
