@@ -73,6 +73,13 @@ function FileLink({ label, url }: { label: string; url?: string }) {
 export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: BusinessInfoDisplayProps) {
   if (!info) return null;
   const business = info.business_details || {};
+  const businessType =
+  business.name?.toLowerCase().includes("trust")
+    ? "Trust"
+    : business.name?.toLowerCase().includes("pty") ||
+      business.name?.toLowerCase().includes("ltd")
+    ? "Pty Ltd"
+    : "Unknown";
   const contact = info.contact_information || {};
   const rep = info.representative_details || {};
   const docs: Record<string, any> = (info && typeof info.business_documents === 'object' && info.business_documents !== null && !Array.isArray(info.business_documents)) ? info.business_documents : {};
@@ -82,7 +89,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
     const value = info._processed_file_ids?.[key];
     return (value && typeof value === 'string') ? value : undefined;
   };
-  
+  const [selectedStructure, setSelectedStructure] = useState(businessType);
   const contracts: { key: string; url?: string }[] = [
     { key: "C&I Electricity", url: getFileUrl("contract_C&I Electricity") },
     { key: "SME Electricity", url: getFileUrl("contract_SME Electricity") },
@@ -1173,6 +1180,78 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
               })}
             </div>
           </div>
+          {/* Robot Finance */}
+          <div className="border rounded-lg p-3 bg-gray-50">
+            <div className="font-semibold text-gray-800 mb-2">Robot Finance</div>
+            <div className="text-sm text-gray-600 mb-3">
+              Configure OPEX documentation requirements and send Step 1 email to client.
+            </div>
+
+            {/* Auto-detected business type */}
+            <div className="mb-2">
+              <label className="text-sm font-medium">Business Structure:</label>
+              <div className="flex items-center gap-4 mt-1">
+                <label className="flex items-center gap-1">
+                  <input
+                    type="radio"
+                    name="structure"
+                    value="Pty Ltd"
+                    checked={selectedStructure === "Pty Ltd"}
+                    onChange={() => setSelectedStructure("Pty Ltd")}
+                  />
+                  Pty Ltd
+                </label>
+                <label className="flex items-center gap-1">
+                  <input
+                    type="radio"
+                    name="structure"
+                    value="Trust"
+                    checked={selectedStructure === "Trust"}
+                    onChange={() => setSelectedStructure("Trust")}
+                  />
+                  Trust
+                </label>
+              </div>
+            </div>
+
+            <button
+              className="px-3 py-1.5 mt-2 rounded bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 w-full"
+              onClick={async () => {
+                try {
+                  const payload = {
+                    business_name: business.name,
+                    contact_email: contact.email,
+                    contact_name : rep.contact_name,
+                    structure: selectedStructure,
+                  };
+
+                  const res = await fetch("https://membersaces.app.n8n.cloud/webhook-test/opex_finance_email", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload),
+                  });
+
+                  if (res.ok) {
+                    alert(`✅ OPEX Step 1 email triggered successfully for ${business.name}!`);
+                  } else {
+                    const text = await res.text();
+                    alert(`❌ n8n error (${res.status}): ${text}`);
+                  }
+                } catch (err) {
+                  console.error("Webhook error:", err);
+                  alert("⚠️ Failed to send OPEX email. Check console for details.");
+                }
+              }}
+            >
+              Generate Step 1 Email
+            </button>
+
+
+            <p className="text-xs text-gray-500 mt-3">
+              The finance partner will follow up with Step 2 requirements after submission.
+            </p>
+          </div>
+
         </div>
        {/* Section Separator */}
       <div className="w-full border-t border-gray-300 my-8"></div>
