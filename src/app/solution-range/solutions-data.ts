@@ -19,12 +19,15 @@ export type SolutionCategory =
     presentationId: string;
     enabled: boolean;
     category: SolutionCategory;
+    agentType?: "aces" | "client";
     imageUrl?: string;
     phoneNumber?: string | {
       production: string;
       development: string;
     };
     agentCapabilities?: string[];
+    customSheetUrl?: string;
+    customSheetLabel?: string;
     subSolutions?: Omit<SolutionOption, "presentationId" | "enabled" | "category">[];
   }
 
@@ -122,112 +125,195 @@ export const solutionOptions: SolutionOption[] = [
   },
 
  // === DIGITAL VOICE AGENTS ===
-  {
-    id: "digital_voice_agents",
-    name: "Digital Inbound Receptionist",
-    description:
-      "AI-powered voice agents that handle calls, route enquiries, and assist with energy, cleaning, and general business operations.",
-    presentationId: "13jOv5xfI-R2RYKPfjlRNLZmAiDeDl4rACikyp8NcmP8",
-    enabled: true,
-    category: "ai_automation",
-    imageUrl: "/solutions/digital-voice-agents.png",
-    phoneNumber: {
-      production: "0340519216",
-      development: "0483902753"
-    },
-    subSolutions: [
-      {
-        id: "aces_receptionist",
-        name: "ACES Receptionist (Mary)",
-        description:
-          "Primary voice assistant for ACES handling all incoming calls, client enquiries, and transfers to specialist departments.",
-        agentCapabilities: [
-          "Greet callers and determine purpose of call",
-          "Transfer to Energy or Cleaning agents",
-          "Collect details and log enquiries",
-          "Escalate complex issues",
-          "Professional ACES representation"
-        ]
-      },
-      {
-        id: "energy_expert",
-        name: "Energy Expert (Alex)",
-        description:
-          "Voice agent specialising in commercial & industrial electricity and gas. Explains bills, metering, and contracts clearly and confidently.",
-        agentCapabilities: [
-          "Explain electricity and gas concepts (NMI, MIRN, etc.)",
-          "Clarify bill structures and tariffs",
-          "Escalate contract/pricing queries",
-          "Confirm customer details efficiently",
-          "C&I customers only"
-        ]
-      },
-      {
-        id: "cleaning_expert",
-        name: "Cleaning Expert (George)",
-        description:
-          "Voice agent specialising in autonomous cleaning robots, offering detailed guidance on technology and trials.",
-        agentCapabilities: [
-          "Explain robot functionality, safety, and efficiency",
-          "Discuss ROI and sustainability metrics",
-          "Collect trial enquiry details",
-          "Escalate procurement queries",
-          "Provide calm, informative explanations"
-        ]
-      }
-    ]
+ {
+  id: "digital_voice_agents",
+  name: "Digital Inbound Receptionist",
+  description:
+    "AI-powered voice agents that handle calls, route enquiries, and assist with energy, cleaning, and general business operations.",
+  presentationId: "13jOv5xfI-R2RYKPfjlRNLZmAiDeDl4rACikyp8NcmP8",
+  enabled: true,
+  category: "ai_automation",
+  agentType: "aces",
+  imageUrl: "/solutions/digital-voice-agents.png",
+  phoneNumber: {
+    production: "0340 519 216",
+    development: "0483 902 753"
   },
+  customSheetUrl: "https://docs.google.com/spreadsheets/d/1m2e_wnIZ62sD_C8j56bysma4Gaj6_ae3FJ_zZ9PdINQ/edit?gid=0#gid=0",
+  customSheetLabel: "Digital Receptionist Transcripts",
+  subSolutions: [
+    {
+      id: "aces_receptionist",
+      name: "ACES Receptionist (Mary)",
+      description:
+        "Primary voice assistant for ACES handling all incoming calls, client enquiries, and transfers to specialist departments.",
+      agentCapabilities: [
+        "Greet callers and determine purpose of call",
+        "Transfer to Energy or Cleaning agents",
+        "Collect details and log enquiries",
+        "Escalate complex issues",
+        "Professional ACES representation"
+      ]
+    },
+    {
+      id: "energy_expert",
+      name: "Energy Expert (Alex)",
+      description:
+        "Voice agent specialising in commercial & industrial electricity and gas. Explains bills, metering, and contracts clearly and confidently.",
+      agentCapabilities: [
+        "Explain electricity and gas concepts (NMI, MIRN, etc.)",
+        "Clarify bill structures and tariffs",
+        "Escalate contract/pricing queries",
+        "Confirm customer details efficiently",
+        "C&I customers only"
+      ]
+    },
+    {
+      id: "cleaning_expert",
+      name: "Cleaning Expert (George)",
+      description:
+        "Voice agent specialising in autonomous cleaning robots, offering detailed guidance on technology and trials.",
+      agentCapabilities: [
+        "Explain robot functionality, safety, and efficiency",
+        "Discuss ROI and sustainability metrics",
+        "Collect trial enquiry details",
+        "Escalate procurement queries",
+        "Provide calm, informative explanations"
+      ]
+    }
+  ]
+},
 
-  // === OUTBOUND VOICE AGENT ===
-  {
-    id: "outbound_agent",
-    name: "Outbound Voice Agent",
-    description:
-      "Logic-based outbound calling system that dynamically adjusts conversation flow depending on client data and intent.",
-    presentationId: "13jOv5xfI-R2RYKPfjlRNLZmAiDeDl4rACikyp8NcmP8",
-    enabled: true,
-    category: "ai_automation",
-    imageUrl: "/solutions/outbound-agent.png",
-    phoneNumber: {
-      production: "0482086553",
-      development: "0482086553"
-    },
-    subSolutions: [
-      {
-        id: "electricity_demand_response_flow",
-        name: "Electricity Demand Response Flow",
-        description:
-          "Conversational flow presenting tailored information about electricity demand response programs using dynamic data inputs and logic splits.",
-        agentCapabilities: [
-          "Logic split node based on user type and program eligibility",
-          "Dynamic presentation of demand response benefits",
-          "Follow-up prompts based on user engagement"
-        ]
-      },
-      {
-        id: "gas_discrepancy_review_flow",
-        name: "Gas Discrepancy Review Flow",
-        description:
-          "AI-driven flow for explaining gas discrepancies and gathering client confirmation to proceed with reviews.",
-        agentCapabilities: [
-          "Automatically presents discrepancy report data",
-          "Handles clarifying questions interactively",
-          "Collects user confirmation and closes loop with acknowledgment"
-        ]
-      },
-      {
-        id: "default_logic_flow",
-        name: "Default Logic & Fallback Flow",
-        description:
-          "Fallback conversational logic for unclassified or incomplete data situations, ensuring the user always receives relevant information.",
-        agentCapabilities: [
-          "Graceful fallback prompts for missing data",
-          "Route unrecognized cases to internal follow-up queue",
-          "Ensures consistent experience across call scenarios"
-        ]
-      }
-    ]
+// === OUTBOUND VOICE AGENT ===
+{
+  id: "outbound_agent",
+  name: "Dynamic Outbound (Andrew)",
+  description:
+    "Logic-based outbound calling system that dynamically adjusts conversation flow depending on client data and intent.",
+  presentationId: "13jOv5xfI-R2RYKPfjlRNLZmAiDeDl4rACikyp8NcmP8",
+  enabled: true,
+  category: "ai_automation",
+  agentType: "aces",
+  imageUrl: "/solutions/outbound-agent.png",
+  phoneNumber: {
+    production: "0482 086 553",
+    development: "0482 086 553"
   },
+  customSheetUrl: "https://docs.google.com/spreadsheets/d/1RCgBkK9hj4crZytiOxEooFxIa7xsA5J8I2_4LNKLPJQ/edit?gid=0#gid=0",
+  customSheetLabel: "Dynamic Sheet",
+  subSolutions: [
+    {
+      id: "electricity_demand_response_flow",
+      name: "Electricity Demand Response Flow",
+      description:
+        "Conversational flow presenting tailored information about electricity demand response programs using dynamic data inputs and logic splits.",
+      agentCapabilities: [
+        "Logic split node based on user type and program eligibility",
+        "Dynamic presentation of demand response benefits",
+        "Follow-up prompts based on user engagement"
+      ]
+    },
+    {
+      id: "gas_discrepancy_review_flow",
+      name: "Gas Discrepancy Review Flow",
+      description:
+        "AI-driven flow for explaining gas discrepancies and gathering client confirmation to proceed with reviews.",
+      agentCapabilities: [
+        "Automatically presents discrepancy report data",
+        "Handles clarifying questions interactively",
+        "Collects user confirmation and closes loop with acknowledgment"
+      ]
+    },
+    {
+      id: "default_logic_flow",
+      name: "Default Logic & Fallback Flow",
+      description:
+        "Fallback conversational logic for unclassified or incomplete data situations, ensuring the user always receives relevant information.",
+      agentCapabilities: [
+        "Graceful fallback prompts for missing data",
+        "Route unrecognized cases to internal follow-up queue",
+        "Ensures consistent experience across call scenarios"
+      ]
+    }
+  ]
+},
+
+// === DYNAMIC INBOUND (ANDREW) ===
+{
+  id: "dynamic_inbound_andrew",
+  name: "Dynamic Inbound (Andrew)",
+  description:
+    "Member-specific dynamic inbound agent using Twilio integration. Handles personalized member and solution-specific enquiries with access to dedicated member sheets.",
+  presentationId: "13jOv5xfI-R2RYKPfjlRNLZmAiDeDl4rACikyp8NcmP8",
+  enabled: true,
+  category: "ai_automation",
+  agentType: "aces",
+  imageUrl: "/solutions/dynamic-inbound.png",
+  phoneNumber: {
+    production: "0468 050 399",
+    development: "0468 050 399"
+  },
+  customSheetUrl: "https://docs.google.com/spreadsheets/d/1B4C12-ctkBuy8RN5oJquTV4xMYKjk-TLYGzRZ3bTyvY/edit?gid=0#gid=0",
+  customSheetLabel: "Dynamic Sheet",
+  agentCapabilities: [
+    "Member-specific solution handling",
+    "Dynamic routing based on member data",
+    "Twilio-powered voice integration",
+    "Access to member-specific solution sheets",
+    "Gas member enquiry management"
+  ]
+},
+
+// === INBOUND BOOKING (ALEX) ===
+{
+  id: "inbound_booking_alex",
+  name: "Inbound Booking Receptionist (Alex)",
+  description:
+    "Custom booking integration for Frankston RSL to OBEE system via Twilio. Manages reservations and booking enquiries.",
+  presentationId: "13jOv5xfI-R2RYKPfjlRNLZmAiDeDl4rACikyp8NcmP8",
+  enabled: true,
+  category: "ai_automation",
+  agentType: "client", 
+  imageUrl: "/solutions/inbound-booking.png",
+  phoneNumber: {
+    production: "0418 004 047",
+    development: "0418 004 047"
+  },
+  customSheetUrl: "https://docs.google.com/spreadsheets/d/1KsASRS2AdJIdjBKuYGUGZbRygy1GbNNMChXmhTtcqk4/edit?gid=0#gid=0",
+  customSheetLabel: "Booking Examples & Transcripts",
+  agentCapabilities: [
+    "Frankston RSL booking management",
+    "OBEE system integration",
+    "Reservation enquiry handling",
+    "Custom Twilio integration",
+    "Automated booking confirmation"
+  ]
+},
+// === TROJAN OIL API DOCKET READER ===
+{
+  id: "trojan_oil_docket_reader",
+  name: "Trojan Oil API Docket Reader",
+  description:
+    "SMS-based document processing system. Text a photo of oil dockets to trigger automated API data extraction and processing.",
+  presentationId: "13jOv5xfI-R2RYKPfjlRNLZmAiDeDl4rACikyp8NcmP8",
+  enabled: true,
+  category: "ai_automation",
+  agentType: "client", 
+  imageUrl: "/solutions/docket-reader.png",
+  phoneNumber: {
+    production: "0482 086 553",
+    development: "0482 086 553"
+  },
+  customSheetUrl: "https://docs.google.com/spreadsheets/d/1m1-Gq08L841Rqm39yvz_4nkyyFOzvI83BCvBRVVoJ38/edit?gid=0#gid=0",
+  customSheetLabel: "API Output Sheet",
+  agentCapabilities: [
+    "SMS/MMS photo receipt via text message",
+    "Automated OCR data extraction from oil dockets",
+    "API-triggered processing workflow",
+    "Structured data output for integration",
+    "No voice interaction required - text only"
+  ]
+},
 
 
   {

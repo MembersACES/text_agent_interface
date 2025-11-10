@@ -144,6 +144,10 @@ export default function EnhancedSolutionRangePage() {
           <div className="space-y-6">
             {Object.entries(grouped).map(([category, items]) => {
               const expanded = expandedCategories.includes(category);
+              const isAiAutomation = category === "ai_automation";
+              const acesAgents = isAiAutomation ? items.filter(s => s.agentType === "aces") : [];
+              const clientAgents = isAiAutomation ? items.filter(s => s.agentType === "client") : [];
+              
               return (
                 <div
                   key={category}
@@ -198,98 +202,394 @@ export default function EnhancedSolutionRangePage() {
                       <p className="text-sm text-gray-600 mb-6 bg-blue-50 p-3 rounded-lg border-l-4 border-blue-400">
                         {categoryDescriptions[category as SolutionCategory]}
                       </p>
-                      <div className={viewMode === "grid" ? "grid grid-cols-1 lg:grid-cols-2 gap-4" : "space-y-3"}>
-                      {items.map((s) => (
-                        <div key={s.id}>
-                          <SolutionCard solution={s} />
-                          {s.subSolutions && s.subSolutions.length > 0 && (
-                            <div className="mt-5 ml-6 pl-6 border-l-2 border-blue-100">
-                              <button
-                                onClick={() =>
-                                  setExpandedCategories((prev) =>
-                                    prev.includes(s.id)
-                                      ? prev.filter((c) => c !== s.id)
-                                      : [...prev, s.id]
-                                  )
-                                }
-                                className="flex items-center justify-between w-full text-sm font-medium text-gray-700 hover:text-gray-900 mb-3 transition-all"
-                              >
-                                <div className="flex items-center gap-2">
-                                  <svg
-                                    className="w-4 h-4 text-blue-500"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    viewBox="0 0 24 24"
-                                  >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      strokeWidth={2}
-                                      d="M9 5l7 7-7 7"
-                                    />
-                                  </svg>
-                                  <span className="text-blue-600">Linked AI Agents</span>
-                                  <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
-                                    {s.subSolutions.length}
-                                  </span>
-                                </div>
-                                <svg
-                                  className={`w-5 h-5 text-gray-400 transition-transform ${
-                                    expandedCategories.includes(s.id) ? "rotate-90" : ""
-                                  }`}
-                                  fill="none"
-                                  stroke="currentColor"
-                                  viewBox="0 0 24 24"
-                                >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M9 5l7 7-7 7"
-                                  />
-                                </svg>
-                              </button>
+                      
+                      {isAiAutomation ? (
+                        <>
+                          {/* ACES Agents Section */}
+                          {acesAgents.length > 0 && (
+                            <div className="mb-8">
+                              <div className="flex items-center gap-2 mb-4">
+                                <div className="h-1 w-8 bg-gradient-to-r from-purple-500 to-purple-600 rounded"></div>
+                                <h3 className="text-lg font-bold text-gray-800">ACES Agents</h3>
+                                <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full font-medium">
+                                  {acesAgents.length} agent{acesAgents.length > 1 ? 's' : ''}
+                                </span>
+                              </div>
+                              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                {acesAgents.map((s) => (
+                                  <div key={s.id}>
+                                    <SolutionCard solution={s} />
+                                    {s.subSolutions && s.subSolutions.length > 0 && (
+                                      <div className="mt-5 ml-6 pl-6 border-l-2 border-blue-100">
+                                        <button
+                                          onClick={() =>
+                                            setExpandedCategories((prev) =>
+                                              prev.includes(s.id)
+                                                ? prev.filter((c) => c !== s.id)
+                                                : [...prev, s.id]
+                                            )
+                                          }
+                                          className="flex items-center justify-between w-full text-sm font-medium text-gray-700 hover:text-gray-900 mb-3 transition-all"
+                                        >
+                                          <div className="flex items-center gap-2">
+                                            <svg
+                                              className="w-4 h-4 text-blue-500"
+                                              fill="none"
+                                              stroke="currentColor"
+                                              viewBox="0 0 24 24"
+                                            >
+                                              <path
+                                                strokeLinecap="round"
+                                                strokeLinejoin="round"
+                                                strokeWidth={2}
+                                                d="M9 5l7 7-7 7"
+                                              />
+                                            </svg>
+                                            <span className="text-blue-600">Linked AI Agents</span>
+                                            <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                                              {s.subSolutions.length}
+                                            </span>
+                                          </div>
+                                          <svg
+                                            className={`w-5 h-5 text-gray-400 transition-transform ${
+                                              expandedCategories.includes(s.id) ? "rotate-90" : ""
+                                            }`}
+                                            fill="none"
+                                            stroke="currentColor"
+                                            viewBox="0 0 24 24"
+                                          >
+                                            <path
+                                              strokeLinecap="round"
+                                              strokeLinejoin="round"
+                                              strokeWidth={2}
+                                              d="M9 5l7 7-7 7"
+                                            />
+                                          </svg>
+                                        </button>
 
-                              {expandedCategories.includes(s.id) && (
-                                <div className="relative space-y-4 mt-2">
-                                  <div className="absolute -left-[6px] top-3 w-3 h-3 bg-blue-400 rounded-full shadow-sm"></div>
-                                  {s.subSolutions.map((sub) => (
-                                    <div
-                                      key={sub.id}
-                                      className="bg-gradient-to-br from-gray-50 to-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-0.5"
-                                    >
-                                      <div className="p-4">
-                                        <SolutionCard solution={sub} />
+                                        {expandedCategories.includes(s.id) && (
+                                          <div className="relative space-y-4 mt-2">
+                                            <div className="absolute -left-[6px] top-3 w-3 h-3 bg-blue-400 rounded-full shadow-sm"></div>
+                                            {s.subSolutions.map((sub) => (
+                                              <div
+                                                key={sub.id}
+                                                className="bg-gradient-to-br from-gray-50 to-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-0.5"
+                                              >
+                                                <div className="p-4">
+                                                  <SolutionCard solution={sub} />
+                                                </div>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        )}
                                       </div>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          
+                          {/* Client Agents Section */}
+                          {clientAgents.length > 0 && (
+                            <div>
+                              <div className="flex items-center gap-2 mb-4">
+                                <div className="h-1 w-8 bg-gradient-to-r from-blue-500 to-blue-600 rounded"></div>
+                                <h3 className="text-lg font-bold text-gray-800">Client Agents</h3>
+                                <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full font-medium">
+                                  {clientAgents.length} agent{clientAgents.length > 1 ? 's' : ''}
+                                </span>
+                              </div>
+                              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                {clientAgents.map((s) => (
+                                  <div key={s.id}>
+                                    <SolutionCard solution={s} />
+                                    {s.subSolutions && s.subSolutions.length > 0 && (
+                                      <div className="mt-5 ml-6 pl-6 border-l-2 border-blue-100">
+                                        <button
+                                          onClick={() =>
+                                            setExpandedCategories((prev) =>
+                                              prev.includes(s.id)
+                                                ? prev.filter((c) => c !== s.id)
+                                                : [...prev, s.id]
+                                            )
+                                          }
+                                          className="flex items-center justify-between w-full text-sm font-medium text-gray-700 hover:text-gray-900 mb-3 transition-all"
+                                        >
+                                          <div className="flex items-center gap-2">
+                                            <svg
+                                              className="w-4 h-4 text-blue-500"
+                                              fill="none"
+                                              stroke="currentColor"
+                                              viewBox="0 0 24 24"
+                                            >
+                                              <path
+                                                strokeLinecap="round"
+                                                strokeLinejoin="round"
+                                                strokeWidth={2}
+                                                d="M9 5l7 7-7 7"
+                                              />
+                                            </svg>
+                                            <span className="text-blue-600">Linked AI Agents</span>
+                                            <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                                              {s.subSolutions.length}
+                                            </span>
+                                          </div>
+                                          <svg
+                                            className={`w-5 h-5 text-gray-400 transition-transform ${
+                                              expandedCategories.includes(s.id) ? "rotate-90" : ""
+                                            }`}
+                                            fill="none"
+                                            stroke="currentColor"
+                                            viewBox="0 0 24 24"
+                                          >
+                                            <path
+                                              strokeLinecap="round"
+                                              strokeLinejoin="round"
+                                              strokeWidth={2}
+                                              d="M9 5l7 7-7 7"
+                                            />
+                                          </svg>
+                                        </button>
+
+                                        {expandedCategories.includes(s.id) && (
+                                          <div className="relative space-y-4 mt-2">
+                                            <div className="absolute -left-[6px] top-3 w-3 h-3 bg-blue-400 rounded-full shadow-sm"></div>
+                                            {s.subSolutions.map((sub) => (
+                                              <div
+                                                key={sub.id}
+                                                className="bg-gradient-to-br from-gray-50 to-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-0.5"
+                                              >
+                                                <div className="p-4">
+                                                  <SolutionCard solution={sub} />
+                                                </div>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <div className={viewMode === "grid" ? "grid grid-cols-1 lg:grid-cols-2 gap-4" : "space-y-3"}>
+                          {items.map((s) => (
+                            <div key={s.id}>
+                              <SolutionCard solution={s} />
+                              {s.subSolutions && s.subSolutions.length > 0 && (
+                                <div className="mt-5 ml-6 pl-6 border-l-2 border-blue-100">
+                                  <button
+                                    onClick={() =>
+                                      setExpandedCategories((prev) =>
+                                        prev.includes(s.id)
+                                          ? prev.filter((c) => c !== s.id)
+                                          : [...prev, s.id]
+                                      )
+                                    }
+                                    className="flex items-center justify-between w-full text-sm font-medium text-gray-700 hover:text-gray-900 mb-3 transition-all"
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <svg
+                                        className="w-4 h-4 text-blue-500"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                      >
+                                        <path
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          strokeWidth={2}
+                                          d="M9 5l7 7-7 7"
+                                        />
+                                      </svg>
+                                      <span className="text-blue-600">Linked AI Agents</span>
+                                      <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                                        {s.subSolutions.length}
+                                      </span>
                                     </div>
-                                  ))}
+                                    <svg
+                                      className={`w-5 h-5 text-gray-400 transition-transform ${
+                                        expandedCategories.includes(s.id) ? "rotate-90" : ""
+                                      }`}
+                                      fill="none"
+                                      stroke="currentColor"
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M9 5l7 7-7 7"
+                                      />
+                                    </svg>
+                                  </button>
+
+                                  {expandedCategories.includes(s.id) && (
+                                    <div className="relative space-y-4 mt-2">
+                                      <div className="absolute -left-[6px] top-3 w-3 h-3 bg-blue-400 rounded-full shadow-sm"></div>
+                                      {s.subSolutions.map((sub) => (
+                                        <div
+                                          key={sub.id}
+                                          className="bg-gradient-to-br from-gray-50 to-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-0.5"
+                                        >
+                                          <div className="p-4">
+                                            <SolutionCard solution={sub} />
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
                                 </div>
                               )}
                             </div>
-                          )}
-
+                          ))}
                         </div>
-                      ))}
-                      </div>
+                      )}
                     </div>
                   )}
                 </div>
               );
             })}
           </div>
-        ) : (
-          // Direct View (filtered category)
-          <div className="bg-white rounded-xl shadow-md p-6 border border-gray-200">
-            <div className="mb-4">
-              <h2 className="text-xl font-bold text-gray-800 mb-2">
-                {categoryLabels[selectedCategory as SolutionCategory]}
-              </h2>
-              <p className="text-sm text-gray-600">
-                {categoryDescriptions[selectedCategory as SolutionCategory]}
-              </p>
-            </div>
+      ) : (
+        // Direct View (filtered category)
+        <div className="bg-white rounded-xl shadow-md p-6 border border-gray-200">
+          <div className="mb-4">
+            <h2 className="text-xl font-bold text-gray-800 mb-2">
+              {categoryLabels[selectedCategory as SolutionCategory]}
+            </h2>
+            <p className="text-sm text-gray-600">
+              {categoryDescriptions[selectedCategory as SolutionCategory]}
+            </p>
+          </div>
+          
+          {selectedCategory === "ai_automation" ? (
+            <>
+              {/* ACES Agents Section */}
+              {filtered.filter(s => s.agentType === "aces").length > 0 && (
+                <div className="mb-8">
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="h-1 w-8 bg-gradient-to-r from-purple-500 to-purple-600 rounded"></div>
+                    <h3 className="text-lg font-bold text-gray-800">ACES Agents</h3>
+                    <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full font-medium">
+                      {filtered.filter(s => s.agentType === "aces").length} agent{filtered.filter(s => s.agentType === "aces").length > 1 ? 's' : ''}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {filtered.filter(s => s.agentType === "aces").map((s) => (
+                      <div key={s.id}>
+                        <SolutionCard solution={s} />
+                        {s.subSolutions && s.subSolutions.length > 0 && (
+                          <div className="mt-5 ml-6 pl-6 border-l-2 border-blue-100">
+                            <button
+                              onClick={() =>
+                                setExpandedCategories((prev) =>
+                                  prev.includes(s.id)
+                                    ? prev.filter((c) => c !== s.id)
+                                    : [...prev, s.id]
+                                )
+                              }
+                              className="flex items-center justify-between w-full text-sm font-medium text-gray-700 hover:text-gray-900 mb-3 transition-all"
+                            >
+                              <div className="flex items-center gap-2">
+                                <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                </svg>
+                                <span className="text-blue-600">Linked AI Agents</span>
+                                <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                                  {s.subSolutions.length}
+                                </span>
+                              </div>
+                              <svg className={`w-5 h-5 text-gray-400 transition-transform ${expandedCategories.includes(s.id) ? "rotate-90" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                              </svg>
+                            </button>
+                            {expandedCategories.includes(s.id) && (
+                              <div className="relative space-y-4 mt-2">
+                                <div className="absolute -left-[6px] top-3 w-3 h-3 bg-blue-400 rounded-full shadow-sm"></div>
+                                {s.subSolutions.map((sub) => (
+                                  <div key={sub.id} className="bg-gradient-to-br from-gray-50 to-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-0.5">
+                                    <div className="p-4">
+                                      <SolutionCard solution={sub} />
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              {/* Client Agents Section */}
+              {filtered.filter(s => s.agentType === "client").length > 0 && (
+                <div>
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="h-1 w-8 bg-gradient-to-r from-blue-500 to-blue-600 rounded"></div>
+                    <h3 className="text-lg font-bold text-gray-800">Client Agents</h3>
+                    <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full font-medium">
+                      {filtered.filter(s => s.agentType === "client").length} agent{filtered.filter(s => s.agentType === "client").length > 1 ? 's' : ''}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {filtered.filter(s => s.agentType === "client").map((s) => (
+                      <div key={s.id}>
+                        <SolutionCard solution={s} />
+                        {s.subSolutions && s.subSolutions.length > 0 && (
+                          <div className="mt-5 ml-6 pl-6 border-l-2 border-blue-100">
+                            <button
+                              onClick={() =>
+                                setExpandedCategories((prev) =>
+                                  prev.includes(s.id)
+                                    ? prev.filter((c) => c !== s.id)
+                                    : [...prev, s.id]
+                                )
+                              }
+                              className="flex items-center justify-between w-full text-sm font-medium text-gray-700 hover:text-gray-900 mb-3 transition-all"
+                            >
+                              <div className="flex items-center gap-2">
+                                <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                </svg>
+                                <span className="text-blue-600">Linked AI Agents</span>
+                                <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                                  {s.subSolutions.length}
+                                </span>
+                              </div>
+                              <svg className={`w-5 h-5 text-gray-400 transition-transform ${expandedCategories.includes(s.id) ? "rotate-90" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                              </svg>
+                            </button>
+                            {expandedCategories.includes(s.id) && (
+                              <div className="relative space-y-4 mt-2">
+                                <div className="absolute -left-[6px] top-3 w-3 h-3 bg-blue-400 rounded-full shadow-sm"></div>
+                                {s.subSolutions.map((sub) => (
+                                  <div key={sub.id} className="bg-gradient-to-br from-gray-50 to-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-0.5">
+                                    <div className="p-4">
+                                      <SolutionCard solution={sub} />
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
             <div className={viewMode === "grid" ? "grid grid-cols-1 lg:grid-cols-2 gap-4" : "space-y-3"}>
-            {filtered.map((s) => (
+              {filtered.map((s) => (
               <div key={s.id}>
                 <SolutionCard solution={s} />
                 {s.subSolutions && s.subSolutions.length > 0 && (
@@ -361,6 +661,7 @@ export default function EnhancedSolutionRangePage() {
               </div>
             ))}
             </div>
+          )}
           </div>
         )}
 
