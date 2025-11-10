@@ -182,7 +182,7 @@ export const solutionOptions: SolutionOption[] = [
 // === OUTBOUND VOICE AGENT ===
 {
   id: "outbound_agent",
-  name: "Outbound Voice Agent",
+  name: "Dynamic Outbound Voice Agent",
   description:
     "Logic-based outbound calling system that dynamically adjusts conversation flow depending on client data and intent.",
   presentationId: "13jOv5xfI-R2RYKPfjlRNLZmAiDeDl4rACikyp8NcmP8",
@@ -193,6 +193,7 @@ export const solutionOptions: SolutionOption[] = [
     production: "0482 086 553",
     development: "0482 086 553"
   },
+  dynamicSheetUrl: "https://docs.google.com/spreadsheets/d/1RCgBkK9hj4crZytiOxEooFxIa7xsA5J8I2_4LNKLPJQ/edit?gid=0#gid=0",
   subSolutions: [
     {
       id: "electricity_demand_response_flow",
