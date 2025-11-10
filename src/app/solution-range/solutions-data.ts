@@ -185,28 +185,36 @@ export const solutionOptions: SolutionOption[] = [
 },
 
 // === OUTBOUND VOICE AGENT ===
+// === OUTBOUND VOICE AGENT ===
 {
   id: "outbound_agent",
-  name: "Dynamic Outbound (Andrew)",
+  name: "Dynamic Outbound (Andrew) - OUTBOUND ONLY",
   description:
-    "Logic-based outbound calling system that dynamically adjusts conversation flow depending on client data and intent.",
+    "Outbound-only calling system that dynamically adjusts conversation flow depending on client data and intent. Does not handle inbound calls.",
   presentationId: "13jOv5xfI-R2RYKPfjlRNLZmAiDeDl4rACikyp8NcmP8",
   enabled: true,
   category: "ai_automation",
   agentType: "aces",
   imageUrl: "/solutions/outbound-agent.png",
   phoneNumber: {
-    production: "0482 086 553",
-    development: "0482 086 553"
+    production: "0483 938 365",
+    development: "0483 938 365"
   },
   customSheetUrl: "https://docs.google.com/spreadsheets/d/1RCgBkK9hj4crZytiOxEooFxIa7xsA5J8I2_4LNKLPJQ/edit?gid=0#gid=0",
   customSheetLabel: "Dynamic Sheet",
+  agentCapabilities: [
+    "⚠️ OUTBOUND CALLS ONLY - Does not answer incoming calls",
+    "Logic-based outbound dialing with dynamic flow adjustment",
+    "Tailored messaging based on client data and context",
+    "Automated follow-ups and scheduling",
+    "Campaign management and tracking"
+  ],
   subSolutions: [
     {
       id: "electricity_demand_response_flow",
       name: "Electricity Demand Response Flow",
       description:
-        "Conversational flow presenting tailored information about electricity demand response programs using dynamic data inputs and logic splits.",
+        "Outbound conversational flow presenting tailored information about electricity demand response programs using dynamic data inputs and logic splits.",
       agentCapabilities: [
         "Logic split node based on user type and program eligibility",
         "Dynamic presentation of demand response benefits",
@@ -217,7 +225,7 @@ export const solutionOptions: SolutionOption[] = [
       id: "gas_discrepancy_review_flow",
       name: "Gas Discrepancy Review Flow",
       description:
-        "AI-driven flow for explaining gas discrepancies and gathering client confirmation to proceed with reviews.",
+        "Outbound AI-driven flow for explaining gas discrepancies and gathering client confirmation to proceed with reviews.",
       agentCapabilities: [
         "Automatically presents discrepancy report data",
         "Handles clarifying questions interactively",
