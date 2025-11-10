@@ -182,7 +182,7 @@ export const solutionOptions: SolutionOption[] = [
 // === OUTBOUND VOICE AGENT ===
 {
   id: "outbound_agent",
-  name: "Dynamic Outbound Voice Agent",
+  name: "Dynamic Outbound Voice Agent (Andrew)",
   description:
     "Logic-based outbound calling system that dynamically adjusts conversation flow depending on client data and intent.",
   presentationId: "13jOv5xfI-R2RYKPfjlRNLZmAiDeDl4rACikyp8NcmP8",
