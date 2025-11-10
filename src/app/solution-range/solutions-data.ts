@@ -25,7 +25,8 @@ export type SolutionCategory =
       development: string;
     };
     agentCapabilities?: string[];
-    dynamicSheetUrl?: string;  // Add this new optional field
+    dynamicSheetUrl?: string;
+    apiOutputSheetUrl?: string;
     subSolutions?: Omit<SolutionOption, "presentationId" | "enabled" | "category">[];
   }
 
@@ -290,6 +291,7 @@ export const solutionOptions: SolutionOption[] = [
     production: "0482 086 553",
     development: "0482 086 553"
   },
+  apiOutputSheetUrl: "https://docs.google.com/spreadsheets/d/1m1-Gq08L841Rqm39yvz_4nkyyFOzvI83BCvBRVVoJ38/edit?gid=0#gid=0",
   agentCapabilities: [
     "SMS/MMS photo receipt via text message",
     "Automated OCR data extraction from oil dockets",

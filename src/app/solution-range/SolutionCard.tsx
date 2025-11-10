@@ -205,6 +205,31 @@ export default function EnhancedSolutionCard({ solution }: { solution: SolutionL
                   </svg>
                 </button>
               )}
+
+              {/* API Output Sheet button - only show if apiOutputSheetUrl exists */}
+              {(solution as SolutionOption).apiOutputSheetUrl && (
+                <button
+                  onClick={() =>
+                    window.open((solution as SolutionOption).apiOutputSheetUrl, "_blank")
+                  }
+                  className="flex-1 px-4 py-2 bg-gradient-to-r from-orange-600 to-orange-700 text-white rounded-lg hover:from-orange-700 hover:to-orange-800 transition-all duration-200 text-sm font-medium flex items-center justify-center gap-2 shadow-md hover:shadow-lg"
+                >
+                  <span>API Output Sheet</span>
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                    />
+                  </svg>
+                </button>
+              )}
             </div>
           )}
         </div>
