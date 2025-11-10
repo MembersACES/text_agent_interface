@@ -97,93 +97,116 @@ export default function EnhancedSolutionCard({ solution }: { solution: SolutionL
       )}
 
       <div className={`${isSubCard ? "pt-0" : "p-5"}`}>
-        {/* Header */}
-        <div className="flex items-start justify-between gap-4 mb-4">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-start gap-2 mb-2">
-              <div className="mt-1">
-                <div
-                  className={`w-8 h-8 rounded-lg bg-gradient-to-br ${getCategoryColor(
-                    (solution as SolutionOption).category
-                  )} p-1.5 text-white`}
+       {/* Header */}
+       <div className="mb-4">
+          <div className="flex items-start gap-2 mb-2">
+            <div className="mt-1">
+              <div
+                className={`w-8 h-8 rounded-lg bg-gradient-to-br ${getCategoryColor(
+                  (solution as SolutionOption).category
+                )} p-1.5 text-white`}
+              >
+                <svg
+                  className="w-full h-full"
+                  fill="currentColor"
+                  viewBox="0 0 24 24"
                 >
-                  <svg
-                    className="w-full h-full"
-                    fill="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path d="M12 2L2 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-10-5z" />
-                  </svg>
-                </div>
+                  <path d="M12 2L2 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-10-5z" />
+                </svg>
               </div>
-              <div className="flex-1">
-                <h3
-                  className={`font-bold ${
-                    isSubCard ? "text-sm" : "text-base"
-                  } text-gray-900 group-hover:text-blue-600 transition-colors`}
-                >
-                  {solution.name}
-                </h3>
-                <p
-                  className={`text-gray-600 mt-1 ${
-                    isSubCard ? "text-xs" : "text-sm"
-                  } line-clamp-2`}
-                >
-                  {solution.description}
-                </p>
-                {/* Linked Numbers (Top-level cards only) */}
-                {!isSubCard && solution.phoneNumber && (
-                  <div className="mt-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-3 border border-blue-200 space-y-2">
-                    {typeof solution.phoneNumber === "string" ? (
-                      <PhoneDisplay label="Direct Line" number={solution.phoneNumber} />
-                    ) : (
-                      <>
-                        <PhoneDisplay
-                          label="Production"
-                          number={solution.phoneNumber.production}
-                        />
-                        <PhoneDisplay
-                          label="Development"
-                          number={solution.phoneNumber.development}
-                        />
-                      </>
-                    )}
-                  </div>
-                )}
-
-              </div>
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3
+                className={`font-bold ${
+                  isSubCard ? "text-sm" : "text-base"
+                } text-gray-900 group-hover:text-blue-600 transition-colors`}
+              >
+                {solution.name}
+              </h3>
+              <p
+                className={`text-gray-600 mt-1 ${
+                  isSubCard ? "text-xs" : "text-sm"
+                } line-clamp-2`}
+              >
+                {solution.description}
+              </p>
             </div>
           </div>
 
-          {/* View button for top-level only */}
-          {!isSubCard && "presentationId" in solution && solution.presentationId && (
-            <button
-              onClick={() =>
-                window.open(
-                  `${GOOGLE_SLIDES_BASE}${(solution as SolutionOption).presentationId}`,
-                  "_blank"
-                )
-              }
-              className="flex-shrink-0 px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 text-sm font-medium flex items-center gap-2 whitespace-nowrap shadow-md hover:shadow-lg transform hover:scale-105"
-            >
-              <span>View</span>
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                />
-              </svg>
-            </button>
+          {/* Linked Numbers (Top-level cards only) */}
+          {!isSubCard && solution.phoneNumber && (
+            <div className="mt-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-2 border border-blue-200 space-y-1.5">
+              {typeof solution.phoneNumber === "string" ? (
+                <PhoneDisplay label="Direct Line" number={solution.phoneNumber} />
+              ) : (
+                <>
+                  <PhoneDisplay
+                    label="Production"
+                    number={solution.phoneNumber.production}
+                  />
+                  <PhoneDisplay
+                    label="Development"
+                    number={solution.phoneNumber.development}
+                  />
+                </>
+              )}
+            </div>
           )}
 
-
+          {/* Action buttons for top-level only - moved below content */}
+          {!isSubCard && "presentationId" in solution && solution.presentationId && (
+            <div className="flex gap-2 mt-3">
+              <button
+                onClick={() =>
+                  window.open(
+                    `${GOOGLE_SLIDES_BASE}${(solution as SolutionOption).presentationId}`,
+                    "_blank"
+                  )
+                }
+                className="flex-1 px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 text-sm font-medium flex items-center justify-center gap-2 shadow-md hover:shadow-lg"
+              >
+                <span>View</span>
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                  />
+                </svg>
+              </button>
+              
+              {/* Dynamic Sheet button - only show if dynamicSheetUrl exists */}
+              {(solution as SolutionOption).dynamicSheetUrl && (
+                <button
+                  onClick={() =>
+                    window.open((solution as SolutionOption).dynamicSheetUrl, "_blank")
+                  }
+                  className="flex-1 px-4 py-2 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg hover:from-green-700 hover:to-green-800 transition-all duration-200 text-sm font-medium flex items-center justify-center gap-2 shadow-md hover:shadow-lg"
+                >
+                  <span>Dynamic Sheet</span>
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                    />
+                  </svg>
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Agent info (for both types) */}
