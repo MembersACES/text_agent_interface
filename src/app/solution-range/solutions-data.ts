@@ -276,6 +276,28 @@ export const solutionOptions: SolutionOption[] = [
     "Automated booking confirmation"
   ]
 },
+// === TROJAN OIL API DOCKET READER ===
+{
+  id: "trojan_oil_docket_reader",
+  name: "Trojan Oil API Docket Reader",
+  description:
+    "SMS-based document processing system. Text a photo of oil dockets to trigger automated API data extraction and processing.",
+  presentationId: "13jOv5xfI-R2RYKPfjlRNLZmAiDeDl4rACikyp8NcmP8",
+  enabled: true,
+  category: "ai_automation",
+  imageUrl: "/solutions/docket-reader.png",
+  phoneNumber: {
+    production: "0482 086 553",
+    development: "0482 086 553"
+  },
+  agentCapabilities: [
+    "SMS/MMS photo receipt via text message",
+    "Automated OCR data extraction from oil dockets",
+    "API-triggered processing workflow",
+    "Structured data output for integration",
+    "No voice interaction required - text only"
+  ]
+},
 
 
   {
