@@ -153,6 +153,11 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
   const [eoiFile, setEOIFile] = useState<File | null>(null);
   const [eoiLoading, setEOILoading] = useState(false);
   const [eoiResult, setEOIResult] = useState<string | null>(null);
+  const [sectionsOpen, setSectionsOpen] = useState({
+    utilities: false,
+    dataReports: false,
+    businessTools: false
+  });
   // Helper to render sub-details for utilities
   function renderUtilityDetails(util: string, details: any) {
     if (typeof details === 'string' || typeof details === 'number') {
@@ -166,6 +171,36 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
     return null;
   }
 
+  const CollapsibleSection = ({ title, isOpen, onToggle, children, actions }: any) => (
+    <div className="border border-gray-200 rounded-lg overflow-hidden bg-white shadow-sm mb-6">
+      <button
+        onClick={onToggle}
+        className="w-full px-6 py-3 flex items-center justify-between bg-gradient-to-r from-gray-50 to-gray-100 hover:from-gray-100 hover:to-gray-200 transition-all"
+      >
+        <h3 className="text-base font-semibold text-gray-800">{title}</h3>
+        <div className="flex items-center gap-3">
+          {actions}
+          <span className="text-gray-500">{isOpen ? '▲' : '▼'}</span>
+        </div>
+      </button>
+      {isOpen && <div className="p-6 bg-white">{children}</div>}
+    </div>
+  );
+
+  const [activeDataTab, setActiveDataTab] = useState<'automation' | 'discrepancy' | 'advocacy'>('automation');
+
+  const TabButton = ({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) => (
+    <button
+      onClick={onClick}
+      className={`px-4 py-2 font-medium text-sm transition-colors border-b-2 ${
+        active
+          ? 'border-blue-600 text-blue-600'
+          : 'border-transparent text-gray-600 hover:text-gray-800 hover:border-gray-300'
+      }`}
+    >
+      {children}
+    </button>
+  );
   // Add this function to extract EOI files dynamically
   const getEOIFiles = () => {
     if (!info._processed_file_ids) return [];
@@ -1113,529 +1148,123 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
               );
             })}
           </div>
-          {/* Section Separator */}
-          <div className="w-full border-t border-gray-300 my-8"></div>
-          {/* Additional Services Section - Always show Cleaning & Telecommunication */}
-          <div className="mt-8">
-            {/* Visual separator */}
+          {/* Additional Utilities Section */}
+          <div className="border-t pt-6 mt-8">
             <h2 className="text-2xl font-bold text-gray-800 mb-4 text-center">Additional Utilities</h2>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {["Cleaning", "Telecommunication", "Water"].map((serviceKey) => {
-                // find the actual key in any case form (optional)
-                const realKey = Object.keys(linked).find(
-                  (k) => k.toLowerCase() === serviceKey.toLowerCase()
-                ) || serviceKey;
-
-                const value = linked[realKey];
-                const retailer = retailers[realKey] || "";
-                const filingType =
-                  serviceKey === "Cleaning"
-                    ? "cleaning_invoice_upload"
-                    : serviceKey === "Telecommunication"
-                    ? "telecommunication_invoice_upload"
-                    : "water_invoice_upload";
-
-                // Check for invoice file
-                const invoiceFileKey = `invoice_${serviceKey}`;
-                const hasInvoiceFile = info._processed_file_ids?.[invoiceFileKey];
-
-                // Determine status
-                let statusLabel = "Not available";
-                if (hasInvoiceFile) statusLabel = "Invoice Available";
-                else if (value === true) statusLabel = "In File";
-                else if (value) statusLabel = "Available";
-
-                return (
-                  <div key={serviceKey} className="border rounded-lg p-3 bg-gray-50">
-                    <div className="font-semibold text-gray-800 mb-2">{serviceKey}</div>
-                    <div
-                      className={`text-sm mb-2 ${
-                        hasInvoiceFile ? "text-gray-800" : "text-gray-400"
-                      }`}
-                    >
-                      {statusLabel}
-                    </div>
-                    {retailer && (
-                      <div className="text-xs text-gray-500 mb-2">
-                        Provider: {retailer}
-                      </div>
-                    )}
-                    {hasInvoiceFile && (
-                      <div className="mb-2">
-                        <FileLink label="View Invoice" url={hasInvoiceFile} />
-                      </div>
-                    )}
-                    <button
-                      className="px-2 py-1 border border-gray-300 rounded text-xs text-gray-700 hover:bg-gray-100 w-full"
-                      onClick={() => {
-                        setDriveModalFilingType(filingType);
-                        setDriveModalBusinessName(business.name || "");
-                        setShowDriveModal(true);
-                      }}
-                    >
-                      {hasInvoiceFile ? "Replace Invoice" : "Upload Invoice"}
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-          {/* Robot Finance */}
-          <div className="border rounded-lg p-3 bg-gray-50">
-            <div className="font-semibold text-gray-800 mb-2">Robot Finance</div>
-            <div className="text-sm text-gray-600 mb-3">
-              Configure OPEX documentation requirements and send Step 1 email to client.
-            </div>
-
-            {/* Auto-detected business type */}
-            <div className="mb-2">
-              <label className="text-sm font-medium">Business Structure:</label>
-              <div className="flex items-center gap-4 mt-1">
-                <label className="flex items-center gap-1">
-                  <input
-                    type="radio"
-                    name="structure"
-                    value="Pty Ltd"
-                    checked={selectedStructure === "Pty Ltd"}
-                    onChange={() => setSelectedStructure("Pty Ltd")}
-                  />
-                  Pty Ltd
-                </label>
-                <label className="flex items-center gap-1">
-                  <input
-                    type="radio"
-                    name="structure"
-                    value="Trust"
-                    checked={selectedStructure === "Trust"}
-                    onChange={() => setSelectedStructure("Trust")}
-                  />
-                  Trust
-                </label>
+            <div className="border border-gray-200 rounded-lg overflow-hidden bg-white shadow-sm mb-6">
+              <button
+                onClick={() => setSectionsOpen(prev => ({ ...prev, utilities: !prev.utilities }))}
+                className="w-full px-6 py-3 flex items-center justify-between bg-gradient-to-r from-gray-50 to-gray-100 hover:from-gray-100 hover:to-gray-200 transition-all"
+              >
+                <div className="flex items-center gap-3 text-sm text-gray-600">
+              <span>Cleaning</span>
+              <span>Telecommunication</span>
+              <span>Water</span>
               </div>
-            </div>
+                <span className="text-gray-500">{sectionsOpen.utilities ? '▲' : '▼'}</span>
+              </button>
+              {sectionsOpen.utilities && (
+                <div className="p-6 bg-white">
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {["Cleaning", "Telecommunication", "Water"].map((serviceKey) => {
+                      const realKey = Object.keys(linked).find(
+                        (k) => k.toLowerCase() === serviceKey.toLowerCase()
+                      ) || serviceKey;
 
-            <button
-              className="px-3 py-1.5 mt-2 rounded bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 w-full"
-              onClick={async () => {
-                try {
-                  const payload = {
-                    business_name: business.name,
-                    contact_email: contact.email,
-                    contact_name : rep.contact_name,
-                    structure: selectedStructure,
-                  };
+                      const value = linked[realKey];
+                      const retailer = retailers[realKey] || "";
+                      const filingType =
+                        serviceKey === "Cleaning"
+                          ? "cleaning_invoice_upload"
+                          : serviceKey === "Telecommunication"
+                          ? "telecommunication_invoice_upload"
+                          : "water_invoice_upload";
 
-                  const res = await fetch("https://membersaces.app.n8n.cloud/webhook-test/opex_finance_email", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(payload),
-                  });
+                      const invoiceFileKey = `invoice_${serviceKey}`;
+                      const hasInvoiceFile = info._processed_file_ids?.[invoiceFileKey];
 
-                  if (res.ok) {
-                    alert(`✅ OPEX Step 1 email triggered successfully for ${business.name}!`);
-                  } else {
-                    const text = await res.text();
-                    alert(`❌ n8n error (${res.status}): ${text}`);
-                  }
-                } catch (err) {
-                  console.error("Webhook error:", err);
-                  alert("⚠️ Failed to send OPEX email. Check console for details.");
-                }
-              }}
-            >
-              Generate Step 1 Email
-            </button>
+                      let statusLabel = "Not available";
+                      if (hasInvoiceFile) statusLabel = "Invoice Available";
+                      else if (value === true) statusLabel = "In File";
+                      else if (value) statusLabel = "Available";
 
-
-            <p className="text-xs text-gray-500 mt-3">
-              The finance partner will follow up with Step 2 requirements after submission.
-            </p>
-          </div>
-
-        </div>
-       {/* Section Separator */}
-      <div className="w-full border-t border-gray-300 my-8"></div>
-
-      {/* Automation & LLMs Section */}
-      <div className="mt-8">
-        <div className="flex items-center justify-center mb-4 gap-3">
-          <h2 className="text-2xl font-bold text-gray-800 text-center">
-            Automation & LLMs
-          </h2>
-          <button
-            onClick={async () => {
-              try {
-                setAutomationLoading(true);
-                
-                const wipUrl = info._processed_file_ids?.["business_WIP"];
-                let wipDocId = null;
-                
-                if (wipUrl) {
-                  const match = wipUrl.match(/\/d\/([^\/]+)/);
-                  if (match) {
-                    wipDocId = match[1];
-                  }
-                }
-
-                const payload = {
-                  business_name: business.name,
-                  sheet_name: "Automation & LLMs",
-                  ...(wipDocId && { wip_document_id: wipDocId })
-                };
-
-                console.log('Sending automation payload:', payload);
-
-                const response = await fetch('https://membersaces.app.n8n.cloud/webhook/pull_descrepancy_advocacy_WIP', {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                  },
-                  body: JSON.stringify(payload)
-                });
-                
-                const data = await response.json();
-                console.log('Automation webhook response:', data);
-                
-                if (response.ok && data) {
-                  setAutomationData(data);
-                } else {
-                  alert('No data found or error occurred');
-                }
-              } catch (error) {
-                console.error('Error calling webhook:', error);
-                alert('Error fetching data');
-              } finally {
-                setAutomationLoading(false);
-              }
-            }}
-            disabled={automationLoading}
-            className="px-2 py-1 rounded border border-gray-300 text-gray-600 text-xs font-medium hover:bg-gray-50 hover:border-green-400 hover:text-green-600 disabled:opacity-50 transition-colors flex items-center gap-1"
-          >
-            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-            {automationLoading ? 'Loading...' : 'Refresh'}
-          </button>
-          
-          {/* Go to Sheet Button */}
-          <button
-            onClick={() => {
-              const wipUrl = info._processed_file_ids?.["business_WIP"];
-              if (wipUrl) {
-                const match = wipUrl.match(/\/d\/([^\/]+)/);
-                if (match) {
-                  const docId = match[1];
-                  // You'll need to replace gid=0 with the actual gid for "Automation & LLMs" sheet
-                  window.open(`https://docs.google.com/spreadsheets/d/${docId}/edit#gid=0`, '_blank');
-                }
-              } else {
-                alert('WIP document not available');
-              }
-            }}
-            className="px-2 py-1 rounded border border-green-300 bg-green-50 text-green-700 text-xs font-medium hover:bg-green-100 transition-colors flex items-center gap-1"
-          >
-            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-            </svg>
-            Go to sheet
-          </button>
-        </div>
-        
-        <div className="border rounded-lg p-4 bg-gray-50">
-          {automationData && Array.isArray(automationData) && automationData.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {automationData.map((item: any, idx: number) => (
-                <div key={idx} className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
-                  {Object.entries(item)
-                    .filter(([key]) => key !== 'row_number')
-                    .map(([key, value]) => (
-                      <div key={key} className="mb-2 last:mb-0">
-                        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
-                          {key.replace(/_/g, ' ')}
-                        </div>
-                        <div className="text-sm font-medium text-gray-900">
-                          {String(value) || 'N/A'}
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-8 text-sm text-gray-400">
-              {automationLoading ? (
-                <div className="flex items-center justify-center gap-2">
-                  <div className="animate-spin h-5 w-5 border-2 border-green-600 border-t-transparent rounded-full"></div>
-                  Loading...
-                </div>
-              ) : (
-                'No data available - Click "Refresh" to fetch'
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-       
-       
-       {/* Section Separator */}
-      <div className="w-full border-t border-gray-300 my-8"></div>
-
-      {/* Discrepancy Adjustments Section */}
-      <div className="mt-8">
-        <div className="flex items-center justify-center mb-4 gap-3">
-          <h2 className="text-2xl font-bold text-gray-800 text-center">
-            Discrepancy Adjustments
-          </h2>
-          {/* Refresh Button */}
-          <button
-            onClick={async () => {
-              try {
-                setDiscrepancyLoading(true);
-                
-                const wipUrl = info._processed_file_ids?.["business_WIP"];
-                let wipDocId = null;
-                
-                if (wipUrl) {
-                  const match = wipUrl.match(/\/d\/([^\/]+)/);
-                  if (match) {
-                    wipDocId = match[1];
-                  }
-                }
-
-                const payload = {
-                  business_name: business.name,
-                  sheet_name: "Discrepancy Adjustments",
-                  ...(wipDocId && { wip_document_id: wipDocId })
-                };
-
-                console.log('Sending discrepancy payload:', payload);
-
-                const response = await fetch('https://membersaces.app.n8n.cloud/webhook/pull_descrepancy_advocacy_WIP', {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                  },
-                  body: JSON.stringify(payload)
-                });
-                
-                const data = await response.json();
-                console.log('Discrepancy webhook response:', data);
-                
-                if (response.ok && data) {
-                  setDiscrepancyData(data);
-                } else {
-                  alert('No data found or error occurred');
-                }
-              } catch (error) {
-                console.error('Error calling webhook:', error);
-                alert('Error fetching data');
-              } finally {
-                setDiscrepancyLoading(false);
-              }
-            }}
-            disabled={discrepancyLoading}
-            className="px-2 py-1 rounded border border-gray-300 text-gray-600 text-xs font-medium hover:bg-gray-50 hover:border-blue-400 hover:text-blue-600 disabled:opacity-50 transition-colors flex items-center gap-1"
-          >
-            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-            {discrepancyLoading ? 'Loading...' : 'Refresh'}
-          </button>
-          
-          {/* Go to Sheet Button - SEPARATE BUTTON */}
-          <button
-            onClick={() => {
-              const wipUrl = info._processed_file_ids?.["business_WIP"];
-              if (wipUrl) {
-                const match = wipUrl.match(/\/d\/([^\/]+)/);
-                if (match) {
-                  const docId = match[1];
-                  window.open(`https://docs.google.com/spreadsheets/d/${docId}/edit#gid=1576370139`, '_blank');
-                }
-              } else {
-                alert('WIP document not available');
-              }
-            }}
-            className="px-2 py-1 rounded border border-green-300 bg-green-50 text-green-700 text-xs font-medium hover:bg-green-100 transition-colors flex items-center gap-1"
-          >
-            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-            </svg>
-            Go to sheet
-          </button>
-        </div>
-        
-        <div className="border rounded-lg p-4 bg-gray-50">
-          {discrepancyData && Array.isArray(discrepancyData) && discrepancyData.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {discrepancyData.map((item: any, idx: number) => (
-                <div key={idx} className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
-                  {Object.entries(item)
-                    .filter(([key]) => key !== 'row_number')
-                    .map(([key, value]) => {
-                      // Format currency for discrepancy_amount field
-                      let displayValue = String(value) || 'N/A';
-                      if (key.toLowerCase().includes('amount') || key.toLowerCase().includes('discrepancy_amount')) {
-                        const numValue = parseFloat(String(value));
-                        if (!isNaN(numValue)) {
-                          displayValue = new Intl.NumberFormat('en-AU', {
-                            style: 'currency',
-                            currency: 'AUD',
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2
-                          }).format(numValue);
-                        }
-                      }
-                      
                       return (
-                        <div key={key} className="mb-2 last:mb-0">
-                          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
-                            {key.replace(/_/g, ' ')}
+                        <div key={serviceKey} className="border rounded-lg p-3 bg-gray-50">
+                          <div className="font-semibold text-gray-800 mb-2">{serviceKey}</div>
+                          <div
+                            className={`text-sm mb-2 ${
+                              hasInvoiceFile ? "text-gray-800" : "text-gray-400"
+                            }`}
+                          >
+                            {statusLabel}
                           </div>
-                          <div className="text-sm font-medium text-gray-900">
-                            {displayValue}
-                          </div>
+                          {retailer && (
+                            <div className="text-xs text-gray-500 mb-2">
+                              Provider: {retailer}
+                            </div>
+                          )}
+                          {hasInvoiceFile && (
+                            <div className="mb-2">
+                              <FileLink label="View Invoice" url={hasInvoiceFile} />
+                            </div>
+                          )}
+                          <button
+                            className="px-2 py-1 border border-gray-300 rounded text-xs text-gray-700 hover:bg-gray-100 w-full"
+                            onClick={() => {
+                              setDriveModalFilingType(filingType);
+                              setDriveModalBusinessName(business.name || "");
+                              setShowDriveModal(true);
+                            }}
+                          >
+                            {hasInvoiceFile ? "Replace Invoice" : "Upload Invoice"}
+                          </button>
                         </div>
                       );
                     })}
+                  </div>
                 </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-8 text-sm text-gray-400">
-              {discrepancyLoading ? (
-                <div className="flex items-center justify-center gap-2">
-                  <div className="animate-spin h-5 w-5 border-2 border-blue-600 border-t-transparent rounded-full"></div>
-                  Loading...
-                </div>
-              ) : (
-                'No data available - Click "Refresh" to fetch'
               )}
             </div>
-          )}
-        </div>
-      </div>
-
-      {/* Section Separator */}
-      <div className="w-full border-t border-gray-300 my-8"></div>
-
-      {/* Advocacy Members Section */}
-      <div className="mt-8">
-        <div className="flex items-center justify-center mb-4 gap-3">
-          <h2 className="text-2xl font-bold text-gray-800 text-center">
+          </div>
+      {/* Data & Reports Section with Tabs */}
+      <div className="border-t pt-6 mt-8">
+        <h2 className="text-2xl font-bold text-gray-800 mb-4 text-center">Solutions & Outcomes</h2>
+        <div className="border border-gray-200 rounded-lg overflow-hidden bg-white shadow-sm mb-6">
+          <button
+            onClick={() => setSectionsOpen(prev => ({ ...prev, dataReports: !prev.dataReports }))}
+            className="w-full px-6 py-3 flex items-center justify-between bg-gradient-to-r from-gray-50 to-gray-100 hover:from-gray-100 hover:to-gray-200 transition-all"
+          >
+            <div className="flex items-center gap-3 text-sm text-gray-600">
+              <span>Automation & LLMs</span>
+              <span>Discrepancy Adjustments</span>
+              <span>Advocacy Members</span>
+            </div>
+            <span className="text-gray-500">{sectionsOpen.dataReports ? '▲' : '▼'}</span>
+          </button>
+          {sectionsOpen.dataReports && (
+            <div className="p-6 bg-white">
+        {/* Tab Navigation */}
+        <div className="flex border-b border-gray-200 mb-6 -mt-2">
+          <TabButton active={activeDataTab === 'automation'} onClick={() => setActiveDataTab('automation')}>
+            Automation & LLMs
+          </TabButton>
+          <TabButton active={activeDataTab === 'discrepancy'} onClick={() => setActiveDataTab('discrepancy')}>
+            Discrepancy Adjustments
+          </TabButton>
+          <TabButton active={activeDataTab === 'advocacy'} onClick={() => setActiveDataTab('advocacy')}>
             Advocacy Members
-          </h2>
-          {/* Refresh Button */}
-          <button
-            onClick={async () => {
-              try {
-                setAdvocacyLoading(true);
-                
-                const wipUrl = info._processed_file_ids?.["business_WIP"];
-                let wipDocId = null;
-                
-                if (wipUrl) {
-                  const match = wipUrl.match(/\/d\/([^\/]+)/);
-                  if (match) {
-                    wipDocId = match[1];
-                  }
-                }
-
-                const payload = {
-                  business_name: business.name,
-                  sheet_name: "Advocacy Members",
-                  ...(wipDocId && { wip_document_id: wipDocId })
-                };
-
-                console.log('Sending advocacy payload:', payload);
-
-                const response = await fetch('https://membersaces.app.n8n.cloud/webhook/pull_descrepancy_advocacy_WIP', {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                  },
-                  body: JSON.stringify(payload)
-                });
-                
-                const data = await response.json();
-                console.log('Advocacy webhook response:', data);
-                
-                if (response.ok && data) {
-                  setAdvocacyData(data);
-                  
-                  // Load existing meeting details from the main business row
-                  if (data && Array.isArray(data) && data.length > 0) {
-                    const mainBusinessRow = data.find((row: any) => {
-                      const memberName = row.advocacy_member || row.ADVOCACY_MEMBER || row['Advocacy Member'] || '';
-                      return memberName === business.name;
-                    });
-                    
-                    if (mainBusinessRow) {
-                      if (mainBusinessRow.advocacy_meeting_date || mainBusinessRow['Advocacy Meeting Date']) {
-                        setAdvocacyMeetingDate(mainBusinessRow.advocacy_meeting_date || mainBusinessRow['Advocacy Meeting Date'] || '');
-                      }
-                      if (mainBusinessRow.advocacy_meeting_time || mainBusinessRow['Advocacy Meeting Time']) {
-                        setAdvocacyMeetingTime(mainBusinessRow.advocacy_meeting_time || mainBusinessRow['Advocacy Meeting Time'] || '');
-                      }
-                      if (mainBusinessRow.advocacy_meeting_conducted || mainBusinessRow['Advocacy Meeting Conducted']) {
-                        const conducted = mainBusinessRow.advocacy_meeting_conducted || mainBusinessRow['Advocacy Meeting Conducted'] || '';
-                        setAdvocacyMeetingCompleted(conducted.toLowerCase() === 'yes');
-                      }
-                    }
-                  }
-                } else {
-                  alert('No data found or error occurred');
-                }
-              } catch (error) {
-                console.error('Error calling webhook:', error);
-                alert('Error fetching data');
-              } finally {
-                setAdvocacyLoading(false);
-              }
-            }}
-            disabled={advocacyLoading}
-            className="px-2 py-1 rounded border border-gray-300 text-gray-600 text-xs font-medium hover:bg-gray-50 hover:border-purple-400 hover:text-purple-600 disabled:opacity-50 transition-colors flex items-center gap-1"
-          >
-            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-            {advocacyLoading ? 'Loading...' : 'Refresh'}
-          </button>
-          
-          {/* Go to Sheet Button */}
-          <button
-            onClick={() => {
-              const wipUrl = info._processed_file_ids?.["business_WIP"];
-              if (wipUrl) {
-                const match = wipUrl.match(/\/d\/([^\/]+)/);
-                if (match) {
-                  const docId = match[1];
-                  window.open(`https://docs.google.com/spreadsheets/d/${docId}/edit#gid=46241003`, '_blank');
-                }
-              } else {
-                alert('WIP document not available');
-              }
-            }}
-            className="px-2 py-1 rounded border border-green-300 bg-green-50 text-green-700 text-xs font-medium hover:bg-green-100 transition-colors flex items-center gap-1"
-          >
-            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-            </svg>
-            Go to sheet
-          </button>
+          </TabButton>
         </div>
 
-        {/* Advocacy Meeting Form */}
-        {advocacyData && Array.isArray(advocacyData) && advocacyData.length > 0 && (
-          <div className="mb-6 p-4 border rounded-lg bg-blue-50 border-blue-200">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-lg font-semibold text-gray-800">
-                📅 Advocacy Meeting Details
-              </h3>
-              {/* Save Button moved to header */}
+        {/* Automation Tab */}
+        {activeDataTab === 'automation' && (
+          <div>
+            <div className="flex items-center justify-end mb-4 gap-2">
               <button
                 onClick={async () => {
                   try {
+                    setAutomationLoading(true);
+                    
                     const wipUrl = info._processed_file_ids?.["business_WIP"];
                     let wipDocId = null;
                     
@@ -1648,15 +1277,11 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
 
                     const payload = {
                       business_name: business.name,
-                      advocacy_meeting_date: advocacyMeetingDate,
-                      advocacy_meeting_time: advocacyMeetingTime,
-                      advocacy_meeting_conducted: advocacyMeetingCompleted ? 'Yes' : 'No',
+                      sheet_name: "Automation & LLMs",
                       ...(wipDocId && { wip_document_id: wipDocId })
                     };
 
-                    console.log('Saving advocacy meeting details:', payload);
-
-                    const response = await fetch('https://membersaces.app.n8n.cloud/webhook/save_advocacy_WIP', {
+                    const response = await fetch('https://membersaces.app.n8n.cloud/webhook/pull_descrepancy_advocacy_WIP', {
                       method: 'POST',
                       headers: {
                         'Content-Type': 'application/json',
@@ -1664,478 +1289,901 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                       body: JSON.stringify(payload)
                     });
                     
-                    if (response.ok) {
-                      alert('Advocacy meeting details saved successfully!');
+                    const data = await response.json();
+                    
+                    if (response.ok && data) {
+                      setAutomationData(data);
                     } else {
-                      alert('Error saving meeting details');
+                      alert('No data found or error occurred');
                     }
                   } catch (error) {
-                    console.error('Error saving advocacy meeting:', error);
-                    alert('Error saving meeting details');
+                    console.error('Error calling webhook:', error);
+                    alert('Error fetching data');
+                  } finally {
+                    setAutomationLoading(false);
                   }
                 }}
-                className="px-3 py-1.5 bg-purple-600 text-white rounded-md hover:bg-purple-700 font-medium text-sm"
+                disabled={automationLoading}
+                className="px-3 py-1.5 rounded border border-gray-300 text-gray-600 text-xs font-medium hover:bg-gray-50 hover:border-green-400 hover:text-green-600 disabled:opacity-50 transition-colors flex items-center gap-1"
               >
-                Save Meeting Details
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                {automationLoading ? 'Loading...' : 'Refresh'}
+              </button>
+              <button
+                onClick={() => {
+                  const wipUrl = info._processed_file_ids?.["business_WIP"];
+                  if (wipUrl) {
+                    const match = wipUrl.match(/\/d\/([^\/]+)/);
+                    if (match) {
+                      const docId = match[1];
+                      window.open(`https://docs.google.com/spreadsheets/d/${docId}/edit#gid=0`, '_blank');
+                    }
+                  } else {
+                    alert('WIP document not available');
+                  }
+                }}
+                className="px-3 py-1.5 rounded border border-green-300 bg-green-50 text-green-700 text-xs font-medium hover:bg-green-100 transition-colors flex items-center gap-1"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                </svg>
+                Go to sheet
               </button>
             </div>
             
-            <p className="text-sm text-gray-600 mb-4">
-              To qualify for advocacy referral benefits, an advocacy meeting must be organized and completed.
-            </p>
-            
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-              {/* Date Picker */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Meeting Date
-                </label>
-                <input
-                  type="date"
-                  value={advocacyMeetingDate}
-                  onChange={(e) => setAdvocacyMeetingDate(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
-                />
-              </div>
-              
-              {/* Time Picker */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Meeting Time
-                </label>
-                <input
-                  type="time"
-                  value={advocacyMeetingTime}
-                  onChange={(e) => setAdvocacyMeetingTime(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
-                />
-              </div>
-              
-              {/* Completed Checkbox */}
-              <div className="flex items-center gap-2 pb-2">
-                <input
-                  type="checkbox"
-                  id="advocacy-completed"
-                  checked={advocacyMeetingCompleted}
-                  onChange={(e) => setAdvocacyMeetingCompleted(e.target.checked)}
-                  className="w-5 h-5 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
-                />
-                <label htmlFor="advocacy-completed" className="text-sm font-medium text-gray-700">
-                  Meeting Completed
-                </label>
-              </div>
+            <div className="border rounded-lg p-4 bg-gray-50">
+              {automationData && Array.isArray(automationData) && automationData.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {automationData.map((item: any, idx: number) => (
+                    <div key={idx} className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+                      {Object.entries(item)
+                        .filter(([key]) => key !== 'row_number')
+                        .map(([key, value]) => (
+                          <div key={key} className="mb-2 last:mb-0">
+                            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
+                              {key.replace(/_/g, ' ')}
+                            </div>
+                            <div className="text-sm font-medium text-gray-900">
+                              {String(value) || 'N/A'}
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-sm text-gray-400">
+                  {automationLoading ? (
+                    <div className="flex items-center justify-center gap-2">
+                      <div className="animate-spin h-5 w-5 border-2 border-green-600 border-t-transparent rounded-full"></div>
+                      Loading...
+                    </div>
+                  ) : (
+                    'No data available - Click "Refresh" to fetch'
+                  )}
+                </div>
+              )}
             </div>
           </div>
         )}
-        
-        {/* Advocacy Members Cards */}
-        <div className="border rounded-lg p-4 bg-gray-50">
-          {advocacyData && Array.isArray(advocacyData) && advocacyData.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-              {advocacyData
-                .filter((item: any) => {
-                  const memberName = item.advocacy_member || item.ADVOCACY_MEMBER || item['Advocacy Member'] || '';
-                  return memberName !== business.name;
-                })
-                .map((item: any, idx: number) => (
-                  <button
-                    key={idx}
-                    onClick={() => {
-                      const businessName = item.advocacy_member || item.ADVOCACY_MEMBER || item['Advocacy Member'] || '';
-                      if (businessName) {
-                        window.open(`/business-info?businessName=${encodeURIComponent(businessName)}`, '_blank');
+
+        {/* Discrepancy Tab */}
+        {activeDataTab === 'discrepancy' && (
+          <div>
+            <div className="flex items-center justify-end mb-4 gap-2">
+              <button
+                onClick={async () => {
+                  try {
+                    setDiscrepancyLoading(true);
+                    
+                    const wipUrl = info._processed_file_ids?.["business_WIP"];
+                    let wipDocId = null;
+                    
+                    if (wipUrl) {
+                      const match = wipUrl.match(/\/d\/([^\/]+)/);
+                      if (match) {
+                        wipDocId = match[1];
                       }
-                    }}
-                    className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow cursor-pointer hover:border-blue-400 text-left"
-                  >
-                    {Object.entries(item)
-                      .filter(([key]) => {
-                        // Filter out row_number and meeting detail columns (case-insensitive)
-                        const keyLower = key.toLowerCase();
-                        const excludedPatterns = [
-                          'row_number',
-                          'meeting_date',
-                          'meeting_time', 
-                          'meeting_conducted',
-                          'advocacy meeting date',
-                          'advocacy meeting time',
-                          'advocacy meeting conducted'
-                        ];
-                        return !excludedPatterns.some(pattern => keyLower.includes(pattern));
-                      })
-                      .map(([key, value]) => (
-                        <div key={key} className="mb-2 last:mb-0">
-                          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
-                            {key.replace(/_/g, ' ')}
-                          </div>
-                          <div className="text-sm font-medium text-gray-900">
-                            {String(value) || 'N/A'}
-                          </div>
-                        </div>
-                      ))}
-                  </button>
-                ))}
+                    }
+
+                    const payload = {
+                      business_name: business.name,
+                      sheet_name: "Discrepancy Adjustments",
+                      ...(wipDocId && { wip_document_id: wipDocId })
+                    };
+
+                    const response = await fetch('https://membersaces.app.n8n.cloud/webhook/pull_descrepancy_advocacy_WIP', {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                      },
+                      body: JSON.stringify(payload)
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (response.ok && data) {
+                      setDiscrepancyData(data);
+                    } else {
+                      alert('No data found or error occurred');
+                    }
+                  } catch (error) {
+                    console.error('Error calling webhook:', error);
+                    alert('Error fetching data');
+                  } finally {
+                    setDiscrepancyLoading(false);
+                  }
+                }}
+                disabled={discrepancyLoading}
+                className="px-3 py-1.5 rounded border border-gray-300 text-gray-600 text-xs font-medium hover:bg-gray-50 hover:border-blue-400 hover:text-blue-600 disabled:opacity-50 transition-colors flex items-center gap-1"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                {discrepancyLoading ? 'Loading...' : 'Refresh'}
+              </button>
+              <button
+                onClick={() => {
+                  const wipUrl = info._processed_file_ids?.["business_WIP"];
+                  if (wipUrl) {
+                    const match = wipUrl.match(/\/d\/([^\/]+)/);
+                    if (match) {
+                      const docId = match[1];
+                      window.open(`https://docs.google.com/spreadsheets/d/${docId}/edit#gid=1576370139`, '_blank');
+                    }
+                  } else {
+                    alert('WIP document not available');
+                  }
+                }}
+                className="px-3 py-1.5 rounded border border-green-300 bg-green-50 text-green-700 text-xs font-medium hover:bg-green-100 transition-colors flex items-center gap-1"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                </svg>
+                Go to sheet
+              </button>
             </div>
-          ) : (
-            <div className="text-center py-8 text-sm text-gray-400">
-              {advocacyLoading ? (
-                <div className="flex items-center justify-center gap-2">
-                  <div className="animate-spin h-5 w-5 border-2 border-purple-600 border-t-transparent rounded-full"></div>
-                  Loading...
+            
+            <div className="border rounded-lg p-4 bg-gray-50">
+              {discrepancyData && Array.isArray(discrepancyData) && discrepancyData.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {discrepancyData.map((item: any, idx: number) => (
+                    <div key={idx} className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+                      {Object.entries(item)
+                        .filter(([key]) => key !== 'row_number')
+                        .map(([key, value]) => {
+                          let displayValue = String(value) || 'N/A';
+                          if (key.toLowerCase().includes('amount') || key.toLowerCase().includes('discrepancy_amount')) {
+                            const numValue = parseFloat(String(value));
+                            if (!isNaN(numValue)) {
+                              displayValue = new Intl.NumberFormat('en-AU', {
+                                style: 'currency',
+                                currency: 'AUD',
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2
+                              }).format(numValue);
+                            }
+                          }
+                          
+                          return (
+                            <div key={key} className="mb-2 last:mb-0">
+                              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
+                                {key.replace(/_/g, ' ')}
+                              </div>
+                              <div className="text-sm font-medium text-gray-900">
+                                {displayValue}
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  ))}
                 </div>
               ) : (
-                'No data available - Click "Refresh" to fetch'
+                <div className="text-center py-8 text-sm text-gray-400">
+                  {discrepancyLoading ? (
+                    <div className="flex items-center justify-center gap-2">
+                      <div className="animate-spin h-5 w-5 border-2 border-blue-600 border-t-transparent rounded-full"></div>
+                      Loading...
+                    </div>
+                  ) : (
+                    'No data available - Click "Refresh" to fetch'
+                  )}
+                </div>
               )}
             </div>
-          )}
-        </div>
-      </div>
-    </div>
-  </div>
+          </div>
+        )}
 
-    {/* Drive Filing Modal */}
-    {showDriveModal && (
-      <div className="fixed inset-0 bg-black bg-opacity-25 z-50 flex items-center justify-center">
-        <div className="bg-white rounded-lg p-8 min-w-[400px] shadow-lg focus:outline-none" tabIndex={-1}>
-          <h3 className="text-lg font-semibold text-gray-800 mb-4">File in Drive</h3>
-          
-          <div className="mb-4">
-            <label className="font-semibold">Business Name:</label>
-            <input 
-              type="text" 
-              value={driveModalBusinessName} 
-              readOnly 
-              className="ml-2 px-2 py-1 rounded border border-gray-300 min-w-[180px] bg-gray-50" 
-            />
-          </div>
-          
-          <div className="mb-4">
-            <label className="font-semibold">Filing Type:</label>
-            <input 
-              type="text" 
-              value={driveModalFilingType} 
-              readOnly 
-              className="ml-2 px-2 py-1 rounded border border-gray-300 min-w-[180px] bg-gray-50" 
-            />
-          </div>
+        {/* Advocacy Tab */}
+        {activeDataTab === 'advocacy' && (
+          <div>
+            <div className="flex items-center justify-end mb-4 gap-2">
+              <button
+                onClick={async () => {
+                  try {
+                    setAdvocacyLoading(true);
+                    
+                    const wipUrl = info._processed_file_ids?.["business_WIP"];
+                    let wipDocId = null;
+                    
+                    if (wipUrl) {
+                      const match = wipUrl.match(/\/d\/([^\/]+)/);
+                      if (match) {
+                        wipDocId = match[1];
+                      }
+                    }
 
-          {/* Multiple Files Checkbox - only show for floor plan related files */}
-          {(driveModalFilingType.includes('site_map') || driveModalFilingType.includes('floor') || driveModalFilingType.includes('exit')) && (
-            <div className="mb-4">
-              <label className="flex items-center">
-                <input
-                  type="checkbox"
-                  checked={driveModalMultipleFiles}
-                  onChange={(e) => {
-                    setDriveModalMultipleFiles(e.target.checked);
-                    // Clear existing files when toggling
-                    setDriveModalFile(null);
-                    setDriveModalFiles([]);
-                  }}
-                  className="mr-2"
-                />
-                <span className="font-semibold">Multiple Files?</span>
-                <span className="ml-2 text-sm text-gray-600">(for multiple exit plans)</span>
-              </label>
-            </div>
-          )}
-          
-          <div className="mb-6">
-            <label className="font-semibold">
-              {driveModalMultipleFiles ? 'Files:' : 'File:'}
-            </label>
-            <input 
-              type="file" 
-              multiple={driveModalMultipleFiles}
-              onChange={handleFileChange}
-              className="ml-2" 
-            />
-            {driveModalMultipleFiles && driveModalFiles.length > 0 && (
-              <div className="mt-2 text-sm text-gray-600">
-                Selected files: {driveModalFiles.map(f => f.name).join(', ')}
-              </div>
-            )}
-            {!driveModalMultipleFiles && driveModalFile && (
-              <div className="mt-2 text-sm text-gray-600">
-                Selected file: {driveModalFile.name}
-              </div>
-            )}
-          </div>
-          
-          {driveModalResult && (
-            <div className={`px-4 py-2 rounded mb-4 font-medium text-sm ${
-              driveModalResult.includes('success') || driveModalResult.includes('successfully')
-                ? 'bg-green-50 text-green-700'
-                : 'bg-red-50 text-red-700'
-            }`}>
-              {driveModalResult}
-            </div>
-          )}
-          
-          <div className="flex justify-end space-x-2">
-            <button
-              className="px-4 py-2 border border-gray-300 rounded text-gray-700 bg-white hover:bg-gray-100 focus:outline-none"
-              onClick={resetDriveModal}
-              disabled={driveModalLoading}
-            >
-              Cancel
-            </button>
-            <button
-              className="px-4 py-2 rounded bg-blue-600 text-white font-semibold hover:bg-blue-700 focus:outline-none"
-              onClick={async () => {
-                const filesToUpload = driveModalMultipleFiles ? driveModalFiles : (driveModalFile ? [driveModalFile] : []);
-                
-                if (filesToUpload.length === 0) return;
-                
-                setDriveModalLoading(true);
-                setDriveModalResult(null);
-                
-                try {
-                  const formData = new FormData();
-                  formData.append('business_name', driveModalBusinessName);
-                  formData.append('filing_type', driveModalFilingType);
-                  formData.append("gdrive_url", info?.gdrive?.folder_url || "");
-                  
-                  if (driveModalMultipleFiles && filesToUpload.length > 1) {
-                    // 🔹 Merge into one PDF
-                    const combined = await combineFilesIntoPdf(filesToUpload);
-                    formData.append("file", combined);
-                  } else {
-                    // Single file upload
-                    formData.append("file", filesToUpload[0]);
+                    const payload = {
+                      business_name: business.name,
+                      sheet_name: "Advocacy Members",
+                      ...(wipDocId && { wip_document_id: wipDocId })
+                    };
+
+                    const response = await fetch('https://membersaces.app.n8n.cloud/webhook/pull_descrepancy_advocacy_WIP', {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                      },
+                      body: JSON.stringify(payload)
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (response.ok && data) {
+                      setAdvocacyData(data);
+                      
+                      if (data && Array.isArray(data) && data.length > 0) {
+                        const mainBusinessRow = data.find((row: any) => {
+                          const memberName = row.advocacy_member || row.ADVOCACY_MEMBER || row['Advocacy Member'] || '';
+                          return memberName === business.name;
+                        });
+                        
+                        if (mainBusinessRow) {
+                          if (mainBusinessRow.advocacy_meeting_date || mainBusinessRow['Advocacy Meeting Date']) {
+                            setAdvocacyMeetingDate(mainBusinessRow.advocacy_meeting_date || mainBusinessRow['Advocacy Meeting Date'] || '');
+                          }
+                          if (mainBusinessRow.advocacy_meeting_time || mainBusinessRow['Advocacy Meeting Time']) {
+                            setAdvocacyMeetingTime(mainBusinessRow.advocacy_meeting_time || mainBusinessRow['Advocacy Meeting Time'] || '');
+                          }
+                          if (mainBusinessRow.advocacy_meeting_conducted || mainBusinessRow['Advocacy Meeting Conducted']) {
+                            const conducted = mainBusinessRow.advocacy_meeting_conducted || mainBusinessRow['Advocacy Meeting Conducted'] || '';
+                            setAdvocacyMeetingCompleted(conducted.toLowerCase() === 'yes');
+                          }
+                        }
+                      }
+                    } else {
+                      alert('No data found or error occurred');
+                    }
+                  } catch (error) {
+                    console.error('Error calling webhook:', error);
+                    alert('Error fetching data');
+                  } finally {
+                    setAdvocacyLoading(false);
                   }
-                  
-                  const res = await fetch(`${getApiBaseUrl()}/api/drive-filing?token=${encodeURIComponent(token)}`, {
-                    method: 'POST',
-                    headers: { Authorization: `Bearer ${token}` },
-                    body: formData,
-                  });
-                  
-                  const data = await res.json();
-                  if (data.status === 'success') {
-                    // 🔹 Call n8n webhook to get updated file IDs
-                    if (business.name && typeof setInfo === "function") {
+                }}
+                disabled={advocacyLoading}
+                className="px-3 py-1.5 rounded border border-gray-300 text-gray-600 text-xs font-medium hover:bg-gray-50 hover:border-purple-400 hover:text-purple-600 disabled:opacity-50 transition-colors flex items-center gap-1"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                {advocacyLoading ? 'Loading...' : 'Refresh'}
+              </button>
+              <button
+                onClick={() => {
+                  const wipUrl = info._processed_file_ids?.["business_WIP"];
+                  if (wipUrl) {
+                    const match = wipUrl.match(/\/d\/([^\/]+)/);
+                    if (match) {
+                      const docId = match[1];
+                      window.open(`https://docs.google.com/spreadsheets/d/${docId}/edit#gid=46241003`, '_blank');
+                    }
+                  } else {
+                    alert('WIP document not available');
+                  }
+                }}
+                className="px-3 py-1.5 rounded border border-green-300 bg-green-50 text-green-700 text-xs font-medium hover:bg-green-100 transition-colors flex items-center gap-1"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                </svg>
+                Go to sheet
+              </button>
+            </div>
+
+            {advocacyData && Array.isArray(advocacyData) && advocacyData.length > 0 && (
+              <div className="mb-6 p-4 border rounded-lg bg-blue-50 border-blue-200">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-lg font-semibold text-gray-800">
+                    📅 Advocacy Meeting Details
+                  </h3>
+                  <button
+                    onClick={async () => {
                       try {
-                        const webhookResponse = await fetch('https://membersaces.app.n8n.cloud/webhook/return_fileIDs', {
+                        const wipUrl = info._processed_file_ids?.["business_WIP"];
+                        let wipDocId = null;
+                        
+                        if (wipUrl) {
+                          const match = wipUrl.match(/\/d\/([^\/]+)/);
+                          if (match) {
+                            wipDocId = match[1];
+                          }
+                        }
+
+                        const payload = {
+                          business_name: business.name,
+                          advocacy_meeting_date: advocacyMeetingDate,
+                          advocacy_meeting_time: advocacyMeetingTime,
+                          advocacy_meeting_conducted: advocacyMeetingCompleted ? 'Yes' : 'No',
+                          ...(wipDocId && { wip_document_id: wipDocId })
+                        };
+
+                        const response = await fetch('https://membersaces.app.n8n.cloud/webhook/save_advocacy_WIP', {
                           method: 'POST',
                           headers: {
                             'Content-Type': 'application/json',
                           },
-                          body: JSON.stringify({
-                            business_name: business.name
-                          })
+                          body: JSON.stringify(payload)
                         });
                         
-                        const updatedData = await webhookResponse.json();
-                        console.log('Updated data from n8n:', updatedData);
-                        
-                        // Check if we got valid data back
-                        if (updatedData && Array.isArray(updatedData) && updatedData.length > 0) {
-                          const businessData = updatedData[0];
-                          console.log('Raw business data from n8n:', businessData);
-                          
-                          // Map the flat n8n structure to your expected _processed_file_ids structure
-                          const mappedFileIds: any = {};
-                          
-                          // Map LOA
-                          if (businessData['LOA File ID']) {
-                            mappedFileIds['business_LOA'] = `https://drive.google.com/file/d/${businessData['LOA File ID']}/view?usp=drivesdk`;
-                          }
-                          
-                          // Map WIP
-                          if (businessData['WIP']) {
-                            mappedFileIds['business_WIP'] = `https://drive.google.com/file/d/${businessData['WIP']}/view?usp=drivesdk`;
-                          }
-                          
-                          // Map contracts
-                          if (businessData['SC C&I E']) {
-                            mappedFileIds['contract_C&I Electricity'] = `https://drive.google.com/file/d/${businessData['SC C&I E']}/view?usp=drivesdk`;
-                          }
-                          if (businessData['SC SME E']) {
-                            mappedFileIds['contract_SME Electricity'] = `https://drive.google.com/file/d/${businessData['SC SME E']}/view?usp=drivesdk`;
-                          }
-                          if (businessData['SC C&I G']) {
-                            mappedFileIds['contract_C&I Gas'] = `https://drive.google.com/file/d/${businessData['SC C&I G']}/view?usp=drivesdk`;
-                          }
-                          if (businessData['SC SME G']) {
-                            mappedFileIds['contract_SME Gas'] = `https://drive.google.com/file/d/${businessData['SC SME G']}/view?usp=drivesdk`;
-                          }
-                          if (businessData['SC Waste']) {
-                            mappedFileIds['contract_Waste'] = `https://drive.google.com/file/d/${businessData['SC Waste']}/view?usp=drivesdk`;
-                          }
-                          if (businessData['SC Oil']) {
-                            mappedFileIds['contract_Oil'] = `https://drive.google.com/file/d/${businessData['SC Oil']}/view?usp=drivesdk`;
-                          }
-                          if (businessData['SC DMA']) {
-                            mappedFileIds['contract_DMA'] = `https://drive.google.com/file/d/${businessData['SC DMA']}/view?usp=drivesdk`;
-                          }
-                          
-                          // Map other documents
-                          if (businessData['Floor Plan']) {
-                            mappedFileIds['business_site_map_upload'] = `https://drive.google.com/file/d/${businessData['Floor Plan']}/view?usp=drivesdk`;
-                          }
-                          if (businessData['Site Profiling']) {
-                            mappedFileIds['business_site_profiling'] = `https://drive.google.com/file/d/${businessData['Site Profiling']}/view?usp=drivesdk`;
-                          }
-                          if (businessData['Service Fee Agreement']) {
-                            mappedFileIds['business_service_fee_agreement'] = `https://drive.google.com/file/d/${businessData['Service Fee Agreement']}/view?usp=drivesdk`;
-                          }
-                          if (businessData['Initial Strategy']) {
-                            mappedFileIds['business_initial_strategy'] = `https://drive.google.com/file/d/${businessData['Initial Strategy']}/view?usp=drivesdk`;
-                          }
-                          if (businessData['Amortisation Excel']) {
-                            mappedFileIds['business_amortisation_excel'] = `https://drive.google.com/file/d/${businessData['Amortisation Excel']}/view?usp=drivesdk`;
-                          }
-                          if (businessData['Amortisation PDF']) {
-                            mappedFileIds['business_amortisation_pdf'] = `https://drive.google.com/file/d/${businessData['Amortisation PDF']}/view?usp=drivesdk`;
-                          }
-                          // Map invoices
-                          if (businessData['Cleaning Invoice']) {
-                            mappedFileIds['invoice_Cleaning'] = `https://drive.google.com/file/d/${businessData['Cleaning Invoice']}/view?usp=drivesdk`;
-                          }
-                          if (businessData['Oil Invoice']) {
-                            mappedFileIds['invoice_Oil'] = `https://drive.google.com/file/d/${businessData['Oil Invoice']}/view?usp=drivesdk`;
-                          }
-                          if (businessData['Water Invoice']) {
-                            mappedFileIds['invoice_Water'] = `https://drive.google.com/file/d/${businessData['Water Invoice']}/view?usp=drivesdk`;
-                          }
-                          
-                          console.log('Mapped file IDs:', mappedFileIds);
-
-                          if (businessData['Amortisation Excel']) {
-                            mappedFileIds['business_amortisation_excel'] = `https://drive.google.com/file/d/${businessData['Amortisation Excel']}/view?usp=drivesdk`;
-                          }
-                          if (businessData['Amortisation PDF']) {
-                            mappedFileIds['business_amortisation_pdf'] = `https://drive.google.com/file/d/${businessData['Amortisation PDF']}/view?usp=drivesdk`;
-                          }
-                          // Update only the file IDs, keep everything else the same
-                          setInfo((prevInfo: any) => ({
-                            ...prevInfo,
-                            _processed_file_ids: {
-                              ...prevInfo._processed_file_ids,
-                              ...mappedFileIds
-                            }
-                          }));
+                        if (response.ok) {
+                          alert('Advocacy meeting details saved successfully!');
+                        } else {
+                          alert('Error saving meeting details');
                         }
-                        
-                        // Set the exact message that triggers modal close
-                        setDriveModalResult('File successfully uploaded and Drive links updated!');
-                        
-                      } catch (webhookErr) {
-                        console.error("Error calling n8n webhook:", webhookErr);
-                        // Still close modal even if webhook fails
-                        setDriveModalResult('File successfully uploaded and Drive links updated!');
+                      } catch (error) {
+                        console.error('Error saving advocacy meeting:', error);
+                        alert('Error saving meeting details');
                       }
-                    } else {
-                      // Fallback if no setInfo function
-                      setDriveModalResult('File successfully uploaded and Drive links updated!');
-                    }
-                  } else {
-                    setDriveModalResult(`Error: ${data.message}`);
-                  }
-                } catch (err: any) {
-                  setDriveModalResult(`Error uploading file(s): ${err.message}`);
-                } finally {
-                  setDriveModalLoading(false);
-                }
-              }}
-              disabled={(driveModalMultipleFiles ? driveModalFiles.length === 0 : !driveModalFile) || driveModalLoading}
-            >
-              {driveModalLoading ? 'Uploading...' : 'Upload'}
-            </button>
+                    }}
+                    className="px-3 py-1.5 bg-purple-600 text-white rounded-md hover:bg-purple-700 font-medium text-sm"
+                  >
+                    Save Meeting Details
+                  </button>
+                </div>
+                
+                <p className="text-sm text-gray-600 mb-4">
+                  To qualify for advocacy referral benefits, an advocacy meeting must be organized and completed.
+                </p>
+                
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Meeting Date
+                    </label>
+                    <input
+                      type="date"
+                      value={advocacyMeetingDate}
+                      onChange={(e) => setAdvocacyMeetingDate(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Meeting Time
+                    </label>
+                    <input
+                      type="time"
+                      value={advocacyMeetingTime}
+                      onChange={(e) => setAdvocacyMeetingTime(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    />
+                  </div>
+                  
+                  <div className="flex items-center gap-2 pb-2">
+                    <input
+                      type="checkbox"
+                      id="advocacy-completed"
+                      checked={advocacyMeetingCompleted}
+                      onChange={(e) => setAdvocacyMeetingCompleted(e.target.checked)}
+                      className="w-5 h-5 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                    />
+                    <label htmlFor="advocacy-completed" className="text-sm font-medium text-gray-700">
+                      Meeting Completed
+                    </label>
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            <div className="border rounded-lg p-4 bg-gray-50">
+              {advocacyData && Array.isArray(advocacyData) && advocacyData.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                  {advocacyData
+                    .filter((item: any) => {
+                      const memberName = item.advocacy_member || item.ADVOCACY_MEMBER || item['Advocacy Member'] || '';
+                      return memberName !== business.name;
+                    })
+                    .map((item: any, idx: number) => (
+                      <button
+                        key={idx}
+                        onClick={() => {
+                          const businessName = item.advocacy_member || item.ADVOCACY_MEMBER || item['Advocacy Member'] || '';
+                          if (businessName) {
+                            window.open(`/business-info?businessName=${encodeURIComponent(businessName)}`, '_blank');
+                          }
+                        }}
+                        className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow cursor-pointer hover:border-blue-400 text-left"
+                      >
+                        {Object.entries(item)
+                          .filter(([key]) => {
+                            const keyLower = key.toLowerCase();
+                            const excludedPatterns = [
+                              'row_number',
+                              'meeting_date',
+                              'meeting_time', 
+                              'meeting_conducted',
+                              'advocacy meeting date',
+                              'advocacy meeting time',
+                              'advocacy meeting conducted'
+                            ];
+                            return !excludedPatterns.some(pattern => keyLower.includes(pattern));
+                          })
+                          .map(([key, value]) => (
+                            <div key={key} className="mb-2 last:mb-0">
+                              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
+                                {key.replace(/_/g, ' ')}
+                              </div>
+                              <div className="text-sm font-medium text-gray-900">
+                                {String(value) || 'N/A'}
+                              </div>
+                            </div>
+                          ))}
+                      </button>
+                    ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-sm text-gray-400">
+                  {advocacyLoading ? (
+                    <div className="flex items-center justify-center gap-2">
+                      <div className="animate-spin h-5 w-5 border-2 border-purple-600 border-t-transparent rounded-full"></div>
+                      Loading...
+                    </div>
+                  ) : (
+                    'No data available - Click "Refresh" to fetch'
+                  )}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      </div>
-    )}
-
-    {/* Data Request Confirmation Modal */}
-    {showDataRequestModal && dataRequestSummary && (
-      <div className="fixed inset-0 bg-black bg-opacity-25 z-50 flex items-center justify-center">
-        <div className="bg-white rounded-lg p-8 min-w-[340px] shadow-lg focus:outline-none" tabIndex={-1}>
-          <h3 className="text-lg font-semibold text-gray-800 mb-4">Confirm Data Request</h3>
-          <div className="mb-3"><span className="font-semibold">Business Name:</span> <span className="ml-2">{dataRequestSummary.businessName}</span></div>
-          <div className="mb-3"><span className="font-semibold">Retailer:</span> <span className="ml-2">{dataRequestSummary.retailer}</span></div>
-          <div className="mb-3"><span className="font-semibold">Identifier:</span> <span className="ml-2">{dataRequestSummary.identifier}</span></div>
-          <div className="mb-3"><span className="font-semibold">Request Type:</span> <span className="ml-2">{dataRequestSummary.requestType}</span></div>
-          <div className="flex justify-end space-x-2 mt-6">
-            <button
-              className="px-4 py-2 border border-gray-300 rounded text-gray-700 bg-white hover:bg-gray-100 focus:outline-none"
-              onClick={() => {
-                setShowDataRequestModal(false);
-                setDataRequestSummary(null);
-              }}
-            >
-              Cancel
-            </button>
-            <button
-              className="px-4 py-2 rounded bg-blue-600 text-white font-semibold hover:bg-blue-700 focus:outline-none"
-              onClick={() => {
-                let url = `/data-request?business_name=${encodeURIComponent(dataRequestSummary.businessName)}&supplier_name=${encodeURIComponent(dataRequestSummary.retailer)}&request_type=${encodeURIComponent(dataRequestSummary.requestType)}`;
-                if (dataRequestSummary.param !== "business_name") url += `&details=${encodeURIComponent(dataRequestSummary.identifier)}`;
-                url += `&autoSubmit=1`;
-                window.open(url, '_blank');
-                setShowDataRequestModal(false);
-                setDataRequestSummary(null);
-              }}
-            >
-              Confirm & Send
-            </button>
-          </div>
-        </div>
-      </div>
         )}
-  {/* EOI Modal */}
-  {showEOIModal && (
-    <div className="fixed inset-0 bg-black bg-opacity-25 z-50 flex items-center justify-center">
-      <div className="bg-white rounded-lg p-8 min-w-[400px] shadow-lg focus:outline-none" tabIndex={-1}>
-        <h3 className="text-lg font-semibold text-gray-800 mb-4">Lodge EOI</h3>
-        
-        <div className="mb-6">
-          <label className="font-semibold">EOI File:</label>
-          <input 
-            type="file" 
-            accept="application/pdf"
-            onChange={handleEOIFileChange}
-            className="ml-2" 
-          />
-          <p className="text-xs text-gray-500 mt-1">Accepted: PDF files only</p>
-          {eoiFile && (
-            <div className="mt-2 text-sm text-gray-600">
-              Selected file: {eoiFile.name}
+        </div>
+        )}
+      </div>
+      {/* Business Tools Section */}
+      <div className="border-t pt-6 mt-8">
+        <h2 className="text-2xl font-bold text-gray-800 mb-4 text-center">Business Tools</h2>
+        <div className="border border-gray-200 rounded-lg overflow-hidden bg-white shadow-sm mb-6">
+          <button
+            onClick={() => setSectionsOpen(prev => ({ ...prev, businessTools: !prev.businessTools }))}
+            className="w-full px-6 py-3 flex items-center justify-between bg-gradient-to-r from-gray-50 to-gray-100 hover:from-gray-100 hover:to-gray-200 transition-all"
+          >
+            <div className="flex items-center gap-3 text-sm text-gray-600">
+              <span>Robot Finance</span>
+            </div>
+            <span className="text-gray-500">{sectionsOpen.businessTools ? '▲' : '▼'}</span>
+          </button>
+          {sectionsOpen.businessTools && (
+            <div className="p-6 bg-white">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {/* Robot Finance */}
+                <div className="border rounded-lg p-3 bg-gray-50">
+                  <div className="font-semibold text-gray-800 mb-2">Robot Finance</div>
+                  <div className="text-sm text-gray-600 mb-3">
+                    Configure OPEX documentation requirements and send Step 1 email to client.
+                  </div>
+
+                  <div className="mb-2">
+                    <label className="text-sm font-medium">Business Structure:</label>
+                    <div className="flex items-center gap-4 mt-1">
+                      <label className="flex items-center gap-1">
+                        <input
+                          type="radio"
+                          name="structure"
+                          value="Pty Ltd"
+                          checked={selectedStructure === "Pty Ltd"}
+                          onChange={() => setSelectedStructure("Pty Ltd")}
+                        />
+                        Pty Ltd
+                      </label>
+                      <label className="flex items-center gap-1">
+                        <input
+                          type="radio"
+                          name="structure"
+                          value="Trust"
+                          checked={selectedStructure === "Trust"}
+                          onChange={() => setSelectedStructure("Trust")}
+                        />
+                        Trust
+                      </label>
+                    </div>
+                  </div>
+
+                  <button
+                    className="px-3 py-1.5 mt-2 rounded bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 w-full"
+                    onClick={async () => {
+                      try {
+                        const payload = {
+                          business_name: business.name,
+                          contact_email: contact.email,
+                          contact_name : rep.contact_name,
+                          structure: selectedStructure,
+                        };
+
+                        const res = await fetch("https://membersaces.app.n8n.cloud/webhook-test/opex_finance_email", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify(payload),
+                        });
+
+                        if (res.ok) {
+                          alert(`✅ OPEX Step 1 email triggered successfully for ${business.name}!`);
+                        } else {
+                          const text = await res.text();
+                          alert(`❌ n8n error (${res.status}): ${text}`);
+                        }
+                      } catch (err) {
+                        console.error("Webhook error:", err);
+                        alert("⚠️ Failed to send OPEX email. Check console for details.");
+                      }
+                    }}
+                  >
+                    Generate Step 1 Email
+                  </button>
+
+                  <p className="text-xs text-gray-500 mt-3">
+                    The finance partner will follow up with Step 2 requirements after submission.
+                  </p>
+                </div>
+              </div>
             </div>
           )}
         </div>
-        
-        {eoiResult && (
-          <div className={`px-4 py-2 rounded mb-4 font-medium text-sm ${
-            eoiResult.includes('success') || eoiResult.includes('successfully')
-              ? 'bg-green-50 text-green-700'
-              : 'bg-red-50 text-red-700'
-          }`}>
-            {eoiResult}
+      </div>
+      </div>
+      </div>
+          {/* Drive Filing Modal */}
+          {showDriveModal && (
+            <div className="fixed inset-0 bg-black bg-opacity-25 z-50 flex items-center justify-center">
+              <div className="bg-white rounded-lg p-8 min-w-[400px] shadow-lg focus:outline-none" tabIndex={-1}>
+                <h3 className="text-lg font-semibold text-gray-800 mb-4">File in Drive</h3>
+                
+                <div className="mb-4">
+                  <label className="font-semibold">Business Name:</label>
+                  <input 
+                    type="text" 
+                    value={driveModalBusinessName} 
+                    readOnly 
+                    className="ml-2 px-2 py-1 rounded border border-gray-300 min-w-[180px] bg-gray-50" 
+                  />
+                </div>
+                
+                <div className="mb-4">
+                  <label className="font-semibold">Filing Type:</label>
+                  <input 
+                    type="text" 
+                    value={driveModalFilingType} 
+                    readOnly 
+                    className="ml-2 px-2 py-1 rounded border border-gray-300 min-w-[180px] bg-gray-50" 
+                  />
+                </div>
+
+                {/* Multiple Files Checkbox - only show for floor plan related files */}
+                {(driveModalFilingType.includes('site_map') || driveModalFilingType.includes('floor') || driveModalFilingType.includes('exit')) && (
+                  <div className="mb-4">
+                    <label className="flex items-center">
+                      <input
+                        type="checkbox"
+                        checked={driveModalMultipleFiles}
+                        onChange={(e) => {
+                          setDriveModalMultipleFiles(e.target.checked);
+                          // Clear existing files when toggling
+                          setDriveModalFile(null);
+                          setDriveModalFiles([]);
+                        }}
+                        className="mr-2"
+                      />
+                      <span className="font-semibold">Multiple Files?</span>
+                      <span className="ml-2 text-sm text-gray-600">(for multiple exit plans)</span>
+                    </label>
+                  </div>
+                )}
+                
+                <div className="mb-6">
+                  <label className="font-semibold">
+                    {driveModalMultipleFiles ? 'Files:' : 'File:'}
+                  </label>
+                  <input 
+                    type="file" 
+                    multiple={driveModalMultipleFiles}
+                    onChange={handleFileChange}
+                    className="ml-2" 
+                  />
+                  {driveModalMultipleFiles && driveModalFiles.length > 0 && (
+                    <div className="mt-2 text-sm text-gray-600">
+                      Selected files: {driveModalFiles.map(f => f.name).join(', ')}
+                    </div>
+                  )}
+                  {!driveModalMultipleFiles && driveModalFile && (
+                    <div className="mt-2 text-sm text-gray-600">
+                      Selected file: {driveModalFile.name}
+                    </div>
+                  )}
+                </div>
+                
+                {driveModalResult && (
+                  <div className={`px-4 py-2 rounded mb-4 font-medium text-sm ${
+                    driveModalResult.includes('success') || driveModalResult.includes('successfully')
+                      ? 'bg-green-50 text-green-700'
+                      : 'bg-red-50 text-red-700'
+                  }`}>
+                    {driveModalResult}
+                  </div>
+                )}
+                
+                <div className="flex justify-end space-x-2">
+                  <button
+                    className="px-4 py-2 border border-gray-300 rounded text-gray-700 bg-white hover:bg-gray-100 focus:outline-none"
+                    onClick={resetDriveModal}
+                    disabled={driveModalLoading}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className="px-4 py-2 rounded bg-blue-600 text-white font-semibold hover:bg-blue-700 focus:outline-none"
+                    onClick={async () => {
+                      const filesToUpload = driveModalMultipleFiles ? driveModalFiles : (driveModalFile ? [driveModalFile] : []);
+                      
+                      if (filesToUpload.length === 0) return;
+                      
+                      setDriveModalLoading(true);
+                      setDriveModalResult(null);
+                      
+                      try {
+                        const formData = new FormData();
+                        formData.append('business_name', driveModalBusinessName);
+                        formData.append('filing_type', driveModalFilingType);
+                        formData.append("gdrive_url", info?.gdrive?.folder_url || "");
+                        
+                        if (driveModalMultipleFiles && filesToUpload.length > 1) {
+                          // 🔹 Merge into one PDF
+                          const combined = await combineFilesIntoPdf(filesToUpload);
+                          formData.append("file", combined);
+                        } else {
+                          // Single file upload
+                          formData.append("file", filesToUpload[0]);
+                        }
+                        
+                        const res = await fetch(`${getApiBaseUrl()}/api/drive-filing?token=${encodeURIComponent(token)}`, {
+                          method: 'POST',
+                          headers: { Authorization: `Bearer ${token}` },
+                          body: formData,
+                        });
+                        
+                        const data = await res.json();
+                        if (data.status === 'success') {
+                          // 🔹 Call n8n webhook to get updated file IDs
+                          if (business.name && typeof setInfo === "function") {
+                            try {
+                              const webhookResponse = await fetch('https://membersaces.app.n8n.cloud/webhook/return_fileIDs', {
+                                method: 'POST',
+                                headers: {
+                                  'Content-Type': 'application/json',
+                                },
+                                body: JSON.stringify({
+                                  business_name: business.name
+                                })
+                              });
+                              
+                              const updatedData = await webhookResponse.json();
+                              console.log('Updated data from n8n:', updatedData);
+                              
+                              // Check if we got valid data back
+                              if (updatedData && Array.isArray(updatedData) && updatedData.length > 0) {
+                                const businessData = updatedData[0];
+                                console.log('Raw business data from n8n:', businessData);
+                                
+                                // Map the flat n8n structure to your expected _processed_file_ids structure
+                                const mappedFileIds: any = {};
+                                
+                                // Map LOA
+                                if (businessData['LOA File ID']) {
+                                  mappedFileIds['business_LOA'] = `https://drive.google.com/file/d/${businessData['LOA File ID']}/view?usp=drivesdk`;
+                                }
+                                
+                                // Map WIP
+                                if (businessData['WIP']) {
+                                  mappedFileIds['business_WIP'] = `https://drive.google.com/file/d/${businessData['WIP']}/view?usp=drivesdk`;
+                                }
+                                
+                                // Map contracts
+                                if (businessData['SC C&I E']) {
+                                  mappedFileIds['contract_C&I Electricity'] = `https://drive.google.com/file/d/${businessData['SC C&I E']}/view?usp=drivesdk`;
+                                }
+                                if (businessData['SC SME E']) {
+                                  mappedFileIds['contract_SME Electricity'] = `https://drive.google.com/file/d/${businessData['SC SME E']}/view?usp=drivesdk`;
+                                }
+                                if (businessData['SC C&I G']) {
+                                  mappedFileIds['contract_C&I Gas'] = `https://drive.google.com/file/d/${businessData['SC C&I G']}/view?usp=drivesdk`;
+                                }
+                                if (businessData['SC SME G']) {
+                                  mappedFileIds['contract_SME Gas'] = `https://drive.google.com/file/d/${businessData['SC SME G']}/view?usp=drivesdk`;
+                                }
+                                if (businessData['SC Waste']) {
+                                  mappedFileIds['contract_Waste'] = `https://drive.google.com/file/d/${businessData['SC Waste']}/view?usp=drivesdk`;
+                                }
+                                if (businessData['SC Oil']) {
+                                  mappedFileIds['contract_Oil'] = `https://drive.google.com/file/d/${businessData['SC Oil']}/view?usp=drivesdk`;
+                                }
+                                if (businessData['SC DMA']) {
+                                  mappedFileIds['contract_DMA'] = `https://drive.google.com/file/d/${businessData['SC DMA']}/view?usp=drivesdk`;
+                                }
+                                
+                                // Map other documents
+                                if (businessData['Floor Plan']) {
+                                  mappedFileIds['business_site_map_upload'] = `https://drive.google.com/file/d/${businessData['Floor Plan']}/view?usp=drivesdk`;
+                                }
+                                if (businessData['Site Profiling']) {
+                                  mappedFileIds['business_site_profiling'] = `https://drive.google.com/file/d/${businessData['Site Profiling']}/view?usp=drivesdk`;
+                                }
+                                if (businessData['Service Fee Agreement']) {
+                                  mappedFileIds['business_service_fee_agreement'] = `https://drive.google.com/file/d/${businessData['Service Fee Agreement']}/view?usp=drivesdk`;
+                                }
+                                if (businessData['Initial Strategy']) {
+                                  mappedFileIds['business_initial_strategy'] = `https://drive.google.com/file/d/${businessData['Initial Strategy']}/view?usp=drivesdk`;
+                                }
+                                if (businessData['Amortisation Excel']) {
+                                  mappedFileIds['business_amortisation_excel'] = `https://drive.google.com/file/d/${businessData['Amortisation Excel']}/view?usp=drivesdk`;
+                                }
+                                if (businessData['Amortisation PDF']) {
+                                  mappedFileIds['business_amortisation_pdf'] = `https://drive.google.com/file/d/${businessData['Amortisation PDF']}/view?usp=drivesdk`;
+                                }
+                                // Map invoices
+                                if (businessData['Cleaning Invoice']) {
+                                  mappedFileIds['invoice_Cleaning'] = `https://drive.google.com/file/d/${businessData['Cleaning Invoice']}/view?usp=drivesdk`;
+                                }
+                                if (businessData['Oil Invoice']) {
+                                  mappedFileIds['invoice_Oil'] = `https://drive.google.com/file/d/${businessData['Oil Invoice']}/view?usp=drivesdk`;
+                                }
+                                if (businessData['Water Invoice']) {
+                                  mappedFileIds['invoice_Water'] = `https://drive.google.com/file/d/${businessData['Water Invoice']}/view?usp=drivesdk`;
+                                }
+                                
+                                console.log('Mapped file IDs:', mappedFileIds);
+
+                                if (businessData['Amortisation Excel']) {
+                                  mappedFileIds['business_amortisation_excel'] = `https://drive.google.com/file/d/${businessData['Amortisation Excel']}/view?usp=drivesdk`;
+                                }
+                                if (businessData['Amortisation PDF']) {
+                                  mappedFileIds['business_amortisation_pdf'] = `https://drive.google.com/file/d/${businessData['Amortisation PDF']}/view?usp=drivesdk`;
+                                }
+                                // Update only the file IDs, keep everything else the same
+                                setInfo((prevInfo: any) => ({
+                                  ...prevInfo,
+                                  _processed_file_ids: {
+                                    ...prevInfo._processed_file_ids,
+                                    ...mappedFileIds
+                                  }
+                                }));
+                              }
+                              
+                              // Set the exact message that triggers modal close
+                              setDriveModalResult('File successfully uploaded and Drive links updated!');
+                              
+                            } catch (webhookErr) {
+                              console.error("Error calling n8n webhook:", webhookErr);
+                              // Still close modal even if webhook fails
+                              setDriveModalResult('File successfully uploaded and Drive links updated!');
+                            }
+                          } else {
+                            // Fallback if no setInfo function
+                            setDriveModalResult('File successfully uploaded and Drive links updated!');
+                          }
+                        } else {
+                          setDriveModalResult(`Error: ${data.message}`);
+                        }
+                      } catch (err: any) {
+                        setDriveModalResult(`Error uploading file(s): ${err.message}`);
+                      } finally {
+                        setDriveModalLoading(false);
+                      }
+                    }}
+                    disabled={(driveModalMultipleFiles ? driveModalFiles.length === 0 : !driveModalFile) || driveModalLoading}
+                  >
+                    {driveModalLoading ? 'Uploading...' : 'Upload'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+                    {/* Data Request Confirmation Modal */}
+                    {showDataRequestModal && dataRequestSummary && (
+            <div className="fixed inset-0 bg-black bg-opacity-25 z-50 flex items-center justify-center">
+              <div className="bg-white rounded-lg p-8 min-w-[340px] shadow-lg focus:outline-none" tabIndex={-1}>
+                <h3 className="text-lg font-semibold text-gray-800 mb-4">Confirm Data Request</h3>
+                <div className="mb-3"><span className="font-semibold">Business Name:</span> <span className="ml-2">{dataRequestSummary.businessName}</span></div>
+                <div className="mb-3"><span className="font-semibold">Retailer:</span> <span className="ml-2">{dataRequestSummary.retailer}</span></div>
+                <div className="mb-3"><span className="font-semibold">Identifier:</span> <span className="ml-2">{dataRequestSummary.identifier}</span></div>
+                <div className="mb-3"><span className="font-semibold">Request Type:</span> <span className="ml-2">{dataRequestSummary.requestType}</span></div>
+                <div className="flex justify-end space-x-2 mt-6">
+                  <button
+                    className="px-4 py-2 border border-gray-300 rounded text-gray-700 bg-white hover:bg-gray-100 focus:outline-none"
+                    onClick={() => {
+                      setShowDataRequestModal(false);
+                      setDataRequestSummary(null);
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className="px-4 py-2 rounded bg-blue-600 text-white font-semibold hover:bg-blue-700 focus:outline-none"
+                    onClick={() => {
+                      let url = `/data-request?business_name=${encodeURIComponent(dataRequestSummary.businessName)}&supplier_name=${encodeURIComponent(dataRequestSummary.retailer)}&request_type=${encodeURIComponent(dataRequestSummary.requestType)}`;
+                      if (dataRequestSummary.param !== "business_name") url += `&details=${encodeURIComponent(dataRequestSummary.identifier)}`;
+                      url += `&autoSubmit=1`;
+                      window.open(url, "_blank");
+                      setShowDataRequestModal(false);
+                      setDataRequestSummary(null);
+                    }}
+                  >
+                    Confirm & Send
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+         </div> 
+      {/* EOI Modal */}
+      {showEOIModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-25 z-50 flex items-center justify-center">
+          <div className="bg-white rounded-lg p-8 min-w-[400px] shadow-lg focus:outline-none" tabIndex={-1}>
+            <h3 className="text-lg font-semibold text-gray-800 mb-4">Lodge EOI</h3>
+
+            <div className="mb-6">
+              <label className="font-semibold">EOI File:</label>
+              <input type="file" accept="application/pdf" onChange={handleEOIFileChange} className="ml-2" />
+              <p className="text-xs text-gray-500 mt-1">Accepted: PDF files only</p>
+              {eoiFile && <div className="mt-2 text-sm text-gray-600">Selected file: {eoiFile.name}</div>}
+            </div>
+
+            {eoiResult && (
+              <div
+                className={`px-4 py-2 rounded mb-4 font-medium text-sm ${
+                  eoiResult.includes("success") || eoiResult.includes("successfully")
+                    ? "bg-green-50 text-green-700"
+                    : "bg-red-50 text-red-700"
+                }`}
+              >
+                {eoiResult}
+              </div>
+            )}
+
+            <div className="flex justify-end space-x-2">
+              <button
+                className="px-4 py-2 border border-gray-300 rounded text-gray-700 bg-white hover:bg-gray-100 focus:outline-none"
+                onClick={resetEOIModal}
+                disabled={eoiLoading}
+              >
+                Cancel
+              </button>
+              <button
+                className="px-4 py-2 rounded bg-orange-600 text-white font-semibold hover:bg-orange-700 focus:outline-none"
+                onClick={handleEOISubmit}
+                disabled={!eoiFile || eoiLoading}
+              >
+                {eoiLoading ? "Uploading..." : "Submit EOI"}
+              </button>
+            </div>
           </div>
-        )}
-        
-        <div className="flex justify-end space-x-2">
-          <button
-            className="px-4 py-2 border border-gray-300 rounded text-gray-700 bg-white hover:bg-gray-100 focus:outline-none"
-            onClick={resetEOIModal}
-            disabled={eoiLoading}
-          >
-            Cancel
-          </button>
-          <button
-            className="px-4 py-2 rounded bg-orange-600 text-white font-semibold hover:bg-orange-700 focus:outline-none"
-            onClick={handleEOISubmit}
-            disabled={!eoiFile || eoiLoading}
-          >
-            {eoiLoading ? 'Uploading...' : 'Submit EOI'}
-          </button>
         </div>
-      </div>
+      )}
+     </div> 
     </div>
-  )}
-      </div>
-      </>
-    );
-  }
+    </>
+  );
+}
