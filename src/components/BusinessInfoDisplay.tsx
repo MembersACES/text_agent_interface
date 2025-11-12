@@ -682,6 +682,33 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                 Link Utility
               </button>
             )}
+            <button
+              onClick={() => {
+                const params = new URLSearchParams();
+                params.set('businessName', business.name);
+
+                // Use consistent, human-readable field names
+                const businessInfoToPass = {
+                  "Business Name": business.name || '',
+                  "Business ABN": business.abn || '',
+                  "Trading As": business.trading_name || '',
+                  "Postal Address": contact.postal_address || '',
+                  "Site Address": contact.site_address || '',
+                  "Telephone": contact.telephone || '',
+                  "Contact Email": contact.email || '',
+                  "Contact Name": rep.contact_name || '',
+                  "Contact Position": rep.position || '',
+                };
+
+                params.set('businessInfo', encodeURIComponent(JSON.stringify(businessInfoToPass)));
+
+                // Navigate to LOA upload page in a new tab
+                window.open(`/update-loa/upload?${params.toString()}`, '_blank');
+              }}
+              className="px-3 py-1.5 rounded bg-orange-600 text-white text-xs font-medium hover:bg-orange-700"
+            >
+              Update LOA
+            </button>
           </div>
         </div>
       </div>
