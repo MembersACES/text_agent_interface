@@ -30,7 +30,7 @@ export default function UtilityLinkingTool({ token, businessName, onBack }: Util
     setLoading(true);
 
     try {
-      const res = await fetch('https://membersaces.app.n8n.cloud/webhook-test/return_utility_info', {
+      const res = await fetch('https://membersaces.app.n8n.cloud/webhook/return_utility_info', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
