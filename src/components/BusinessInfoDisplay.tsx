@@ -90,15 +90,48 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
     return (value && typeof value === 'string') ? value : undefined;
   };
   const [selectedStructure, setSelectedStructure] = useState(businessType);
-  const contracts: { key: string; url?: string }[] = [
-    { key: "C&I Electricity", url: getFileUrl("contract_C&I Electricity") },
-    { key: "SME Electricity", url: getFileUrl("contract_SME Electricity") },
-    { key: "C&I Gas", url: getFileUrl("contract_C&I Gas") },
-    { key: "SME Gas", url: getFileUrl("contract_SME Gas") },
-    { key: "Waste", url: getFileUrl("contract_Waste") },
-    { key: "Oil", url: getFileUrl("contract_Oil") },
-    { key: "DMA", url: getFileUrl("contract_DMA") },
+  const contracts: { key: string; url?: string; status?: string }[] = [
+    { 
+      key: "C&I Electricity", 
+      url: getFileUrl("contract_C&I Electricity"),
+      status: info._processed_file_ids?.["contract_C&I Electricity_status"]
+    },
+    { 
+      key: "SME Electricity", 
+      url: getFileUrl("contract_SME Electricity"),
+      status: info._processed_file_ids?.["contract_SME Electricity_status"]
+    },
+    { 
+      key: "C&I Gas", 
+      url: getFileUrl("contract_C&I Gas"),
+      status: info._processed_file_ids?.["contract_C&I Gas_status"]
+    },
+    { 
+      key: "SME Gas", 
+      url: getFileUrl("contract_SME Gas"),
+      status: info._processed_file_ids?.["contract_SME Gas_status"]
+    },
+    { 
+      key: "Waste", 
+      url: getFileUrl("contract_Waste"),
+      status: info._processed_file_ids?.["contract_Waste_status"]
+    },
+    { 
+      key: "Oil", 
+      url: getFileUrl("contract_Oil"),
+      status: info._processed_file_ids?.["contract_Oil_status"]
+    },
+    { 
+      key: "DMA", 
+      url: getFileUrl("contract_DMA"),
+      status: info._processed_file_ids?.["contract_DMA_status"]
+    },
   ];
+  console.log('📋 Contracts array:', contracts);
+  console.log('🗂️ All _processed_file_ids:', info._processed_file_ids);
+  console.log('🔍 Looking for status keys like:', 'contract_C&I Electricity_status');
+  console.log('✅ C&I Electricity status specifically:', info._processed_file_ids?.["contract_C&I Electricity_status"]);
+  
   const driveUrl = info.gdrive?.folder_url;
 
   // Linked Utilities
@@ -107,7 +140,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
 
   const router = useRouter();
   const businessName = business.name || "";
-
+  const [driveModalContractStatus, setDriveModalContractStatus] = useState<string>('Signed via ACES');
   const [showDriveModal, setShowDriveModal] = useState(false);
   const [driveModalFilingType, setDriveModalFilingType] = useState("");
   const [driveModalBusinessName, setDriveModalBusinessName] = useState("");
@@ -386,6 +419,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
         setDriveModalFile(null);
         setDriveModalFiles([]);
         setDriveModalMultipleFiles(false);
+        setDriveModalContractStatus('Pending Refresh');
         setDriveModalResult(null);
       }, 3000);
       return () => clearTimeout(timer);
@@ -894,7 +928,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                     if (!urlA && urlB) return 1;
                     return 0;
                   })
-                  .map(({ key }) => {
+                  .map(({ key, status }) => {
                     const contractKeyMap: { [key: string]: string } = {
                       'C&I Electricity': 'signed_CI_E',
                       'SME Electricity': 'signed_SME_E',
@@ -905,13 +939,32 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                       'DMA': 'signed_DMA',
                     };
                     const url = getContractFileUrl(key);
-
+                    
+                    // Determine if it's ACES signed based on status
+                    const isACESSigned = status?.toLowerCase().includes('aces') || 
+                                         status?.toLowerCase().includes('signed via aces');
+                  
                     return (
                       <div key={key} className="flex items-center justify-between p-2 rounded bg-gray-50 hover:bg-gray-100">
                         <div className="flex-1">
                           <div className="text-sm font-medium">{key}</div>
                           <div className="text-xs text-gray-500">
-                            {url ? <FileLink label="View File" url={url} /> : "Not available"}
+                            {url ? (
+                              <div className="flex items-center gap-2">
+                                <FileLink label="View File" url={url} />
+                                {status && (
+                                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                                    isACESSigned 
+                                      ? 'bg-green-100 text-green-700' 
+                                      : 'bg-blue-100 text-blue-700'
+                                  }`}>
+                                    {isACESSigned ? '✓ ACES Signed' : status}
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              "Not available"
+                            )}
                           </div>
                         </div>
                         <button
@@ -1899,6 +1952,42 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                   />
                 </div>
 
+                {/* NEW: Add Contract Status Selection - Only show for signed contracts */}
+                {driveModalFilingType.startsWith('signed_') && (
+                  <div className="mb-4 p-3 border border-blue-200 rounded bg-blue-50">
+                    <label className="font-semibold block mb-2">Contract Status:</label>
+                    <div className="space-y-2">
+                      <label className="flex items-center cursor-pointer">
+                        <input
+                          type="radio"
+                          name="contractStatus"
+                          value="Signed via ACES"
+                          checked={driveModalContractStatus === 'Signed via ACES'}
+                          onChange={(e) => setDriveModalContractStatus(e.target.value)}
+                          className="mr-2"
+                        />
+                        <span className="text-sm">Signed via ACES</span>
+                      </label>
+                      <label className="flex items-center cursor-pointer">
+                        <input
+                          type="radio"
+                          name="contractStatus"
+                          value="Existing Contract"
+                          checked={driveModalContractStatus === 'Existing Contract'}
+                          onChange={(e) => setDriveModalContractStatus(e.target.value)}
+                          className="mr-2"
+                        />
+                        <span className="text-sm">Existing Contract (Copy)</span>
+                      </label>
+                    </div>
+                    {driveModalContractStatus === 'Pending Refresh' && (
+                      <p className="text-xs text-orange-600 mt-2 font-medium">
+                        ⏳ Status will update on next Business Info refresh
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 {/* Multiple Files Checkbox - only show for floor plan related files */}
                 {(driveModalFilingType.includes('site_map') || driveModalFilingType.includes('floor') || driveModalFilingType.includes('exit')) && (
                   <div className="mb-4">
@@ -1976,12 +2065,15 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                         formData.append('filing_type', driveModalFilingType);
                         formData.append("gdrive_url", info?.gdrive?.folder_url || "");
                         
+                        // NEW: Add contract status if it's a signed contract
+                        if (driveModalFilingType.startsWith('signed_')) {
+                          formData.append('contract_status', driveModalContractStatus);
+                        }
+                        
                         if (driveModalMultipleFiles && filesToUpload.length > 1) {
-                          // 🔹 Merge into one PDF
                           const combined = await combineFilesIntoPdf(filesToUpload);
                           formData.append("file", combined);
                         } else {
-                          // Single file upload
                           formData.append("file", filesToUpload[0]);
                         }
                         
@@ -2027,27 +2119,48 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                                   mappedFileIds['business_WIP'] = `https://drive.google.com/file/d/${businessData['WIP']}/view?usp=drivesdk`;
                                 }
                                 
-                                // Map contracts
+                                // Map contracts WITH STATUS
                                 if (businessData['SC C&I E']) {
                                   mappedFileIds['contract_C&I Electricity'] = `https://drive.google.com/file/d/${businessData['SC C&I E']}/view?usp=drivesdk`;
+                                  if (businessData['SC C&I E Status:']) {
+                                    mappedFileIds['contract_C&I Electricity_status'] = businessData['SC C&I E Status:'];
+                                  }
                                 }
                                 if (businessData['SC SME E']) {
                                   mappedFileIds['contract_SME Electricity'] = `https://drive.google.com/file/d/${businessData['SC SME E']}/view?usp=drivesdk`;
+                                  if (businessData['SC SME E Status:']) {
+                                    mappedFileIds['contract_SME Electricity_status'] = businessData['SC SME E Status:'];
+                                  }
                                 }
                                 if (businessData['SC C&I G']) {
                                   mappedFileIds['contract_C&I Gas'] = `https://drive.google.com/file/d/${businessData['SC C&I G']}/view?usp=drivesdk`;
+                                  if (businessData['SC C&I G Status:']) {
+                                    mappedFileIds['contract_C&I Gas_status'] = businessData['SC C&I G Status:'];
+                                  }
                                 }
                                 if (businessData['SC SME G']) {
                                   mappedFileIds['contract_SME Gas'] = `https://drive.google.com/file/d/${businessData['SC SME G']}/view?usp=drivesdk`;
+                                  if (businessData['SC SME G Status:']) {
+                                    mappedFileIds['contract_SME Gas_status'] = businessData['SC SME G Status:'];
+                                  }
                                 }
                                 if (businessData['SC Waste']) {
                                   mappedFileIds['contract_Waste'] = `https://drive.google.com/file/d/${businessData['SC Waste']}/view?usp=drivesdk`;
+                                  if (businessData['SC Waste Status:']) {
+                                    mappedFileIds['contract_Waste_status'] = businessData['SC Waste Status:'];
+                                  }
                                 }
                                 if (businessData['SC Oil']) {
                                   mappedFileIds['contract_Oil'] = `https://drive.google.com/file/d/${businessData['SC Oil']}/view?usp=drivesdk`;
+                                  if (businessData['SC Oil Status:']) {
+                                    mappedFileIds['contract_Oil_status'] = businessData['SC Oil Status:'];
+                                  }
                                 }
                                 if (businessData['SC DMA']) {
                                   mappedFileIds['contract_DMA'] = `https://drive.google.com/file/d/${businessData['SC DMA']}/view?usp=drivesdk`;
+                                  if (businessData['SC DMA Status:']) {
+                                    mappedFileIds['contract_DMA_status'] = businessData['SC DMA Status:'];
+                                  }
                                 }
                                 
                                 // Map other documents
