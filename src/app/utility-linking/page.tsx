@@ -448,14 +448,12 @@ export default function UtilityLinkingPage() {
               <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
                 <p className="text-sm text-yellow-800">
                   <strong>Note:</strong> If you cannot see the correct utility after refreshing, please{' '}
-                  <a 
-                    href="/document-lodgement" 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="text-blue-600 hover:text-blue-800 underline font-medium"
+                  <button
+                    onClick={() => window.open('/document-lodgement', '_blank', 'noopener,noreferrer')}
+                    className="text-blue-600 hover:text-blue-800 underline font-medium bg-transparent border-none cursor-pointer p-0"
                   >
                     re-upload the invoice
-                  </a>
+                  </button>
                   {' '}so it's the top row.
                 </p>
               </div>
