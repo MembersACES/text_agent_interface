@@ -8,8 +8,9 @@ export const ACES_BRAND = {
 
 export const NAV_DATA = [
   {
-    label: "MY PAGES",
+    label: "Interface Pages",
     items: [
+      { title: "My Tasks", url: "/tasks", icon: Icons.TaskIcon, items: [] },
       { title: "Agent", url: "/agent", items: [] },
       
       // Create sub-sections for grouping
@@ -29,7 +30,6 @@ export const NAV_DATA = [
           { title: "Signed Agreement Lodgement", url: "/signed-agreement-lodgement" },
         ],
       },
-      { title: "My Tasks", url: "/tasks", icon: Icons.TaskIcon, items: [] },
       { title: "Solution Range", url: "/solution-range", items: [] },
       {
         title: "Client & Strategy",

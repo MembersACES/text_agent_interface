@@ -23,6 +23,12 @@ export default function Home() {
           Client Proflie
         </Link>
         <Link
+          href="/tasks"
+          className="rounded-xl border border-gray-300 px-6 py-3 text-gray-700 transition hover:border-gray-500 hover:text-black dark:text-white dark:border-gray-600"
+        >
+          View Tasks
+        </Link>
+        <Link
           href="/agent"
           className="rounded-xl border border-gray-300 px-6 py-3 text-gray-700 transition hover:border-gray-500 hover:text-black dark:text-white dark:border-gray-600"
         >
