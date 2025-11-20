@@ -7,9 +7,8 @@ import {
   DropdownTrigger,
 } from "@/components/ui/dropdown";
 import { cn } from "@/lib/utils";
-import Link from "next/link";
 import { useState, useEffect } from "react";
-import { LogOutIcon, SettingsIcon, UserIcon } from "./icons";
+import { LogOutIcon } from "./icons";
 import { useSession, signOut, signIn } from "next-auth/react";
 
 export function UserInfo() {
@@ -23,24 +22,24 @@ export function UserInfo() {
     image: "/images/user/user-03.png",
   };
 
-  // Function to handle automatic reauthentication
+  // Automatic reauthentication
   const handleAutoReauth = async () => {
     setIsOpen(false);
     setIsReauthenticating(true);
-    
+
     try {
-      await signIn('google', { 
+      await signIn("google", {
         callbackUrl: window.location.href,
-        prompt: 'consent' // Force consent screen to get fresh tokens
+        prompt: "consent", // Force consent screen to get fresh tokens
       });
     } catch (error) {
-      console.error('Reauthentication failed:', error);
+      console.error("Reauthentication failed:", error);
     } finally {
       setIsReauthenticating(false);
     }
   };
 
-  // Function to handle logout
+  // Logout
   const handleLogout = () => {
     setIsOpen(false);
     signOut();
@@ -50,17 +49,16 @@ export function UserInfo() {
   useEffect(() => {
     const handleApiError = async (event: Event) => {
       const customEvent = event as CustomEvent;
-      if (customEvent.detail?.error === 'REAUTHENTICATION_REQUIRED') {
-        console.log('Reauthentication required - automatically triggering...');
+      if (customEvent.detail?.error === "REAUTHENTICATION_REQUIRED") {
+        console.log("Reauthentication required - automatically triggering...");
         await handleAutoReauth();
       }
     };
 
-    // Listen for custom events from your API calls
-    window.addEventListener('api-error', handleApiError);
-    
+    window.addEventListener("api-error", handleApiError);
+
     return () => {
-      window.removeEventListener('api-error', handleApiError);
+      window.removeEventListener("api-error", handleApiError);
     };
   }, []);
 
@@ -94,33 +92,9 @@ export function UserInfo() {
             {isReauthenticating ? "Reauthenticating..." : USER.name}
           </div>
 
-          <div className="text-base leading-none text-gray-6">{USER.email}</div>
-        </div>
-
-        <hr className="border-[#E8E8E8] dark:border-dark-3" />
-
-        <div className="p-2 text-base text-[#4B5563] dark:text-dark-6 [&>*]:cursor-pointer">
-          <Link
-            href={"/profile"}
-            onClick={() => setIsOpen(false)}
-            className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[9px] hover:bg-gray-2 hover:text-dark dark:hover:bg-dark-3 dark:hover:text-white"
-          >
-            <UserIcon />
-
-            <span className="mr-auto text-base font-medium">View profile</span>
-          </Link>
-
-          <Link
-            href={"/pages/settings"}
-            onClick={() => setIsOpen(false)}
-            className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[9px] hover:bg-gray-2 hover:text-dark dark:hover:bg-dark-3 dark:hover:text-white"
-          >
-            <SettingsIcon />
-
-            <span className="mr-auto text-base font-medium">
-              Account Settings
-            </span>
-          </Link>
+          <div className="text-base leading-none text-gray-6">
+            {USER.email}
+          </div>
         </div>
 
         <hr className="border-[#E8E8E8] dark:border-dark-3" />
