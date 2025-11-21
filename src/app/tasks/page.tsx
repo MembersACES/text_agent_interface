@@ -36,6 +36,23 @@ interface TaskHistory {
   created_at: string;
 }
 
+interface HistoryGroup {
+  date: string;
+  items: TaskHistory[];
+}
+
+interface HistoryResponse {
+  items?: TaskHistory[];
+  groups?: HistoryGroup[];
+  pagination?: {
+    page: number;
+    page_size: number;
+    total: number;
+    has_next: boolean;
+    has_prev: boolean;
+  };
+}
+
 type TaskFilter = "my" | "assigned_by_me" | "all";
 type SortField = "title" | "description" | "assigned_to" | "due_date" | "status";
 type SortOrder = "asc" | "desc";
@@ -71,8 +88,21 @@ export default function TasksPage() {
   
   // History state
   const [history, setHistory] = useState<TaskHistory[]>([]);
+  const [historyGroups, setHistoryGroups] = useState<HistoryGroup[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const [historyFilter, setHistoryFilter] = useState<string>("all"); // "all", "created", "updated", "deleted"
+  
+  // Pagination state
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyPageSize] = useState(20);
+  const [historyPagination, setHistoryPagination] = useState<{
+    page: number;
+    page_size: number;
+    total: number;
+    has_next: boolean;
+    has_prev: boolean;
+  } | null>(null);
   
   // Form state for creating/editing tasks
   const [formData, setFormData] = useState({
@@ -194,8 +224,8 @@ export default function TasksPage() {
     return userEmail === task.assigned_to || userEmail === task.assigned_by;
   };
 
-  // Fetch task history
-  const fetchHistory = async (taskId: number) => {
+  // Fetch task history with pagination
+  const fetchHistory = async (taskId: number, page: number = 1, pageSize: number = 20, filter?: string) => {
     if (!token) {
       setHistoryError("Authentication required. Please log in.");
       return;
@@ -205,7 +235,17 @@ export default function TasksPage() {
       setLoadingHistory(true);
       setHistoryError(null);
       
-      const response = await fetch(`${getApiBaseUrl()}/api/tasks/${taskId}/history`, {
+      // Build query parameters
+      const params = new URLSearchParams({
+        page: page.toString(),
+        page_size: pageSize.toString(),
+      });
+      
+      if (filter && filter !== "all") {
+        params.append("filter", filter);
+      }
+      
+      const response = await fetch(`${getApiBaseUrl()}/api/tasks/${taskId}/history?${params.toString()}`, {
         method: "GET",
         headers: {
           "Authorization": `Bearer ${token}`,
@@ -224,8 +264,50 @@ export default function TasksPage() {
         throw new Error(errorData.detail || errorData.message || "Failed to fetch history");
       }
 
-      const data = await response.json();
-      setHistory(Array.isArray(data) ? data : []);
+      const data: HistoryResponse = await response.json();
+      
+      // Handle batched groups from backend
+      if (data.groups && Array.isArray(data.groups)) {
+        setHistoryGroups(data.groups);
+        // Flatten groups for filtering if needed
+        const allItems = data.groups.flatMap(group => group.items);
+        setHistory(allItems);
+      } else if (data.items && Array.isArray(data.items)) {
+        // Fallback: if backend returns flat items, group them client-side
+        setHistory(data.items);
+        const grouped = groupHistoryByDate(data.items);
+        setHistoryGroups(
+          Object.entries(grouped).map(([date, items]) => ({
+            date,
+            items,
+          }))
+        );
+      } else {
+        // Handle legacy format (array directly)
+        const items = Array.isArray(data) ? data : [];
+        setHistory(items);
+        const grouped = groupHistoryByDate(items);
+        setHistoryGroups(
+          Object.entries(grouped).map(([date, items]) => ({
+            date,
+            items,
+          }))
+        );
+      }
+      
+      // Set pagination info
+      if (data.pagination) {
+        setHistoryPagination(data.pagination);
+      } else {
+        // Default pagination if not provided
+        setHistoryPagination({
+          page,
+          page_size: pageSize,
+          total: history.length,
+          has_next: false,
+          has_prev: page > 1,
+        });
+      }
     } catch (err: any) {
       console.error("Error fetching history:", err);
       setHistoryError(err.message || "Failed to fetch history");
@@ -238,7 +320,52 @@ export default function TasksPage() {
   const openHistoryModal = (taskId: number) => {
     setHistoryTaskId(taskId);
     setShowHistoryModal(true);
-    fetchHistory(taskId);
+    setHistoryFilter("all");
+    setHistoryPage(1);
+    fetchHistory(taskId, 1, historyPageSize, "all");
+  };
+
+  // Handle pagination
+  const handleHistoryPageChange = (newPage: number) => {
+    if (historyTaskId) {
+      setHistoryPage(newPage);
+      fetchHistory(historyTaskId, newPage, historyPageSize, historyFilter);
+      // Scroll to top of history content
+      const historyContent = document.querySelector('[data-history-content]');
+      if (historyContent) {
+        historyContent.scrollTop = 0;
+      }
+    }
+  };
+
+  // Handle filter change
+  const handleHistoryFilterChange = (newFilter: string) => {
+    setHistoryFilter(newFilter);
+    setHistoryPage(1);
+    if (historyTaskId) {
+      fetchHistory(historyTaskId, 1, historyPageSize, newFilter);
+    }
+  };
+
+  // Group history by date (fallback for client-side grouping)
+  const groupHistoryByDate = (items: TaskHistory[]): { [key: string]: TaskHistory[] } => {
+    const grouped: { [key: string]: TaskHistory[] } = {};
+    
+    items.forEach((item) => {
+      const date = new Date(item.created_at);
+      const dateKey = date.toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+      
+      if (!grouped[dateKey]) {
+        grouped[dateKey] = [];
+      }
+      grouped[dateKey].push(item);
+    });
+    
+    return grouped;
   };
 
   // Open edit modal
@@ -261,6 +388,119 @@ export default function TasksPage() {
       return user.name || user.full_name || email;
     }
     return email;
+  };
+
+  // Format action name to human-readable
+  const formatActionName = (action: string): string => {
+    // Handle common action patterns
+    const actionLower = action.toLowerCase();
+    
+    // Special cases
+    if (actionLower.includes("task_created") || actionLower === "created") {
+      return "Task Created";
+    }
+    if (actionLower.includes("task_deleted") || actionLower === "deleted") {
+      return "Task Deleted";
+    }
+    if (actionLower.includes("multiple") || actionLower.includes("batched")) {
+      return "Multiple Fields Updated";
+    }
+    
+    // Convert snake_case or kebab-case to Title Case
+    return action
+      .split(/[_\-\s]+/)
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(" ");
+  };
+
+  // Format field name to human-readable
+  const formatFieldName = (field: string): string => {
+    if (!field) return "";
+    
+    // Convert snake_case to Title Case
+    return field
+      .split(/[_\-\s]+/)
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(" ");
+  };
+
+  // Format timestamp to Melbourne timezone
+  const formatMelbourneTime = (dateString: string): string => {
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleTimeString("en-AU", {
+        timeZone: "Australia/Melbourne",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      });
+    } catch {
+      return new Date(dateString).toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    }
+  };
+
+  // Check if items are batched (within 5 seconds of each other)
+  const areItemsBatched = (items: TaskHistory[]): boolean => {
+    if (items.length <= 1) return false;
+    
+    // Sort by created_at
+    const sorted = [...items].sort((a, b) => 
+      new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    );
+    
+    // Check if all items are within 5 seconds of the first item
+    const firstTime = new Date(sorted[0].created_at).getTime();
+    const fiveSeconds = 5000;
+    
+    return sorted.every(item => {
+      const itemTime = new Date(item.created_at).getTime();
+      return itemTime - firstTime <= fiveSeconds;
+    });
+  };
+
+  // Group batched items together
+  const groupBatchedItems = (items: TaskHistory[]): (TaskHistory | TaskHistory[])[] => {
+    if (items.length === 0) return [];
+    
+    // Sort in ascending order (oldest first) for batching logic
+    const sorted = [...items].sort((a, b) => 
+      new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    );
+    
+    const result: (TaskHistory | TaskHistory[])[] = [];
+    let currentBatch: TaskHistory[] = [sorted[0]];
+    
+    for (let i = 1; i < sorted.length; i++) {
+      const prevTime = new Date(sorted[i - 1].created_at).getTime();
+      const currTime = new Date(sorted[i].created_at).getTime();
+      const timeDiff = currTime - prevTime;
+      
+      // If within 5 seconds and same user, add to batch
+      if (timeDiff <= 5000 && sorted[i].user_email === sorted[i - 1].user_email) {
+        currentBatch.push(sorted[i]);
+      } else {
+        // Save current batch and start new one
+        if (currentBatch.length > 1) {
+          result.push(currentBatch);
+        } else {
+          result.push(currentBatch[0]);
+        }
+        currentBatch = [sorted[i]];
+      }
+    }
+    
+    // Add final batch
+    if (currentBatch.length > 1) {
+      result.push(currentBatch);
+    } else {
+      result.push(currentBatch[0]);
+    }
+    
+    // Reverse to show newest first
+    return result.reverse();
   };
 
   // Mark task as completed
@@ -520,7 +760,7 @@ export default function TasksPage() {
       // Refresh tasks list and history if history modal is open
       await fetchTasks();
       if (historyTaskId === editingTask.id) {
-        await fetchHistory(editingTask.id);
+        await fetchHistory(editingTask.id, historyPage, historyPageSize, historyFilter);
       }
     } catch (err: any) {
       console.error("Error updating task:", err);
@@ -612,14 +852,34 @@ export default function TasksPage() {
     if (!dateString) return "Not set";
     try {
       const date = new Date(dateString);
-      return date.toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      });
+      const day = date.getDate().toString().padStart(2, '0');
+      const month = (date.getMonth() + 1).toString().padStart(2, '0');
+      const year = date.getFullYear();
+      return `${day}/${month}/${year}`;
     } catch {
       return dateString;
     }
+  };
+
+  // Format value for history display - formats dates to dd/mm/yyyy
+  const formatHistoryValue = (value: string | null | undefined): string => {
+    if (!value || value === "(none)") return value ?? "(none)";
+    
+    // Check if value looks like a date (ISO format, YYYY-MM-DD, etc.)
+    const datePattern = /^\d{4}-\d{2}-\d{2}/; // Matches YYYY-MM-DD
+    if (datePattern.test(value)) {
+      try {
+        const date = new Date(value);
+        // Check if it's a valid date
+        if (!isNaN(date.getTime())) {
+          return formatDate(value);
+        }
+      } catch {
+        // Not a valid date, return as-is
+      }
+    }
+    
+    return value;
   };
 
   const formatDateTime = (dateString: string) => {
@@ -1244,15 +1504,21 @@ export default function TasksPage() {
                 setShowHistoryModal(false);
                 setHistoryTaskId(null);
                 setHistory([]);
+                setHistoryGroups([]);
+                setHistoryFilter("all");
+                setHistoryPage(1);
+                setHistoryPagination(null);
               }
             }}
           >
             <div
-              className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+              className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full flex flex-col"
+              style={{ height: "85vh", maxHeight: "700px" }}
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="p-6">
-                <div className="flex justify-between items-center mb-6">
+              {/* Fixed Header */}
+              <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+                <div className="flex justify-between items-center mb-4">
                   <h2 className="text-2xl font-semibold text-gray-900 dark:text-white">
                     Task History
                   </h2>
@@ -1261,51 +1527,379 @@ export default function TasksPage() {
                       setShowHistoryModal(false);
                       setHistoryTaskId(null);
                       setHistory([]);
+                      setHistoryGroups([]);
+                      setHistoryFilter("all");
+                      setHistoryPage(1);
+                      setHistoryPagination(null);
                     }}
                     className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-2xl leading-none"
                   >
                     ×
                   </button>
                 </div>
+                
+                {/* Filter Buttons */}
+                {!loadingHistory && !historyError && (history.length > 0 || historyGroups.length > 0) && (
+                  <div className="flex gap-2 flex-wrap items-center">
+                    <button
+                      onClick={() => handleHistoryFilterChange("all")}
+                      className={`px-3 py-1 text-xs rounded-md transition-colors ${
+                        historyFilter === "all"
+                          ? "bg-primary text-white"
+                          : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+                      }`}
+                    >
+                      All {historyPagination && `(${historyPagination.total})`}
+                    </button>
+                    <button
+                      onClick={() => handleHistoryFilterChange("created")}
+                      className={`px-3 py-1 text-xs rounded-md transition-colors ${
+                        historyFilter === "created"
+                          ? "bg-primary text-white"
+                          : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+                      }`}
+                    >
+                      Created
+                    </button>
+                    <button
+                      onClick={() => handleHistoryFilterChange("updated")}
+                      className={`px-3 py-1 text-xs rounded-md transition-colors ${
+                        historyFilter === "updated"
+                          ? "bg-primary text-white"
+                          : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+                      }`}
+                    >
+                      Updated
+                    </button>
+                    <button
+                      onClick={() => handleHistoryFilterChange("deleted")}
+                      className={`px-3 py-1 text-xs rounded-md transition-colors ${
+                        historyFilter === "deleted"
+                          ? "bg-primary text-white"
+                          : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+                      }`}
+                    >
+                      Deleted
+                    </button>
+                  </div>
+                )}
+              </div>
 
+              {/* Scrollable Content */}
+              <div className="flex-1 overflow-y-auto px-6 py-4" data-history-content>
                 {loadingHistory ? (
                   <div className="text-center py-8">
                     <p className="text-gray-500">Loading history...</p>
                   </div>
                 ) : historyError ? (
-                  <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
+                  <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-400">
                     {historyError}
                   </div>
-                ) : history.length === 0 ? (
+                ) : historyGroups.length === 0 && history.length === 0 ? (
                   <div className="text-center py-8">
                     <p className="text-gray-500">No history available for this task.</p>
                   </div>
                 ) : (
-                  <ul className="space-y-3">
-                    {history.map((h) => (
-                      <li
-                        key={h.id}
-                        className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-900"
-                      >
-                        <div className="font-medium text-gray-900 dark:text-white mb-1">
-                          {h.action}
-                        </div>
-                        {h.field && (
-                          <div className="text-gray-600 dark:text-gray-400 text-sm mb-1">
-                            <span className="font-medium">{h.field}:</span>{" "}
-                            <span className="text-red-600 dark:text-red-400">{h.old_value || "empty"}</span>{" "}
-                            →{" "}
-                            <span className="text-green-600 dark:text-green-400">{h.new_value || "empty"}</span>
-                          </div>
-                        )}
-                        <div className="text-xs text-gray-400 dark:text-gray-500 mt-2">
-                          {getUserDisplayName(h.user_email)} — {formatDateTime(h.created_at)}
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
+                  <>
+                    {/* Render batched groups from backend */}
+                    {historyGroups.length > 0 ? (
+                      <ul className="space-y-2">
+                        {[...historyGroups].reverse().map((group, groupIndex) => (
+                          <li key={`${group.date}-${groupIndex}`}>
+                            <div className="sticky top-0 bg-white dark:bg-gray-800 py-2 mb-2 z-10">
+                              <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                                {group.date}
+                              </h3>
+                            </div>
+                            <ul className="space-y-1.5">
+                              {groupBatchedItems([...group.items].sort((a, b) => 
+                                new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+                              )).map((itemOrBatch, idx) => {
+                                // Handle batched items
+                                if (Array.isArray(itemOrBatch)) {
+                                  const batch = itemOrBatch;
+                                  const firstItem = batch[0];
+                                  // Filter items that have fields
+                                  const itemsWithFields = batch.filter(h => h.field);
+                                  const hasMultipleFields = itemsWithFields.length > 1;
+                                  
+                                  return (
+                                    <li
+                                      key={`batch-${firstItem.id}-${idx}`}
+                                      className="p-3 border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors shadow-sm"
+                                    >
+                                      <div className="flex items-start justify-between gap-3">
+                                        <div className="flex-1 min-w-0">
+                                          <div className="font-semibold text-sm text-gray-900 dark:text-white mb-2">
+                                            {hasMultipleFields ? "Multiple Fields Updated" : formatActionName(firstItem.action)}
+                                          </div>
+                                          
+                                          {itemsWithFields.length > 0 ? (
+                                            <div className="space-y-1.5">
+                                              {itemsWithFields.map((h) => (
+                                                <div key={h.id} className="text-sm">
+                                                  <div className="text-gray-700 dark:text-gray-300">
+                                                    <span className="font-medium">{formatFieldName(h.field || "(unknown field)")}:</span>{" "}
+                                                    <span className="text-red-600 dark:text-red-400 font-medium">
+                                                      {formatHistoryValue(h.old_value)}
+                                                    </span>{" "}
+                                                    <span className="text-gray-400 dark:text-gray-500">→</span>{" "}
+                                                    <span className="text-green-600 dark:text-green-400 font-medium">
+                                                      {formatHistoryValue(h.new_value)}
+                                                    </span>
+                                                  </div>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          ) : (
+                                            <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                                              No field changes recorded.
+                                            </div>
+                                          )}
+                                          
+                                          <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                                            {getUserDisplayName(firstItem.user_email)}
+                                          </div>
+                                        </div>
+                                        <div className="text-xs text-gray-400 dark:text-gray-500 whitespace-nowrap flex-shrink-0">
+                                          {formatMelbourneTime(firstItem.created_at)}
+                                        </div>
+                                      </div>
+                                    </li>
+                                  );
+                                }
+                                
+                                // Handle single item
+                                const h = itemOrBatch;
+                                const fieldsArray = (h as any).fields;
+
+                                return (
+                                  <li
+                                    key={h.id}
+                                    className="p-3 border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors shadow-sm"
+                                  >
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div className="flex-1 min-w-0">
+                                        <div className="font-semibold text-sm text-gray-900 dark:text-white mb-2">
+                                          {formatActionName(h.action)}
+                                        </div>
+
+                                        {/* NEW FIX — SUPPORT fields[] FROM BACKEND */}
+                                        {Array.isArray(fieldsArray) && fieldsArray.length > 0 ? (
+                                          fieldsArray.map((f: any, idx: number) => (
+                                            <div key={idx} className="text-sm text-gray-700 dark:text-gray-300 mb-1">
+                                              <span className="font-medium">{formatFieldName(f.field)}:</span>{" "}
+                                              <span className="text-red-600 dark:text-red-400 font-medium">
+                                                {formatHistoryValue(f.old_value)}
+                                              </span>{" "}
+                                              <span className="text-gray-400 dark:text-gray-500">→</span>{" "}
+                                              <span className="text-green-600 dark:text-green-400 font-medium">
+                                                {formatHistoryValue(f.new_value)}
+                                              </span>
+                                            </div>
+                                          ))
+                                        ) : h.field ? (
+                                          <div className="text-sm text-gray-700 dark:text-gray-300 mb-2">
+                                            <span className="font-medium">{formatFieldName(h.field)}:</span>{" "}
+                                            <span className="text-red-600 dark:text-red-400 font-medium">
+                                              {formatHistoryValue(h.old_value)}
+                                            </span>{" "}
+                                            <span className="text-gray-400 dark:text-gray-500">→</span>{" "}
+                                            <span className="text-green-600 dark:text-green-400 font-medium">
+                                              {formatHistoryValue(h.new_value)}
+                                            </span>
+                                          </div>
+                                        ) : (
+                                          <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                                            No field changes recorded.
+                                          </div>
+                                        )}
+
+                                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                                          {getUserDisplayName(h.user_email)}
+                                        </div>
+                                      </div>
+
+                                      <div className="text-xs text-gray-400 dark:text-gray-500 whitespace-nowrap flex-shrink-0">
+                                        {formatMelbourneTime(h.created_at)}
+                                      </div>
+                                    </div>
+                                  </li>
+                                );
+
+                              })}
+                            </ul>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      /* Fallback: client-side grouping if backend doesn't provide groups */
+                      (() => {
+                        const groupedHistory = groupHistoryByDate(history);
+                        const dates = Object.keys(groupedHistory).sort((a, b) => {
+                          return new Date(b).getTime() - new Date(a).getTime();
+                        });
+
+                        return (
+                          <ul className="space-y-2">
+                            {dates.map((date) => (
+                              <li key={date}>
+                                <div className="sticky top-0 bg-white dark:bg-gray-800 py-2 mb-2 z-10">
+                                  <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                                    {date}
+                                  </h3>
+                                </div>
+                                <ul className="space-y-1.5">
+                                  {groupBatchedItems(groupedHistory[date]).map((itemOrBatch, idx) => {
+                                    // Handle batched items
+                                    if (Array.isArray(itemOrBatch)) {
+                                      const batch = itemOrBatch;
+                                      const firstItem = batch[0];
+                                      // Filter items that have fields
+                                      const itemsWithFields = batch.filter(h => h.field);
+                                      const hasMultipleFields = itemsWithFields.length > 1;
+                                      
+                                      return (
+                                        <li
+                                          key={`batch-${firstItem.id}-${idx}`}
+                                          className="p-3 border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors shadow-sm"
+                                        >
+                                          <div className="flex items-start justify-between gap-3">
+                                            <div className="flex-1 min-w-0">
+                                              <div className="font-semibold text-sm text-gray-900 dark:text-white mb-2">
+                                                {hasMultipleFields ? "Multiple Fields Updated" : formatActionName(firstItem.action)}
+                                              </div>
+                                              
+                                              {itemsWithFields.length > 0 ? (
+                                                <div className="space-y-1.5">
+                                                  {itemsWithFields.map((h) => (
+                                                    <div key={h.id} className="text-sm">
+                                                      <div className="text-gray-700 dark:text-gray-300">
+                                                        <span className="font-medium">{formatFieldName(h.field || "(unknown field)")}:</span>{" "}
+                                                        <span className="text-red-600 dark:text-red-400 font-medium">
+                                                          {formatHistoryValue(h.old_value)}
+                                                        </span>{" "}
+                                                        <span className="text-gray-400 dark:text-gray-500">→</span>{" "}
+                                                        <span className="text-green-600 dark:text-green-400 font-medium">
+                                                          {formatHistoryValue(h.new_value)}
+                                                        </span>
+                                                      </div>
+                                                    </div>
+                                                  ))}
+                                                </div>
+                                              ) : (
+                                                <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                                                  No field changes recorded.
+                                                </div>
+                                              )}
+                                              
+                                              <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                                                {getUserDisplayName(firstItem.user_email)}
+                                              </div>
+                                            </div>
+                                            <div className="text-xs text-gray-400 dark:text-gray-500 whitespace-nowrap flex-shrink-0">
+                                              {formatMelbourneTime(firstItem.created_at)}
+                                            </div>
+                                          </div>
+                                        </li>
+                                      );
+                                    }
+                                    
+                                    // Handle single item
+                                    const h = itemOrBatch;
+                                    const fieldsArray = (h as any).fields;
+
+                                    return (
+                                      <li
+                                        key={h.id}
+                                        className="p-3 border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors shadow-sm"
+                                      >
+                                        <div className="flex items-start justify-between gap-3">
+                                          <div className="flex-1 min-w-0">
+                                            <div className="font-semibold text-sm text-gray-900 dark:text-white mb-2">
+                                              {formatActionName(h.action)}
+                                            </div>
+
+                                            {/* NEW FIX — SUPPORT fields[] FROM BACKEND */}
+                                            {Array.isArray(fieldsArray) && fieldsArray.length > 0 ? (
+                                              fieldsArray.map((f: any, idx: number) => (
+                                                <div key={idx} className="text-sm text-gray-700 dark:text-gray-300 mb-1">
+                                                  <span className="font-medium">{formatFieldName(f.field)}:</span>{" "}
+                                                  <span className="text-red-600 dark:text-red-400 font-medium">
+                                                    {formatHistoryValue(f.old_value)}
+                                                  </span>{" "}
+                                                  <span className="text-gray-400 dark:text-gray-500">→</span>{" "}
+                                                  <span className="text-green-600 dark:text-green-400 font-medium">
+                                                    {formatHistoryValue(f.new_value)}
+                                                  </span>
+                                                </div>
+                                              ))
+                                            ) : h.field ? (
+                                              <div className="text-sm text-gray-700 dark:text-gray-300 mb-2">
+                                                <span className="font-medium">{formatFieldName(h.field)}:</span>{" "}
+                                                <span className="text-red-600 dark:text-red-400 font-medium">
+                                                  {formatHistoryValue(h.old_value)}
+                                                </span>{" "}
+                                                <span className="text-gray-400 dark:text-gray-500">→</span>{" "}
+                                                <span className="text-green-600 dark:text-green-400 font-medium">
+                                                  {formatHistoryValue(h.new_value)}
+                                                </span>
+                                              </div>
+                                            ) : (
+                                              <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                                                No field changes recorded.
+                                              </div>
+                                            )}
+
+                                            <div className="text-xs text-gray-500 dark:text-gray-400">
+                                              {getUserDisplayName(h.user_email)}
+                                            </div>
+                                          </div>
+
+                                          <div className="text-xs text-gray-400 dark:text-gray-500 whitespace-nowrap flex-shrink-0">
+                                            {formatMelbourneTime(h.created_at)}
+                                          </div>
+                                        </div>
+                                      </li>
+                                    );
+
+                                  })}
+                                </ul>
+                              </li>
+                            ))}
+                          </ul>
+                        );
+                      })()
+                    )}
+                  </>
                 )}
               </div>
+
+              {/* Pagination Controls */}
+              {historyPagination && (historyPagination.has_next || historyPagination.has_prev) && (
+                <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex-shrink-0 flex items-center justify-between">
+                  <div className="text-sm text-gray-600 dark:text-gray-400">
+                    Page {historyPagination.page} of {Math.ceil(historyPagination.total / historyPagination.page_size)} 
+                    {" "}({historyPagination.total} total)
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleHistoryPageChange(historyPagination.page - 1)}
+                      disabled={!historyPagination.has_prev || loadingHistory}
+                      className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-md text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Previous
+                    </button>
+                    <button
+                      onClick={() => handleHistoryPageChange(historyPagination.page + 1)}
+                      disabled={!historyPagination.has_next || loadingHistory}
+                      className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-md text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
