@@ -8,8 +8,9 @@ export const ACES_BRAND = {
 
 export const NAV_DATA = [
   {
-    label: "MY PAGES",
+    label: "Interface Pages",
     items: [
+      { title: "My Tasks", url: "/tasks", icon: Icons.TaskIcon, items: [] },
       { title: "Agent", url: "/agent", items: [] },
       
       // Create sub-sections for grouping
@@ -29,15 +30,7 @@ export const NAV_DATA = [
           { title: "Signed Agreement Lodgement", url: "/signed-agreement-lodgement" },
         ],
       },
-      {
-        title: "Solution Range",
-        items: [
-          {
-            title: "Solution Range",
-            url: "/solution-range",
-          },
-        ],
-      },
+      { title: "Solution Range", url: "/solution-range", items: [] },
       {
         title: "Client & Strategy",
         items: [
@@ -59,7 +52,6 @@ export const NAV_DATA = [
         items: [
           { title: "Dashboard", url: "/dashboard", icon: Icons.HomeIcon, items: [] },
           { title: "Calendar", url: "/calendar", icon: Icons.Calendar, items: [] },
-          { title: "Profile", url: "/profile", icon: Icons.User, items: [] },
           {
             title: "Forms",
             icon: Icons.Alphabet,
@@ -73,11 +65,6 @@ export const NAV_DATA = [
             url: "/tables",
             icon: Icons.Table,
             items: [{ title: "Tables", url: "/tables" }],
-          },
-          {
-            title: "Pages",
-            icon: Icons.Alphabet,
-            items: [{ title: "Settings", url: "/pages/settings" }],
           },
           { title: "Document Lodgement", url: "/document-lodgement", icon: Icons.Table, items: [] },
           { title: "LOA Upload", url: "/loa-upload", icon: Icons.Alphabet, items: [] },

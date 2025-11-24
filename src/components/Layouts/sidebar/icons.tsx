@@ -186,3 +186,33 @@ export function ArrowLeftIcon(props: PropsType) {
     </svg>
   );
 }
+
+export function TaskIcon(props: PropsType) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={24}
+      height={24}
+      viewBox="0 0 24 24"
+      fill="none"
+      {...props}
+    >
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M3.25 4A.75.75 0 014 3.25h16a.75.75 0 01.75.75v16a.75.75 0 01-.75.75H4a.75.75 0 01-.75-.75V4zM4.75 4.75v14.5h14.5V4.75H4.75z"
+        fill="currentColor"
+      />
+      <path
+        d="M7.5 8.25a.75.75 0 000 1.5h9a.75.75 0 000-1.5h-9zM7.5 12.25a.75.75 0 000 1.5h9a.75.75 0 000-1.5h-9zM7.5 16.25a.75.75 0 000 1.5h5a.75.75 0 000-1.5h-5z"
+        fill="currentColor"
+      />
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M8.5 6.5a1 1 0 100 2 1 1 0 000-2zm-2.5 1a2.5 2.5 0 115 0 2.5 2.5 0 01-5 0z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
