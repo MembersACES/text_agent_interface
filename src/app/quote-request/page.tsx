@@ -51,13 +51,18 @@ export default function QuoteRequestPage() {
   const [successMessage, setSuccessMessage] = useState<string>('');
   const [showSuccessModalState, setShowSuccessModalState] = useState<boolean>(false);
 
+  // Helper to check if utility is SME
+  const isSME = () => {
+    return utility === 'electricity_sme' || utility === 'gas_sme';
+  };
+
   // Available retailers based on utility type
   const getAvailableRetailers = () => {
-    const testRetailer = 'Test';
+    const dataQuoteRetailer = 'Data Quote';
     
     if (utility === 'electricity_ci' || utility === 'gas_ci') {
       return [
-        testRetailer,
+        dataQuoteRetailer,
         'Origin C&I',
         'Alinta C&I', 
         'Shell C&I',
@@ -65,19 +70,26 @@ export default function QuoteRequestPage() {
       ];
     } else if (utility === 'electricity_sme' || utility === 'gas_sme') {
       return [
-        testRetailer,
+        dataQuoteRetailer,
         'Origin SME',
         'Alinta SME',
         'Shell SME', 
         'Momentum SME'
       ];
     } else if (utility === 'waste') {
-      return [testRetailer, 'Waste Provider 1', 'Waste Provider 2'];
+      return [dataQuoteRetailer, 'Waste Provider 1', 'Waste Provider 2'];
     } else if (utility === 'oil') {
-      return [testRetailer, 'Oil Provider 1', 'Oil Provider 2'];
+      return [dataQuoteRetailer, 'Oil Provider 1', 'Oil Provider 2'];
     }
-    return [testRetailer];
+    return [dataQuoteRetailer];
   };
+
+  // Auto-select Data Quote for SME on mount
+  useEffect(() => {
+    if (isSME() && selectedRetailers.length === 0) {
+      setSelectedRetailers(['Data Quote']);
+    }
+  }, [utility]);
 
   const getQuoteTypeOptions = () => {
     switch (utility) {
@@ -186,164 +198,172 @@ export default function QuoteRequestPage() {
     return utility === 'electricity_ci' || utility === 'electricity_sme';
   };
 
-  // Dynamic Quote Details Section Component
-  const renderQuoteDetailsSection = () => (
-    <div className="p-6 border-b">
-      <h2 className="text-xl font-semibold text-gray-900 mb-4">Quote Details</h2>
-      
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Quote Type Options */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            {utility === 'waste' || utility === 'oil' ? 'Service Options' : 'Quote Details'}
-          </label>
-          <select 
-            value={quoteDetails.quoteType}
-            onChange={(e) => handleQuoteDetailsChange('quoteType', e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">Select option...</option>
-            {getQuoteTypeOptions().map(option => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </div>
+  // Dynamic Quote Details Section Component - COMPLETELY HIDDEN FOR SME
+  const renderQuoteDetailsSection = () => {
+    // For SME utilities, don't render this section at all
+    if (isSME()) {
+      return null;
+    }
 
-        {/* Commission Options */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Commission
-          </label>
-          <select 
-            value={quoteDetails.commission}
-            onChange={(e) => handleQuoteDetailsChange('commission', e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            {getCommissionOptions().map(option => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Start Date */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Start Date
-          </label>
-          <input
-            type="date"
-            value={quoteDetails.startDate}
-            onChange={(e) => handleQuoteDetailsChange('startDate', e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-
-        {/* Offer Due */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Offer Due
-          </label>
-          <input
-            type="date"
-            value={quoteDetails.offerDue}
-            onChange={(e) => handleQuoteDetailsChange('offerDue', e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-      </div>
-
-      {/* Usage Estimates - Different layouts based on utility type */}
-      <div className="mt-6">
-        <h3 className="text-lg font-medium text-gray-900 mb-4">
-          {utility === 'waste' ? 'Volume Estimates' : 
-           utility === 'oil' ? 'Usage Estimates' : 
-           'Consumption Estimates'}
-          <span className="text-sm font-normal text-gray-600 ml-2">
-            (Auto-calculated from invoice data)
-          </span>
-        </h3>
+    // For C&I and other utilities, show the full section
+    return (
+      <div className="p-6 border-b">
+        <h2 className="text-xl font-semibold text-gray-900 mb-4">Quote Details</h2>
         
-        {showUsageBreakdown() ? (
-          // Electricity: Show peak/shoulder/off-peak breakdown
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Yearly Peak Est
-              </label>
-              <input
-                type="number"
-                value={quoteDetails.yearlyPeakEst}
-                onChange={(e) => handleQuoteDetailsChange('yearlyPeakEst', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <span className="text-xs text-gray-500 mt-1">{getConsumptionUnit()}</span>
-            </div>
-
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Yearly Shoulder Est
-              </label>
-              <input
-                type="number"
-                value={quoteDetails.yearlyShoulderEst}
-                onChange={(e) => handleQuoteDetailsChange('yearlyShoulderEst', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <span className="text-xs text-gray-500 mt-1">{getConsumptionUnit()}</span>
-            </div>
-
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Yearly Off-Peak Est
-              </label>
-              <input
-                type="number"
-                value={quoteDetails.yearlyOffPeakEst}
-                onChange={(e) => handleQuoteDetailsChange('yearlyOffPeakEst', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <span className="text-xs text-gray-500 mt-1">{getConsumptionUnit()}</span>
-            </div>
-
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Total Yearly Est
-              </label>
-              <input
-                type="number"
-                value={quoteDetails.yearlyConsumptionEst}
-                onChange={(e) => handleQuoteDetailsChange('yearlyConsumptionEst', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <span className="text-xs text-gray-500 mt-1">{getConsumptionUnit()}</span>
-            </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Quote Type Options */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              {utility === 'waste' || utility === 'oil' ? 'Service Options' : 'Quote Details'}
+            </label>
+            <select 
+              value={quoteDetails.quoteType}
+              onChange={(e) => handleQuoteDetailsChange('quoteType', e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Select option...</option>
+              {getQuoteTypeOptions().map(option => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </div>
-        ) : (
-          // Gas/Waste/Oil: Show only total consumption
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-md">
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                {utility === 'waste' ? 'Annual Volume Est' : 
-                 utility === 'oil' ? 'Annual Usage Est' : 
-                 'Annual Consumption Est'}
-              </label>
-              <input
-                type="number"
-                value={quoteDetails.yearlyConsumptionEst}
-                onChange={(e) => handleQuoteDetailsChange('yearlyConsumptionEst', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <span className="text-xs text-gray-500 mt-1">{getConsumptionUnit()}</span>
-            </div>
+
+          {/* Commission Options */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Commission
+            </label>
+            <select 
+              value={quoteDetails.commission}
+              onChange={(e) => handleQuoteDetailsChange('commission', e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {getCommissionOptions().map(option => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </div>
-        )}
+
+          {/* Start Date */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Start Date
+            </label>
+            <input
+              type="date"
+              value={quoteDetails.startDate}
+              onChange={(e) => handleQuoteDetailsChange('startDate', e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          {/* Offer Due */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Offer Due
+            </label>
+            <input
+              type="date"
+              value={quoteDetails.offerDue}
+              onChange={(e) => handleQuoteDetailsChange('offerDue', e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+        </div>
+
+        {/* Usage Estimates - Different layouts based on utility type */}
+        <div className="mt-6">
+          <h3 className="text-lg font-medium text-gray-900 mb-4">
+            {utility === 'waste' ? 'Volume Estimates' : 
+             utility === 'oil' ? 'Usage Estimates' : 
+             'Consumption Estimates'}
+            <span className="text-sm font-normal text-gray-600 ml-2">
+              (Auto-calculated from invoice data)
+            </span>
+          </h3>
+          
+          {showUsageBreakdown() ? (
+            // Electricity: Show peak/shoulder/off-peak breakdown
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Yearly Peak Est
+                </label>
+                <input
+                  type="number"
+                  value={quoteDetails.yearlyPeakEst}
+                  onChange={(e) => handleQuoteDetailsChange('yearlyPeakEst', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <span className="text-xs text-gray-500 mt-1">{getConsumptionUnit()}</span>
+              </div>
+
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Yearly Shoulder Est
+                </label>
+                <input
+                  type="number"
+                  value={quoteDetails.yearlyShoulderEst}
+                  onChange={(e) => handleQuoteDetailsChange('yearlyShoulderEst', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <span className="text-xs text-gray-500 mt-1">{getConsumptionUnit()}</span>
+              </div>
+
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Yearly Off-Peak Est
+                </label>
+                <input
+                  type="number"
+                  value={quoteDetails.yearlyOffPeakEst}
+                  onChange={(e) => handleQuoteDetailsChange('yearlyOffPeakEst', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <span className="text-xs text-gray-500 mt-1">{getConsumptionUnit()}</span>
+              </div>
+
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Total Yearly Est
+                </label>
+                <input
+                  type="number"
+                  value={quoteDetails.yearlyConsumptionEst}
+                  onChange={(e) => handleQuoteDetailsChange('yearlyConsumptionEst', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <span className="text-xs text-gray-500 mt-1">{getConsumptionUnit()}</span>
+              </div>
+            </div>
+          ) : (
+            // Gas/Waste/Oil: Show only total consumption
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-md">
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  {utility === 'waste' ? 'Annual Volume Est' : 
+                   utility === 'oil' ? 'Annual Usage Est' : 
+                   'Annual Consumption Est'}
+                </label>
+                <input
+                  type="number"
+                  value={quoteDetails.yearlyConsumptionEst}
+                  onChange={(e) => handleQuoteDetailsChange('yearlyConsumptionEst', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <span className="text-xs text-gray-500 mt-1">{getConsumptionUnit()}</span>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   // Updated calculateYearlyEstimates function to handle all utility types
   const calculateYearlyEstimatesForUtility = () => {
@@ -1461,15 +1481,16 @@ export default function QuoteRequestPage() {
             </p>
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
               <p className="text-sm text-yellow-800">
-                <strong>Note:</strong> The "Test" retailer sends quote requests to <code className="bg-yellow-100 px-1 rounded">data.quote@fornrg.com</code> for testing purposes. 
+                <strong>Note:</strong> The "Data Quote" retailer sends quote requests to <code className="bg-yellow-100 px-1 rounded">data.quote@fornrg.com</code> for testing purposes. 
                 Use this option to test the system without sending live requests to actual retailers.
+                {isSME() && <strong> For SME quotes, Data Quote is automatically selected.</strong>}
               </p>
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {getAvailableRetailers().map((retailer) => (
                 <label key={retailer} className={`flex items-center space-x-3 p-3 rounded-lg border hover:bg-gray-50 cursor-pointer ${
-                  retailer === 'Test' 
+                  retailer === 'Data Quote' 
                     ? 'bg-yellow-50 border-yellow-300' 
                     : 'bg-white border-gray-300'
                 }`}>
@@ -1487,11 +1508,11 @@ export default function QuoteRequestPage() {
                   />
                   <div className="flex items-center space-x-2">
                     <span className={`text-sm font-medium ${
-                      retailer === 'Test' ? 'text-yellow-800' : 'text-gray-900'
+                      retailer === 'Data Quote' ? 'text-yellow-800' : 'text-gray-900'
                     }`}>
                       {retailer}
                     </span>
-                    {retailer === 'Test' && (
+                    {retailer === 'Data Quote' && (
                       <span className="px-2 py-1 text-xs bg-yellow-200 text-yellow-800 rounded-full font-medium">
                         TEST
                       </span>
@@ -1508,7 +1529,7 @@ export default function QuoteRequestPage() {
             )}
           </div>
 
-          {/* Quote Details - Dynamic Section */}
+          {/* Quote Details - Dynamic Section - HIDDEN FOR SME */}
           {renderQuoteDetailsSection()}
 
           {/* Next Steps */}
@@ -1630,72 +1651,76 @@ export default function QuoteRequestPage() {
                     </div>
                   </div>
 
-                  {/* Quote Details */}
-                  <div className="bg-green-50 p-4 rounded-lg">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-3">Quote Configuration</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-                      <div>
-                        <span className="font-medium text-gray-600">Quote Type:</span>
-                        <div className="text-gray-900">{quoteDetails.quoteType.replace('_', ' ') || 'Not selected'}</div>
+                  {/* Quote Details - Only show for C&I */}
+                  {!isSME() && (
+                    <>
+                      <div className="bg-green-50 p-4 rounded-lg">
+                        <h3 className="text-lg font-semibold text-gray-900 mb-3">Quote Configuration</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                          <div>
+                            <span className="font-medium text-gray-600">Quote Type:</span>
+                            <div className="text-gray-900">{quoteDetails.quoteType.replace('_', ' ') || 'Not selected'}</div>
+                          </div>
+                          <div>
+                            <span className="font-medium text-gray-600">Commission:</span>
+                            <div className="text-gray-900">{quoteDetails.commission || '0'}</div>
+                          </div>
+                          <div>
+                            <span className="font-medium text-gray-600">Start Date:</span>
+                            <div className="text-gray-900">{quoteDetails.startDate || 'Not specified'}</div>
+                          </div>
+                          <div>
+                            <span className="font-medium text-gray-600">Offer Due:</span>
+                            <div className="text-gray-900">{quoteDetails.offerDue || 'Not specified'}</div>
+                          </div>
+                        </div>
                       </div>
-                      <div>
-                        <span className="font-medium text-gray-600">Commission:</span>
-                        <div className="text-gray-900">{quoteDetails.commission || '0'}</div>
-                      </div>
-                      <div>
-                        <span className="font-medium text-gray-600">Start Date:</span>
-                        <div className="text-gray-900">{quoteDetails.startDate || 'Not specified'}</div>
-                      </div>
-                      <div>
-                        <span className="font-medium text-gray-600">Offer Due:</span>
-                        <div className="text-gray-900">{quoteDetails.offerDue || 'Not specified'}</div>
-                      </div>
-                    </div>
-                  </div>
 
-                  {/* Annual Usage Estimates */}
-                  <div className="bg-yellow-50 p-4 rounded-lg">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-3">Annual Usage Estimates</h3>
-                    {showUsageBreakdown() ? (
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                        <div className="text-center">
-                          <div className="font-medium text-gray-600">Peak</div>
-                          <div className="text-lg font-bold text-blue-900">
-                            {quoteDetails.yearlyPeakEst ? formatNumber(quoteDetails.yearlyPeakEst) : '0'} {getConsumptionUnit()}
+                      {/* Annual Usage Estimates */}
+                      <div className="bg-yellow-50 p-4 rounded-lg">
+                        <h3 className="text-lg font-semibold text-gray-900 mb-3">Annual Usage Estimates</h3>
+                        {showUsageBreakdown() ? (
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                            <div className="text-center">
+                              <div className="font-medium text-gray-600">Peak</div>
+                              <div className="text-lg font-bold text-blue-900">
+                                {quoteDetails.yearlyPeakEst ? formatNumber(quoteDetails.yearlyPeakEst) : '0'} {getConsumptionUnit()}
+                              </div>
+                            </div>
+                            <div className="text-center">
+                              <div className="font-medium text-gray-600">Shoulder</div>
+                              <div className="text-lg font-bold text-green-900">
+                                {quoteDetails.yearlyShoulderEst ? formatNumber(quoteDetails.yearlyShoulderEst) : '0'} {getConsumptionUnit()}
+                              </div>
+                            </div>
+                            <div className="text-center">
+                              <div className="font-medium text-gray-600">Off-Peak</div>
+                              <div className="text-lg font-bold text-purple-900">
+                                {quoteDetails.yearlyOffPeakEst ? formatNumber(quoteDetails.yearlyOffPeakEst) : '0'} {getConsumptionUnit()}
+                              </div>
+                            </div>
+                            <div className="text-center">
+                              <div className="font-medium text-gray-600">Total</div>
+                              <div className="text-xl font-bold text-red-900">
+                                {quoteDetails.yearlyConsumptionEst ? formatNumber(quoteDetails.yearlyConsumptionEst) : '0'} {getConsumptionUnit()}
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                        <div className="text-center">
-                          <div className="font-medium text-gray-600">Shoulder</div>
-                          <div className="text-lg font-bold text-green-900">
-                            {quoteDetails.yearlyShoulderEst ? formatNumber(quoteDetails.yearlyShoulderEst) : '0'} {getConsumptionUnit()}
+                        ) : (
+                          <div className="text-center">
+                            <div className="font-medium text-gray-600 mb-2">
+                              {utility === 'waste' ? 'Annual Volume' : 
+                               utility === 'oil' ? 'Annual Usage' : 
+                               'Annual Consumption'}
+                            </div>
+                            <div className="text-xl font-bold text-blue-900">
+                              {quoteDetails.yearlyConsumptionEst ? formatNumber(quoteDetails.yearlyConsumptionEst) : '0'} {getConsumptionUnit()}
+                            </div>
                           </div>
-                        </div>
-                        <div className="text-center">
-                          <div className="font-medium text-gray-600">Off-Peak</div>
-                          <div className="text-lg font-bold text-purple-900">
-                            {quoteDetails.yearlyOffPeakEst ? formatNumber(quoteDetails.yearlyOffPeakEst) : '0'} {getConsumptionUnit()}
-                          </div>
-                        </div>
-                        <div className="text-center">
-                          <div className="font-medium text-gray-600">Total</div>
-                          <div className="text-xl font-bold text-red-900">
-                            {quoteDetails.yearlyConsumptionEst ? formatNumber(quoteDetails.yearlyConsumptionEst) : '0'} {getConsumptionUnit()}
-                          </div>
-                        </div>
+                        )}
                       </div>
-                    ) : (
-                      <div className="text-center">
-                        <div className="font-medium text-gray-600 mb-2">
-                          {utility === 'waste' ? 'Annual Volume' : 
-                           utility === 'oil' ? 'Annual Usage' : 
-                           'Annual Consumption'}
-                        </div>
-                        <div className="text-xl font-bold text-blue-900">
-                          {quoteDetails.yearlyConsumptionEst ? formatNumber(quoteDetails.yearlyConsumptionEst) : '0'} {getConsumptionUnit()}
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                    </>
+                  )}
 
                   {/* Attachments Status */}
                   <div className="bg-purple-50 p-4 rounded-lg">
@@ -1798,15 +1823,6 @@ export default function QuoteRequestPage() {
                     className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
                   >
                     Done
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowSuccessModalState(false);
-                      window.location.href = '/dashboard';
-                    }}
-                    className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
-                  >
-                    Back to Dashboard
                   </button>
                 </div>
               </div>
