@@ -158,6 +158,8 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
   const [advocacyMeetingCompleted, setAdvocacyMeetingCompleted] = useState<boolean>(false);
   const [automationLoading, setAutomationLoading] = useState(false);
   const [automationData, setAutomationData] = useState<any>(null);
+  const [ghgreportingLoading, setghgreportingLoading] = useState(false);
+  const [ghgreportingData, setghgreportingData] = useState<any>(null);
   const [showDataRequestModal, setShowDataRequestModal] = useState(false);
   const [dataRequestSummary, setDataRequestSummary] = useState<null | {
     businessName: string;
@@ -220,7 +222,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
     </div>
   );
 
-  const [activeDataTab, setActiveDataTab] = useState<'automation' | 'discrepancy' | 'advocacy'>('automation');
+  const [activeDataTab, setActiveDataTab] = useState<'automation' | 'discrepancy' | 'ghgreporting' | 'advocacy'>('automation');
 
   const TabButton = ({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) => (
     <button
@@ -1318,6 +1320,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
               <span>Automation & LLMs</span>
               <span>Discrepancy Adjustments</span>
               <span>Advocacy Members</span>
+              <span>GHG Reporting</span>
             </div>
             <span className="text-gray-500">{sectionsOpen.dataReports ? '▲' : '▼'}</span>
           </button>
@@ -1334,8 +1337,213 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
           <TabButton active={activeDataTab === 'advocacy'} onClick={() => setActiveDataTab('advocacy')}>
             Advocacy Members
           </TabButton>
+          <TabButton active={activeDataTab === 'ghgreporting'} onClick={() => setActiveDataTab('ghgreporting')}>
+            GHG Reporting
+          </TabButton>
         </div>
+        {/* GHG Reporting Tab - Cleaned Up Version */}
+       {activeDataTab === 'ghgreporting' && (
+          <div>
+            <div className="flex items-center justify-end mb-4 gap-2">
+              <button
+                onClick={async () => {
+                  try {
+                    setghgreportingLoading(true);
+                    
+                    const wipUrl = info._processed_file_ids?.["business_WIP"];
+                    let wipDocId = null;
+                    
+                    if (wipUrl) {
+                      const match = wipUrl.match(/\/d\/([^\/]+)/);
+                      if (match) {
+                        wipDocId = match[1];
+                      }
+                    }
 
+                    const payload = {
+                      business_name: business.name,
+                      sheet_name: "GHG reporting",
+                      ...(wipDocId && { wip_document_id: wipDocId })
+                    };
+
+                    const response = await fetch('https://membersaces.app.n8n.cloud/webhook/pull_descrepancy_advocacy_WIP', {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                      },
+                      body: JSON.stringify(payload)
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (response.ok && data) {
+                      setghgreportingData(data);
+                    } else {
+                      alert('No data found or error occurred');
+                    }
+                  } catch (error) {
+                    console.error('Error calling webhook:', error);
+                    alert('Error fetching data');
+                  } finally {
+                    setghgreportingLoading(false);
+                  }
+                }}
+                disabled={ghgreportingLoading}
+                className="px-3 py-1.5 rounded border border-gray-300 text-gray-600 text-xs font-medium hover:bg-gray-50 hover:border-green-400 hover:text-green-600 disabled:opacity-50 transition-colors flex items-center gap-1"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                {ghgreportingLoading ? 'Loading...' : 'Refresh'}
+              </button>
+              <button
+                onClick={() => {
+                  const wipUrl = info._processed_file_ids?.["business_WIP"];
+                  if (wipUrl) {
+                    const match = wipUrl.match(/\/d\/([^\/]+)/);
+                    if (match) {
+                      const docId = match[1];
+                      window.open(`https://docs.google.com/spreadsheets/d/${docId}/edit#gid=0`, '_blank');
+                    }
+                  } else {
+                    alert('WIP document not available');
+                  }
+                }}
+                className="px-3 py-1.5 rounded border border-green-300 bg-green-50 text-green-700 text-xs font-medium hover:bg-green-100 transition-colors flex items-center gap-1"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                </svg>
+                Go to sheet
+              </button>
+            </div>
+            
+            <div className="border rounded-lg bg-white overflow-hidden">
+              {ghgreportingData && Array.isArray(ghgreportingData) && ghgreportingData.length > 0 ? (
+                <>
+                  {/* Grid View - For 1-4 items */}
+                  {ghgreportingData.length <= 4 ? (
+                    <div className="p-4">
+                      <div className={`grid gap-3 ${
+                        ghgreportingData.length === 1 ? 'grid-cols-1 max-w-2xl' :
+                        ghgreportingData.length === 2 ? 'grid-cols-1 md:grid-cols-2' :
+                        'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'
+                      }`}>
+                        {ghgreportingData.map((item: any, idx: number) => {
+                          // Get the actual values from the object
+                          const entries = Object.entries(item).filter(([key]) => key !== 'row_number');
+                          const reportName = entries[0]?.[1] || 'Unnamed Report';
+                          const fileId = entries[1]?.[1] || '';
+                          const fileUrl = fileId ? `https://drive.google.com/file/d/${fileId}/view?usp=drivesdk` : null;
+                          
+                          return (
+                            <div key={idx} className="bg-gray-50 p-4 rounded-lg border border-gray-200 hover:border-gray-300 transition-all">
+                              <div className="flex flex-col h-full">
+                                <h3 className="text-sm font-semibold text-gray-900 mb-3 line-clamp-2 flex-1">
+                                  {String(reportName)}
+                                </h3>
+                                {fileUrl ? (
+                                  <a 
+                                    href={fileUrl} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 transition-colors"
+                                  >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                    View Report
+                                  </a>
+                                ) : (
+                                  <div className="text-xs text-gray-400 text-center py-2">No file available</div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : (
+                    /* List/Table View - For 5+ items */
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                              #
+                            </th>
+                            <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                              Report Name
+                            </th>
+                            <th scope="col" className="px-6 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                              Actions
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {ghgreportingData.map((item: any, idx: number) => {
+                            // Get the actual values from the object
+                            const entries = Object.entries(item).filter(([key]) => key !== 'row_number');
+                            const reportName = entries[0]?.[1] || 'Unnamed Report';
+                            const fileId = entries[1]?.[1] || '';
+                            const fileUrl = fileId ? `https://drive.google.com/file/d/${fileId}/view?usp=drivesdk` : null;
+                            
+                            return (
+                              <tr key={idx} className="hover:bg-gray-50 transition-colors">
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-medium">
+                                  {idx + 1}
+                                </td>
+                                <td className="px-6 py-4 text-sm text-gray-900">
+                                  <div className="max-w-md">
+                                    {String(reportName)}
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
+                                  {fileUrl ? (
+                                    <a 
+                                      href={fileUrl} 
+                                      target="_blank" 
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1.5 text-blue-600 hover:text-blue-800 font-medium transition-colors"
+                                    >
+                                      View Report
+                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                      </svg>
+                                    </a>
+                                  ) : (
+                                    <span className="text-gray-400 text-xs">No file</span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="text-center py-12 text-sm text-gray-400">
+                  {ghgreportingLoading ? (
+                    <div className="flex items-center justify-center gap-2">
+                      <div className="animate-spin h-5 w-5 border-2 border-green-600 border-t-transparent rounded-full"></div>
+                      <span>Loading GHG reports...</span>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <svg className="w-12 h-12 mx-auto text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      <p>No GHG reports available</p>
+                      <p className="text-xs">Click "Refresh" to fetch reports</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
         {/* Automation Tab */}
         {activeDataTab === 'automation' && (
           <div>
