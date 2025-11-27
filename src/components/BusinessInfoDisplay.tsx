@@ -187,6 +187,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
   const [clientNotes, setClientNotes] = useState<any[]>([]);
   const [showNoteModal, setShowNoteModal] = useState(false);
   const [currentNote, setCurrentNote] = useState('');
+  const [expandedNotes, setExpandedNotes] = useState<Set<number>>(new Set());
   const [editingNoteId, setEditingNoteId] = useState<number | null>(null);
   const [notesLoading, setNotesLoading] = useState(false);
   const [showEOIModal, setShowEOIModal] = useState(false);
@@ -813,15 +814,31 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
             clientNotes.slice(0, 10).map((note) => {
               const firstLine = note.note.split('\n')[0];
               const hasMore = note.note.includes('\n') || note.note.length > 100;
-              const [expanded, setExpanded] = React.useState(false);
+              const isExpanded = expandedNotes.has(note.id);
               
               return (
                 <div key={note.id} className="bg-white p-3 rounded border border-gray-200 hover:border-gray-300 transition-colors">
                   <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 cursor-pointer" onClick={() => setExpanded(!expanded)}>
-                      {/* First line preview */}
-                      <p className="text-sm font-medium text-gray-900 mb-1">
-                        {expanded ? note.note : (firstLine.length > 80 ? firstLine.substring(0, 80) + '...' : firstLine)}
+                    <div 
+                      className="flex-1 cursor-pointer" 
+                      onClick={() => {
+                        setExpandedNotes(prev => {
+                          const newSet = new Set(prev);
+                          if (isExpanded) {
+                            newSet.delete(note.id);
+                          } else {
+                            newSet.add(note.id);
+                          }
+                          return newSet;
+                        });
+                      }}
+                    >
+                      {/* Note content */}
+                      <p className="text-sm text-gray-900 mb-1 whitespace-pre-wrap">
+                        {isExpanded 
+                          ? note.note 
+                          : (firstLine.length > 80 ? firstLine.substring(0, 80) + '...' : firstLine)
+                        }
                       </p>
                       
                       {/* Metadata */}
@@ -834,29 +851,31 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                           hour: '2-digit',
                           minute: '2-digit'
                         })}</span>
-                        {hasMore && !expanded && (
+                        {hasMore && (
                           <>
                             <span>•</span>
-                            <span className="text-blue-600">Click to expand</span>
+                            <span className="text-blue-600">{isExpanded ? 'Click to collapse' : 'Click to expand'}</span>
                           </>
                         )}
                       </div>
                     </div>
                     
                     {/* Action buttons */}
-                    <div className="flex gap-1">
+                    <div className="flex gap-1 flex-shrink-0">
                       <button 
-                        onClick={() => {
+                        onClick={(e) => {
+                          e.stopPropagation();
                           setCurrentNote(note.note);
                           setEditingNoteId(note.id);
                           setShowNoteModal(true);
                         }}
-                        className="text-blue-600 hover:text-blue-800 text-xs px-2 py-1"
+                        className="text-blue-600 hover:text-blue-800 text-xs px-2 py-1 hover:bg-blue-50 rounded"
                       >
                         Edit
                       </button>
                       <button 
-                        onClick={async () => {
+                        onClick={async (e) => {
+                          e.stopPropagation();
                           if (!confirm('Delete this note?')) return;
                           try {
                             const res = await fetch(
@@ -868,12 +887,15 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                             );
                             if (res.ok) {
                               await fetchClientNotes();
+                            } else {
+                              alert('Failed to delete note');
                             }
                           } catch (err) {
                             console.error('Error deleting note:', err);
+                            alert('Error deleting note');
                           }
                         }}
-                        className="text-red-600 hover:text-red-800 text-xs px-2 py-1"
+                        className="text-red-600 hover:text-red-800 text-xs px-2 py-1 hover:bg-red-50 rounded"
                       >
                         Delete
                       </button>
