@@ -393,11 +393,11 @@ export default function IndividualStrategyEmailPage() {
       category: "ai_automation"
     },
     
-    // Event Referral
+    // Advocate Event Program
     {
       id: "event_referral",
-      name: "Event Referral Program",
-      description: "Comprehensive event referral and management system",
+      name: "Advocate Event Program",
+      description: "Comprehensive Advocate Event Program and management system",
       presentationId: "1Jqi5pMRv0amYqMiPysc_hFi03vNorKio3A5fcRUluOc",
       enabled: true,
       category: "referral"
@@ -820,7 +820,7 @@ export default function IndividualStrategyEmailPage() {
     platform: "🌱 Sustainable Platform",
     ai_bots: "🤖 AI Bots",
     ai_automation: "⚡ AI Automation",
-    referral: "📅 Event Referral",
+    referral: "📅 Advocate Event Program",
     profile_reset: "🔄 Profile Reset",
     renewable_energy: "☀️ Renewable Energy",
     resource_recovery: "♻️ Resource Recovery",

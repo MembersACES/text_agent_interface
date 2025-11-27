@@ -37,7 +37,7 @@ export const categoryLabels: Record<SolutionCategory, string> = {
   platform: "🌱 Sustainable Platform",
   ai_bots: "🤖 AI Cleaning Bots",
   ai_automation: "📞 Digital Voice Agents & Numbers",
-  referral: "📅 Event Referral",
+  referral: "📅 Advocate Event Program",
   profile_reset: "🔄 Profile Reset",
   renewable_energy: "☀️ Renewable Energy",
   resource_recovery: "♻️ Resource Recovery",
@@ -331,8 +331,8 @@ export const solutionOptions: SolutionOption[] = [
 
   {
     id: "event_referral",
-    name: "Event Referral Program",
-    description: "Comprehensive event referral and management system",
+    name: "Advocate Event Program",
+    description: "Comprehensive Advocate Event Program and management system",
     presentationId: "1Jqi5pMRv0amYqMiPysc_hFi03vNorKio3A5fcRUluOc",
     enabled: true,
     category: "referral",
