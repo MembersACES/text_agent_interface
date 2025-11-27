@@ -10,13 +10,15 @@ export type SolutionCategory =
   | "resource_recovery"
   | "asset_optimisation"
   | "other_solutions"
-  | "ghg";
+  | "ghg"
+  | "robot_finance";
 
   export interface SolutionOption {
     id: string;
     name: string;
     description: string;
-    presentationId: string;
+    presentationId?: string;
+    pdfUrl?: string;
     enabled: boolean;
     category: SolutionCategory;
     agentType?: "aces" | "client";
@@ -42,6 +44,7 @@ export const categoryLabels: Record<SolutionCategory, string> = {
   asset_optimisation: "📈 Asset Optimisation",
   other_solutions: "🔧 Other Solutions",
   ghg: "🌍 GHG",
+  robot_finance: "💰 Robot Finance",
 };
 
 export const categoryDescriptions: Record<SolutionCategory, string> = {
@@ -65,6 +68,8 @@ export const categoryDescriptions: Record<SolutionCategory, string> = {
     "Specialized infrastructure improvements such as backup power and energy-efficient refrigeration.",
   ghg:
     "Greenhouse gas reporting and compliance solutions for tracking and reducing carbon footprint.",
+  robot_finance:
+    "Flexible financing solutions for autonomous cleaning robots including finance partner programs and rent-to-own structures.",
 };
 
 export const solutionOptions: SolutionOption[] = [
@@ -554,5 +559,24 @@ export const solutionOptions: SolutionOption[] = [
     enabled: true,
     category: "ghg",
     imageUrl: "/solutions/ghg-reporting.png"
+  },
+
+  {
+    id: "finance_partner_program",
+    name: "Finance Partner Program",
+    description: "Configure OPEX documentation requirements and send Step 1 email to client. The finance partner will follow up with Step 2 requirements after submission. Suitable for businesses structured as Pty Ltd or Trust.\n\n• Generate Step 1 finance documentation\n• Configure business structure requirements (Pty Ltd/Trust)\n• Email client with finance partner details\n• Track finance application progress",
+    presentationId: "1PLACEHOLDER_PRESENTATION_ID_FINANCE_PARTNER", // TODO: Replace with actual presentation ID
+    enabled: true,
+    category: "robot_finance",
+    imageUrl: "/solutions/finance-partner.png"
+  },
+  {
+    id: "rent_to_own_finance",
+    name: "Rent-to-Own Finance (EGB)",
+    description: "Direct rent-to-own financing through Environmental Global Benefits. 60-month term with fixed monthly rental (AUD 1,050 incl. GST). Includes full maintenance, warranty, and optional $1 title transfer at end of term.\n\n• Generate rent-to-own agreement documentation\n• Configure commercial terms (60-month term, AUD 1,050/month)\n• Set up insurance requirements (AUD 10M public liability)\n• Manage service level agreements and maintenance schedules\n• Process end-of-term options (return, month-to-month, or title transfer)",
+    pdfUrl: "1hvbha_Mig2zfI40jZ9Y5uluDmwojBP3o",
+    enabled: true,
+    category: "robot_finance",
+    imageUrl: "/solutions/rent-to-own.png"
   }
 ];

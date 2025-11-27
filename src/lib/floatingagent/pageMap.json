@@ -3,6 +3,10 @@
     "path": "/agent",
     "description": "Overview of internal AI and automation agents"
   },
+  "My Tasks": {
+    "path": "/tasks",
+    "description": "View and manage your assigned tasks"
+  },
   "Data & Information": {
     "path": "/data-info",
     "pages": {
@@ -17,6 +21,18 @@
       "Site Profiling": {
         "path": "/site-profiling",
         "description": "View site-level profiling and setup data"
+      },
+      "Utility Linking": {
+        "path": "/utility-linking",
+        "description": "Link utilities to business records"
+      },
+      "Data Request": {
+        "path": "/data-request",
+        "description": "Request data from suppliers and utilities"
+      },
+      "Quote Request": {
+        "path": "/quote-request",
+        "description": "Request quotes for services and solutions"
       }
     }
   },
@@ -28,14 +44,30 @@
         "description": "Generate and manage business documents (LOAs, EOIs, contracts, etc.)"
       },
       "Invoice & Data Lodgement": {
-        "path": "/invoice-lodgement",
+        "path": "/document-lodgement",
         "description": "Lodge invoice and data reports into the system"
       },
       "Signed Agreement Lodgement": {
         "path": "/signed-agreement-lodgement",
         "description": "Upload and manage signed contracts and agreements"
+      },
+      "Drive Filing": {
+        "path": "/drive-filing",
+        "description": "File documents directly to Google Drive"
+      },
+      "LOA Upload": {
+        "path": "/loa-upload",
+        "description": "Upload and process Letter of Authority documents"
+      },
+      "Update LOA": {
+        "path": "/update-loa",
+        "description": "Update existing Letter of Authority documents"
       }
     }
+  },
+  "Solution Range": {
+    "path": "/solution-range",
+    "description": "Explore our comprehensive range of sustainable solutions and services including AI bots, renewable energy, resource recovery, asset optimization, and robot finance options"
   },
   "Client & Strategy": {
     "path": "/client-strategy",
@@ -45,7 +77,7 @@
         "description": "Generate Letter of Authority for a new client"
       },
       "Google Drive - New Client Creation": {
-        "path": "/drive-client-creation",
+        "path": "/loa-upload",
         "description": "Automate Google Drive folder setup for a new client"
       },
       "Initial Strategy Generator": {
@@ -57,7 +89,7 @@
         "description": "Generate EOI or strategy documents via Canva templates"
       },
       "Canva Page": {
-        "path": "/canva-page",
+        "path": "/canva-pitch-deck",
         "description": "Access Canva integration for pitch decks and strategy slides"
       },
       "Airtable Integration": {

@@ -184,6 +184,12 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
     nmis = ciElectricity;
   }
 
+  const [clientNotes, setClientNotes] = useState<any[]>([]);
+  const [showNoteModal, setShowNoteModal] = useState(false);
+  const [currentNote, setCurrentNote] = useState('');
+  const [expandedNotes, setExpandedNotes] = useState<Set<number>>(new Set());
+  const [editingNoteId, setEditingNoteId] = useState<number | null>(null);
+  const [notesLoading, setNotesLoading] = useState(false);
   const [showEOIModal, setShowEOIModal] = useState(false);
   const [eoiFile, setEOIFile] = useState<File | null>(null);
   const [eoiLoading, setEOILoading] = useState(false);
@@ -499,6 +505,39 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
     }
   };
 
+  // Fetch client status notes
+  React.useEffect(() => {
+    if (business.name && token) {
+      fetchClientNotes();
+    }
+  }, [business.name, token]);
+
+  const fetchClientNotes = async () => {
+    try {
+      setNotesLoading(true);
+      const res = await fetch(
+        `${getApiBaseUrl()}/api/client-status/${encodeURIComponent(business.name)}`,
+        {
+          headers: { Authorization: `Bearer ${token}` }
+        }
+      );
+      
+      // ADD THIS CHECK
+      if (!res.ok) {
+        console.error('Failed to fetch notes:', res.status);
+        setClientNotes([]); // Set to empty array on error
+        return;
+      }
+      
+      const data = await res.json();
+      setClientNotes(Array.isArray(data) ? data : []); // Ensure it's always an array
+    } catch (err) {
+      console.error('Error fetching notes:', err);
+      setClientNotes([]); // Set to empty array on error
+    } finally {
+      setNotesLoading(false);
+    }
+  };
   React.useEffect(() => {
     if (business.name && typeof setInfo === "function") {
       console.log('Loading EOI data for business:', business.name);
@@ -747,6 +786,157 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
             </button>
           </div>
         </div>
+      </div>
+
+      {/* Client Status Notes Section */}
+      <div className="border-b bg-gray-50 px-6 py-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <h3 className="font-semibold text-gray-800">Client Status Notes</h3>
+            {/* Info Icon with Tooltip */}
+            <div className="relative group">
+              <button className="w-5 h-5 rounded-full bg-blue-100 text-blue-600 hover:bg-blue-200 flex items-center justify-center text-xs font-bold transition-colors">
+                ?
+              </button>
+              {/* Tooltip */}
+              <div className="absolute left-0 top-8 w-72 p-3 bg-gray-900 text-white text-xs rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
+                <div className="space-y-2">
+                  <p className="font-semibold">How Client Status Notes Work:</p>
+                  <ul className="space-y-1 list-disc list-inside">
+                    <li>First line appears as the note heading</li>
+                    <li>Click any note to expand/collapse full content</li>
+                    <li>Shows 10 most recent notes automatically</li>
+                    <li>All team members can view and edit notes</li>
+                    <li>Notes are sorted newest first</li>
+                  </ul>
+                </div>
+                {/* Arrow pointing up */}
+                <div className="absolute -top-2 left-4 w-4 h-4 bg-gray-900 transform rotate-45"></div>
+              </div>
+            </div>
+          </div>
+          
+          <button
+            onClick={() => {
+              setCurrentNote('');
+              setEditingNoteId(null);
+              setShowNoteModal(true);
+            }}
+            className="px-3 py-1.5 rounded bg-blue-600 text-white text-xs font-medium hover:bg-blue-700"
+          >
+            + Add Note
+          </button>
+        </div>
+        
+        {/* Notes List */}
+        <div className="space-y-2 max-h-96 overflow-y-auto">
+          {notesLoading ? (
+            <div className="text-center py-4 text-sm text-gray-400">Loading notes...</div>
+          ) : clientNotes.length === 0 ? (
+            <div className="text-center py-4 text-sm text-gray-400">No notes yet</div>
+          ) : (
+            clientNotes.slice(0, 10).map((note) => {
+              const firstLine = note.note.split('\n')[0];
+              const hasMore = note.note.includes('\n') || note.note.length > 100;
+              const isExpanded = expandedNotes.has(note.id);
+              
+              return (
+                <div key={note.id} className="bg-white p-3 rounded border border-gray-200 hover:border-gray-300 transition-colors">
+                  <div className="flex items-start justify-between gap-2">
+                    <div 
+                      className="flex-1 cursor-pointer" 
+                      onClick={() => {
+                        setExpandedNotes(prev => {
+                          const newSet = new Set(prev);
+                          if (isExpanded) {
+                            newSet.delete(note.id);
+                          } else {
+                            newSet.add(note.id);
+                          }
+                          return newSet;
+                        });
+                      }}
+                    >
+                      {/* Note content */}
+                      <p className="text-sm text-gray-900 mb-1 whitespace-pre-wrap">
+                        {isExpanded 
+                          ? note.note 
+                          : (firstLine.length > 80 ? firstLine.substring(0, 80) + '...' : firstLine)
+                        }
+                      </p>
+                      
+                      {/* Metadata */}
+                      <div className="flex items-center gap-3 text-xs text-gray-500">
+                        <span>{note.user_email.split('@')[0]}</span>
+                        <span>•</span>
+                        <span>{new Date(note.created_at).toLocaleString('en-AU', {
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}</span>
+                        {hasMore && (
+                          <>
+                            <span>•</span>
+                            <span className="text-blue-600">{isExpanded ? 'Click to collapse' : 'Click to expand'}</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    
+                    {/* Action buttons */}
+                    <div className="flex gap-1 flex-shrink-0">
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setCurrentNote(note.note);
+                          setEditingNoteId(note.id);
+                          setShowNoteModal(true);
+                        }}
+                        className="text-blue-600 hover:text-blue-800 text-xs px-2 py-1 hover:bg-blue-50 rounded"
+                      >
+                        Edit
+                      </button>
+                      <button 
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          if (!confirm('Delete this note?')) return;
+                          try {
+                            const res = await fetch(
+                              `${getApiBaseUrl()}/api/client-status/${note.id}`,
+                              {
+                                method: 'DELETE',
+                                headers: { Authorization: `Bearer ${token}` }
+                              }
+                            );
+                            if (res.ok) {
+                              await fetchClientNotes();
+                            } else {
+                              alert('Failed to delete note');
+                            }
+                          } catch (err) {
+                            console.error('Error deleting note:', err);
+                            alert('Error deleting note');
+                          }
+                        }}
+                        className="text-red-600 hover:text-red-800 text-xs px-2 py-1 hover:bg-red-50 rounded"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+        
+        {/* Show count if more than 10 */}
+        {clientNotes.length > 10 && (
+          <div className="text-center mt-2 text-xs text-gray-500">
+            Showing 10 of {clientNotes.length} notes
+          </div>
+        )}
       </div>
 
       {/* Quick Navigation */}
@@ -2525,6 +2715,78 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                 disabled={!eoiFile || eoiLoading}
               >
                 {eoiLoading ? "Uploading..." : "Submit EOI"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Note Modal */}
+      {showNoteModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-25 z-50 flex items-center justify-center">
+          <div className="bg-white rounded-lg p-6 w-full max-w-lg shadow-lg">
+            <h3 className="text-lg font-semibold text-gray-800 mb-4">
+              {editingNoteId ? 'Edit Note' : 'Add Note'}
+            </h3>
+            
+            <textarea
+              value={currentNote}
+              onChange={(e) => setCurrentNote(e.target.value)}
+              placeholder="Enter your note here..."
+              className="w-full h-32 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            
+            <div className="flex justify-end gap-2 mt-4">
+              <button
+                onClick={() => {
+                  setShowNoteModal(false);
+                  setCurrentNote('');
+                  setEditingNoteId(null);
+                }}
+                className="px-4 py-2 border border-gray-300 rounded text-gray-700 hover:bg-gray-100"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  if (!currentNote.trim()) return;
+                  
+                  try {
+                    const url = editingNoteId
+                      ? `${getApiBaseUrl()}/api/client-status/${editingNoteId}`
+                      : `${getApiBaseUrl()}/api/client-status`;
+                    
+                    const method = editingNoteId ? 'PATCH' : 'POST';
+                    
+                    const body = editingNoteId
+                      ? { note: currentNote }
+                      : { business_name: business.name, note: currentNote };
+                    
+                    const res = await fetch(url, {
+                      method,
+                      headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: `Bearer ${token}`
+                      },
+                      body: JSON.stringify(body)
+                    });
+                    
+                    if (res.ok) {
+                      await fetchClientNotes(); // Refresh the list
+                      setShowNoteModal(false);
+                      setCurrentNote('');
+                      setEditingNoteId(null);
+                    } else {
+                      alert('Failed to save note');
+                    }
+                  } catch (err) {
+                    console.error('Error saving note:', err);
+                    alert('Error saving note');
+                  }
+                }}
+                disabled={!currentNote.trim()}
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+              >
+                {editingNoteId ? 'Update' : 'Save'}
               </button>
             </div>
           </div>
