@@ -6,6 +6,7 @@ type SubSolution = Omit<SolutionOption, "category" | "presentationId" | "enabled
 type SolutionLike = SolutionOption | SubSolution;
 
 const GOOGLE_SLIDES_BASE = "https://docs.google.com/presentation/d/";
+const GOOGLE_DRIVE_PDF_BASE = "https://drive.google.com/file/d/";
 
 const getCategoryColor = (category?: string) => {
   const colors = {
@@ -66,7 +67,7 @@ export default function EnhancedSolutionCard({ solution }: { solution: SolutionL
   const [showCapabilities, setShowCapabilities] = useState(false);
   const [copiedPhone, setCopiedPhone] = useState(false);
 
-  const isSubCard = !("presentationId" in solution);
+  const isSubCard = !("presentationId" in solution) && !("pdfUrl" in solution);
   const hasAgent =
     Boolean(solution.phoneNumber) || (solution.agentCapabilities?.length ?? 0) > 0;
 
@@ -123,13 +124,29 @@ export default function EnhancedSolutionCard({ solution }: { solution: SolutionL
               >
                 {solution.name}
               </h3>
-              <p
+              <div
                 className={`text-gray-600 mt-1 ${
                   isSubCard ? "text-xs" : "text-sm"
-                } line-clamp-2`}
+                } whitespace-pre-line`}
               >
-                {solution.description}
-              </p>
+                {solution.description.split('\n').map((line, index) => {
+                  // Check if line starts with bullet point
+                  if (line.trim().startsWith('•')) {
+                    return (
+                      <div key={index} className="flex items-start gap-2 mt-1 first:mt-0">
+                        <span className="text-gray-500 mt-0.5">•</span>
+                        <span>{line.trim().substring(1).trim()}</span>
+                      </div>
+                    );
+                  }
+                  // Regular paragraph line
+                  return line.trim() ? (
+                    <p key={index} className={index > 0 ? "mt-2" : ""}>
+                      {line}
+                    </p>
+                  ) : null;
+                })}
+              </div>
             </div>
           </div>
 
@@ -153,32 +170,81 @@ export default function EnhancedSolutionCard({ solution }: { solution: SolutionL
             </div>
           )}
           {/* Action buttons for top-level only - moved below content */}
-          {!isSubCard && "presentationId" in solution && solution.presentationId && (
+          {!isSubCard && (("presentationId" in solution && solution.presentationId) || ("pdfUrl" in solution && solution.pdfUrl)) && (
             <div className="flex gap-2 mt-3">
-              <button
-                onClick={() =>
-                  window.open(
-                    `${GOOGLE_SLIDES_BASE}${(solution as SolutionOption).presentationId}`,
-                    "_blank"
-                  )
-                }
-                className="flex-1 px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 text-sm font-medium flex items-center justify-center gap-2 shadow-md hover:shadow-lg"
-              >
-                <span>View</span>
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                  />
-                </svg>
-              </button>
+              {("presentationId" in solution && solution.presentationId) ? (() => {
+                const presentationId = (solution as SolutionOption).presentationId!;
+                const isPlaceholder = presentationId.includes("PLACEHOLDER");
+                return (
+                  <button
+                    onClick={() => {
+                      if (!isPlaceholder) {
+                        window.open(
+                          `${GOOGLE_SLIDES_BASE}${presentationId}`,
+                          "_blank"
+                        );
+                      }
+                    }}
+                    disabled={isPlaceholder}
+                    className={`flex-1 px-4 py-2 rounded-lg transition-all duration-200 text-sm font-medium flex items-center justify-center gap-2 shadow-md ${
+                      isPlaceholder
+                        ? "bg-gradient-to-r from-gray-400 to-gray-500 text-white cursor-not-allowed opacity-75"
+                        : "bg-gradient-to-r from-blue-600 to-blue-700 text-white hover:from-blue-700 hover:to-blue-800 hover:shadow-lg"
+                    }`}
+                  >
+                    <span>{isPlaceholder ? "View (Placeholder)" : "View"}</span>
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                      />
+                    </svg>
+                  </button>
+                );
+              })() : ("pdfUrl" in solution && solution.pdfUrl) ? (() => {
+                const pdfUrl = (solution as SolutionOption).pdfUrl!;
+                const isPlaceholder = pdfUrl.includes("PLACEHOLDER");
+                return (
+                  <button
+                    onClick={() => {
+                      if (!isPlaceholder) {
+                        window.open(
+                          `${GOOGLE_DRIVE_PDF_BASE}${pdfUrl}/view`,
+                          "_blank"
+                        );
+                      }
+                    }}
+                    disabled={isPlaceholder}
+                    className={`flex-1 px-4 py-2 rounded-lg transition-all duration-200 text-sm font-medium flex items-center justify-center gap-2 shadow-md ${
+                      isPlaceholder
+                        ? "bg-gradient-to-r from-gray-400 to-gray-500 text-white cursor-not-allowed opacity-75"
+                        : "bg-gradient-to-r from-red-600 to-red-700 text-white hover:from-red-700 hover:to-red-800 hover:shadow-lg"
+                    }`}
+                  >
+                    <span>{isPlaceholder ? "View PDF (Placeholder)" : "View PDF"}</span>
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"
+                      />
+                    </svg>
+                  </button>
+                );
+              })() : null}
               
               {/* Custom Sheet button - shows with custom label */}
               {(solution as SolutionOption).customSheetUrl && (
