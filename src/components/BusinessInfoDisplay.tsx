@@ -520,10 +520,19 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
           headers: { Authorization: `Bearer ${token}` }
         }
       );
+      
+      // ADD THIS CHECK
+      if (!res.ok) {
+        console.error('Failed to fetch notes:', res.status);
+        setClientNotes([]); // Set to empty array on error
+        return;
+      }
+      
       const data = await res.json();
-      setClientNotes(data);
+      setClientNotes(Array.isArray(data) ? data : []); // Ensure it's always an array
     } catch (err) {
       console.error('Error fetching notes:', err);
+      setClientNotes([]); // Set to empty array on error
     } finally {
       setNotesLoading(false);
     }
