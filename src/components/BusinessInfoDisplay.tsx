@@ -791,7 +791,31 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
       {/* Client Status Notes Section */}
       <div className="border-b bg-gray-50 px-6 py-4">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="font-semibold text-gray-800">Client Status Notes</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="font-semibold text-gray-800">Client Status Notes</h3>
+            {/* Info Icon with Tooltip */}
+            <div className="relative group">
+              <button className="w-5 h-5 rounded-full bg-blue-100 text-blue-600 hover:bg-blue-200 flex items-center justify-center text-xs font-bold transition-colors">
+                ?
+              </button>
+              {/* Tooltip */}
+              <div className="absolute left-0 top-8 w-72 p-3 bg-gray-900 text-white text-xs rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
+                <div className="space-y-2">
+                  <p className="font-semibold">How Client Status Notes Work:</p>
+                  <ul className="space-y-1 list-disc list-inside">
+                    <li>First line appears as the note heading</li>
+                    <li>Click any note to expand/collapse full content</li>
+                    <li>Shows 10 most recent notes automatically</li>
+                    <li>All team members can view and edit notes</li>
+                    <li>Notes are sorted newest first</li>
+                  </ul>
+                </div>
+                {/* Arrow pointing up */}
+                <div className="absolute -top-2 left-4 w-4 h-4 bg-gray-900 transform rotate-45"></div>
+              </div>
+            </div>
+          </div>
+          
           <button
             onClick={() => {
               setCurrentNote('');
