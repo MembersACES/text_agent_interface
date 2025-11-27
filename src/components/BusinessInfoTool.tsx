@@ -132,8 +132,8 @@ export default function BusinessInfoTool({
 
   return (
     <div>
-      <div style={{ marginBottom: 24 }}>
-        <label htmlFor="business-name-input" style={{ marginRight: 12, fontWeight: 600, fontSize: 18 }}>
+      <div style={{ marginBottom: 24, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <label htmlFor="business-name-input" style={{ fontWeight: 600, fontSize: 18 }}>
           Business Name:
         </label>
         <input
@@ -142,20 +142,19 @@ export default function BusinessInfoTool({
           value={businessName}
           onChange={e => setBusinessName(e.target.value)}
           placeholder="Enter a business name..."
-          style={{ padding: "10px 16px", fontSize: "18px", minWidth: 280, borderRadius: 6, border: '1px solid #ccc', outline: 'none' }}
+          style={{ padding: "10px 16px", fontSize: "18px", minWidth: 280, borderRadius: 6, border: '1px solid #ccc', outline: 'none', flex: '1 1 auto', maxWidth: 400 }}
         />
+        <button
+          onClick={getBusinessInfo}
+          className="px-4 py-2 rounded bg-blue-600 text-white font-semibold hover:bg-blue-700 focus:outline-none disabled:bg-gray-400"
+          disabled={loading}
+        >
+          {loading ? "Loading..." : "Get Client Profile"}
+        </button>
       </div>
-      <button
-        onClick={getBusinessInfo}
-        className="px-4 py-2 rounded bg-blue-600 text-white font-semibold hover:bg-blue-700 focus:outline-none disabled:bg-gray-400"
-        disabled={loading}
-      >
-        {loading ? "Loading..." : "Get Business Info"}
-      </button>
       {error && <div style={{ color: "red", marginTop: 10 }}>{error}</div>}
       {businessInfo && (
         <div style={{ marginTop: 20, textAlign: "left" }}>
-          <h3>Business Info:</h3>
           {typeof businessInfo === 'object' && businessInfo !== null ? (
             <BusinessInfoDisplay 
               info={businessInfo} 
