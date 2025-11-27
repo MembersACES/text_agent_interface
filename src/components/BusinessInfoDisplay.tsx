@@ -804,44 +804,93 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
         </div>
         
         {/* Notes List */}
-        <div className="space-y-2 max-h-60 overflow-y-auto">
+        <div className="space-y-2 max-h-96 overflow-y-auto">
           {notesLoading ? (
             <div className="text-center py-4 text-sm text-gray-400">Loading notes...</div>
           ) : clientNotes.length === 0 ? (
             <div className="text-center py-4 text-sm text-gray-400">No notes yet</div>
           ) : (
-            clientNotes.map((note) => (
-              <div key={note.id} className="bg-white p-3 rounded border border-gray-200">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <p className="text-sm text-gray-800 whitespace-pre-wrap">{note.note}</p>
-                    <div className="flex items-center gap-3 mt-2 text-xs text-gray-500">
-                      <span>{note.user_email}</span>
-                      <span>•</span>
-                      <span>{new Date(note.created_at).toLocaleString('en-AU', {
-                        year: 'numeric',
-                        month: 'short',
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      })}</span>
+            clientNotes.slice(0, 10).map((note) => {
+              const firstLine = note.note.split('\n')[0];
+              const hasMore = note.note.includes('\n') || note.note.length > 100;
+              const [expanded, setExpanded] = React.useState(false);
+              
+              return (
+                <div key={note.id} className="bg-white p-3 rounded border border-gray-200 hover:border-gray-300 transition-colors">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 cursor-pointer" onClick={() => setExpanded(!expanded)}>
+                      {/* First line preview */}
+                      <p className="text-sm font-medium text-gray-900 mb-1">
+                        {expanded ? note.note : (firstLine.length > 80 ? firstLine.substring(0, 80) + '...' : firstLine)}
+                      </p>
+                      
+                      {/* Metadata */}
+                      <div className="flex items-center gap-3 text-xs text-gray-500">
+                        <span>{note.user_email.split('@')[0]}</span>
+                        <span>•</span>
+                        <span>{new Date(note.created_at).toLocaleString('en-AU', {
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}</span>
+                        {hasMore && !expanded && (
+                          <>
+                            <span>•</span>
+                            <span className="text-blue-600">Click to expand</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    
+                    {/* Action buttons */}
+                    <div className="flex gap-1">
+                      <button 
+                        onClick={() => {
+                          setCurrentNote(note.note);
+                          setEditingNoteId(note.id);
+                          setShowNoteModal(true);
+                        }}
+                        className="text-blue-600 hover:text-blue-800 text-xs px-2 py-1"
+                      >
+                        Edit
+                      </button>
+                      <button 
+                        onClick={async () => {
+                          if (!confirm('Delete this note?')) return;
+                          try {
+                            const res = await fetch(
+                              `${getApiBaseUrl()}/api/client-status/${note.id}`,
+                              {
+                                method: 'DELETE',
+                                headers: { Authorization: `Bearer ${token}` }
+                              }
+                            );
+                            if (res.ok) {
+                              await fetchClientNotes();
+                            }
+                          } catch (err) {
+                            console.error('Error deleting note:', err);
+                          }
+                        }}
+                        className="text-red-600 hover:text-red-800 text-xs px-2 py-1"
+                      >
+                        Delete
+                      </button>
                     </div>
                   </div>
-                  <button 
-                    onClick={() => {
-                      setCurrentNote(note.note);
-                      setEditingNoteId(note.id);
-                      setShowNoteModal(true);
-                    }}
-                    className="text-blue-600 hover:text-blue-800 text-xs ml-2"
-                  >
-                    Edit
-                  </button>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
+        
+        {/* Show count if more than 10 */}
+        {clientNotes.length > 10 && (
+          <div className="text-center mt-2 text-xs text-gray-500">
+            Showing 10 of {clientNotes.length} notes
+          </div>
+        )}
       </div>
 
       {/* Quick Navigation */}
