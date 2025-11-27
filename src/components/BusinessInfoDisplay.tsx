@@ -1184,11 +1184,11 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
         </div>
         
         {/* Notes List */}
-        <div className="space-y-2 max-h-96 overflow-y-auto">
+        <div className="space-y-3 max-h-96 overflow-y-auto">
           {notesLoading ? (
-            <div className="text-center py-4 text-sm text-gray-400">Loading notes...</div>
+            <div className="text-center py-4 text-base text-gray-400">Loading notes...</div>
           ) : clientNotes.length === 0 ? (
-            <div className="text-center py-4 text-sm text-gray-400">No notes yet</div>
+            <div className="text-center py-4 text-base text-gray-400">No notes yet</div>
           ) : (
             clientNotes.slice(0, 10).map((note) => {
               const firstLine = note.note.split('\n')[0];
@@ -1196,8 +1196,8 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
               const isExpanded = expandedNotes.has(note.id);
               
               return (
-                <div key={note.id} className="bg-white p-3 rounded border border-gray-200 hover:border-gray-300 transition-colors">
-                  <div className="flex items-start justify-between gap-2">
+                <div key={note.id} className="bg-white p-4 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors shadow-sm">
+                  <div className="flex items-start justify-between gap-3">
                     <div 
                       className="flex-1 cursor-pointer" 
                       onClick={() => {
@@ -1213,7 +1213,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                       }}
                     >
                       {/* Note content */}
-                      <p className="text-sm text-gray-900 mb-1 whitespace-pre-wrap">
+                      <p className="text-base text-gray-900 mb-2 whitespace-pre-wrap">
                         {isExpanded 
                           ? note.note 
                           : (firstLine.length > 80 ? firstLine.substring(0, 80) + '...' : firstLine)
@@ -1221,8 +1221,8 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                       </p>
                       
                       {/* Metadata */}
-                      <div className="flex items-center gap-3 text-xs text-gray-500">
-                        <span>{note.user_email.split('@')[0]}</span>
+                      <div className="flex items-center gap-3 text-sm text-gray-500">
+                        <span className="font-medium">{note.user_email.split('@')[0]}</span>
                         <span>•</span>
                         <span>{new Date(note.created_at).toLocaleString('en-AU', {
                           month: 'short',
@@ -1233,14 +1233,14 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                         {hasMore && (
                           <>
                             <span>•</span>
-                            <span className="text-blue-600">{isExpanded ? 'Click to collapse' : 'Click to expand'}</span>
+                            <span className="text-blue-600 font-medium">{isExpanded ? 'Click to collapse' : 'Click to expand'}</span>
                           </>
                         )}
                       </div>
                     </div>
                     
                     {/* Action buttons */}
-                    <div className="flex gap-1 flex-shrink-0">
+                    <div className="flex gap-2 flex-shrink-0">
                       <button 
                         onClick={(e) => {
                           e.stopPropagation();
@@ -1248,7 +1248,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                           setEditingNoteId(note.id);
                           setShowNoteModal(true);
                         }}
-                        className="text-blue-600 hover:text-blue-800 text-xs px-2 py-1 hover:bg-blue-50 rounded"
+                        className="text-blue-600 hover:text-blue-800 text-sm px-3 py-1.5 hover:bg-blue-50 rounded font-medium"
                       >
                         Edit
                       </button>
@@ -1274,7 +1274,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                             alert('Error deleting note');
                           }
                         }}
-                        className="text-red-600 hover:text-red-800 text-xs px-2 py-1 hover:bg-red-50 rounded"
+                        className="text-red-600 hover:text-red-800 text-sm px-3 py-1.5 hover:bg-red-50 rounded font-medium"
                       >
                         Delete
                       </button>
@@ -1288,7 +1288,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
         
         {/* Show count if more than 10 */}
         {clientNotes.length > 10 && (
-          <div className="text-center mt-2 text-xs text-gray-500">
+          <div className="text-center mt-3 text-sm text-gray-500">
             Showing 10 of {clientNotes.length} notes
           </div>
         )}
