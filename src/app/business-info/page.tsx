@@ -64,19 +64,29 @@ export default function BusinessInfoPage() {
 
   return (
     <div style={{ 
-      maxWidth: 900, 
+      maxWidth: 1600, 
       margin: "24px auto", 
       padding: 32, 
       background: "#fff", 
       borderRadius: 10, 
-      boxShadow: "0 2px 8px rgba(0,0,0,0.05)" 
+      boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+      textAlign: "center"
     }}>
-      <h2 style={{ marginBottom: 24 }}>Business Info Tool</h2>
-      <BusinessInfoTool 
-        token={token || ""} 
-        onTokenExpired={async () => {}} // AuthGate will handle re-authentication
-        getValidToken={getValidToken}
-      />
+      <h1 style={{ 
+        fontSize: "3rem", 
+        fontWeight: "bold", 
+        marginBottom: 32, 
+        textAlign: "center",
+        color: "#1f2937",
+        letterSpacing: "-0.02em"
+      }}>Client Profile</h1>
+      <div style={{ display: "flex", justifyContent: "center" }}>
+        <BusinessInfoTool 
+          token={token || ""} 
+          onTokenExpired={async () => {}} // AuthGate will handle re-authentication
+          getValidToken={getValidToken}
+        />
+      </div>
     </div>
   );
 }

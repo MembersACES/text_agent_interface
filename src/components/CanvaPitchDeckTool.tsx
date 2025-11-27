@@ -12,9 +12,9 @@ const PITCH_DECK_TEMPLATES = [
     ],
   },
   {
-    category: "Event Referral Program",
+    category: "Advocate Event Program",
     options: [
-      { label: "Event Referral Program", templateId: "DAGnh2YWW-o" },
+      { label: "Advocate Event Program", templateId: "DAGnh2YWW-o" },
     ],
   },
   {

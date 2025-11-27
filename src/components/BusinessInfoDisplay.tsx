@@ -194,11 +194,47 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
   const [eoiFile, setEOIFile] = useState<File | null>(null);
   const [eoiLoading, setEOILoading] = useState(false);
   const [eoiResult, setEOIResult] = useState<string | null>(null);
+  // Additional Documents state
+  const [showAdditionalDocModal, setShowAdditionalDocModal] = useState(false);
+  const [additionalDocFile, setAdditionalDocFile] = useState<File | null>(null);
+  const [additionalDocType, setAdditionalDocType] = useState<string>('');
+  const [additionalDocLoading, setAdditionalDocLoading] = useState(false);
+  const [additionalDocResult, setAdditionalDocResult] = useState<string | null>(null);
+  const [additionalDocsRefreshing, setAdditionalDocsRefreshing] = useState(false);
+  const [additionalDocs, setAdditionalDocs] = useState<Array<{ fileName: string; id: string }>>([]);
+  // Signed Engagement Forms state
+  const [showEngagementFormModal, setShowEngagementFormModal] = useState(false);
+  const [engagementFormFile, setEngagementFormFile] = useState<File | null>(null);
+  const [engagementFormType, setEngagementFormType] = useState<string>('');
+  const [engagementFormLoading, setEngagementFormLoading] = useState(false);
+  const [engagementFormResult, setEngagementFormResult] = useState<string | null>(null);
+  const [engagementFormsRefreshing, setEngagementFormsRefreshing] = useState(false);
+  const [engagementForms, setEngagementForms] = useState<Array<{ fileName: string; id: string }>>([]);
   const [sectionsOpen, setSectionsOpen] = useState({
     utilities: false,
     dataReports: false,
     businessTools: false
   });
+  
+  // Helper to strip business name prefix from file names
+  const formatFileName = (fileName: string): string => {
+    if (!fileName || !business.name) return fileName;
+    const prefix = `${business.name} - `;
+    if (fileName.startsWith(prefix)) {
+      let cleaned = fileName.substring(prefix.length);
+      // Remove .pdf extension for cleaner display
+      if (cleaned.toLowerCase().endsWith('.pdf')) {
+        cleaned = cleaned.slice(0, -4);
+      }
+      return cleaned;
+    }
+    // If no prefix match, just remove .pdf extension if present
+    if (fileName.toLowerCase().endsWith('.pdf')) {
+      return fileName.slice(0, -4);
+    }
+    return fileName;
+  };
+  
   // Helper to render sub-details for utilities
   function renderUtilityDetails(util: string, details: any) {
     if (typeof details === 'string' || typeof details === 'number') {
@@ -550,6 +586,110 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
       return () => clearTimeout(timeoutId);
     }
   }, [business.name]); // Removed setInfo from dependencies to prevent multiple calls
+
+  // Fetch additional documents from n8n - defined with useCallback to avoid dependency issues
+  const fetchAdditionalDocuments = React.useCallback(async () => {
+    if (!business.name) return;
+    try {
+      const res = await fetch('https://membersaces.app.n8n.cloud/webhook/pull_additional_documents_WIP', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ business_name: business.name })
+      });
+      const data = await res.json();
+      console.log('Additional documents webhook response:', data);
+      
+      if (data && Array.isArray(data)) {
+        const docs = data.map((item: any) => {
+          // Extract file name and id from the response
+          // Check for various field name patterns that n8n might return
+          const fileName = item['File Name'] || item['file_name'] || item['fileName'] || 'Unknown';
+          // Check all possible field name variations for File ID
+          const fileId = item['File ID'] || item['file_id'] || item['id'] || item['FileID'] || item['fileID'] || '';
+          console.log('Processing additional document:', { fileName, fileId, itemKeys: Object.keys(item) });
+          return { fileName, id: fileId };
+        });
+        setAdditionalDocs(docs);
+      } else if (data && typeof data === 'object') {
+        // Handle single object response
+        const fileName = data['File Name'] || data['file_name'] || data['fileName'] || 'Unknown';
+        // Check all possible field name variations for File ID
+        const fileId = data['File ID'] || data['file_id'] || data['id'] || data['FileID'] || data['fileID'] || '';
+        console.log('Processing single additional document:', { fileName, fileId, dataKeys: Object.keys(data) });
+        setAdditionalDocs([{ fileName, id: fileId }]);
+      } else {
+        setAdditionalDocs([]);
+      }
+    } catch (err) {
+      console.error('Error loading additional documents:', err);
+      setAdditionalDocs([]);
+    }
+  }, [business.name]);
+
+  // Fetch engagement forms from n8n - defined with useCallback to avoid dependency issues
+  const fetchEngagementForms = React.useCallback(async () => {
+    if (!business.name) return;
+    try {
+      const res = await fetch('https://membersaces.app.n8n.cloud/webhook/pull_signedEOI_WIP', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ business_name: business.name })
+      });
+      
+      // Check if response is ok and has content
+      if (!res.ok) {
+        console.error('Engagement forms webhook error:', res.status, res.statusText);
+        setEngagementForms([]);
+        return;
+      }
+      
+      // Check if response has content before parsing JSON
+      const text = await res.text();
+      if (!text || text.trim() === '') {
+        console.log('Engagement forms webhook returned empty response');
+        setEngagementForms([]);
+        return;
+      }
+      
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (parseError) {
+        console.error('Error parsing engagement forms JSON:', parseError, 'Response text:', text);
+        setEngagementForms([]);
+        return;
+      }
+      
+      console.log('Engagement forms webhook response:', data);
+      
+      if (data && Array.isArray(data)) {
+        const forms = data.map((item: any) => {
+          // Extract file name and id from the response
+          const fileName = item['File Name'] || item['file_name'] || item['fileName'] || 'Unknown';
+          const fileId = item['EF File ID'] || item['File ID'] || item['file_id'] || item['id'] || '';
+          return { fileName, id: fileId };
+        });
+        setEngagementForms(forms);
+      } else if (data && typeof data === 'object') {
+        // Handle single object response
+        const fileName = data['File Name'] || data['file_name'] || data['fileName'] || 'Unknown';
+        const fileId = data['EF File ID'] || data['File ID'] || data['file_id'] || data['id'] || '';
+        setEngagementForms([{ fileName, id: fileId }]);
+      } else {
+        setEngagementForms([]);
+      }
+    } catch (err) {
+      console.error('Error loading engagement forms:', err);
+      setEngagementForms([]);
+    }
+  }, [business.name]);
+
+  // Load engagement forms on mount (additional documents are only loaded on manual refresh)
+  React.useEffect(() => {
+    if (business.name) {
+      fetchEngagementForms();
+    }
+  }, [business.name, fetchEngagementForms]);
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (driveModalMultipleFiles) {
@@ -569,6 +709,174 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
     setShowEOIModal(false);
     setEOIFile(null);
     setEOIResult(null);
+  };
+
+  // Additional Documents handlers
+  const handleAdditionalDocFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setAdditionalDocFile(e.target.files?.[0] || null);
+  };
+
+  const resetAdditionalDocModal = () => {
+    setShowAdditionalDocModal(false);
+    setAdditionalDocFile(null);
+    setAdditionalDocType('');
+    setAdditionalDocResult(null);
+  };
+
+  // Engagement Forms handlers
+  const handleEngagementFormFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setEngagementFormFile(e.target.files?.[0] || null);
+  };
+
+  const resetEngagementFormModal = () => {
+    setShowEngagementFormModal(false);
+    setEngagementFormFile(null);
+    setEngagementFormType('');
+    setEngagementFormResult(null);
+  };
+
+
+  // Handle additional document upload
+  const handleAdditionalDocSubmit = async () => {
+    if (!additionalDocFile) {
+      setAdditionalDocResult("No file selected.");
+      return;
+    }
+
+    if (!additionalDocType.trim()) {
+      setAdditionalDocResult("Please enter a document type.");
+      return;
+    }
+
+    if (!additionalDocFile.name.toLowerCase().endsWith('.pdf')) {
+      setAdditionalDocResult("Please upload a PDF file.");
+      return;
+    }
+
+    setAdditionalDocLoading(true);
+    setAdditionalDocResult("");
+
+    try {
+      // Call n8n directly with the file and required parameters
+      const timestamp = new Date().toISOString();
+      const newFilename = `${business.name} - ${additionalDocType}.pdf`;
+
+      const formData = new FormData();
+      formData.append("file", additionalDocFile);
+      formData.append('business_name', business.name || "");
+      formData.append("gdrive_url", driveUrl || "");
+      formData.append('timestamp', timestamp);
+      formData.append('new_filename', newFilename);
+
+      const webhookRes = await fetch('https://membersaces.app.n8n.cloud/webhook/additional_document_upload', {
+        method: 'POST',
+        body: formData
+      });
+
+      let webhookData: any;
+      const contentType = webhookRes.headers.get('content-type') || '';
+      const responseText = await webhookRes.text();
+      
+      if (contentType.includes('application/json') && responseText) {
+        try {
+          webhookData = JSON.parse(responseText);
+        } catch {
+          webhookData = { message: responseText || 'Unknown error' };
+        }
+      } else {
+        webhookData = { message: responseText || 'Unknown error' };
+      }
+      
+      if (webhookRes.ok) {
+        setAdditionalDocResult("✅ Document uploaded successfully!");
+        // Refresh the documents list
+        setTimeout(() => {
+          fetchAdditionalDocuments();
+        }, 1000);
+        // Reset modal after 2 seconds
+        setTimeout(() => {
+          resetAdditionalDocModal();
+        }, 2000);
+      } else {
+        setAdditionalDocResult(`❌ Error: ${webhookData.message || 'Failed to process document'}`);
+      }
+    } catch (err: any) {
+      setAdditionalDocResult(`❌ Error: ${err.message}`);
+    } finally {
+      setAdditionalDocLoading(false);
+    }
+  };
+
+  // Handle engagement form upload
+  const handleEngagementFormSubmit = async () => {
+    if (!engagementFormFile) {
+      setEngagementFormResult("No file selected.");
+      return;
+    }
+
+    if (!engagementFormType.trim()) {
+      setEngagementFormResult("Please enter a form type.");
+      return;
+    }
+
+    if (!engagementFormFile.name.toLowerCase().endsWith('.pdf')) {
+      setEngagementFormResult("Please upload a PDF file.");
+      return;
+    }
+
+    setEngagementFormLoading(true);
+    setEngagementFormResult("");
+
+    try {
+      // Call n8n directly with the file and required parameters
+      const timestamp = new Date().toISOString();
+      const newFilename = `${business.name} - ${engagementFormType}.pdf`;
+
+      const formData = new FormData();
+      formData.append("file", engagementFormFile);
+      formData.append('business_name', business.name || "");
+      formData.append("gdrive_url", driveUrl || "");
+      formData.append('timestamp', timestamp);
+      formData.append('new_filename', newFilename);
+      formData.append('document_type', 'EF');
+
+      const webhookRes = await fetch('https://membersaces.app.n8n.cloud/webhook/additional_document_upload', {
+        method: 'POST',
+        body: formData
+      });
+
+      let webhookData: any;
+      const contentType = webhookRes.headers.get('content-type') || '';
+      const responseText = await webhookRes.text();
+      
+      if (contentType.includes('application/json') && responseText) {
+        try {
+          webhookData = JSON.parse(responseText);
+        } catch {
+          webhookData = { message: responseText || 'Unknown error' };
+        }
+      } else {
+        webhookData = { message: responseText || 'Unknown error' };
+      }
+      
+      if (webhookRes.ok) {
+        setEngagementFormResult("✅ Engagement form uploaded successfully!");
+        // Refresh the forms list
+        setTimeout(() => {
+          fetchEngagementForms();
+        }, 1000);
+        // Reset modal after 2 seconds
+        setTimeout(() => {
+          resetEngagementFormModal();
+        }, 2000);
+      } else {
+        setEngagementFormResult(`❌ Error: ${webhookData.message || 'Failed to process form'}`);
+      }
+    } catch (err: any) {
+      setEngagementFormResult(`❌ Error: ${err.message}`);
+    } finally {
+      setEngagementFormLoading(false);
+    }
   };
   
   // Handle EOI submission
@@ -707,92 +1015,138 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
   };
 
   return (
-    <>
+    <React.Fragment>
       <div className="bg-white rounded-lg shadow-sm border mt-6">
       {/* Header with Business Name and Key Actions */}
       <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-6 py-4 border-b rounded-t-lg">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-bold text-gray-900">{business.name || 'Business Details'}</h2>
-            <div className="flex items-center gap-4 mt-1 text-sm text-gray-600">
-              {business.trading_name && (
-                <span>Trading as: <span className="font-medium">{business.trading_name}</span></span>
-              )}
-              {business.abn && (
-                <span>ABN: <span className="font-medium">{business.abn}</span></span>
-              )}
-              {driveUrl && (
-                <a
-                  href={driveUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-blue-600 hover:underline font-medium"
-                >
-                  Drive Folder
-                </a>
-              )}
-            </div>
-          </div>
-          
-          {/* Quick Action Buttons */}
-          <div className="flex gap-2">
-            <button
-              onClick={handleOpenDocumentGeneration}
-              className="px-3 py-1.5 rounded bg-blue-600 text-white text-xs font-medium hover:bg-blue-700"
-            >
-              Documents
-            </button>
-            <button
-              onClick={openSolutionsStrategyGenerator}
-              className="px-3 py-1.5 rounded bg-purple-600 text-white text-xs font-medium hover:bg-purple-700"
-            >
-              Strategy
-            </button>
-            
-            {onLinkUtility && (
-              <button
-                onClick={onLinkUtility}
-                className="px-3 py-1.5 rounded bg-green-600 text-white text-xs font-medium hover:bg-green-700"
-              >
-                Link Utility
-              </button>
+        <div className="text-center mb-4">
+          <h1 className="text-3xl font-bold text-gray-900 mb-3">{business.name || 'Business Details'}</h1>
+          <div className="flex items-center justify-center gap-4 text-sm text-gray-600">
+            {business.trading_name && (
+              <span>Trading as: <span className="font-medium">{business.trading_name}</span></span>
             )}
-            <button
-              onClick={() => {
-                const params = new URLSearchParams();
-                params.set('businessName', business.name);
-
-                // Use consistent, human-readable field names
-                const businessInfoToPass = {
-                  "Business Name": business.name || '',
-                  "Business ABN": business.abn || '',
-                  "Trading As": business.trading_name || '',
-                  "Postal Address": contact.postal_address || '',
-                  "Site Address": contact.site_address || '',
-                  "Telephone": contact.telephone || '',
-                  "Contact Email": contact.email || '',
-                  "Contact Name": rep.contact_name || '',
-                  "Contact Position": rep.position || '',
-                };
-
-                params.set('businessInfo', encodeURIComponent(JSON.stringify(businessInfoToPass)));
-
-                // Navigate to LOA upload page in a new tab
-                window.open(`/update-loa/upload?${params.toString()}`, '_blank');
-              }}
-              className="px-3 py-1.5 rounded bg-orange-600 text-white text-xs font-medium hover:bg-orange-700"
-            >
-              Update LOA
-            </button>
+            {business.abn && (
+              <span>ABN: <span className="font-medium">{business.abn}</span></span>
+            )}
           </div>
+          {driveUrl && (
+            <div className="mt-3">
+              <a
+                href={driveUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-green-600 text-white font-semibold hover:bg-green-700 transition-colors text-base shadow-md"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                </svg>
+                Client Folder
+              </a>
+            </div>
+          )}
+        </div>
+        
+        {/* Quick Navigation */}
+        <div className="mb-4">
+          <h3 className="text-lg font-bold text-gray-800 mb-3 text-center">Navigation Links</h3>
+          <div className="bg-gray-100 rounded-lg p-4">
+            <nav className="flex flex-wrap justify-center gap-2">
+            {[
+              { key: 'documents', label: 'Business Documents & Signed Agreements', count: Object.keys(docs).length + contracts.filter(c => c.url).length + Object.keys(info._processed_file_ids || {}).filter(key => key.startsWith('eoi_')).length, expandSection: null },
+              { key: 'utilities', label: 'Linked Utilities', count: Object.keys(linked).length, expandSection: null },
+              { key: 'additional-utilities', label: 'Additional Utilities', count: null, expandSection: 'utilities' },
+              { key: 'solutions-outcomes', label: 'Solutions & Outcomes', count: null, expandSection: 'dataReports' },
+              { key: 'business-tools', label: 'Business Tools', count: null, expandSection: 'businessTools' }
+            ].map((section) => (
+              <button
+                key={section.key}
+                onClick={() => {
+                  // Expand the collapsible section if needed
+                  if (section.expandSection) {
+                    setSectionsOpen(prev => ({ ...prev, [section.expandSection!]: true }));
+                  }
+                  // Scroll to the section
+                  setTimeout(() => {
+                    const element = document.getElementById(section.key);
+                    element?.scrollIntoView({ behavior: 'smooth' });
+                  }, section.expandSection ? 100 : 0); // Small delay to allow expansion animation
+                }}
+                className="px-4 py-2 text-sm font-bold text-gray-700 hover:text-gray-900 hover:bg-gray-200 transition-colors rounded-md"
+              >
+                {section.label}
+                {section.count !== null && (
+                  <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-gray-300 text-xs font-semibold">
+                    {section.count}
+                  </span>
+                )}
+              </button>
+            ))}
+            </nav>
+          </div>
+        </div>
+      </div>
+
+      {/* Quick Action Buttons Section */}
+      <div className="border-b bg-gray-50 px-6 py-4">
+        <h3 className="text-xl font-bold text-gray-800 mb-3 text-center">Quick Actions</h3>
+        <div className="flex items-center justify-center gap-4 flex-wrap">
+          <button
+            onClick={handleOpenDocumentGeneration}
+            className="px-4 py-2 rounded-lg bg-blue-500 text-white text-base font-semibold hover:bg-blue-600 transition-colors shadow-md"
+          >
+           Generate Business Documents & EOI
+          </button>
+          <button
+            onClick={openSolutionsStrategyGenerator}
+            className="px-4 py-2 rounded-lg bg-blue-500 text-white text-base font-semibold hover:bg-blue-600 transition-colors shadow-md"
+          >
+           Generate Solution Documents
+          </button>
+          
+          {onLinkUtility && (
+            <button
+              onClick={onLinkUtility}
+              className="px-4 py-2 rounded-lg bg-blue-500 text-white text-base font-semibold hover:bg-blue-600 transition-colors shadow-md"
+            >
+              Link Utility Invoice
+            </button>
+          )}
+          <button
+            onClick={() => {
+              const params = new URLSearchParams();
+              params.set('businessName', business.name);
+
+              // Use consistent, human-readable field names
+              const businessInfoToPass = {
+                "Business Name": business.name || '',
+                "Business ABN": business.abn || '',
+                "Trading As": business.trading_name || '',
+                "Postal Address": contact.postal_address || '',
+                "Site Address": contact.site_address || '',
+                "Telephone": contact.telephone || '',
+                "Contact Email": contact.email || '',
+                "Contact Name": rep.contact_name || '',
+                "Contact Position": rep.position || '',
+              };
+
+              params.set('businessInfo', encodeURIComponent(JSON.stringify(businessInfoToPass)));
+
+              // Navigate to LOA upload page in a new tab
+              window.open(`/update-loa/upload?${params.toString()}`, '_blank');
+            }}
+            className="px-4 py-2 rounded-lg bg-blue-500 text-white text-base font-semibold hover:bg-blue-600 transition-colors shadow-md"
+          >
+            Update LOA
+          </button>
         </div>
       </div>
 
       {/* Client Status Notes Section */}
       <div className="border-b bg-gray-50 px-6 py-4">
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex-1"></div>
           <div className="flex items-center gap-2">
-            <h3 className="font-semibold text-gray-800">Client Status Notes</h3>
+            <h3 className="text-xl font-bold text-gray-800">Client Status Notes</h3>
             {/* Info Icon with Tooltip */}
             <div className="relative group">
               <button className="w-5 h-5 rounded-full bg-blue-100 text-blue-600 hover:bg-blue-200 flex items-center justify-center text-xs font-bold transition-colors">
@@ -815,25 +1169,26 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
               </div>
             </div>
           </div>
-          
+          <div className="flex-1 flex justify-end">
           <button
             onClick={() => {
               setCurrentNote('');
               setEditingNoteId(null);
               setShowNoteModal(true);
             }}
-            className="px-3 py-1.5 rounded bg-blue-600 text-white text-xs font-medium hover:bg-blue-700"
+            className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition-colors shadow-md"
           >
-            + Add Note
+            + Add Client Status Note
           </button>
+          </div>
         </div>
         
         {/* Notes List */}
-        <div className="space-y-2 max-h-96 overflow-y-auto">
+        <div className="space-y-3 max-h-96 overflow-y-auto">
           {notesLoading ? (
-            <div className="text-center py-4 text-sm text-gray-400">Loading notes...</div>
+            <div className="text-center py-4 text-base text-gray-400">Loading notes...</div>
           ) : clientNotes.length === 0 ? (
-            <div className="text-center py-4 text-sm text-gray-400">No notes yet</div>
+            <div className="text-center py-4 text-base text-gray-400">No notes yet</div>
           ) : (
             clientNotes.slice(0, 10).map((note) => {
               const firstLine = note.note.split('\n')[0];
@@ -841,8 +1196,8 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
               const isExpanded = expandedNotes.has(note.id);
               
               return (
-                <div key={note.id} className="bg-white p-3 rounded border border-gray-200 hover:border-gray-300 transition-colors">
-                  <div className="flex items-start justify-between gap-2">
+                <div key={note.id} className="bg-white p-4 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors shadow-sm">
+                  <div className="flex items-start justify-between gap-3">
                     <div 
                       className="flex-1 cursor-pointer" 
                       onClick={() => {
@@ -858,7 +1213,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                       }}
                     >
                       {/* Note content */}
-                      <p className="text-sm text-gray-900 mb-1 whitespace-pre-wrap">
+                      <p className="text-base text-gray-900 mb-2 whitespace-pre-wrap">
                         {isExpanded 
                           ? note.note 
                           : (firstLine.length > 80 ? firstLine.substring(0, 80) + '...' : firstLine)
@@ -866,8 +1221,8 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                       </p>
                       
                       {/* Metadata */}
-                      <div className="flex items-center gap-3 text-xs text-gray-500">
-                        <span>{note.user_email.split('@')[0]}</span>
+                      <div className="flex items-center gap-3 text-sm text-gray-500">
+                        <span className="font-medium">{note.user_email.split('@')[0]}</span>
                         <span>•</span>
                         <span>{new Date(note.created_at).toLocaleString('en-AU', {
                           month: 'short',
@@ -878,14 +1233,14 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                         {hasMore && (
                           <>
                             <span>•</span>
-                            <span className="text-blue-600">{isExpanded ? 'Click to collapse' : 'Click to expand'}</span>
+                            <span className="text-blue-600 font-medium">{isExpanded ? 'Click to collapse' : 'Click to expand'}</span>
                           </>
                         )}
                       </div>
                     </div>
                     
                     {/* Action buttons */}
-                    <div className="flex gap-1 flex-shrink-0">
+                    <div className="flex gap-2 flex-shrink-0">
                       <button 
                         onClick={(e) => {
                           e.stopPropagation();
@@ -893,7 +1248,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                           setEditingNoteId(note.id);
                           setShowNoteModal(true);
                         }}
-                        className="text-blue-600 hover:text-blue-800 text-xs px-2 py-1 hover:bg-blue-50 rounded"
+                        className="text-blue-600 hover:text-blue-800 text-sm px-3 py-1.5 hover:bg-blue-50 rounded font-medium"
                       >
                         Edit
                       </button>
@@ -919,7 +1274,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                             alert('Error deleting note');
                           }
                         }}
-                        className="text-red-600 hover:text-red-800 text-xs px-2 py-1 hover:bg-red-50 rounded"
+                        className="text-red-600 hover:text-red-800 text-sm px-3 py-1.5 hover:bg-red-50 rounded font-medium"
                       >
                         Delete
                       </button>
@@ -933,36 +1288,10 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
         
         {/* Show count if more than 10 */}
         {clientNotes.length > 10 && (
-          <div className="text-center mt-2 text-xs text-gray-500">
+          <div className="text-center mt-3 text-sm text-gray-500">
             Showing 10 of {clientNotes.length} notes
           </div>
         )}
-      </div>
-
-      {/* Quick Navigation */}
-      <div className="border-b bg-gray-50">
-        <nav className="flex px-6">
-          {[
-            { key: 'documents', label: 'Business Documents & Signed Agreements', count: Object.keys(docs).length + contracts.filter(c => c.url).length + Object.keys(info._processed_file_ids || {}).filter(key => key.startsWith('eoi_')).length },
-            { key: 'utilities', label: 'Linked Utilities', count: Object.keys(linked).length }
-          ].map((section) => (
-            <button
-              key={section.key}
-              onClick={() => {
-                const element = document.getElementById(section.key);
-                element?.scrollIntoView({ behavior: 'smooth' });
-              }}
-              className="px-4 py-3 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-colors"
-            >
-              {section.label}
-              {section.count !== null && (
-                <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-gray-200 text-xs">
-                  {section.count}
-                </span>
-              )}
-            </button>
-          ))}
-        </nav>
       </div>
 
       {/* All Content - Single Page */}
@@ -992,10 +1321,10 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
 
         {/* Documents Section */}
         <div id="documents" className="border-t pt-6">
-        <h2 className="text-2xl font-bold text-gray-800 mb-4 text-center">Business Documents & Agreements</h2>
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <h2 className="text-xl font-bold text-gray-800 mb-3 text-center">Business Documents & Agreements</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4" style={{ gridAutoFlow: 'row' }}>
             {/* Business Documents */}
-            <div>
+            <div className="min-w-0">
               <h3 className="font-semibold text-gray-800 text-base mb-4">Business Documents</h3>
               {Object.keys(docs).length === 0 && <div className="text-xs text-gray-400 mb-4">No business documents available</div>}
               <div className="space-y-2">
@@ -1108,7 +1437,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
               </div>
             </div>
             {/* Signed Contracts */}
-            <div>
+            <div className="min-w-0">
               <h3 className="font-semibold text-gray-800 text-base mb-4">Signed Contracts</h3>
               <div className="space-y-2">
                 {contracts
@@ -1174,34 +1503,34 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                     );
                   })}
               </div>
-              </div>
-            {/* Signed EOIs */}
-            <div>
-            <div className="mb-4">
-              <h3 className="font-semibold text-gray-800 text-base mb-2">Signed EOIs</h3>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={async () => {
-                    if (eoiRefreshing) return;
-                    setEoiRefreshing(true);
-                    try {
-                      await fetchEOIData();
-                    } finally {
-                      setEoiRefreshing(false);
-                    }
-                  }}
-                  className="px-2 py-1 rounded border border-gray-300 text-xs text-gray-700 hover:bg-gray-100"
-                >
-                  {eoiRefreshing ? 'Refreshing…' : 'Refresh'}
-                </button>
-                <button
-                  onClick={() => setShowEOIModal(true)}
-                  className="px-3 py-1.5 rounded bg-orange-600 text-white text-xs font-medium hover:bg-orange-700"
-                >
-                  Lodge EOI
-                </button>
-              </div>
             </div>
+            {/* Signed EOIs */}
+            <div className="min-w-0 overflow-hidden">
+              <div className="mb-4">
+                <h3 className="font-semibold text-gray-800 text-base mb-2">Signed EOIs</h3>
+                <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      onClick={async () => {
+                        if (eoiRefreshing) return;
+                        setEoiRefreshing(true);
+                        try {
+                          await fetchEOIData();
+                        } finally {
+                          setEoiRefreshing(false);
+                        }
+                      }}
+                      className="px-2 py-1 rounded border border-gray-300 text-xs text-gray-700 hover:bg-gray-100"
+                    >
+                      {eoiRefreshing ? 'Refreshing…' : 'Refresh'}
+                    </button>
+                    <button
+                      onClick={() => setShowEOIModal(true)}
+                      className="px-3 py-1.5 rounded bg-orange-600 text-white text-xs font-medium hover:bg-orange-700"
+                    >
+                      Lodge EOI
+                    </button>
+                  </div>
+                </div>
               <div className="space-y-2">
                 {(() => {
                   // Get all EOI files dynamically from _processed_file_ids
@@ -1230,9 +1559,9 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                   }
 
                   return eoiFiles.map(({ key, displayName, url }) => (
-                    <div key={key} className="flex items-center justify-between p-2 rounded bg-gray-50 hover:bg-gray-100">
-                      <div className="flex-1">
-                        <div className="text-sm font-medium">{displayName}</div>
+                    <div key={key} className="flex items-center justify-between p-2 rounded bg-gray-50 hover:bg-gray-100 min-w-0">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium truncate">{displayName}</div>
                         <div className="text-xs text-gray-500">
                           {url ? <FileLink label="View File" url={url} /> : "Not available"}
                         </div>
@@ -1242,10 +1571,123 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                 })()}
               </div>
             </div>
+            
+            {/* Signed Engagement Forms */}
+            <div className="min-w-0">
+              <div className="mb-4">
+                <h3 className="font-semibold text-gray-800 text-base mb-2">Signed Engagement Forms</h3>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={async () => {
+                      if (engagementFormsRefreshing) return;
+                      setEngagementFormsRefreshing(true);
+                      try {
+                        await fetchEngagementForms();
+                      } finally {
+                        setEngagementFormsRefreshing(false);
+                      }
+                    }}
+                    className="px-2 py-1 rounded border border-gray-300 text-xs text-gray-700 hover:bg-gray-100"
+                  >
+                    {engagementFormsRefreshing ? 'Refreshing…' : 'Refresh'}
+                  </button>
+                  <button
+                    onClick={() => setShowEngagementFormModal(true)}
+                    className="px-3 py-1.5 rounded bg-purple-600 text-white text-xs font-medium hover:bg-purple-700"
+                  >
+                    Upload Form
+                  </button>
+                </div>
+              </div>
+              <div className="space-y-2">
+                {engagementForms.length === 0 ? (
+                  <div className="text-xs text-gray-400 mb-4">No engagement forms available</div>
+                ) : (
+                  engagementForms.map((form, idx) => (
+                    <div key={idx} className="flex items-center justify-between p-2 rounded bg-gray-50 hover:bg-gray-100">
+                      <div className="flex-1">
+                        <div className="text-sm font-medium">{formatFileName(form.fileName)}</div>
+                        <div className="text-xs text-gray-500">
+                          {form.id ? (
+                            <a
+                              href={`https://drive.google.com/file/d/${form.id}/view?usp=drivesdk`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-600 hover:underline text-xs font-medium"
+                            >
+                              View File
+                            </a>
+                          ) : (
+                            "Not available"
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+            
+            {/* Additional Documents */}
+            <div className="min-w-0">
+              <div className="mb-4">
+                <h3 className="font-semibold text-gray-800 text-base mb-2">Additional Documents</h3>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    onClick={async () => {
+                      if (additionalDocsRefreshing) return;
+                      setAdditionalDocsRefreshing(true);
+                      try {
+                        await fetchAdditionalDocuments();
+                      } finally {
+                        setAdditionalDocsRefreshing(false);
+                      }
+                    }}
+                    className="px-2 py-1 rounded border border-gray-300 text-xs text-gray-700 hover:bg-gray-100"
+                  >
+                    {additionalDocsRefreshing ? 'Refreshing…' : 'Refresh'}
+                  </button>
+                  <button
+                    onClick={() => setShowAdditionalDocModal(true)}
+                    className="px-3 py-1.5 rounded bg-blue-600 text-white text-xs font-medium hover:bg-blue-700"
+                  >
+                    Upload Document
+                  </button>
+                </div>
+              </div>
+              <div className="space-y-2">
+                {additionalDocs.length === 0 ? (
+                  <div className="text-xs text-gray-400 mb-4">No additional documents available</div>
+                ) : (
+                  additionalDocs.map((doc, idx) => (
+                    <div key={idx} className="flex items-center justify-between p-2 rounded bg-gray-50 hover:bg-gray-100">
+                      <div className="flex-1">
+                        <div className="text-sm font-medium">{formatFileName(doc.fileName)}</div>
+                        <div className="text-xs text-gray-500">
+                          {doc.id ? (
+                            <a
+                              href={`https://drive.google.com/file/d/${doc.id}/view?usp=drivesdk`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-600 hover:underline text-xs font-medium"
+                            >
+                              View File
+                            </a>
+                          ) : (
+                            "Not available"
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
         </div>
         {/* Utilities Section */}
         <div id="utilities" className="border-t pt-6">
-          <h2 className="text-2xl font-bold text-gray-800 mb-4 text-center">Linked Utilities and Retailers</h2>
+          <h2 className="text-xl font-bold text-gray-800 mb-3 text-center">Linked Utilities and Retailers</h2>
           {Object.keys(linked).length === 0 && <div className="text-sm text-gray-400 mb-4">No linked utilities</div>}
           
           {/* Main Utilities Grid */}
@@ -1421,19 +1863,19 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
             })}
           </div>
           {/* Additional Utilities Section */}
-          <div className="border-t pt-6 mt-8">
-            <h2 className="text-2xl font-bold text-gray-800 mb-4 text-center">Additional Utilities</h2>
+          <div id="additional-utilities" className="border-t pt-6 mt-8">
+            <h2 className="text-xl font-bold text-gray-800 mb-3 text-center">Additional Utilities</h2>
             <div className="border border-gray-200 rounded-lg overflow-hidden bg-white shadow-sm mb-6">
               <button
                 onClick={() => setSectionsOpen(prev => ({ ...prev, utilities: !prev.utilities }))}
-                className="w-full px-6 py-3 flex items-center justify-between bg-gradient-to-r from-gray-50 to-gray-100 hover:from-gray-100 hover:to-gray-200 transition-all"
+                className="w-full px-6 py-3 flex items-center justify-center relative bg-gradient-to-r from-gray-50 to-gray-100 hover:from-gray-100 hover:to-gray-200 transition-all"
               >
                 <div className="flex items-center gap-3 text-sm text-gray-600">
               <span>Cleaning</span>
               <span>Telecommunication</span>
               <span>Water</span>
               </div>
-                <span className="text-gray-500">{sectionsOpen.utilities ? '▲' : '▼'}</span>
+                <span className="absolute right-6 text-gray-500">{sectionsOpen.utilities ? '▲' : '▼'}</span>
               </button>
               {sectionsOpen.utilities && (
                 <div className="p-6 bg-white">
@@ -1498,13 +1940,14 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
               )}
             </div>
           </div>
+        </div>
       {/* Data & Reports Section with Tabs */}
-      <div className="border-t pt-6 mt-8">
-        <h2 className="text-2xl font-bold text-gray-800 mb-4 text-center">Solutions & Outcomes</h2>
+      <div id="solutions-outcomes" className="border-t pt-6 mt-8">
+        <h2 className="text-xl font-bold text-gray-800 mb-3 text-center">Solutions & Outcomes</h2>
         <div className="border border-gray-200 rounded-lg overflow-hidden bg-white shadow-sm mb-6">
           <button
             onClick={() => setSectionsOpen(prev => ({ ...prev, dataReports: !prev.dataReports }))}
-            className="w-full px-6 py-3 flex items-center justify-between bg-gradient-to-r from-gray-50 to-gray-100 hover:from-gray-100 hover:to-gray-200 transition-all"
+            className="w-full px-6 py-3 flex items-center justify-center relative bg-gradient-to-r from-gray-50 to-gray-100 hover:from-gray-100 hover:to-gray-200 transition-all"
           >
             <div className="flex items-center gap-3 text-sm text-gray-600">
               <span>Automation & LLMs</span>
@@ -1512,7 +1955,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
               <span>Advocacy Members</span>
               <span>GHG Reporting</span>
             </div>
-            <span className="text-gray-500">{sectionsOpen.dataReports ? '▲' : '▼'}</span>
+            <span className="absolute right-6 text-gray-500">{sectionsOpen.dataReports ? '▲' : '▼'}</span>
           </button>
           {sectionsOpen.dataReports && (
             <div className="p-6 bg-white">
@@ -2230,20 +2673,20 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
           </div>
         )}
         </div>
-        )}
-      </div>
+          )}
+       </div>   
       {/* Business Tools Section */}
-      <div className="border-t pt-6 mt-8">
-        <h2 className="text-2xl font-bold text-gray-800 mb-4 text-center">Business Tools</h2>
+      <div id="business-tools" className="border-t pt-6 mt-8">
+        <h2 className="text-xl font-bold text-gray-800 mb-3 text-center">Business Tools</h2>
         <div className="border border-gray-200 rounded-lg overflow-hidden bg-white shadow-sm mb-6">
           <button
             onClick={() => setSectionsOpen(prev => ({ ...prev, businessTools: !prev.businessTools }))}
-            className="w-full px-6 py-3 flex items-center justify-between bg-gradient-to-r from-gray-50 to-gray-100 hover:from-gray-100 hover:to-gray-200 transition-all"
+            className="w-full px-6 py-3 flex items-center justify-center relative bg-gradient-to-r from-gray-50 to-gray-100 hover:from-gray-100 hover:to-gray-200 transition-all"
           >
             <div className="flex items-center gap-3 text-sm text-gray-600">
               <span>Robot Finance</span>
             </div>
-            <span className="text-gray-500">{sectionsOpen.businessTools ? '▲' : '▼'}</span>
+            <span className="absolute right-6 text-gray-500">{sectionsOpen.businessTools ? '▲' : '▼'}</span>
           </button>
           {sectionsOpen.businessTools && (
             <div className="p-6 bg-white">
@@ -2324,7 +2767,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
       </div>
       </div>
       </div>
-          {/* Drive Filing Modal */}
+      {/* Drive Filing Modal */}
           {showDriveModal && (
             <div className="fixed inset-0 bg-black bg-opacity-25 z-50 flex items-center justify-center">
               <div className="bg-white rounded-lg p-8 min-w-[400px] shadow-lg focus:outline-none" tabIndex={-1}>
@@ -2675,7 +3118,6 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
               </div>
             </div>
           )}
-         </div> 
       {/* EOI Modal */}
       {showEOIModal && (
         <div className="fixed inset-0 bg-black bg-opacity-25 z-50 flex items-center justify-center">
@@ -2686,13 +3128,13 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
               <label className="font-semibold">EOI File:</label>
               <input type="file" accept="application/pdf" onChange={handleEOIFileChange} className="ml-2" />
               <p className="text-xs text-gray-500 mt-1">Accepted: PDF files only</p>
-              {eoiFile && <div className="mt-2 text-sm text-gray-600">Selected file: {eoiFile.name}</div>}
+              {eoiFile && <div className="mt-2 text-sm text-gray-600">Selected file: {eoiFile?.name}</div>}
             </div>
 
             {eoiResult && (
               <div
                 className={`px-4 py-2 rounded mb-4 font-medium text-sm ${
-                  eoiResult.includes("success") || eoiResult.includes("successfully")
+                  eoiResult?.includes("success") || eoiResult?.includes("successfully")
                     ? "bg-green-50 text-green-700"
                     : "bg-red-50 text-red-700"
                 }`}
@@ -2715,6 +3157,132 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                 disabled={!eoiFile || eoiLoading}
               >
                 {eoiLoading ? "Uploading..." : "Submit EOI"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Additional Documents Modal */}
+      {showAdditionalDocModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-25 z-50 flex items-center justify-center">
+          <div className="bg-white rounded-lg p-8 min-w-[400px] shadow-lg focus:outline-none" tabIndex={-1}>
+            <h3 className="text-lg font-semibold text-gray-800 mb-4">Upload Additional Document</h3>
+
+            <div className="mb-4">
+              <label className="font-semibold block mb-2">Document Type:</label>
+              <input
+                type="text"
+                value={additionalDocType}
+                onChange={(e) => setAdditionalDocType(e.target.value)}
+                placeholder="e.g., Water Invoice, Insurance Certificate"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <p className="text-xs text-gray-500 mt-1">Enter the type of document (e.g., "Water Invoice")</p>
+            </div>
+
+            <div className="mb-6">
+              <label className="font-semibold block mb-2">Document File:</label>
+              <input
+                type="file"
+                accept="application/pdf"
+                onChange={handleAdditionalDocFileChange}
+                className="w-full"
+              />
+              <p className="text-xs text-gray-500 mt-1">Accepted: PDF files only</p>
+              {additionalDocFile && (
+                <div className="mt-2 text-sm text-gray-600">Selected file: {additionalDocFile?.name}</div>
+              )}
+            </div>
+
+            {additionalDocResult && (
+              <div
+                className={`px-4 py-2 rounded mb-4 font-medium text-sm ${
+                  additionalDocResult?.includes("success") || additionalDocResult?.includes("successfully")
+                    ? "bg-green-50 text-green-700"
+                    : "bg-red-50 text-red-700"
+                }`}
+              >
+                {additionalDocResult}
+              </div>
+            )}
+
+            <div className="flex justify-end space-x-2">
+              <button
+                className="px-4 py-2 border border-gray-300 rounded text-gray-700 bg-white hover:bg-gray-100 focus:outline-none"
+                onClick={resetAdditionalDocModal}
+                disabled={additionalDocLoading}
+              >
+                Cancel
+              </button>
+              <button
+                className="px-4 py-2 rounded bg-blue-600 text-white font-semibold hover:bg-blue-700 focus:outline-none"
+                onClick={handleAdditionalDocSubmit}
+                disabled={!additionalDocFile || !additionalDocType.trim() || additionalDocLoading}
+              >
+                {additionalDocLoading ? "Uploading..." : "Upload Document"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Engagement Forms Modal */}
+      {showEngagementFormModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-25 z-50 flex items-center justify-center">
+          <div className="bg-white rounded-lg p-8 min-w-[400px] shadow-lg focus:outline-none" tabIndex={-1}>
+            <h3 className="text-lg font-semibold text-gray-800 mb-4">Upload Signed Engagement Form</h3>
+
+            <div className="mb-4">
+              <label className="font-semibold block mb-2">Form Type:</label>
+              <input
+                type="text"
+                value={engagementFormType}
+                onChange={(e) => setEngagementFormType(e.target.value)}
+                placeholder="e.g., Initial Engagement, Service Agreement"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+              />
+              <p className="text-xs text-gray-500 mt-1">Enter the type of engagement form</p>
+            </div>
+
+            <div className="mb-6">
+              <label className="font-semibold block mb-2">Form File:</label>
+              <input
+                type="file"
+                accept="application/pdf"
+                onChange={handleEngagementFormFileChange}
+                className="w-full"
+              />
+              <p className="text-xs text-gray-500 mt-1">Accepted: PDF files only</p>
+              {engagementFormFile && (
+                <div className="mt-2 text-sm text-gray-600">Selected file: {engagementFormFile?.name}</div>
+              )}
+            </div>
+
+            {engagementFormResult && (
+              <div
+                className={`px-4 py-2 rounded mb-4 font-medium text-sm ${
+                  engagementFormResult?.includes("success") || engagementFormResult?.includes("successfully")
+                    ? "bg-green-50 text-green-700"
+                    : "bg-red-50 text-red-700"
+                }`}
+              >
+                {engagementFormResult}
+              </div>
+            )}
+
+            <div className="flex justify-end space-x-2">
+              <button
+                className="px-4 py-2 border border-gray-300 rounded text-gray-700 bg-white hover:bg-gray-100 focus:outline-none"
+                onClick={resetEngagementFormModal}
+                disabled={engagementFormLoading}
+              >
+                Cancel
+              </button>
+              <button
+                className="px-4 py-2 rounded bg-purple-600 text-white font-semibold hover:bg-purple-700 focus:outline-none"
+                onClick={handleEngagementFormSubmit}
+                disabled={!engagementFormFile || !engagementFormType.trim() || engagementFormLoading}
+              >
+                {engagementFormLoading ? "Uploading..." : "Upload Form"}
               </button>
             </div>
           </div>
@@ -2792,8 +3360,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
           </div>
         </div>
       )}
-     </div> 
-    </div>
-    </>
+      </div>
+    </React.Fragment>
   );
 }
