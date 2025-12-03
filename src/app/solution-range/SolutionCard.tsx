@@ -20,6 +20,8 @@ const getCategoryColor = (category?: string) => {
     asset_optimisation: "from-indigo-500 to-purple-600",
     other_solutions: "from-gray-500 to-slate-600",
     ghg: "from-green-600 to-teal-600",
+    robot_finance: "from-amber-500 to-yellow-600",
+    client_automation: "from-violet-500 to-purple-600",
   };
   return category ? colors[category as keyof typeof colors] : "from-gray-400 to-gray-500";
 };

@@ -11,7 +11,8 @@ export type SolutionCategory =
   | "asset_optimisation"
   | "other_solutions"
   | "ghg"
-  | "robot_finance";
+  | "robot_finance"
+  | "client_automation";
 
   export interface SolutionOption {
     id: string;
@@ -45,11 +46,12 @@ export const categoryLabels: Record<SolutionCategory, string> = {
   other_solutions: "🔧 Other Solutions",
   ghg: "🌍 GHG",
   robot_finance: "💰 Robot Finance",
+  client_automation: "⚙️ Client Automation",
 };
 
 export const categoryDescriptions: Record<SolutionCategory, string> = {
   platform:
-    "Comprehensive sustainable platform solutions integrating multiple sustainability initiatives into a unified system.",
+    "A unified sustainability platform that brings together energy, waste, automation, reporting, and resource management into one cohesive ecosystem. Designed to help businesses streamline operations, reduce environmental impact, and create measurable long-term value.",
   ai_bots:
     "Intelligent AI-powered robotic solutions for automated cleaning and maintenance tasks.",
   ai_automation:
@@ -70,6 +72,8 @@ export const categoryDescriptions: Record<SolutionCategory, string> = {
     "Greenhouse gas reporting and compliance solutions for tracking and reducing carbon footprint.",
   robot_finance:
     "Flexible financing solutions for autonomous cleaning robots including finance partner programs and rent-to-own structures.",
+  client_automation:
+    "Client-specific automation solutions for document processing, data extraction, and API-driven workflows.",
 };
 
 export const solutionOptions: SolutionOption[] = [
@@ -86,7 +90,7 @@ export const solutionOptions: SolutionOption[] = [
   {
     id: "assisted_scrubber",
     name: "Assisted Scrubber (CS)",
-    description: "AI-powered assisted scrubbing solutions for automated cleaning",
+    description: "An intelligent assisted-scrubbing unit that enhances on-site cleaning efficiency. Built with precision navigation, proactive safety controls, and consistent high-performance scrubbing ideal for medium–large commercial facilities",
     presentationId: "1VqfPbIWfHwx11fXFfi8Z5qq0-AzgvMzooM1fV-FWtGs",
     enabled: true,
     category: "ai_bots",
@@ -95,7 +99,7 @@ export const solutionOptions: SolutionOption[] = [
   {
     id: "scrubber_ai_bot",
     name: "Scrubber-Assisted AI Bot (SH1)",
-    description: "Advanced AI bot for intelligent scrubbing operations",
+    description: "An advanced autonomous scrubbing robot equipped with high-accuracy mapping, adaptive route planning, and real-time obstacle detection. Ideal for venues requiring consistent, repeatable deep-cleaning outcomes with minimal manual oversight.",
     presentationId: "1c0s191tvwa1ZenWPG5Ghdo5J4c0SPf3GbbjtDPO5lXE",
     enabled: true,
     category: "ai_bots",
@@ -104,7 +108,7 @@ export const solutionOptions: SolutionOption[] = [
   {
     id: "vacuum_mopping_ai_bot",
     name: "Vacuum-Mopping AI Bot (CC1)",
-    description: "Comprehensive vacuum and mopping AI bot system",
+    description: "A fully autonomous vacuum-mopping bot combining powerful suction, dual-mode mopping, precision mapping, and automated docking. Perfect for hospitality and retail environments that require spotless presentation throughout the day.",
     presentationId: "1DCNrBY1AA-B4OLuMFIXvEhkN-rTA287J1TbESkD-3ts",
     enabled: true,
     category: "ai_bots",
@@ -113,7 +117,7 @@ export const solutionOptions: SolutionOption[] = [
   {
     id: "engagement_bot",
     name: "Customer Engagement Bot",
-    description: "AI-powered customer engagement and interaction bot",
+    description: "A front-of-house engagement bot designed to greet guests, answer common enquiries, guide visitors, and enhance customer experience. Uses conversational AI and visual displays to deliver consistent, friendly service in busy locations.",
     presentationId: "1W3SbzwNFyIoNCCoj_SFAULVHZT1pflNE031QF9dII8U",
     enabled: true,
     category: "ai_bots",
@@ -122,7 +126,7 @@ export const solutionOptions: SolutionOption[] = [
   {
     id: "filtering_cleaning_bot",
     name: "Oil Filtering & Cleaning Assisted Unit",
-    description: "Advanced filtering and cleaning assistance through AI automation",
+    description: "A specialised filtration and cleaning unit that automates the management of cooking oil systems. Improves safety, consistency, and hygiene while reducing labour time and extending oil life through precise automated filtration cycles.",
     presentationId: "10srsHl936u9unxOE30EyGQKmsQU4XEpGbQcBhOG8_Gc",
     enabled: true,
     category: "ai_bots",
@@ -193,9 +197,9 @@ export const solutionOptions: SolutionOption[] = [
 // === OUTBOUND VOICE AGENT ===
 {
   id: "outbound_agent",
-  name: "Dynamic Outbound (Andrew) - OUTBOUND ONLY",
+  name: "Dynamic Outbound (Andrew) - OUTBOUND TRIGGERED & INBOUND CALLBACKS",
   description:
-    "Outbound-only calling system that dynamically adjusts conversation flow depending on client data and intent. Does not handle inbound calls.",
+    "A dynamic outbound calling engine built for campaigns, follow-ups, and data-driven messaging. Andrew adapts each conversation using real-time logic, sheet-based variables, and conditional flows—making every call personalised, consistent, and compliant. Purpose-built for structured outreach, has inbound reception.",
   presentationId: "13jOv5xfI-R2RYKPfjlRNLZmAiDeDl4rACikyp8NcmP8",
   enabled: true,
   category: "ai_automation",
@@ -256,7 +260,7 @@ export const solutionOptions: SolutionOption[] = [
   id: "dynamic_inbound_andrew",
   name: "Dynamic Inbound (Andrew)",
   description:
-    "Member-specific dynamic inbound agent using Twilio integration. Handles personalized member and solution-specific enquiries with access to dedicated member sheets.",
+    "A fully customised inbound agent for member-specific enquiries, connected directly to live data sheets and Twilio voice routing. Delivers personalised responses, handles complex logic splits, and accesses member solutions instantly — giving callers accurate, context-aware assistance without wait times.",
   presentationId: "13jOv5xfI-R2RYKPfjlRNLZmAiDeDl4rACikyp8NcmP8",
   enabled: true,
   category: "ai_automation",
@@ -302,12 +306,39 @@ export const solutionOptions: SolutionOption[] = [
     "Automated booking confirmation"
   ]
 },
+{
+  id: "pudu_maintenance_agent",
+  name: "Pudu Maintenance Support Agent (Cindy)",
+  description:
+    "A specialised maintenance support agent designed to assist customers with troubleshooting, repairs, and daily care for the Pudu CC1 autonomous cleaning robot. Cindy diagnoses common faults, provides step-by-step repair guidance, advises on consumable replacements, and escalates complex issues to specialist technicians when needed. Integrated with n8n for post-call reporting and connected to a dedicated knowledge base for accurate, up-to-date maintenance instructions.",
+  presentationId: "13jOv5xfI-R2RYKPfjlRNLZmAiDeDl4rACikyp8NcmP8", // using your standard agent deck unless you want a new one
+  enabled: true,
+  category: "ai_automation",
+  agentType: "client",
+  imageUrl: "/solutions/pudu-maintenance-agent.png", // add image when ready
+  phoneNumber: {
+    production: "0482 086 553", // linked to the Trojan texting number for now
+    development: "0482 086 553"
+  },
+  customSheetUrl: "https://docs.google.com/spreadsheets/d/1m2e_wnIZ62sD_C8j56bysma4Gaj6_ae3FJ_zZ9PdINQ/edit?gid=0#gid=0", // replace if needed
+  customSheetLabel: "Maintenance Logs & Call Transcripts",
+  agentCapabilities: [
+    "Troubleshoot CC1 robot issues (water leaks, power problems, suction issues, drainage faults)",
+    "Diagnose common faults and provide step-by-step repair guidance",
+    "Advise on daily maintenance procedures",
+    "Provide consumable replacement schedules (brushes, filters, cloths, rubber strips)",
+    "Use knowledge-base-driven responses for accurate technical support",
+    "Collect business and issue details for reporting",
+    "Escalate complex faults to specialist technicians",
+    "Send end-of-call reports to n8n automation"
+  ]
+},
 // === TROJAN OIL API DOCKET READER ===
 {
   id: "trojan_oil_docket_reader",
   name: "Trojan Oil API Docket Reader",
   description:
-    "SMS-based document processing system. Text a photo of oil dockets to trigger automated API data extraction and processing.",
+    "An automated SMS/MMS & Email document processing system that extracts data from oil dockets using advanced OCR and ACES’ custom API. Drivers simply text a photo — the system identifies product types, volumes, pricing, and customer details, then logs structured data instantly. Removes all manual entry and reduces admin error.",
   presentationId: "13jOv5xfI-R2RYKPfjlRNLZmAiDeDl4rACikyp8NcmP8",
   enabled: true,
   category: "ai_automation",
@@ -327,12 +358,39 @@ export const solutionOptions: SolutionOption[] = [
     "No voice interaction required - text only"
   ]
 },
-
+// === TROJAN OIL DOCKET READER (CLIENT AUTOMATION) ===
+{
+  id: "trojan_oil_docket_reader_client",
+  name: "Trojan Oil Docket Reader",
+  description:
+    "A streamlined client automation that converts photographed oil dockets into clean, structured data. Designed for fast, accurate extraction without manual typing — ideal for delivery teams, admin departments, and operational workflows.",
+  presentationId: "13jOv5xfI-R2RYKPfjlRNLZmAiDeDl4rACikyp8NcmP8",
+  enabled: true,
+  category: "client_automation",
+  agentType: "client",
+  imageUrl: "/solutions/docket-reader.png",
+  customSheetUrl: "https://docs.google.com/spreadsheets/d/1m1-Gq08L841Rqm39yvz_4nkyyFOzvI83BCvBRVVoJ38/edit?gid=0#gid=0",
+  customSheetLabel: "API Output Sheet",
+},
+// === EXTRUSIONS PURCHASE ORDER READER ===
+{
+  id: "extrusions_purchase_order_reader",
+  name: "Extrusions Purchase Order Reader",
+  description:
+    "A smart OCR and data-processing tool that reads photographed purchase orders and automatically extracts item codes, quantities, pricing, and supplier details. Eliminates manual entry errors and moves clean data directly into your operational or accounting system.",
+  presentationId: "13jOv5xfI-R2RYKPfjlRNLZmAiDeDl4rACikyp8NcmP8",
+  enabled: true,
+  category: "client_automation",
+  agentType: "client",
+  imageUrl: "/solutions/purchase-order-reader.png",
+  customSheetUrl: "https://docs.google.com/spreadsheets/d/1b-FsuFf3CqWdhnQcco0MXyJsPsFokZVcxBA0bMRrRKs/edit?gid=0#gid=0",
+  customSheetLabel: "API Output Sheet",
+},
 
   {
     id: "event_referral",
     name: "Advocate Event Program",
-    description: "Comprehensive Advocate Event Program and management system",
+    description: "A structured referral and event program that helps organisations host, manage, and track advocacy events. Provides end-to-end coordination, guest management, and performance reporting to grow awareness, generate leads, and strengthen community engagement.",
     presentationId: "1Jqi5pMRv0amYqMiPysc_hFi03vNorKio3A5fcRUluOc",
     enabled: true,
     category: "referral",
@@ -342,7 +400,7 @@ export const solutionOptions: SolutionOption[] = [
   {
     id: "electricity_ci_sme_align",
     name: "Electricity C&I Forward Pricing",
-    description: "Commercial & Industrial Electricity Alignment Solutions",
+    description: "A commercial & industrial electricity alignment service that reviews contract terms, forward pricing trends, and tariff structures to ensure large-scale users are positioned for optimal pricing outcomes. Designed for businesses seeking clarity, stability, and strategic timing in volatile energy markets.",
     presentationId: "1im1Yl0AzuzJULk4_crwV1W7nOQV9XF7CvzRpkjRQV34",
     enabled: true,
     category: "profile_reset",
@@ -351,7 +409,7 @@ export const solutionOptions: SolutionOption[] = [
   {
     id: "electricity_gas_discrepancy",
     name: "Electricity & Gas Discrepancy Review",
-    description: "Comprehensive review and analysis of electricity and gas discrepancies",
+    description: "A detailed analysis of electricity and gas invoices to identify billing errors, metering issues, contract misalignments, and cost discrepancies. Provides a clear breakdown of findings and actionable recommendations to recover overcharges and prevent recurring errors.",
     presentationId: "1EC3SncEMHfaIoofzJTWKnPhEaa6w6q_1B1iIzp1SJdw",
     enabled: true,
     category: "profile_reset",
@@ -360,7 +418,7 @@ export const solutionOptions: SolutionOption[] = [
   {
     id: "waste_review",
     name: "Waste Review",
-    description: "Complete waste management and optimization review",
+    description: "A full waste and resource audit that evaluates current collection practices, bin configurations, recycling performance, and disposal costs. Delivers a structured improvement plan that reduces waste volumes, increases recovery rates, and lowers ongoing expenses.",
     presentationId: "1DOgFANIrqz7JuWMruM8LiHLx8OMqOrON0YchUozUpYQ",
     enabled: true,
     category: "profile_reset",
@@ -370,7 +428,7 @@ export const solutionOptions: SolutionOption[] = [
   {
     id: "solar_quote_review",
     name: "Solar Quote Review & Recommendation",
-    description: "Comprehensive solar quote analysis and tailored recommendations",
+    description: "A comprehensive solar proposal review service that analyses pricing, system design, projected savings, and installer quality. Provides independent recommendations backed by transparent modelling, helping businesses select the most cost-effective and technically sound solar solution with confidence.",
     presentationId: "1haUf3MWTvJBppJkbB6-khaGiDFhtlyAYhBD-_cvuVmQ",
     enabled: true,
     category: "renewable_energy",
@@ -379,7 +437,7 @@ export const solutionOptions: SolutionOption[] = [
   {
     id: "solar_farm",
     name: "Solar Farm",
-    description: "Large-scale solar farm development and implementation solutions",
+    description: "Large-scale solar generation solutions designed for commercial and industrial clients seeking long-term energy independence. Covers feasibility studies, grid connection modelling, commercial forecasting, and full project delivery for multi-megawatt solar farms that deliver predictable, high-yield energy performance.",
     presentationId: "1AD4a5MTwnYl0_XqVULeyeoTAIfjCHuxGH_XRnN-LlLo",
     enabled: true,
     category: "renewable_energy",
@@ -388,7 +446,7 @@ export const solutionOptions: SolutionOption[] = [
   {
     id: "solar_car_park",
     name: "Solar Car Park",
-    description: "Solar canopy solutions for car parks and parking structures",
+    description: "Dual-purpose solar canopy structures that convert car parks into high-value clean energy assets. Provides shade and weather protection for patrons while generating significant onsite renewable electricity. Compatible with EV charging, demand management, and advanced monitoring options.",
     presentationId: "12BixHi5UX0hZpIoAVQB79dqcFMiVTzwaa7nTHipWY1g",
     enabled: true,
     category: "renewable_energy",
@@ -397,8 +455,8 @@ export const solutionOptions: SolutionOption[] = [
   {
     id: "solar_rooftop",
     name: "Solar Rooftop",
-    description: "Commercial and residential rooftop solar installation solutions",
-    presentationId: "1sDM8-1-XD8s_ciOUIKuIKG9WY5sbeWa8uds4ueyE0ig",
+      description: "High-efficiency commercial rooftop solar systems engineered to reduce electricity costs, cut peak demand, and improve long-term operational resilience. Includes system design, installation, monitoring, and performance guarantees tailored to each building’s energy profile.",
+      presentationId: "1sDM8-1-XD8s_ciOUIKuIKG9WY5sbeWa8uds4ueyE0ig",
     enabled: true,
     category: "renewable_energy",
     imageUrl: "/solutions/solar-rooftop.png"
@@ -406,7 +464,7 @@ export const solutionOptions: SolutionOption[] = [
   {
     id: "solar_monitoring",
     name: "Solar Monitoring",
-    description: "Advanced solar system monitoring and performance optimization",
+    description: "Real-time solar performance tracking and fault detection platform that monitors inverter efficiency, system health, energy output, and savings. Enables predictive maintenance, maximises long-term generation, and ensures solar assets deliver their expected return on investment.",
     presentationId: "1-CcTIPNfWGAB_ywWLdNUTC8oPFaiGmP3H2v8QUwAx1M",
     enabled: true,
     category: "renewable_energy",
@@ -416,7 +474,7 @@ export const solutionOptions: SolutionOption[] = [
   {
     id: "cooking_used_oil",
     name: "Cooking & Used Oil",
-    description: "Sustainable cooking and used oil recovery and processing solutions",
+    description: "A complete cooking and used-oil recovery solution that improves kitchen efficiency and sustainability. Provides safe storage, reliable collection, and environmentally responsible processing, helping businesses reduce waste, lower disposal costs, and meet compliance requirements.",
     presentationId: "1NohfoE4Tck34V2uLWn9fvirW3peJKPUMqfmzE4CNLrg",
     enabled: true,
     category: "resource_recovery",
@@ -425,7 +483,7 @@ export const solutionOptions: SolutionOption[] = [
   {
     id: "baled_plastic_recycling",
     name: "Baled Plastic Recycling",
-    description: "Comprehensive baled plastic recycling and processing systems",
+    description: "A streamlined recycling program for baled plastics that turns high-volume waste into recoverable resources. Optimises collection schedules, reduces contamination, and ensures materials are processed efficiently for maximum recycling value.",
     presentationId: "190wilKqZQFoEgsvJ6ZKYRmm-fY5rnQda7g_KFI0546I",
     enabled: true,
     category: "resource_recovery",
@@ -434,7 +492,7 @@ export const solutionOptions: SolutionOption[] = [
   {
     id: "wood_offcut_recycling",
     name: "Wood Offcut Recycling",
-    description: "Wood offcut collection, processing and recycling solutions",
+    description: "A practical recycling pathway for timber offcuts and wood waste. Includes tailored collection systems, sorting optimisation, and responsible processing to reduce landfill volume and support circular-economy outcomes.",
     presentationId: "1cjjlNBeFaUmhPuJo4k07shvCKch0NhtMqS4B4CLjrI0",
     enabled: true,
     category: "resource_recovery",
@@ -443,7 +501,7 @@ export const solutionOptions: SolutionOption[] = [
   {
     id: "glass_bottle_recycling",
     name: "Glass Bottle Recycling",
-    description: "Glass bottle collection and recycling management systems",
+    description: "A reliable glass collection and recycling solution that improves sorting efficiency, ensures safe handling, and diverts glass away from landfill. Designed for hospitality venues and high-volume glass users seeking improved recycling performance.",
     presentationId: "1aECRrTGsaiW6_6fYjatP6nlhNND9QvsMAPQmI7V4D7Y",
     enabled: true,
     category: "resource_recovery",
@@ -452,7 +510,7 @@ export const solutionOptions: SolutionOption[] = [
   {
     id: "organic_waste_diversion",
     name: "Organic Waste Diversion",
-    description: "Organic waste diversion and composting solutions",
+    description: "An organic waste diversion program that transforms food scraps and organic materials into compost or renewable products. Reduces landfill impact, lowers disposal costs, and supports environmentally responsible waste management.",
     presentationId: "1IVNC9JBlyfJ70TgduSiW2YyJ2y3opYyhstjI3FZTjqY",
     enabled: true,
     category: "resource_recovery",
@@ -461,7 +519,7 @@ export const solutionOptions: SolutionOption[] = [
   {
     id: "wax_cardboard",
     name: "Wax Cardboard",
-    description: "Wax cardboard collection and specialized recycling processes",
+    description: "A specialised recycling stream for wax-coated cardboard that ensures proper collection, sorting, and processing. Enables businesses to divert a hard-to-recycle material from landfill and reduce overall waste footprint.",
     presentationId: "1WSpo6Ayr6blkQytM6Axpf59fdLXplSqt9K11epQ8gsA",
     enabled: true,
     category: "resource_recovery",
@@ -470,7 +528,7 @@ export const solutionOptions: SolutionOption[] = [
   {
     id: "cardboard_bin_recycling",
     name: "Cardboard Bin Recycling",
-    description: "Cardboard bin collection and recycling management",
+    description: "A simple, high-efficiency cardboard recycling service with clear collection schedules, contamination reduction strategies, and responsible processing. Helps businesses lower waste costs and improve recycling rates.",
     presentationId: "1oZU7F0j3buEAA6E5Ji3NT9xLLhZCPaIOKqA1xGgZcsY",
     enabled: true,
     category: "resource_recovery",
@@ -479,7 +537,7 @@ export const solutionOptions: SolutionOption[] = [
   {
     id: "cardboard_bales_recycling",
     name: "Cardboard Bales Recycling",
-    description: "Large-scale cardboard baling and recycling operations",
+    description: "A large-volume recycling program for baled cardboard that ensures fast collection, consistent processing, and maximum material recovery. Ideal for warehouses, retail sites, and facilities generating significant cardboard waste.",
     presentationId: "1_ixppvK1AkVorOrqyu8ghnezO5Xc0BD36RBTDRFHTr8",
     enabled: true,
     category: "resource_recovery",
@@ -489,7 +547,7 @@ export const solutionOptions: SolutionOption[] = [
   {
     id: "electricity_demand_response",
     name: "Electricity Demand Response",
-    description: "Smart electricity demand response and grid optimization solutions",
+    description: "A smart demand response program that helps businesses reduce costs and support grid stability by shifting or lowering electricity usage during peak periods. Provides clear financial incentives, automated participation strategies, and performance reporting tailored to each site’s operational needs.",
     presentationId: "1qN5fqOq-1VXkwO4nV9PFzaINEyjYZy1_nNPMnKi2Rio",
     enabled: true,
     category: "asset_optimisation",
@@ -498,7 +556,7 @@ export const solutionOptions: SolutionOption[] = [
   {
     id: "federal_government_incentives",
     name: "Federal Government Incentives",
-    description: "Federal government sustainability and business incentive programs",
+    description: "Access to federal sustainability and business incentive programs, including grants, rebates, and energy-efficiency funding. We identify eligible opportunities, guide documentation requirements, and help businesses secure financial support for sustainability and operational upgrades.",
     presentationId: "1Sp8T3yOKnNxgP3BGMTtCukM7TYMAQONqXuu3Lxw6GxM",
     enabled: true,
     category: "asset_optimisation",
@@ -507,7 +565,7 @@ export const solutionOptions: SolutionOption[] = [
   {
     id: "state_government_incentives",
     name: "State Government Incentives",
-    description: "State-level government incentives and rebate programs",
+    description: "Support navigating state-based rebate programs and environmental incentive schemes. Provides guidance on eligibility, application requirements, and financial benefits to help businesses reduce upgrade costs and accelerate sustainability initiatives.",
     presentationId: "1kOVzGHbKBjj7hty_K2I6OOw3LtvAYbh6lSzKfwUo5m0",
     enabled: true,
     category: "asset_optimisation",
@@ -516,7 +574,7 @@ export const solutionOptions: SolutionOption[] = [
   {
     id: "carbon_credit_offset",
     name: "Australian Carbon Credit and Carbon Offset",
-    description: "Australian carbon credit generation and offset management",
+    description: "A complete carbon credit and offset solution that helps businesses generate ACCUs, purchase offsets, and meet sustainability or compliance targets. Includes project assessment, carbon accounting, and strategic offset planning aligned with national standards.",
     presentationId: "1J0PuIWMgly8DqD6dAk46Fm7U1IU_EU_02PrvmD2rtbc",
     enabled: true,
     category: "asset_optimisation",
@@ -525,7 +583,7 @@ export const solutionOptions: SolutionOption[] = [
   {
     id: "renewable_certificates",
     name: "Self-Managed Renewable Certificates",
-    description: "Self-managed renewable energy certificate trading and optimization",
+    description: "A self-managed renewable energy certificate program that allows businesses to buy, track, retire, and trade certificates to meet sustainability goals. Provides full transparency, cost control, and strategic guidance for managing LGCs and other renewable certificates.",
     presentationId: "1TB0Jz8Lc0qb4OJsOPp-UEqvek7_qpPG1dGDaKx8Cs-o",
     enabled: true,
     category: "asset_optimisation",
@@ -535,7 +593,7 @@ export const solutionOptions: SolutionOption[] = [
   {
     id: "backup_power_generators",
     name: "Back-up Power Generators",
-    description: "Reliable backup power generation systems for business continuity",
+    description: "Reliable backup power solutions designed to protect business operations during outages or grid instability. Includes generator sizing, installation, and integration with existing electrical systems to ensure seamless continuity, safety, and compliance without disruption.",
     presentationId: "1NogU72GNKHqs0LNIqmblsn9I2Fa36V6dzNoqh6PACUA",
     enabled: true,
     category: "other_solutions",
@@ -544,7 +602,7 @@ export const solutionOptions: SolutionOption[] = [
   {
     id: "door_curtain_refrigerator",
     name: "Door Curtain Refrigerator",
-    description: "Energy-efficient door curtain refrigeration solutions",
+    description: "Energy-efficient refrigeration curtain systems that reduce cold-air loss, improve temperature stability, and lower electricity costs. Ideal for commercial kitchens, cool rooms, and refrigerated storage areas seeking improved performance and reduced energy consumption.",
     presentationId: "1K87ZdSdlydCib0hdw7ax7XO0vAgY8dciy1KIpF5_B3I",
     enabled: true,
     category: "other_solutions",
@@ -554,7 +612,7 @@ export const solutionOptions: SolutionOption[] = [
   {
     id: "ghg_reporting",
     name: "GHG Reporting",
-    description: "Comprehensive greenhouse gas reporting and compliance solutions",
+    description: "Comprehensive greenhouse gas reporting that measures Scope 1, 2, and 3 emissions using verified methodologies. Provides clear dashboards, compliance-ready documentation, and tailored reduction strategies to help businesses meet regulatory requirements, improve sustainability performance, and track progress over time.",
     presentationId: "1c4LRa0OB6K8Dh0tCH5dr7JWWqUl4sG8LZSZPhEnjdo4",
     enabled: true,
     category: "ghg",

@@ -169,6 +169,7 @@ export default function EnhancedSolutionRangePage() {
                         category === "ai_bots" ? "from-blue-400 to-blue-600" :
                         category === "renewable_energy" ? "from-yellow-400 to-orange-600" :
                         category === "resource_recovery" ? "from-teal-400 to-cyan-600" :
+                        category === "client_automation" ? "from-violet-400 to-purple-600" :
                         "from-purple-400 to-purple-600"
                       }`}></div>
                       <h2 className="font-bold text-lg text-gray-800">
