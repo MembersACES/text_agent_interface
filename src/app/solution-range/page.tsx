@@ -16,6 +16,7 @@ export default function EnhancedSolutionRangePage() {
 
   const filtered = useMemo(() => {
     return solutionOptions.filter((s) => {
+      if (!s.enabled) return false;
       const search = searchTerm.toLowerCase();
       return (
         (selectedCategory === "all" || s.category === selectedCategory) &&
@@ -471,7 +472,7 @@ export default function EnhancedSolutionRangePage() {
           {selectedCategory === "ai_automation" ? (
             <>
               {/* ACES Agents Section */}
-              {filtered.filter(s => s.agentType === "aces").length > 0 && (
+              {selectedCategory === "ai_automation" && filtered.filter(s => s.agentType === "aces").length > 0 && (
                 <div className="mb-8">
                   <div className="flex items-center gap-2 mb-4">
                     <div className="h-1 w-8 bg-gradient-to-r from-purple-500 to-purple-600 rounded"></div>
@@ -530,7 +531,7 @@ export default function EnhancedSolutionRangePage() {
               )}
               
               {/* Client Agents Section */}
-              {filtered.filter(s => s.agentType === "client").length > 0 && (
+              {selectedCategory === "ai_automation" && filtered.filter(s => s.agentType === "client").length > 0 && (
                 <div>
                   <div className="flex items-center gap-2 mb-4">
                     <div className="h-1 w-8 bg-gradient-to-r from-blue-500 to-blue-600 rounded"></div>

@@ -320,7 +320,7 @@ export const solutionOptions: SolutionOption[] = [
     production: "0482 086 553", // linked to the Trojan texting number for now
     development: "0482 086 553"
   },
-  customSheetUrl: "https://docs.google.com/spreadsheets/d/1m2e_wnIZ62sD_C8j56bysma4Gaj6_ae3FJ_zZ9PdINQ/edit?gid=0#gid=0", // replace if needed
+  customSheetUrl: "https://docs.google.com/spreadsheets/d/1xeKzVOQ6ywI5HaWOGn0nfOkf8XDZsmHHG6v-iDnljDE/edit?gid=0#gid=0", // replace if needed
   customSheetLabel: "Maintenance Logs & Call Transcripts",
   agentCapabilities: [
     "Troubleshoot CC1 robot issues (water leaks, power problems, suction issues, drainage faults)",
@@ -364,13 +364,12 @@ export const solutionOptions: SolutionOption[] = [
   name: "Trojan Oil Docket Reader",
   description:
     "A streamlined client automation that converts photographed oil dockets into clean, structured data. Designed for fast, accurate extraction without manual typing — ideal for delivery teams, admin departments, and operational workflows.",
-  presentationId: "13jOv5xfI-R2RYKPfjlRNLZmAiDeDl4rACikyp8NcmP8",
   enabled: true,
   category: "client_automation",
   agentType: "client",
   imageUrl: "/solutions/docket-reader.png",
   customSheetUrl: "https://docs.google.com/spreadsheets/d/1m1-Gq08L841Rqm39yvz_4nkyyFOzvI83BCvBRVVoJ38/edit?gid=0#gid=0",
-  customSheetLabel: "API Output Sheet",
+  customSheetLabel: "Delivery Docket API Output",
 },
 // === EXTRUSIONS PURCHASE ORDER READER ===
 {
@@ -378,13 +377,12 @@ export const solutionOptions: SolutionOption[] = [
   name: "Extrusions Purchase Order Reader",
   description:
     "A smart OCR and data-processing tool that reads photographed purchase orders and automatically extracts item codes, quantities, pricing, and supplier details. Eliminates manual entry errors and moves clean data directly into your operational or accounting system.",
-  presentationId: "13jOv5xfI-R2RYKPfjlRNLZmAiDeDl4rACikyp8NcmP8",
   enabled: true,
   category: "client_automation",
   agentType: "client",
   imageUrl: "/solutions/purchase-order-reader.png",
   customSheetUrl: "https://docs.google.com/spreadsheets/d/1b-FsuFf3CqWdhnQcco0MXyJsPsFokZVcxBA0bMRrRKs/edit?gid=0#gid=0",
-  customSheetLabel: "API Output Sheet",
+  customSheetLabel: "Purchase Order API Output",
 },
 
   {

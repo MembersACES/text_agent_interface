@@ -69,7 +69,7 @@ export default function EnhancedSolutionCard({ solution }: { solution: SolutionL
   const [showCapabilities, setShowCapabilities] = useState(false);
   const [copiedPhone, setCopiedPhone] = useState(false);
 
-  const isSubCard = !("presentationId" in solution) && !("pdfUrl" in solution);
+  const isSubCard = !("presentationId" in solution) && !("pdfUrl" in solution) && !("customSheetUrl" in solution);
   const hasAgent =
     Boolean(solution.phoneNumber) || (solution.agentCapabilities?.length ?? 0) > 0;
 
@@ -172,9 +172,10 @@ export default function EnhancedSolutionCard({ solution }: { solution: SolutionL
             </div>
           )}
           {/* Action buttons for top-level only - moved below content */}
-          {!isSubCard && (("presentationId" in solution && solution.presentationId) || ("pdfUrl" in solution && solution.pdfUrl)) && (
+          {!isSubCard && (("presentationId" in solution && solution.presentationId) || ("pdfUrl" in solution && solution.pdfUrl) || ((solution as SolutionOption).customSheetUrl)) && (
             <div className="flex gap-2 mt-3">
-              {("presentationId" in solution && solution.presentationId) ? (() => {
+              {/* Presentation button - shows if presentationId exists */}
+              {("presentationId" in solution && solution.presentationId) && (() => {
                 const presentationId = (solution as SolutionOption).presentationId!;
                 const isPlaceholder = presentationId.includes("PLACEHOLDER");
                 return (
@@ -210,7 +211,10 @@ export default function EnhancedSolutionCard({ solution }: { solution: SolutionL
                     </svg>
                   </button>
                 );
-              })() : ("pdfUrl" in solution && solution.pdfUrl) ? (() => {
+              })()}
+              
+              {/* PDF button - shows if pdfUrl exists AND presentationId does NOT exist */}
+              {!("presentationId" in solution && solution.presentationId) && ("pdfUrl" in solution && solution.pdfUrl) && (() => {
                 const pdfUrl = (solution as SolutionOption).pdfUrl!;
                 const isPlaceholder = pdfUrl.includes("PLACEHOLDER");
                 return (
@@ -246,17 +250,17 @@ export default function EnhancedSolutionCard({ solution }: { solution: SolutionL
                     </svg>
                   </button>
                 );
-              })() : null}
+              })()}
               
-              {/* Custom Sheet button - shows with custom label */}
-              {(solution as SolutionOption).customSheetUrl && (
+              {/* Custom Sheet button - ALWAYS shows if customSheetUrl exists */}
+              {((solution as SolutionOption).customSheetUrl) && (
                 <button
                   onClick={() =>
-                    window.open((solution as SolutionOption).customSheetUrl, "_blank")
+                    window.open((solution as SolutionOption).customSheetUrl!, "_blank")
                   }
-                  className="flex-1 px-4 py-2 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg hover:from-green-700 hover:to-green-800 transition-all duration-200 text-sm font-medium flex items-center justify-center gap-2 shadow-md hover:shadow-lg"
+                  className={`${!("presentationId" in solution && solution.presentationId) && !("pdfUrl" in solution && solution.pdfUrl) ? "w-full" : "flex-1"} px-4 py-2 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg hover:from-green-700 hover:to-green-800 transition-all duration-200 text-sm font-medium flex items-center justify-center gap-2 shadow-md hover:shadow-lg`}
                 >
-                  <span>{(solution as SolutionOption).customSheetLabel || "Sheet"}</span>
+                  <span>{((solution as SolutionOption).customSheetLabel) || "Sheet"}</span>
                   <svg
                     className="w-4 h-4"
                     fill="none"
