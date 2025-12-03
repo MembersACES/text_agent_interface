@@ -13,7 +13,7 @@ export default function EnhancedSolutionRangePage() {
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [expandedCategories, setExpandedCategories] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
-  const [expandedAgentSections, setExpandedAgentSections] = useState<{ aces: boolean; client: boolean }>({ aces: true, client: true });
+  const [expandedAgentSections, setExpandedAgentSections] = useState<{ aces: boolean; client: boolean }>({ aces: false, client: false });
 
   const filtered = useMemo(() => {
     return solutionOptions.filter((s) => {
