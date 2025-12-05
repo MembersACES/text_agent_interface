@@ -684,12 +684,19 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
     }
   }, [business.name]);
 
-  // Load engagement forms on mount (additional documents are only loaded on manual refresh)
+  // Load engagement forms on mount
   React.useEffect(() => {
     if (business.name) {
       fetchEngagementForms();
     }
   }, [business.name, fetchEngagementForms]);
+
+  // Load additional documents on mount (auto-refresh like engagement forms)
+  React.useEffect(() => {
+    if (business.name) {
+      fetchAdditionalDocuments();
+    }
+  }, [business.name, fetchAdditionalDocuments]);
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (driveModalMultipleFiles) {
