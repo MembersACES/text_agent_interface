@@ -1827,6 +1827,32 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                               >
                                 Quote Request
                               </button>
+                              {/* DMA Quick Access button - only for C&I Electricity */}
+                              {key === "C&I Electricity" && tool === "ci-electricity" && (
+                                <button
+                                  className="px-2 py-1 border border-blue-300 rounded text-xs text-blue-700 bg-blue-50 hover:bg-blue-100 flex-1"
+                                  onClick={() => {
+                                    let url = `/utility-invoice-info/${tool}?business_name=${encodeURIComponent(invoiceBusinessName)}&autoSubmit=1&autoOpenDMA=1`;
+                                    if (param !== "business_name") url += `&${param}=${encodeURIComponent(identifier)}`;
+                                    
+                                    // Add business information as URL parameters
+                                    if (business.name) url += `&business_abn=${encodeURIComponent(business.abn || '')}`;
+                                    if (business.trading_name) url += `&business_trading_name=${encodeURIComponent(business.trading_name)}`;
+                                    if (business.industry) url += `&business_industry=${encodeURIComponent(business.industry)}`;
+                                    if (business.website) url += `&business_website=${encodeURIComponent(business.website)}`;
+                                    if (contact.postal_address) url += `&postal_address=${encodeURIComponent(contact.postal_address)}`;
+                                    if (contact.telephone) url += `&contact_phone=${encodeURIComponent(contact.telephone)}`;
+                                    if (contact.email) url += `&contact_email=${encodeURIComponent(contact.email)}`;
+                                    if (rep.contact_name) url += `&contact_name=${encodeURIComponent(rep.contact_name)}`;
+                                    if (rep.position) url += `&contact_position=${encodeURIComponent(rep.position)}`;
+                                    if (rep.loa_sign_date) url += `&loa_sign_date=${encodeURIComponent(rep.loa_sign_date)}`;
+                                    
+                                    window.open(url, '_blank');
+                                  }}
+                                >
+                                  DMA
+                                </button>
+                              )}
                             </div>
                           </div>
                         );
