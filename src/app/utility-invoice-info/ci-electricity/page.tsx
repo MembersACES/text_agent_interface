@@ -9,6 +9,7 @@ export default function CIElectricityInvoiceInfoPage() {
   const nmi = searchParams.get("nmi") || "";
   const businessName = searchParams.get("business_name") || "";
   const autoSubmit = searchParams.get("autoSubmit") === "1";
+  const autoOpenDMA = searchParams.get("autoOpenDMA") === "1";
   const formRef = useRef<any>(null);
 
   // Extract business information from URL parameters
@@ -47,6 +48,7 @@ export default function CIElectricityInvoiceInfoPage() {
       initialBusinessName={businessName}
       initialSecondaryValue={nmi}
       autoSubmit={autoSubmit}
+      autoOpenDMA={autoOpenDMA}
       formRef={formRef}
       initialExtraFields={initialExtraFields}
     />

@@ -22,6 +22,7 @@ interface InfoToolPageProps {
   autoSubmit?: boolean;
   formRef?: React.RefObject<HTMLFormElement>;
   initialExtraFields?: { [key: string]: any };
+  autoOpenDMA?: boolean;
 }
 
 interface CIElectricityOfferData {
@@ -4467,7 +4468,7 @@ const EnhancedGasInvoiceDetails = ({ gasData }: { gasData: any }) => {
   );
 };
 
-function InvoiceResult({ result, session, token }: { result: any; session: any; token: string }) {
+function InvoiceResult({ result, session, token, autoOpenDMA = false }: { result: any; session: any; token: string; autoOpenDMA?: boolean }) {
   const [showDMAModal, setShowDMAModal] = useState(false);
   const [showCIOfferModal, setShowCIOfferModal] = useState(false);
   const [showCIGasOfferModal, setShowCIGasOfferModal] = useState(false);
@@ -4485,6 +4486,13 @@ function InvoiceResult({ result, session, token }: { result: any; session: any; 
   const type = types.find(t => result[t.key]);
   if (!type) return <pre style={{ background: '#f4f4f4', padding: 12, borderRadius: 6 }}>{JSON.stringify(result, null, 2)}</pre>;
   const details = result[type.key];
+  
+  // Auto-open DMA modal if requested and result is C&I electricity
+  useEffect(() => {
+    if (autoOpenDMA && type?.key === 'electricity_ci_invoice_details' && result) {
+      setShowDMAModal(true);
+    }
+  }, [autoOpenDMA, type?.key, result]);
   
   // Helper for field rendering in card format
   function Field({ label, value, isLink = false }: { label: string, value: any, isLink?: boolean }) {
@@ -5368,7 +5376,7 @@ function IntervalDataSection({
   );
 }
 
-export default function InfoToolPage({ title, description, endpoint, extraFields = [], isFileUpload = false, secondaryField, initialBusinessName = "", initialSecondaryValue = "", autoSubmit = false, formRef, initialExtraFields = {} }: InfoToolPageProps) {
+export default function InfoToolPage({ title, description, endpoint, extraFields = [], isFileUpload = false, secondaryField, initialBusinessName = "", initialSecondaryValue = "", autoSubmit = false, formRef, initialExtraFields = {}, autoOpenDMA = false }: InfoToolPageProps) {
   const { data: session } = useSession();
   const token = (session as any)?.id_token;
   const [businessName, setBusinessName] = useState(initialBusinessName);
@@ -5608,7 +5616,7 @@ export default function InfoToolPage({ title, description, endpoint, extraFields
               <ResultMessage message={result.message} />
             </div>
           ) : (
-            <InvoiceResult result={result} session={session} token={token} />
+            <InvoiceResult result={result} session={session} token={token} autoOpenDMA={autoOpenDMA} />
           )}
         </div>
       )}
