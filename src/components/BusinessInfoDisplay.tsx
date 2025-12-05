@@ -3174,10 +3174,10 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                 type="text"
                 value={additionalDocType}
                 onChange={(e) => setAdditionalDocType(e.target.value)}
-                placeholder="e.g., Water Invoice, Insurance Certificate"
+                placeholder="e.g., Solar Feed In, Insurance Certificate"
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
-              <p className="text-xs text-gray-500 mt-1">Enter the type of document (e.g., "Water Invoice")</p>
+              <p className="text-xs text-gray-500 mt-1">Enter the type of document (e.g., "Insurance Certificate")</p>
             </div>
 
             <div className="mb-6">

@@ -13,9 +13,11 @@ export default function EnhancedSolutionRangePage() {
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [expandedCategories, setExpandedCategories] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [expandedAgentSections, setExpandedAgentSections] = useState<{ aces: boolean; client: boolean }>({ aces: false, client: false });
 
   const filtered = useMemo(() => {
     return solutionOptions.filter((s) => {
+      if (!s.enabled) return false;
       const search = searchTerm.toLowerCase();
       return (
         (selectedCategory === "all" || s.category === selectedCategory) &&
@@ -169,6 +171,7 @@ export default function EnhancedSolutionRangePage() {
                         category === "ai_bots" ? "from-blue-400 to-blue-600" :
                         category === "renewable_energy" ? "from-yellow-400 to-orange-600" :
                         category === "resource_recovery" ? "from-teal-400 to-cyan-600" :
+                        category === "client_automation" ? "from-violet-400 to-purple-600" :
                         "from-purple-400 to-purple-600"
                       }`}></div>
                       <h2 className="font-bold text-lg text-gray-800">
@@ -468,17 +471,31 @@ export default function EnhancedSolutionRangePage() {
           </div>
           
           {selectedCategory === "ai_automation" ? (
-            <>
+            <div className="space-y-6">
               {/* ACES Agents Section */}
-              {filtered.filter(s => s.agentType === "aces").length > 0 && (
-                <div className="mb-8">
-                  <div className="flex items-center gap-2 mb-4">
-                    <div className="h-1 w-8 bg-gradient-to-r from-purple-500 to-purple-600 rounded"></div>
-                    <h3 className="text-lg font-bold text-gray-800">ACES Agents</h3>
-                    <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full font-medium">
-                      {filtered.filter(s => s.agentType === "aces").length} agent{filtered.filter(s => s.agentType === "aces").length > 1 ? 's' : ''}
-                    </span>
-                  </div>
+              {selectedCategory === "ai_automation" && filtered.filter(s => s.agentType === "aces").length > 0 && (
+                <div>
+                  <button
+                    onClick={() => setExpandedAgentSections(prev => ({ ...prev, aces: !prev.aces }))}
+                    className="w-full flex items-center justify-between gap-2 mb-4 p-3 bg-white rounded-lg border border-gray-200 hover:border-purple-300 hover:shadow-md transition-all"
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className="h-1 w-8 bg-gradient-to-r from-purple-500 to-purple-600 rounded"></div>
+                      <h3 className="text-lg font-bold text-gray-800">ACES Agents</h3>
+                      <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full font-medium">
+                        {filtered.filter(s => s.agentType === "aces").length} agent{filtered.filter(s => s.agentType === "aces").length > 1 ? 's' : ''}
+                      </span>
+                    </div>
+                    <svg
+                      className={`w-5 h-5 text-gray-400 transition-transform ${expandedAgentSections.aces ? "rotate-180" : ""}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {expandedAgentSections.aces && (
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                     {filtered.filter(s => s.agentType === "aces").map((s) => (
                       <div key={s.id}>
@@ -525,19 +542,34 @@ export default function EnhancedSolutionRangePage() {
                       </div>
                     ))}
                   </div>
+                  )}
                 </div>
               )}
               
               {/* Client Agents Section */}
-              {filtered.filter(s => s.agentType === "client").length > 0 && (
+              {selectedCategory === "ai_automation" && filtered.filter(s => s.agentType === "client").length > 0 && (
                 <div>
-                  <div className="flex items-center gap-2 mb-4">
-                    <div className="h-1 w-8 bg-gradient-to-r from-blue-500 to-blue-600 rounded"></div>
-                    <h3 className="text-lg font-bold text-gray-800">Client Agents</h3>
-                    <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full font-medium">
-                      {filtered.filter(s => s.agentType === "client").length} agent{filtered.filter(s => s.agentType === "client").length > 1 ? 's' : ''}
-                    </span>
-                  </div>
+                  <button
+                    onClick={() => setExpandedAgentSections(prev => ({ ...prev, client: !prev.client }))}
+                    className="w-full flex items-center justify-between gap-2 mb-4 p-3 bg-white rounded-lg border border-gray-200 hover:border-blue-300 hover:shadow-md transition-all"
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className="h-1 w-8 bg-gradient-to-r from-blue-500 to-blue-600 rounded"></div>
+                      <h3 className="text-lg font-bold text-gray-800">Client Agents</h3>
+                      <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full font-medium">
+                        {filtered.filter(s => s.agentType === "client").length} agent{filtered.filter(s => s.agentType === "client").length > 1 ? 's' : ''}
+                      </span>
+                    </div>
+                    <svg
+                      className={`w-5 h-5 text-gray-400 transition-transform ${expandedAgentSections.client ? "rotate-180" : ""}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {expandedAgentSections.client && (
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                     {filtered.filter(s => s.agentType === "client").map((s) => (
                       <div key={s.id}>
@@ -584,9 +616,10 @@ export default function EnhancedSolutionRangePage() {
                       </div>
                     ))}
                   </div>
+                  )}
                 </div>
               )}
-            </>
+            </div>
           ) : (
             <div className={viewMode === "grid" ? "grid grid-cols-1 lg:grid-cols-2 gap-4" : "space-y-3"}>
               {filtered.map((s) => (

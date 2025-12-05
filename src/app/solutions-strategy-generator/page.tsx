@@ -406,8 +406,8 @@ export default function IndividualStrategyEmailPage() {
     // Profile Reset
     {
       id: "electricity_ci_sme_align",
-      name: "Electricity C&I & SME Align Forward",
-      description: "Commercial & Industrial and SME electricity alignment solutions",
+      name: "Electricity C&I Forward Pricing",
+      description: "Commercial & Industrial Electricity Alignment Solutions",
       presentationId: "1im1Yl0AzuzJULk4_crwV1W7nOQV9XF7CvzRpkjRQV34",
       enabled: true,
       category: "profile_reset"
