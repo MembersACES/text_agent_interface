@@ -1687,7 +1687,15 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
         </div>
         {/* Utilities Section */}
         <div id="utilities" className="border-t pt-6">
-          <h2 className="text-xl font-bold text-gray-800 mb-3 text-center">Linked Utilities and Retailers</h2>
+          <div className="flex items-center justify-center gap-4 mb-3">
+            <h2 className="text-xl font-bold text-gray-800">Linked Utilities and Retailers</h2>
+            <button
+              onClick={() => window.open('/document-lodgement', '_blank')}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+            >
+              Upload Invoice or Data
+            </button>
+          </div>
           {Object.keys(linked).length === 0 && <div className="text-sm text-gray-400 mb-4">No linked utilities</div>}
           
           {/* Main Utilities Grid */}

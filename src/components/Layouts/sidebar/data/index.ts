@@ -8,69 +8,81 @@ export const ACES_BRAND = {
 
 export const NAV_DATA = [
   {
-    label: "Interface Pages",
+    label: "Quick Access",
     items: [
-      { title: "My Tasks", url: "/tasks", icon: Icons.TaskIcon, items: [] },
-      { title: "Agent", url: "/agent", items: [] },
-      
-      // Create sub-sections for grouping
+      { title: "Tasks", url: "/tasks", icon: Icons.TaskIcon },
+      { title: "Solution Range", url: "/solution-range", icon: Icons.FourCircle },
+      { title: "Client Profile", url: "/business-info", icon: Icons.User },
+      { title: "Invoice & Data Lodgement", url: "/document-lodgement", icon: Icons.Table },
+    ],
+  },
+  {
+    label: "Workflows",
+    items: [
       {
-        title: "Data & Information",
+        title: "Client Onboarding",
         items: [
-          { title: "Business Info", url: "/business-info" },
-          { title: "Utility Invoice Information", url: "/utility-invoice-info" },
-          { title: "Site Profiling", url: "/site-profiling" },
-        ],
-      },
-      {
-        title: "Document Management", 
-        items: [
-          { title: "Document Generation", url: "/document-generation" },
-          { title: "Invoice & Data Lodgement", url: "/document-lodgement" },
-          { title: "Signed Agreement Lodgement", url: "/signed-agreement-lodgement" },
-        ],
-      },
-      { title: "Solution Range", url: "/solution-range", items: [] },
-      {
-        title: "Client & Strategy",
-        items: [
-          { title: "New Client LOA Generation", url: "/new-client-loa" },
           { title: "Google Drive - New Client Creation", url: "/loa-upload" },
+          { title: "Site Profiling", url: "/site-profiling" },
+          { title: "New Client LOA Generation", url: "/new-client-loa" },
+        ],
+      },
+      {
+        title: "Utility Information",
+        items: [
+          { title: "C&I Electricity Invoice Information", url: "/utility-invoice-info/ci-electricity" },
+          { title: "SME Electricity Invoice Information", url: "/utility-invoice-info/sme-electricity" },
+          { title: "C&I Gas Invoice Information", url: "/utility-invoice-info/ci-gas" },
+          { title: "SME Gas Invoice Information", url: "/utility-invoice-info/sme-gas" },
+          { title: "Waste Invoice Information", url: "/utility-invoice-info/waste" },
+          { title: "Oil Invoice Information", url: "/utility-invoice-info/oil" },
+          { title: "Robot Cleaning Data", url: "/utility-invoice-info/robot" },
+        ],
+      },
+      {
+        title: "Strategy & Proposals",
+        items: [
           { title: "Initial Strategy Generator", url: "/initial-strategy-generator" },
           { title: "Solutions Strategy Generator", url: "/strategy-generator" },
           { title: "Canva Page", url: "/canva-pitch-deck" },
+        ],
+      },
+      {
+        title: "Documents",
+        items: [
+          { title: "Document Generation", url: "/document-generation" },
+          { title: "Signed Agreement Lodgement", url: "/signed-agreement-lodgement" },
+        ],
+      },
+      {
+        title: "Integrations",
+        items: [
           { title: "Airtable Integration", url: "/airtable-integration" },
+          { title: "Text Agent", url: "/agent" },
         ],
       },
     ],
   },
   {
-    label: "OTHERS",
+    label: "Development",
     items: [
       {
-        title: "MAIN MENU",
+        title: "Template Pages",
         items: [
-          { title: "Dashboard", url: "/dashboard", icon: Icons.HomeIcon, items: [] },
-          { title: "Calendar", url: "/calendar", icon: Icons.Calendar, items: [] },
-          {
-            title: "Forms",
-            icon: Icons.Alphabet,
-            items: [
-              { title: "Form Elements", url: "/forms/form-elements" },
-              { title: "Form Layout", url: "/forms/form-layout" },
-            ],
-          },
-          {
-            title: "Tables",
-            url: "/tables",
-            icon: Icons.Table,
-            items: [{ title: "Tables", url: "/tables" }],
-          },
-          { title: "Document Lodgement", url: "/document-lodgement", icon: Icons.Table, items: [] },
-          { title: "LOA Upload", url: "/loa-upload", icon: Icons.Alphabet, items: [] },
+          { title: "Dashboard", url: "/dashboard", icon: Icons.HomeIcon },
+          { title: "Calendar", url: "/calendar", icon: Icons.Calendar },
+          { title: "Tables", url: "/tables", icon: Icons.Table },
+          { title: "Charts", url: "/charts/basic-chart", icon: Icons.PieChart },
         ],
       },
-      { title: "Charts", icon: Icons.PieChart, items: [{ title: "Basic Chart", url: "/charts/basic-chart" }] },
+      {
+        title: "Forms",
+        icon: Icons.Alphabet,
+        items: [
+          { title: "Form Elements", url: "/forms/form-elements" },
+          { title: "Form Layout", url: "/forms/form-layout" },
+        ],
+      },
       {
         title: "UI Elements",
         icon: Icons.FourCircle,
@@ -79,7 +91,7 @@ export const NAV_DATA = [
           { title: "Buttons", url: "/ui-elements/buttons" },
         ],
       },
-      { title: "Authentication", icon: Icons.Authentication, items: [{ title: "Sign In", url: "/auth/sign-in" }] },
+      { title: "Authentication", url: "/auth/sign-in", icon: Icons.Authentication },
     ],
   },
 ];

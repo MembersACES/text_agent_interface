@@ -24,7 +24,7 @@ export function Sidebar() {
   useEffect(() => {
     NAV_DATA.some((section) =>
       section.items.some((item) =>
-        item.items.some((subItem) => {
+        item.items && item.items.some((subItem) => {
           if (subItem.url === pathname) {
             if (!expandedItems.includes(item.title)) {
               toggleExpanded(item.title);
@@ -95,7 +95,7 @@ export function Sidebar() {
                   <ul className="space-y-2">
                     {section.items.map((item) => (
                       <li key={item.title}>
-                        {item.items.length > 0 ? (
+                        {item.items && item.items.length > 0 ? (
                           <>
                             <MenuItem
                               isActive={item.items.some(({ url }) => url === pathname)}
