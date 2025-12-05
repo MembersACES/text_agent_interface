@@ -98,11 +98,17 @@ const DATA_UTILS: UtilityKey[] = [
   "EOI",
 ];
 
+type FileStatus = {
+  file: File;
+  status: "pending" | "uploading" | "success" | "error";
+  message: string;
+};
+
 export default function UtilityInvoiceLodgementPage() {
   const [category, setCategory] = useState<Category>("INVOICE");
   const [utilityType, setUtilityType] = useState<UtilityKey>(INVOICE_UTILS[0]);
-  const [file, setFile] = useState<File | null>(null);
-  const [result, setResult] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
+  const [fileStatuses, setFileStatuses] = useState<FileStatus[]>([]);
   const [loading, setLoading] = useState(false);
 
   // Options for current category
@@ -115,71 +121,142 @@ export default function UtilityInvoiceLodgementPage() {
   React.useEffect(() => {
     if (!options.includes(utilityType)) {
       setUtilityType(options[0]);
-      setFile(null);
-      setResult("");
+      setFiles([]);
+      setFileStatuses([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [category]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files?.[0]) setFile(e.target.files[0]);
+    if (e.target.files && e.target.files.length > 0) {
+      const selectedFiles = Array.from(e.target.files);
+      
+      // Validate file types
+      const validFiles: File[] = [];
+      const invalidFiles: string[] = [];
+      
+      selectedFiles.forEach((file) => {
+        if (category === "DATA") {
+          const ok = /\.(csv|xls|xlsx)$/i.test(file.name);
+          if (ok) {
+            validFiles.push(file);
+          } else {
+            invalidFiles.push(file.name);
+          }
+        } else {
+          const ok = /\.pdf$/i.test(file.name);
+          if (ok) {
+            validFiles.push(file);
+          } else {
+            invalidFiles.push(file.name);
+          }
+        }
+      });
+      
+      if (invalidFiles.length > 0) {
+        alert(`Invalid file types:\n${invalidFiles.join("\n")}\n\n${category === "DATA" ? "Please select .csv, .xls, or .xlsx files" : "Please select PDF files"}`);
+      }
+      
+      if (validFiles.length > 0) {
+        setFiles((prev) => [...prev, ...validFiles]);
+        setFileStatuses((prev) => [
+          ...prev,
+          ...validFiles.map((file) => ({
+            file,
+            status: "pending" as const,
+            message: "",
+          })),
+        ]);
+      }
+    }
+  };
+
+  const removeFile = (index: number) => {
+    setFiles((prev) => prev.filter((_, i) => i !== index));
+    setFileStatuses((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleSubmit = async () => {
-    if (!file) {
-      setResult("No file selected.");
+    if (files.length === 0) {
+      alert("No files selected.");
       return;
     }
 
-    // Lightweight guard by category
-    if (category === "DATA") {
-      const ok = /\.(csv|xls|xlsx)$/i.test(file.name);
-      if (!ok) {
-        setResult("Please upload a .csv, .xls, or .xlsx file for Data uploads.");
-        return;
-      }
-    } else {
-      const ok = /\.pdf$/i.test(file.name);
-      if (!ok) {
-        setResult("Please upload a PDF for Invoice uploads.");
-        return;
-      }
-    }
-
     setLoading(true);
-    setResult("");
-
-    const formData = new FormData();
-    formData.append("file", file);
-
     const endpoint = API_ENDPOINTS[utilityType];
 
-    try {
-      const res = await fetch(endpoint, {
-        method: "POST",
-        body: formData,
+    // Process each file individually
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      
+      // Update status to uploading
+      setFileStatuses((prev) => {
+        const updated = [...prev];
+        updated[i] = { ...updated[i], status: "uploading", message: "Uploading..." };
+        return updated;
       });
 
-      let data: any;
-      try {
-        data = await res.json();
-      } catch {
-        const text = await res.text();
-        setResult(`❌ Error parsing JSON: ${res.status} ${res.statusText}\n${text}`);
-        setLoading(false);
-        return;
-      }
+      const formData = new FormData();
+      formData.append("file", file);
 
-      if (res.ok) {
-        setResult(`✅ Upload successful: ${data.message || "No message returned."}`);
-      } else {
-        setResult(`❌ Upload failed: ${data.message || res.statusText}`);
+      try {
+        const res = await fetch(endpoint, {
+          method: "POST",
+          body: formData,
+        });
+
+        let data: any;
+        try {
+          data = await res.json();
+        } catch {
+          const text = await res.text();
+          setFileStatuses((prev) => {
+            const updated = [...prev];
+            updated[i] = {
+              ...updated[i],
+              status: "error",
+              message: `Error parsing JSON: ${res.status} ${res.statusText}\n${text}`,
+            };
+            return updated;
+          });
+          continue;
+        }
+
+        if (res.ok) {
+          setFileStatuses((prev) => {
+            const updated = [...prev];
+            updated[i] = {
+              ...updated[i],
+              status: "success",
+              message: data.message || "Upload successful",
+            };
+            return updated;
+          });
+        } else {
+          setFileStatuses((prev) => {
+            const updated = [...prev];
+            updated[i] = {
+              ...updated[i],
+              status: "error",
+              message: data.message || res.statusText,
+            };
+            return updated;
+          });
+        }
+      } catch (error: any) {
+        setFileStatuses((prev) => {
+          const updated = [...prev];
+          updated[i] = {
+            ...updated[i],
+            status: "error",
+            message: error.message || "Unknown error",
+          };
+          return updated;
+        });
       }
-    } catch (error: any) {
-      setResult(`❌ Error: ${error.message}`);
-    } finally {
-      setLoading(false);
     }
+
+    setLoading(false);
   };
 
   const currentAccept = ACCEPTS[utilityType];
@@ -199,7 +276,11 @@ export default function UtilityInvoiceLodgementPage() {
               name="category"
               value="INVOICE"
               checked={category === "INVOICE"}
-              onChange={() => setCategory("INVOICE")}
+              onChange={() => {
+                setCategory("INVOICE");
+                setFiles([]);
+                setFileStatuses([]);
+              }}
               className="h-4 w-4"
             />
             <span>Invoice</span>
@@ -210,7 +291,11 @@ export default function UtilityInvoiceLodgementPage() {
               name="category"
               value="DATA"
               checked={category === "DATA"}
-              onChange={() => setCategory("DATA")}
+              onChange={() => {
+                setCategory("DATA");
+                setFiles([]);
+                setFileStatuses([]);
+              }}
               className="h-4 w-4"
             />
             <span>Data</span>
@@ -225,8 +310,8 @@ export default function UtilityInvoiceLodgementPage() {
           value={utilityType}
           onChange={(e) => {
             setUtilityType(e.target.value as UtilityKey);
-            setFile(null);
-            setResult("");
+            setFiles([]);
+            setFileStatuses([]);
           }}
           className="w-full px-3 py-2 border border-gray-300 rounded"
         >
@@ -240,27 +325,86 @@ export default function UtilityInvoiceLodgementPage() {
 
       {/* File upload */}
       <div className="mb-4">
-        <label className="block font-medium mb-1">{currentLabel}</label>
-        <input type="file" accept={currentAccept} onChange={handleFileChange} />
+        <label className="block font-medium mb-1">{currentLabel} (Multiple files allowed)</label>
+        <input 
+          type="file" 
+          accept={currentAccept} 
+          onChange={handleFileChange}
+          multiple
+          className="w-full"
+        />
         <p className="text-xs text-gray-500 mt-1">
           {category === "DATA"
-            ? "Accepted: .csv, .xls, .xlsx"
-            : "Accepted: .pdf"}
+            ? "Accepted: .csv, .xls, .xlsx (You can select multiple files)"
+            : "Accepted: .pdf (You can select multiple files)"}
         </p>
       </div>
+
+      {/* File list */}
+      {files.length > 0 && (
+        <div className="mb-4">
+          <label className="block font-medium mb-2">Selected Files ({files.length})</label>
+          <div className="space-y-2 max-h-60 overflow-y-auto border border-gray-200 rounded p-2">
+            {files.map((file, index) => {
+              const status = fileStatuses[index];
+              const statusColor = 
+                status?.status === "success" ? "text-green-600" :
+                status?.status === "error" ? "text-red-600" :
+                status?.status === "uploading" ? "text-blue-600" :
+                "text-gray-600";
+              
+              return (
+                <div 
+                  key={`${file.name}-${index}`} 
+                  className="flex items-center justify-between p-2 bg-gray-50 rounded"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-gray-700 truncate">
+                      {file.name}
+                    </div>
+                    {status && status.message && (
+                      <div className={`text-xs mt-1 ${statusColor}`}>
+                        {status.status === "uploading" && "⏳ "}
+                        {status.status === "success" && "✅ "}
+                        {status.status === "error" && "❌ "}
+                        {status.message}
+                      </div>
+                    )}
+                  </div>
+                  {!loading && (
+                    <button
+                      onClick={() => removeFile(index)}
+                      className="ml-2 text-red-600 hover:text-red-800 text-sm font-medium"
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Submit */}
       <button
         onClick={handleSubmit}
-        disabled={loading}
-        className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+        disabled={loading || files.length === 0}
+        className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
       >
-        {loading ? "Uploading..." : "Submit"}
+        {loading ? `Uploading... (${fileStatuses.filter(s => s.status === "uploading").length}/${files.length})` : `Submit ${files.length > 0 ? `(${files.length} file${files.length > 1 ? 's' : ''})` : ''}`}
       </button>
 
-      {/* Result */}
-      {result && (
-        <div className="mt-4 whitespace-pre-wrap text-sm text-gray-700">{result}</div>
+      {/* Summary */}
+      {fileStatuses.length > 0 && !loading && (
+        <div className="mt-4 p-3 bg-gray-50 rounded">
+          <div className="text-sm font-medium mb-2">Upload Summary:</div>
+          <div className="text-xs text-gray-600">
+            ✅ Successful: {fileStatuses.filter(s => s.status === "success").length} | 
+            ❌ Failed: {fileStatuses.filter(s => s.status === "error").length} | 
+            ⏳ Pending: {fileStatuses.filter(s => s.status === "pending").length}
+          </div>
+        </div>
       )}
     </div>
   );

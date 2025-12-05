@@ -8,26 +8,35 @@ export const ACES_BRAND = {
 
 export const NAV_DATA = [
   {
-    label: "Interface Pages",
+    label: "Quick Access",
     items: [
-      { title: "My Tasks", url: "/tasks", icon: Icons.TaskIcon },
-      { title: "Text Agent", url: "/agent" },
-      { title: "Solution Range", url: "/solution-range" },
-      { title: "Client Profile", url: "/business-info" },
-      
+      { title: "Tasks", url: "/tasks", icon: Icons.TaskIcon },
+      { title: "Solution Range", url: "/solution-range", icon: Icons.FourCircle },
+      { title: "Client Profile", url: "/business-info", icon: Icons.User },
+      { title: "Invoice & Data Lodgement", url: "/document-lodgement", icon: Icons.Table },
+    ],
+  },
+  {
+    label: "Workflows",
+    items: [
       {
         title: "Client Onboarding",
         items: [
-          { title: "New Client LOA Generation", url: "/new-client-loa" },
           { title: "Google Drive - New Client Creation", url: "/loa-upload" },
+          { title: "Site Profiling", url: "/site-profiling" },
+          { title: "New Client LOA Generation", url: "/new-client-loa" },
         ],
       },
       {
-        title: "Site & Data Collection",
+        title: "Utility Information",
         items: [
-          { title: "Utility Invoice Information", url: "/utility-invoice-info" },
-          { title: "Invoice & Data Lodgement", url: "/document-lodgement" },
-          { title: "Site Profiling", url: "/site-profiling" },
+          { title: "C&I Electricity Invoice Information", url: "/utility-invoice-info/ci-electricity" },
+          { title: "SME Electricity Invoice Information", url: "/utility-invoice-info/sme-electricity" },
+          { title: "C&I Gas Invoice Information", url: "/utility-invoice-info/ci-gas" },
+          { title: "SME Gas Invoice Information", url: "/utility-invoice-info/sme-gas" },
+          { title: "Waste Invoice Information", url: "/utility-invoice-info/waste" },
+          { title: "Oil Invoice Information", url: "/utility-invoice-info/oil" },
+          { title: "Robot Cleaning Data", url: "/utility-invoice-info/robot" },
         ],
       },
       {
@@ -39,7 +48,7 @@ export const NAV_DATA = [
         ],
       },
       {
-        title: "Documents & Lodgement", 
+        title: "Documents",
         items: [
           { title: "Document Generation", url: "/document-generation" },
           { title: "Signed Agreement Lodgement", url: "/signed-agreement-lodgement" },
@@ -49,6 +58,7 @@ export const NAV_DATA = [
         title: "Integrations",
         items: [
           { title: "Airtable Integration", url: "/airtable-integration" },
+          { title: "Text Agent", url: "/agent" },
         ],
       },
     ],
