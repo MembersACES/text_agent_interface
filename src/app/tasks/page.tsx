@@ -91,7 +91,7 @@ export default function TasksPage() {
   const [historyGroups, setHistoryGroups] = useState<HistoryGroup[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
-  const [historyFilter, setHistoryFilter] = useState<string>("all"); // "all", "created", "updated", "deleted"
+  const [historyFilter, setHistoryFilter] = useState<string>("all");
   
   // Pagination state
   const [historyPage, setHistoryPage] = useState(1);
@@ -125,7 +125,6 @@ export default function TasksPage() {
       setLoading(true);
       setError(null);
       
-      // Determine endpoint based on filter
       let endpoint = "";
       if (filter === "my") {
         endpoint = "/api/tasks/my";
@@ -210,7 +209,6 @@ export default function TasksPage() {
     }
   };
 
-  // Fetch users when modal opens
   useEffect(() => {
     if ((showCreateModal || showEditModal) && token) {
       fetchUsers();
@@ -235,7 +233,6 @@ export default function TasksPage() {
       setLoadingHistory(true);
       setHistoryError(null);
       
-      // Build query parameters
       const params = new URLSearchParams({
         page: page.toString(),
         page_size: pageSize.toString(),
@@ -266,14 +263,11 @@ export default function TasksPage() {
 
       const data: HistoryResponse = await response.json();
       
-      // Handle batched groups from backend
       if (data.groups && Array.isArray(data.groups)) {
         setHistoryGroups(data.groups);
-        // Flatten groups for filtering if needed
         const allItems = data.groups.flatMap(group => group.items);
         setHistory(allItems);
       } else if (data.items && Array.isArray(data.items)) {
-        // Fallback: if backend returns flat items, group them client-side
         setHistory(data.items);
         const grouped = groupHistoryByDate(data.items);
         setHistoryGroups(
@@ -283,7 +277,6 @@ export default function TasksPage() {
           }))
         );
       } else {
-        // Handle legacy format (array directly)
         const items = Array.isArray(data) ? data : [];
         setHistory(items);
         const grouped = groupHistoryByDate(items);
@@ -295,11 +288,9 @@ export default function TasksPage() {
         );
       }
       
-      // Set pagination info
       if (data.pagination) {
         setHistoryPagination(data.pagination);
       } else {
-        // Default pagination if not provided
         setHistoryPagination({
           page,
           page_size: pageSize,
@@ -316,7 +307,6 @@ export default function TasksPage() {
     }
   };
 
-  // Open history modal
   const openHistoryModal = (taskId: number) => {
     setHistoryTaskId(taskId);
     setShowHistoryModal(true);
@@ -325,12 +315,10 @@ export default function TasksPage() {
     fetchHistory(taskId, 1, historyPageSize, "all");
   };
 
-  // Handle pagination
   const handleHistoryPageChange = (newPage: number) => {
     if (historyTaskId) {
       setHistoryPage(newPage);
       fetchHistory(historyTaskId, newPage, historyPageSize, historyFilter);
-      // Scroll to top of history content
       const historyContent = document.querySelector('[data-history-content]');
       if (historyContent) {
         historyContent.scrollTop = 0;
@@ -338,7 +326,6 @@ export default function TasksPage() {
     }
   };
 
-  // Handle filter change
   const handleHistoryFilterChange = (newFilter: string) => {
     setHistoryFilter(newFilter);
     setHistoryPage(1);
@@ -347,7 +334,6 @@ export default function TasksPage() {
     }
   };
 
-  // Group history by date (fallback for client-side grouping)
   const groupHistoryByDate = (items: TaskHistory[]): { [key: string]: TaskHistory[] } => {
     const grouped: { [key: string]: TaskHistory[] } = {};
     
@@ -368,7 +354,6 @@ export default function TasksPage() {
     return grouped;
   };
 
-  // Open edit modal
   const openEditModal = (task: Task) => {
     setEditingTask(task);
     setFormData({
@@ -381,7 +366,6 @@ export default function TasksPage() {
     setShowEditModal(true);
   };
 
-  // Get user display name (name first, fallback to email)
   const getUserDisplayName = (email: string): string => {
     const user = users.find(u => u.email === email);
     if (user) {
@@ -390,12 +374,9 @@ export default function TasksPage() {
     return email;
   };
 
-  // Format action name to human-readable
   const formatActionName = (action: string): string => {
-    // Handle common action patterns
     const actionLower = action.toLowerCase();
     
-    // Special cases
     if (actionLower.includes("task_created") || actionLower === "created") {
       return "Task Created";
     }
@@ -406,25 +387,21 @@ export default function TasksPage() {
       return "Multiple Fields Updated";
     }
     
-    // Convert snake_case or kebab-case to Title Case
     return action
       .split(/[_\-\s]+/)
       .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
       .join(" ");
   };
 
-  // Format field name to human-readable
   const formatFieldName = (field: string): string => {
     if (!field) return "";
     
-    // Convert snake_case to Title Case
     return field
       .split(/[_\-\s]+/)
       .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
       .join(" ");
   };
 
-  // Format timestamp to Melbourne timezone
   const formatMelbourneTime = (dateString: string): string => {
     try {
       const date = new Date(dateString);
@@ -442,16 +419,13 @@ export default function TasksPage() {
     }
   };
 
-  // Check if items are batched (within 5 seconds of each other)
   const areItemsBatched = (items: TaskHistory[]): boolean => {
     if (items.length <= 1) return false;
     
-    // Sort by created_at
     const sorted = [...items].sort((a, b) => 
       new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
     );
     
-    // Check if all items are within 5 seconds of the first item
     const firstTime = new Date(sorted[0].created_at).getTime();
     const fiveSeconds = 5000;
     
@@ -461,11 +435,9 @@ export default function TasksPage() {
     });
   };
 
-  // Group batched items together
   const groupBatchedItems = (items: TaskHistory[]): (TaskHistory | TaskHistory[])[] => {
     if (items.length === 0) return [];
     
-    // Sort in ascending order (oldest first) for batching logic
     const sorted = [...items].sort((a, b) => 
       new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
     );
@@ -478,11 +450,9 @@ export default function TasksPage() {
       const currTime = new Date(sorted[i].created_at).getTime();
       const timeDiff = currTime - prevTime;
       
-      // If within 5 seconds and same user, add to batch
       if (timeDiff <= 5000 && sorted[i].user_email === sorted[i - 1].user_email) {
         currentBatch.push(sorted[i]);
       } else {
-        // Save current batch and start new one
         if (currentBatch.length > 1) {
           result.push(currentBatch);
         } else {
@@ -492,18 +462,15 @@ export default function TasksPage() {
       }
     }
     
-    // Add final batch
     if (currentBatch.length > 1) {
       result.push(currentBatch);
     } else {
       result.push(currentBatch[0]);
     }
     
-    // Reverse to show newest first
     return result.reverse();
   };
 
-  // Mark task as completed
   const handleMarkCompleted = async (taskId: number) => {
     if (!token) {
       setError("Authentication required. Please log in.");
@@ -530,7 +497,6 @@ export default function TasksPage() {
         throw new Error(errorData.detail || errorData.message || "Failed to update task status");
       }
 
-      // Refresh tasks list
       await fetchTasks();
     } catch (err: any) {
       console.error("Error updating task status:", err);
@@ -538,7 +504,6 @@ export default function TasksPage() {
     }
   };
 
-  // Handle delete task
   const handleDeleteTask = async () => {
     if (!token || !deletingTask) {
       setError("Authentication required or task not selected.");
@@ -584,7 +549,6 @@ export default function TasksPage() {
         throw new Error(errorData.detail || errorData.message || "Failed to delete task");
       }
 
-      // Close modal and refresh tasks list
       setShowDeleteConfirm(false);
       setDeletingTask(null);
       await fetchTasks();
@@ -596,13 +560,11 @@ export default function TasksPage() {
     }
   };
 
-  // Open delete confirmation
   const openDeleteConfirm = (task: Task) => {
     setDeletingTask(task);
     setShowDeleteConfirm(true);
   };
 
-  // Handle create task form submission
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -611,7 +573,6 @@ export default function TasksPage() {
       return;
     }
 
-    // Validation
     setAssignedToError(null);
     if (!formData.title.trim()) {
       setError("Title is required");
@@ -659,7 +620,6 @@ export default function TasksPage() {
         throw new Error(errorData.detail || errorData.message || "Failed to create task");
       }
 
-      // Reset form and close modal
       setFormData({
         title: "",
         description: "",
@@ -670,7 +630,6 @@ export default function TasksPage() {
       setAssignedToError(null);
       setShowCreateModal(false);
       
-      // Refresh tasks list
       await fetchTasks();
     } catch (err: any) {
       console.error("Error creating task:", err);
@@ -680,7 +639,6 @@ export default function TasksPage() {
     }
   };
 
-  // Handle edit task form submission
   const handleEditTask = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -689,7 +647,6 @@ export default function TasksPage() {
       return;
     }
 
-    // Validation
     setAssignedToError(null);
     if (!formData.title.trim()) {
       setError("Title is required");
@@ -745,7 +702,6 @@ export default function TasksPage() {
         throw new Error(errorData.detail || errorData.message || "Failed to update task");
       }
 
-      // Reset form and close modal
       setFormData({
         title: "",
         description: "",
@@ -757,7 +713,6 @@ export default function TasksPage() {
       setEditingTask(null);
       setShowEditModal(false);
       
-      // Refresh tasks list and history if history modal is open
       await fetchTasks();
       if (historyTaskId === editingTask.id) {
         await fetchHistory(editingTask.id, historyPage, historyPageSize, historyFilter);
@@ -770,19 +725,15 @@ export default function TasksPage() {
     }
   };
 
-  // Handle sorting
   const handleSort = (field: SortField) => {
     if (sortField === field) {
-      // Toggle sort order if clicking the same field
       setSortOrder(sortOrder === "asc" ? "desc" : "asc");
     } else {
-      // Set new field and default to ascending
       setSortField(field);
       setSortOrder("asc");
     }
   };
 
-  // Sort tasks based on current sort state
   const getSortedTasks = (): Task[] => {
     if (!sortField) return tasks;
 
@@ -821,7 +772,6 @@ export default function TasksPage() {
     });
   };
 
-  // Render sort indicator
   const SortIndicator = ({ field }: { field: SortField }) => {
     if (sortField !== field) {
       return (
@@ -861,21 +811,17 @@ export default function TasksPage() {
     }
   };
 
-  // Format value for history display - formats dates to dd/mm/yyyy
   const formatHistoryValue = (value: string | null | undefined): string => {
     if (!value || value === "(none)") return value ?? "(none)";
     
-    // Check if value looks like a date (ISO format, YYYY-MM-DD, etc.)
-    const datePattern = /^\d{4}-\d{2}-\d{2}/; // Matches YYYY-MM-DD
+    const datePattern = /^\d{4}-\d{2}-\d{2}/;
     if (datePattern.test(value)) {
       try {
         const date = new Date(value);
-        // Check if it's a valid date
         if (!isNaN(date.getTime())) {
           return formatDate(value);
         }
       } catch {
-        // Not a valid date, return as-is
       }
     }
     
@@ -901,13 +847,13 @@ export default function TasksPage() {
   const getStatusBadgeClass = (status: string) => {
     switch (status.toLowerCase()) {
       case "completed":
-        return "bg-green-100 text-green-800";
+        return "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400";
       case "in_progress":
-        return "bg-blue-100 text-blue-800";
+        return "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400";
       case "pending":
-        return "bg-yellow-100 text-yellow-800";
+        return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400";
       default:
-        return "bg-gray-100 text-gray-800";
+        return "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300";
     }
   };
 
@@ -968,15 +914,16 @@ export default function TasksPage() {
           </div>
         )}
 
+        {/* IMPROVED COMPACT TABLE */}
         {!loading && tasks.length > 0 && (
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+          <div className="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden shadow-sm">
             <div className="overflow-x-auto">
-              <table className="w-full">
+              <table className="w-full table-fixed">
                 <thead className="bg-gray-50 dark:bg-gray-800">
                   <tr>
                     <th 
                       onClick={() => handleSort("title")}
-                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors select-none"
+                      className="w-[25%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors select-none"
                     >
                       <div className="flex items-center">
                         Title
@@ -985,7 +932,7 @@ export default function TasksPage() {
                     </th>
                     <th 
                       onClick={() => handleSort("description")}
-                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors select-none"
+                      className="w-[30%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors select-none"
                     >
                       <div className="flex items-center">
                         Description
@@ -994,104 +941,111 @@ export default function TasksPage() {
                     </th>
                     <th 
                       onClick={() => handleSort("assigned_to")}
-                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors select-none"
+                      className="w-[15%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors select-none"
                     >
                       <div className="flex items-center">
-                        Assigned To
+                        Assigned
                         <SortIndicator field="assigned_to" />
                       </div>
                     </th>
                     <th 
                       onClick={() => handleSort("due_date")}
-                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors select-none"
+                      className="w-[10%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors select-none"
                     >
                       <div className="flex items-center">
-                        Due Date
+                        Due
                         <SortIndicator field="due_date" />
                       </div>
                     </th>
                     <th 
                       onClick={() => handleSort("status")}
-                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors select-none"
+                      className="w-[10%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors select-none"
                     >
                       <div className="flex items-center">
                         Status
                         <SortIndicator field="status" />
                       </div>
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    <th className="w-[10%] px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                       Actions
                     </th>
                   </tr>
                 </thead>
                 <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
                   {sortedTasks.map((task) => (
-                    <tr key={task.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900 dark:text-white">
+                    <tr key={task.id} className="hover:bg-gray-50 dark:hover:bg-gray-800 group">
+                      <td className="px-4 py-3">
+                        <div className="text-sm font-medium text-gray-900 dark:text-white truncate" title={task.title}>
                           {task.title}
                         </div>
                       </td>
-                      <td className="px-6 py-4">
-                        <div className="text-sm text-gray-500 dark:text-gray-400 max-w-md truncate">
+                      <td className="px-4 py-3">
+                        <div className="text-sm text-gray-500 dark:text-gray-400 truncate" title={task.description || "No description"}>
                           {task.description || "No description"}
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900 dark:text-white">
-                          {getUserDisplayName(task.assigned_to)}
+                      <td className="px-4 py-3">
+                        <div className="text-sm text-gray-900 dark:text-white truncate" title={getUserDisplayName(task.assigned_to)}>
+                          {getUserDisplayName(task.assigned_to).split('@')[0]}
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-4 py-3 whitespace-nowrap">
                         <div className="text-sm text-gray-900 dark:text-white">
                           {formatDate(task.due_date)}
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-4 py-3 whitespace-nowrap">
                         <span
                           className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusBadgeClass(
                             task.status
                           )}`}
+                          title={task.status}
                         >
-                          {task.status}
+                          {task.status === "completed" ? "✓" : task.status === "in_progress" ? "..." : "○"}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <div className="flex items-center gap-3">
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="flex items-center justify-center gap-1">
                           {canEdit(task) && (
                             <button
                               onClick={() => openEditModal(task)}
-                              className="text-blue-600 hover:text-blue-800 transition-colors"
+                              className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 transition-colors p-1 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20"
                               title="Edit task"
                             >
-                              Edit
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
                             </button>
                           )}
                           <button
                             onClick={() => openHistoryModal(task.id)}
-                            className="text-gray-600 hover:text-gray-800 transition-colors"
+                            className="text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-300 transition-colors p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
                             title="View history"
                           >
-                            History
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
                           </button>
                           {task.status.toLowerCase() !== "completed" && (
                             <button
                               onClick={() => handleMarkCompleted(task.id)}
-                              className="text-primary hover:text-primary/80 transition-colors"
+                              className="text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300 transition-colors p-1 rounded hover:bg-green-50 dark:hover:bg-green-900/20"
+                              title="Mark as completed"
                             >
-                              Mark as completed
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
                             </button>
-                          )}
-                          {task.status.toLowerCase() === "completed" && (
-                            <span className="text-gray-400">Completed</span>
                           )}
                           {canEdit(task) && (
                             <button
                               onClick={() => openDeleteConfirm(task)}
-                              className="text-red-600 hover:text-red-800 transition-colors"
+                              className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 transition-colors p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20"
                               title="Delete task"
                             >
-                              Delete
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
                             </button>
                           )}
                         </div>
@@ -1601,7 +1555,6 @@ export default function TasksPage() {
                   </div>
                 ) : (
                   <>
-                    {/* Render batched groups from backend */}
                     {historyGroups.length > 0 ? (
                       <ul className="space-y-2">
                         {[...historyGroups].reverse().map((group, groupIndex) => (
@@ -1615,11 +1568,9 @@ export default function TasksPage() {
                               {groupBatchedItems([...group.items].sort((a, b) => 
                                 new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
                               )).map((itemOrBatch, idx) => {
-                                // Handle batched items
                                 if (Array.isArray(itemOrBatch)) {
                                   const batch = itemOrBatch;
                                   const firstItem = batch[0];
-                                  // Filter items that have fields
                                   const itemsWithFields = batch.filter(h => h.field);
                                   const hasMultipleFields = itemsWithFields.length > 1;
                                   
@@ -1669,7 +1620,6 @@ export default function TasksPage() {
                                   );
                                 }
                                 
-                                // Handle single item
                                 const h = itemOrBatch;
                                 const fieldsArray = (h as any).fields;
 
@@ -1684,7 +1634,6 @@ export default function TasksPage() {
                                           {formatActionName(h.action)}
                                         </div>
 
-                                        {/* NEW FIX — SUPPORT fields[] FROM BACKEND */}
                                         {Array.isArray(fieldsArray) && fieldsArray.length > 0 ? (
                                           fieldsArray.map((f: any, idx: number) => (
                                             <div key={idx} className="text-sm text-gray-700 dark:text-gray-300 mb-1">
@@ -1726,14 +1675,12 @@ export default function TasksPage() {
                                     </div>
                                   </li>
                                 );
-
                               })}
                             </ul>
                           </li>
                         ))}
                       </ul>
                     ) : (
-                      /* Fallback: client-side grouping if backend doesn't provide groups */
                       (() => {
                         const groupedHistory = groupHistoryByDate(history);
                         const dates = Object.keys(groupedHistory).sort((a, b) => {
@@ -1751,11 +1698,9 @@ export default function TasksPage() {
                                 </div>
                                 <ul className="space-y-1.5">
                                   {groupBatchedItems(groupedHistory[date]).map((itemOrBatch, idx) => {
-                                    // Handle batched items
                                     if (Array.isArray(itemOrBatch)) {
                                       const batch = itemOrBatch;
                                       const firstItem = batch[0];
-                                      // Filter items that have fields
                                       const itemsWithFields = batch.filter(h => h.field);
                                       const hasMultipleFields = itemsWithFields.length > 1;
                                       
@@ -1805,7 +1750,6 @@ export default function TasksPage() {
                                       );
                                     }
                                     
-                                    // Handle single item
                                     const h = itemOrBatch;
                                     const fieldsArray = (h as any).fields;
 
@@ -1820,7 +1764,6 @@ export default function TasksPage() {
                                               {formatActionName(h.action)}
                                             </div>
 
-                                            {/* NEW FIX — SUPPORT fields[] FROM BACKEND */}
                                             {Array.isArray(fieldsArray) && fieldsArray.length > 0 ? (
                                               fieldsArray.map((f: any, idx: number) => (
                                                 <div key={idx} className="text-sm text-gray-700 dark:text-gray-300 mb-1">
@@ -1862,7 +1805,6 @@ export default function TasksPage() {
                                         </div>
                                       </li>
                                     );
-
                                   })}
                                 </ul>
                               </li>
