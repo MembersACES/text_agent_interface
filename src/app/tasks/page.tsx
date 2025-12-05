@@ -80,6 +80,9 @@ export default function TasksPage() {
   const [sortField, setSortField] = useState<SortField | null>(null);
   const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
   
+  // Tab state for Option 2
+  const [activeTab, setActiveTab] = useState<'active' | 'due-soon' | 'completed' | 'all'>('active');
+  
   // User management state
   const [users, setUsers] = useState<User[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
@@ -772,6 +775,72 @@ export default function TasksPage() {
     });
   };
 
+  // OPTION 2: Tab-based filtering functions
+  const getTasksByTab = (): Task[] => {
+    const now = new Date();
+    const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    
+    const sorted = getSortedTasks();
+    
+    switch (activeTab) {
+      case 'active':
+        return sorted.filter(t => 
+          t.status.toLowerCase() !== 'completed'
+        ).sort((a, b) => {
+          // Sort by due date, earliest first
+          if (!a.due_date) return 1;
+          if (!b.due_date) return -1;
+          return new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
+        });
+        
+      case 'due-soon':
+        return sorted.filter(t => {
+          if (t.status.toLowerCase() === 'completed') return false;
+          if (!t.due_date) return false;
+          const dueDate = new Date(t.due_date);
+          return dueDate >= now && dueDate <= sevenDaysFromNow;
+        }).sort((a, b) => 
+          new Date(a.due_date).getTime() - new Date(b.due_date).getTime()
+        );
+        
+      case 'completed':
+        return sorted.filter(t => 
+          t.status.toLowerCase() === 'completed'
+        ).sort((a, b) => {
+          // Sort completed by due date, most recent first
+          if (!a.due_date) return 1;
+          if (!b.due_date) return -1;
+          return new Date(b.due_date).getTime() - new Date(a.due_date).getTime();
+        });
+        
+      case 'all':
+      default:
+        return sorted;
+    }
+  };
+
+  // Get count for each tab
+  const getTabCount = (tab: typeof activeTab): number => {
+    const now = new Date();
+    const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    
+    switch (tab) {
+      case 'active':
+        return tasks.filter(t => t.status.toLowerCase() !== 'completed').length;
+      case 'due-soon':
+        return tasks.filter(t => {
+          if (t.status.toLowerCase() === 'completed') return false;
+          if (!t.due_date) return false;
+          const dueDate = new Date(t.due_date);
+          return dueDate >= now && dueDate <= sevenDaysFromNow;
+        }).length;
+      case 'completed':
+        return tasks.filter(t => t.status.toLowerCase() === 'completed').length;
+      case 'all':
+        return tasks.length;
+    }
+  };
+
   const SortIndicator = ({ field }: { field: SortField }) => {
     if (sortField !== field) {
       return (
@@ -914,148 +983,263 @@ export default function TasksPage() {
           </div>
         )}
 
-        {/* IMPROVED COMPACT TABLE */}
+        {/* OPTION 2: TAB-BASED VIEW */}
         {!loading && tasks.length > 0 && (
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden shadow-sm">
-            <div className="overflow-x-auto">
-              <table className="w-full table-fixed">
-                <thead className="bg-gray-50 dark:bg-gray-800">
-                  <tr>
-                    <th 
-                      onClick={() => handleSort("title")}
-                      className="w-[25%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors select-none"
-                    >
-                      <div className="flex items-center">
-                        Title
-                        <SortIndicator field="title" />
-                      </div>
-                    </th>
-                    <th 
-                      onClick={() => handleSort("description")}
-                      className="w-[30%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors select-none"
-                    >
-                      <div className="flex items-center">
-                        Description
-                        <SortIndicator field="description" />
-                      </div>
-                    </th>
-                    <th 
-                      onClick={() => handleSort("assigned_to")}
-                      className="w-[15%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors select-none"
-                    >
-                      <div className="flex items-center">
-                        Assigned
-                        <SortIndicator field="assigned_to" />
-                      </div>
-                    </th>
-                    <th 
-                      onClick={() => handleSort("due_date")}
-                      className="w-[10%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors select-none"
-                    >
-                      <div className="flex items-center">
-                        Due
-                        <SortIndicator field="due_date" />
-                      </div>
-                    </th>
-                    <th 
-                      onClick={() => handleSort("status")}
-                      className="w-[10%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors select-none"
-                    >
-                      <div className="flex items-center">
-                        Status
-                        <SortIndicator field="status" />
-                      </div>
-                    </th>
-                    <th className="w-[10%] px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
-                  {sortedTasks.map((task) => (
-                    <tr key={task.id} className="hover:bg-gray-50 dark:hover:bg-gray-800 group">
-                      <td className="px-4 py-3">
-                        <div className="text-sm font-medium text-gray-900 dark:text-white truncate" title={task.title}>
-                          {task.title}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="text-sm text-gray-500 dark:text-gray-400 truncate" title={task.description || "No description"}>
-                          {task.description || "No description"}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="text-sm text-gray-900 dark:text-white truncate" title={getUserDisplayName(task.assigned_to)}>
-                          {getUserDisplayName(task.assigned_to).split('@')[0]}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <div className="text-sm text-gray-900 dark:text-white">
-                          {formatDate(task.due_date)}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <span
-                          className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusBadgeClass(
-                            task.status
-                          )}`}
-                          title={task.status}
-                        >
-                          {task.status === "completed" ? "✓" : task.status === "in_progress" ? "..." : "○"}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <div className="flex items-center justify-center gap-1">
-                          {canEdit(task) && (
-                            <button
-                              onClick={() => openEditModal(task)}
-                              className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 transition-colors p-1 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20"
-                              title="Edit task"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                              </svg>
-                            </button>
-                          )}
-                          <button
-                            onClick={() => openHistoryModal(task.id)}
-                            className="text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-300 transition-colors p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
-                            title="View history"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                          </button>
-                          {task.status.toLowerCase() !== "completed" && (
-                            <button
-                              onClick={() => handleMarkCompleted(task.id)}
-                              className="text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300 transition-colors p-1 rounded hover:bg-green-50 dark:hover:bg-green-900/20"
-                              title="Mark as completed"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                              </svg>
-                            </button>
-                          )}
-                          {canEdit(task) && (
-                            <button
-                              onClick={() => openDeleteConfirm(task)}
-                              className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 transition-colors p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20"
-                              title="Delete task"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                              </svg>
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          <>
+            {/* Tab Navigation */}
+            <div className="border-b border-gray-200 dark:border-gray-700 mb-6">
+              <nav className="-mb-px flex space-x-8">
+                <button
+                  onClick={() => setActiveTab('active')}
+                  className={`
+                    whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors
+                    ${activeTab === 'active'
+                      ? 'border-primary text-primary'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                    }
+                  `}
+                >
+                  Active Tasks
+                  <span className={`ml-2 px-2 py-0.5 rounded-full text-xs ${
+                    activeTab === 'active' 
+                      ? 'bg-primary text-white' 
+                      : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+                  }`}>
+                    {getTabCount('active')}
+                  </span>
+                </button>
+                
+                <button
+                  onClick={() => setActiveTab('due-soon')}
+                  className={`
+                    whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 transition-colors
+                    ${activeTab === 'due-soon'
+                      ? 'border-orange-500 text-orange-600 dark:text-orange-400'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                    }
+                  `}
+                >
+                  <span>🔔</span>
+                  Due Soon (7 days)
+                  <span className={`px-2 py-0.5 rounded-full text-xs ${
+                    activeTab === 'due-soon'
+                      ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
+                      : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+                  }`}>
+                    {getTabCount('due-soon')}
+                  </span>
+                </button>
+                
+                <button
+                  onClick={() => setActiveTab('completed')}
+                  className={`
+                    whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors
+                    ${activeTab === 'completed'
+                      ? 'border-green-500 text-green-600 dark:text-green-400'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                    }
+                  `}
+                >
+                  Completed
+                  <span className={`ml-2 px-2 py-0.5 rounded-full text-xs ${
+                    activeTab === 'completed'
+                      ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                      : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+                  }`}>
+                    {getTabCount('completed')}
+                  </span>
+                </button>
+                
+                <button
+                  onClick={() => setActiveTab('all')}
+                  className={`
+                    whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors
+                    ${activeTab === 'all'
+                      ? 'border-primary text-primary'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                    }
+                  `}
+                >
+                  All Tasks
+                  <span className={`ml-2 px-2 py-0.5 rounded-full text-xs ${
+                    activeTab === 'all'
+                      ? 'bg-primary text-white'
+                      : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+                  }`}>
+                    {getTabCount('all')}
+                  </span>
+                </button>
+              </nav>
             </div>
-          </div>
+
+            {/* Task Table with Tab Content */}
+            {getTasksByTab().length === 0 ? (
+              <div className="text-center py-12 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
+                <p className="text-gray-500 dark:text-gray-400">
+                  {activeTab === 'active' && "No active tasks. Great job! 🎉"}
+                  {activeTab === 'due-soon' && "No tasks due in the next 7 days."}
+                  {activeTab === 'completed' && "No completed tasks yet."}
+                  {activeTab === 'all' && "No tasks found."}
+                </p>
+              </div>
+            ) : (
+              <div className="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden shadow-sm">
+                <div className="overflow-x-auto">
+                  <table className="w-full table-fixed">
+                    <thead className="bg-gray-50 dark:bg-gray-800">
+                      <tr>
+                        <th 
+                          onClick={() => handleSort("title")}
+                          className="w-[25%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors select-none"
+                        >
+                          <div className="flex items-center">
+                            Title
+                            <SortIndicator field="title" />
+                          </div>
+                        </th>
+                        <th 
+                          onClick={() => handleSort("description")}
+                          className="w-[30%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors select-none"
+                        >
+                          <div className="flex items-center">
+                            Description
+                            <SortIndicator field="description" />
+                          </div>
+                        </th>
+                        <th 
+                          onClick={() => handleSort("assigned_to")}
+                          className="w-[15%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors select-none"
+                        >
+                          <div className="flex items-center">
+                            Assigned
+                            <SortIndicator field="assigned_to" />
+                          </div>
+                        </th>
+                        <th 
+                          onClick={() => handleSort("due_date")}
+                          className="w-[10%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors select-none"
+                        >
+                          <div className="flex items-center">
+                            Due
+                            <SortIndicator field="due_date" />
+                          </div>
+                        </th>
+                        <th 
+                          onClick={() => handleSort("status")}
+                          className="w-[10%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors select-none"
+                        >
+                          <div className="flex items-center">
+                            Status
+                            <SortIndicator field="status" />
+                          </div>
+                        </th>
+                        <th className="w-[10%] px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                          Actions
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
+                      {getTasksByTab().map((task) => {
+                        // Check if task is overdue
+                        const isOverdue = task.due_date && 
+                          new Date(task.due_date) < new Date() && 
+                          task.status.toLowerCase() !== 'completed';
+                        
+                        return (
+                          <tr 
+                            key={task.id} 
+                            className={`hover:bg-gray-50 dark:hover:bg-gray-800 group ${
+                              task.status.toLowerCase() === 'completed' ? 'opacity-60' : ''
+                            } ${isOverdue ? 'bg-red-50 dark:bg-red-900/10' : ''}`}
+                          >
+                            <td className="px-4 py-3">
+                              <div className={`text-sm font-medium text-gray-900 dark:text-white truncate ${
+                                task.status.toLowerCase() === 'completed' ? 'line-through' : ''
+                              }`} title={task.title}>
+                                {isOverdue && <span className="text-red-600 mr-1">⚠️</span>}
+                                {task.title}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="text-sm text-gray-500 dark:text-gray-400 truncate" title={task.description || "No description"}>
+                                {task.description || "No description"}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="text-sm text-gray-900 dark:text-white truncate" title={getUserDisplayName(task.assigned_to)}>
+                                {getUserDisplayName(task.assigned_to).split('@')[0]}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap">
+                              <div className={`text-sm ${isOverdue ? 'text-red-600 font-semibold' : 'text-gray-900 dark:text-white'}`}>
+                                {formatDate(task.due_date)}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap">
+                              <span
+                                className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusBadgeClass(
+                                  task.status
+                                )}`}
+                                title={task.status}
+                              >
+                                {task.status === "completed" ? "✓" : task.status === "in_progress" ? "..." : "○"}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap">
+                              <div className="flex items-center justify-center gap-1">
+                                {canEdit(task) && (
+                                  <button
+                                    onClick={() => openEditModal(task)}
+                                    className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 transition-colors p-1 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                                    title="Edit task"
+                                  >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                    </svg>
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => openHistoryModal(task.id)}
+                                  className="text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-300 transition-colors p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
+                                  title="View history"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                  </svg>
+                                </button>
+                                {task.status.toLowerCase() !== "completed" && (
+                                  <button
+                                    onClick={() => handleMarkCompleted(task.id)}
+                                    className="text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300 transition-colors p-1 rounded hover:bg-green-50 dark:hover:bg-green-900/20"
+                                    title="Mark as completed"
+                                  >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                  </button>
+                                )}
+                                {canEdit(task) && (
+                                  <button
+                                    onClick={() => openDeleteConfirm(task)}
+                                    className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 transition-colors p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20"
+                                    title="Delete task"
+                                  >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </>
         )}
 
         {/* Create Task Modal */}
