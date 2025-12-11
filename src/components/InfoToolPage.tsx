@@ -5177,11 +5177,11 @@ const EnhancedGasInvoiceDetails = ({ gasData }: { gasData: any }) => {
   );
 };
 
-function InvoiceResult({ result, session, token, autoOpenDMA = false }: { result: any; session: any; token: string; autoOpenDMA?: boolean }) {
+function InvoiceResult({ result, session, token, autoOpenDMA = false, autoExpandDetails = false }: { result: any; session: any; token: string; autoOpenDMA?: boolean; autoExpandDetails?: boolean }) {
   const [showDMAModal, setShowDMAModal] = useState(false);
   const [showCIOfferModal, setShowCIOfferModal] = useState(false);
   const [showCIGasOfferModal, setShowCIGasOfferModal] = useState(false);
-  const [expandedDetails, setExpandedDetails] = useState(false);
+  const [expandedDetails, setExpandedDetails] = useState(false); // Only show when button is clicked
   
   // Detect which invoice type is present
   const types = [
@@ -6086,7 +6086,15 @@ function IntervalDataSection({
 }
 
 export default function InfoToolPage({ title, description, endpoint, extraFields = [], isFileUpload = false, secondaryField, initialBusinessName = "", initialSecondaryValue = "", autoSubmit = false, formRef, initialExtraFields = {}, autoOpenDMA = false }: InfoToolPageProps) {
-  const { data: session } = useSession();
+  // ========== PROMINENT LOG - InfoToolPage Component Rendered ==========
+  console.log('🔵 ========== InfoToolPage Component Rendered ==========');
+  console.log('🔵 Title:', title);
+  console.log('🔵 AutoSubmit:', autoSubmit);
+  console.log('🔵 Initial Business Name:', initialBusinessName);
+  console.log('🔵 Initial Secondary Value:', initialSecondaryValue);
+  console.log('🔵 ====================================================');
+  
+  const { data: session, status } = useSession();
   const token = (session as any)?.id_token;
   const [businessName, setBusinessName] = useState(initialBusinessName);
   const [secondaryValue, setSecondaryValue] = useState(initialSecondaryValue);
@@ -6107,8 +6115,13 @@ export default function InfoToolPage({ title, description, endpoint, extraFields
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     
+    console.log('🔥🔥🔥 handleSubmit CALLED 🔥🔥🔥');
+    console.log('🔥 Business Name:', businessName);
+    console.log('🔥 Secondary Value:', secondaryValue);
+    
     // Prevent double submission
     if (loading) {
+      console.log('🔥 Already loading, skipping...');
       return;
     }
     
@@ -6196,22 +6209,70 @@ export default function InfoToolPage({ title, description, endpoint, extraFields
 
   // Auto-submit if requested and both initial values are present (only once)
   useEffect(() => {
+    console.log('🟡 ========== AUTO-SUBMIT CHECK ==========');
+    console.log('🟡 AutoSubmit:', autoSubmit);
+    console.log('🟡 Has Auto-Submitted:', hasAutoSubmittedRef.current);
+    console.log('🟡 Loading:', loading);
+    console.log('🟡 Initial Business Name:', initialBusinessName);
+    console.log('🟡 Initial Secondary Value:', initialSecondaryValue);
+    console.log('🟡 Business Name (state):', businessName);
+    console.log('🟡 Secondary Value (state):', secondaryValue);
+    console.log('🟡 Has Token:', !!token);
+    console.log('🟡 Has Session:', !!session);
+    console.log('🟡 Session Status:', status);
+    console.log('🟡 =====================================');
+    
+    // Wait for session to be ready (either authenticated or if we have a token)
+    const isSessionReady = status === 'authenticated' || (status !== 'loading' && !!token);
+    const hasRequiredData = initialBusinessName || initialSecondaryValue || businessName || secondaryValue;
+    
+    console.log('🟢 ========== AUTO-SUBMIT CONDITIONS ==========');
+    console.log('🟢 AutoSubmit:', autoSubmit);
+    console.log('🟢 Has Auto-Submitted:', hasAutoSubmittedRef.current);
+    console.log('🟢 Loading:', loading);
+    console.log('🟢 Has Required Data:', hasRequiredData);
+    console.log('🟢 Is Session Ready:', isSessionReady);
+    console.log('🟢 Will Submit:', autoSubmit && !hasAutoSubmittedRef.current && !loading && hasRequiredData && isSessionReady);
+    console.log('🟢 ===========================================');
+    
     if (
       autoSubmit &&
       !hasAutoSubmittedRef.current &&
       !loading &&
-      (initialBusinessName || initialSecondaryValue) &&
-      token // Only auto-submit if token is available
+      hasRequiredData &&
+      isSessionReady
     ) {
+      console.log('✅✅✅ ALL CONDITIONS MET - AUTO-SUBMITTING... ✅✅✅');
       hasAutoSubmittedRef.current = true;
-      const timer = setTimeout(() => {
-        handleSubmit();
-      }, 100); // Small delay to ensure component is fully mounted
       
-      return () => clearTimeout(timer);
+      // Call handleSubmit directly using queueMicrotask to ensure it runs after current execution
+      // This avoids issues with React Strict Mode unmounting/remounting
+      queueMicrotask(() => {
+        console.log('🚀🚀🚀 CALLING handleSubmit NOW... 🚀🚀🚀');
+        handleSubmit();
+      });
+      
+      console.log('⏰ Queued handleSubmit to run after current execution');
+    } else if (autoSubmit && !hasAutoSubmittedRef.current) {
+      const reason = !autoSubmit ? 'autoSubmit false' :
+                    hasAutoSubmittedRef.current ? 'already submitted' :
+                    loading ? 'currently loading' :
+                    !hasRequiredData ? 'missing business name or identifier' :
+                    !isSessionReady ? 'session not ready' : 'unknown';
+      console.log('❌❌❌ AUTO-SUBMIT BLOCKED ❌❌❌');
+      console.log('❌ Reason:', reason);
+      console.log('❌ Details:', {
+        autoSubmit,
+        hasAutoSubmitted: hasAutoSubmittedRef.current,
+        loading,
+        hasRequiredData,
+        isSessionReady
+      });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoSubmit, initialBusinessName, initialSecondaryValue, token]);
+  }, [autoSubmit, initialBusinessName, initialSecondaryValue, businessName, secondaryValue, token, status, loading]);
+
+  // Note: No cleanup needed for queueMicrotask as it executes synchronously in the microtask queue
 
   // Update fields if initialExtraFields changes
   useEffect(() => {
@@ -6339,7 +6400,7 @@ export default function InfoToolPage({ title, description, endpoint, extraFields
         </button>
       </form>
       {error && <div style={{ color: "red", marginTop: 18 }}>{error}</div>}
-      {result && !autoSubmit && (
+      {result && (
         <div style={{ marginTop: 28, textAlign: "left" }}>
           <h3>Result:</h3>
           {typeof result === 'object' && result.message ? (
@@ -6347,7 +6408,7 @@ export default function InfoToolPage({ title, description, endpoint, extraFields
               <ResultMessage message={result.message} />
             </div>
           ) : (
-            <InvoiceResult result={result} session={session} token={token} autoOpenDMA={autoOpenDMA} />
+            <InvoiceResult result={result} session={session} token={token} autoOpenDMA={autoOpenDMA} autoExpandDetails={autoSubmit} />
           )}
         </div>
       )}
