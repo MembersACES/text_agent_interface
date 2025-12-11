@@ -171,6 +171,9 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
     tool: string;
     details: string;
   }>(null);
+  const [dataRequestLoading, setDataRequestLoading] = useState(false);
+  const [dataRequestResult, setDataRequestResult] = useState<string | null>(null);
+  const [showDataRequestResultModal, setShowDataRequestResultModal] = useState(false);
 
   const { data: session } = useSession();
   const token = (session as any)?.id_token;
@@ -3126,10 +3129,90 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                     {/* Data Request Confirmation Modal */}
                     {showDataRequestModal && dataRequestSummary && (
             <div className="fixed inset-0 bg-black bg-opacity-25 z-50 flex items-center justify-center">
-              <div className="bg-white rounded-lg p-8 min-w-[340px] shadow-lg focus:outline-none" tabIndex={-1}>
+              <div className="bg-white rounded-lg p-8 min-w-[400px] shadow-lg focus:outline-none" tabIndex={-1}>
                 <h3 className="text-lg font-semibold text-gray-800 mb-4">Confirm Data Request</h3>
                 <div className="mb-3"><span className="font-semibold">Business Name:</span> <span className="ml-2">{dataRequestSummary.businessName}</span></div>
-                <div className="mb-3"><span className="font-semibold">Retailer:</span> <span className="ml-2">{dataRequestSummary.retailer}</span></div>
+                <div className="mb-3">
+                  <label className="font-semibold block mb-1">Retailer:</label>
+                  <select
+                    value={dataRequestSummary.retailer || ''}
+                    onChange={(e) => {
+                      setDataRequestSummary({
+                        ...dataRequestSummary,
+                        retailer: e.target.value
+                      });
+                    }}
+                    className="w-full px-3 py-2 border-2 border-gray-400 rounded-md bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="">Select a retailer...</option>
+                    {(() => {
+                      const requestType = dataRequestSummary.requestType;
+                      const isCI = requestType === 'electricity_ci' || requestType === 'gas_ci';
+                      const isSME = requestType === 'electricity_sme' || requestType === 'gas_sme';
+                      const isWaste = requestType === 'waste';
+                      const isOil = requestType === 'oil';
+                      
+                      const ciRetailers = ['Origin C&I', 'Momentum C&I', 'Shell Energy', 'Alinta C&I', 'Energy Australia', 'AGL'];
+                      const smeRetailers = ['Origin SME', 'Momentum SME', 'BlueNRG SME', 'CovaU SME', 'Next Business Energy', '1st Energy', 'Red Energy', 'GloBird Energy', 'Powerdirect', 'Sumo', 'Tango Energy', 'Sun Retail', 'Ergon Energy'];
+                      const wasteRetailers = ['Veolia'];
+                      const allRetailers = [...ciRetailers, ...smeRetailers, ...wasteRetailers];
+                      
+                      return (
+                        <>
+                          {isCI && (
+                            <optgroup label="C&I Electricity & Gas">
+                              {ciRetailers.map(retailer => (
+                                <option key={retailer} value={retailer}>{retailer}</option>
+                              ))}
+                            </optgroup>
+                          )}
+                          {isSME && (
+                            <optgroup label="SME Electricity & Gas">
+                              {smeRetailers.map(retailer => (
+                                <option key={retailer} value={retailer}>{retailer}</option>
+                              ))}
+                            </optgroup>
+                          )}
+                          {isWaste && (
+                            <optgroup label="Waste">
+                              {wasteRetailers.map(retailer => (
+                                <option key={retailer} value={retailer}>{retailer}</option>
+                              ))}
+                            </optgroup>
+                          )}
+                          {(isOil || (!isCI && !isSME && !isWaste)) && (
+                            <>
+                              <optgroup label="C&I Electricity & Gas">
+                                {ciRetailers.map(retailer => (
+                                  <option key={retailer} value={retailer}>{retailer}</option>
+                                ))}
+                              </optgroup>
+                              <optgroup label="SME Electricity & Gas">
+                                {smeRetailers.map(retailer => (
+                                  <option key={retailer} value={retailer}>{retailer}</option>
+                                ))}
+                              </optgroup>
+                              <optgroup label="Waste">
+                                {wasteRetailers.map(retailer => (
+                                  <option key={retailer} value={retailer}>{retailer}</option>
+                                ))}
+                              </optgroup>
+                            </>
+                          )}
+                          <optgroup label="Other">
+                            <option value="Other">Other Supplier</option>
+                          </optgroup>
+                          {dataRequestSummary.retailer && 
+                            !allRetailers.includes(dataRequestSummary.retailer) && 
+                            dataRequestSummary.retailer !== 'Other' && (
+                              <option value={dataRequestSummary.retailer}>{dataRequestSummary.retailer} (Current)</option>
+                            )
+                          }
+                        </>
+                      );
+                    })()}
+                  </select>
+                </div>
                 <div className="mb-3"><span className="font-semibold">Identifier:</span> <span className="ml-2">{dataRequestSummary.identifier}</span></div>
                 <div className="mb-3"><span className="font-semibold">Request Type:</span> <span className="ml-2">{dataRequestSummary.requestType}</span></div>
                 <div className="flex justify-end space-x-2 mt-6">
@@ -3143,22 +3226,105 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                     Cancel
                   </button>
                   <button
-                    className="px-4 py-2 rounded bg-blue-600 text-white font-semibold hover:bg-blue-700 focus:outline-none"
-                    onClick={() => {
-                      let url = `/data-request?business_name=${encodeURIComponent(dataRequestSummary.businessName)}&supplier_name=${encodeURIComponent(dataRequestSummary.retailer)}&request_type=${encodeURIComponent(dataRequestSummary.requestType)}`;
-                      if (dataRequestSummary.param !== "business_name") url += `&details=${encodeURIComponent(dataRequestSummary.identifier)}`;
-                      url += `&autoSubmit=1`;
-                      window.open(url, "_blank");
-                      setShowDataRequestModal(false);
-                      setDataRequestSummary(null);
+                    className="px-4 py-2 rounded bg-blue-600 text-white font-semibold hover:bg-blue-700 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={dataRequestLoading}
+                    onClick={async () => {
+                      setDataRequestLoading(true);
+                      try {
+                        const body: any = {
+                          business_name: dataRequestSummary.businessName,
+                          supplier_name: dataRequestSummary.retailer,
+                          request_type: dataRequestSummary.requestType
+                        };
+                        
+                        if (dataRequestSummary.param !== "business_name") {
+                          body.details = dataRequestSummary.identifier;
+                        }
+                        
+                        const response = await fetch(`${getApiBaseUrl()}/api/data-request`, {
+                          method: 'POST',
+                          headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`,
+                          },
+                          body: JSON.stringify(body)
+                        });
+                        
+                        if (!response.ok) {
+                          const error = await response.json();
+                          throw new Error(error.detail || error.error || 'Failed to send data request');
+                        }
+                        
+                        const result = await response.json();
+                        setDataRequestResult(result.message || JSON.stringify(result));
+                        setShowDataRequestModal(false);
+                        setShowDataRequestResultModal(true);
+                        setDataRequestSummary(null);
+                      } catch (error: any) {
+                        setDataRequestResult(`Error: ${error.message}`);
+                        setShowDataRequestModal(false);
+                        setShowDataRequestResultModal(true);
+                      } finally {
+                        setDataRequestLoading(false);
+                      }
                     }}
                   >
-                    Confirm & Send
+                    {dataRequestLoading ? 'Sending...' : 'Confirm & Send'}
                   </button>
                 </div>
               </div>
             </div>
           )}
+      
+      {/* Data Request Result Modal */}
+      {showDataRequestResultModal && dataRequestResult && (
+        <div className="fixed inset-0 bg-black bg-opacity-25 z-50 flex items-center justify-center">
+          <div className="bg-white rounded-lg p-8 min-w-[600px] max-w-[800px] shadow-lg focus:outline-none" tabIndex={-1}>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-gray-800">Data Request Result</h3>
+              <button
+                className="text-gray-500 hover:text-gray-700 text-2xl"
+                onClick={() => {
+                  setShowDataRequestResultModal(false);
+                  setDataRequestResult(null);
+                }}
+              >
+                ×
+              </button>
+            </div>
+            <div className="bg-gray-50 p-4 rounded-lg mb-4 max-h-[60vh] overflow-auto">
+              <div className="whitespace-pre-wrap text-sm" style={{ fontFamily: 'monospace' }}>
+                {dataRequestResult.split('\n').map((line, idx) => {
+                  if (line.includes('✅')) {
+                    return <div key={idx} className="text-green-700 font-semibold mb-2">{line}</div>;
+                  } else if (line.includes('⚠️')) {
+                    return <div key={idx} className="text-yellow-700 font-semibold mb-2">{line}</div>;
+                  } else if (line.includes('❌')) {
+                    return <div key={idx} className="text-red-700 font-semibold mb-2">{line}</div>;
+                  } else if (line.trim().endsWith(':')) {
+                    return <div key={idx} className="font-semibold mt-2 mb-1">{line}</div>;
+                  } else if (line.trim().startsWith('-')) {
+                    return <div key={idx} className="ml-4">{line}</div>;
+                  }
+                  return <div key={idx}>{line}</div>;
+                })}
+              </div>
+            </div>
+            <div className="flex justify-end">
+              <button
+                className="px-4 py-2 rounded bg-blue-600 text-white font-semibold hover:bg-blue-700 focus:outline-none"
+                onClick={() => {
+                  setShowDataRequestResultModal(false);
+                  setDataRequestResult(null);
+                }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {/* EOI Modal */}
       {showEOIModal && (
         <div className="fixed inset-0 bg-black bg-opacity-25 z-50 flex items-center justify-center">

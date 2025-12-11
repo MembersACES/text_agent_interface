@@ -1148,9 +1148,10 @@ interface DemandResponseData {
 
 interface DMAData {
   meteringRate: string;
-  meteringCost: string;
-  meteringDays: string;
   meteringCostType: 'daily' | 'annual';
+  meteringDays: string;
+  vasRate: string;
+  vasCostType: 'daily' | 'annual';
   dmaPrice: string;
   vasPrice: string;
   startDate: string;
@@ -1162,6 +1163,594 @@ interface DMAData {
   nmi: string;
   invoiceNumber: string;
 }
+
+interface DMAModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  invoiceData: any;
+  session: any;
+  token: string;
+}
+
+interface CostCalculations {
+  dailyMeterRate: number;
+  annualMeterCost: number;
+  dailyVasRate: number;
+  annualVasCost: number;
+  combinedDailyRate: number;
+  combinedAnnualCost: number;
+  invoicePeriodCost: number;
+  proposedAnnualCost: number;
+  annualSavings: number;
+  totalSavingsOverPeriod: number;
+  savingsPercentage: number;
+}
+
+const formatCurrency = (value: number): string => {
+  return new Intl.NumberFormat('en-AU', {
+    style: 'currency',
+    currency: 'AUD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(value);
+};
+
+const calculateDMACosts = (formData: DMAData): CostCalculations => {
+  // Metering calculations
+  const meteringInput = parseFloat(formData.meteringRate) || 0;
+  const dailyMeterRate = formData.meteringCostType === 'daily' 
+    ? meteringInput 
+    : meteringInput / 365;
+  const annualMeterCost = formData.meteringCostType === 'annual' 
+    ? meteringInput 
+    : meteringInput * 365;
+
+  // VAS calculations
+  const vasInput = parseFloat(formData.vasRate) || 0;
+  const dailyVasRate = formData.vasCostType === 'daily' 
+    ? vasInput 
+    : vasInput / 365;
+  const annualVasCost = formData.vasCostType === 'annual' 
+    ? vasInput 
+    : vasInput * 365;
+
+  // Combined calculations
+  const combinedDailyRate = dailyMeterRate + dailyVasRate;
+  const combinedAnnualCost = annualMeterCost + annualVasCost;
+  
+  // Invoice period cost
+  const invoiceDays = parseFloat(formData.meteringDays) || 0;
+  const invoicePeriodCost = combinedDailyRate * invoiceDays;
+
+  // Proposed costs
+  const dmaPrice = parseFloat(formData.dmaPrice) || 0;
+  const vasPrice = parseFloat(formData.vasPrice) || 0;
+  const proposedAnnualCost = dmaPrice + vasPrice;
+
+  // Savings calculations
+  const annualSavings = combinedAnnualCost - proposedAnnualCost;
+  const periodYears = parseInt(formData.periodYears) || 0;
+  const totalSavingsOverPeriod = annualSavings * periodYears;
+  const savingsPercentage = combinedAnnualCost > 0 
+    ? (annualSavings / combinedAnnualCost) * 100 
+    : 0;
+
+  return {
+    dailyMeterRate,
+    annualMeterCost,
+    dailyVasRate,
+    annualVasCost,
+    combinedDailyRate,
+    combinedAnnualCost,
+    invoicePeriodCost,
+    proposedAnnualCost,
+    annualSavings,
+    totalSavingsOverPeriod,
+    savingsPercentage
+  };
+};
+
+// Section Header Component
+const SectionHeader = ({ 
+  title, 
+  icon, 
+  color = '#e6f3ff',
+  borderColor = '#93c5fd'
+}: { 
+  title: string; 
+  icon: string;
+  color?: string;
+  borderColor?: string;
+}) => (
+  <tr style={{ backgroundColor: color }}>
+    <td 
+      colSpan={3} 
+      style={{ 
+        padding: 12, 
+        border: `1px solid ${borderColor}`, 
+        fontWeight: 600, 
+        textAlign: 'center',
+        fontSize: 15
+      }}
+    >
+      <span style={{ marginRight: 8 }}>{icon}</span>
+      {title}
+    </td>
+  </tr>
+);
+
+// Info Row Component (Read-only display)
+const InfoRow = ({ 
+  label, 
+  value, 
+  linkHref,
+  linkText = 'View'
+}: { 
+  label: string; 
+  value?: string;
+  linkHref?: string;
+  linkText?: string;
+}) => (
+  <tr>
+    <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600, width: '30%' }}>
+      {label}
+    </td>
+    <td style={{ padding: 8, border: '1px solid #ddd', width: '50%' }}>
+      {linkHref ? (
+        <a 
+          href={linkHref} 
+          target="_blank" 
+          rel="noopener noreferrer"
+          style={{ color: '#2563eb', textDecoration: 'underline' }}
+        >
+          {linkText}
+        </a>
+      ) : (
+        <div style={{ padding: 4, fontSize: 14, fontWeight: 600, color: '#111827' }}>
+          {value || 'N/A'}
+        </div>
+      )}
+    </td>
+    <td style={{ padding: 8, border: '1px solid #ddd', width: '20%', color: '#6b7280', fontSize: 13 }}>
+      Invoice
+    </td>
+  </tr>
+);
+
+// Editable Input Row Component
+const InputRow = ({ 
+  label, 
+  value, 
+  onChange, 
+  placeholder,
+  unit,
+  type = 'text'
+}: { 
+  label: string; 
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  unit?: string;
+  type?: string;
+}) => (
+  <tr>
+    <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>
+      {label}
+    </td>
+    <td style={{ padding: 8, border: '1px solid #ddd' }}>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={{ 
+          width: '100%', 
+          padding: 6, 
+          border: '1px solid #ccc', 
+          borderRadius: 4,
+          fontSize: 14
+        }}
+        placeholder={placeholder}
+      />
+    </td>
+    <td style={{ padding: 8, border: '1px solid #ddd', color: '#6b7280', fontSize: 13 }}>
+      {unit}
+    </td>
+  </tr>
+);
+
+// Select Row Component
+const SelectRow = ({ 
+  label, 
+  value, 
+  onChange, 
+  options,
+  unit
+}: { 
+  label: string; 
+  value: string;
+  onChange: (value: string) => void;
+  options: { value: string; label: string }[];
+  unit?: string;
+}) => (
+  <tr>
+    <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>
+      {label}
+    </td>
+    <td style={{ padding: 8, border: '1px solid #ddd' }}>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={{ 
+          width: '100%', 
+          padding: 6, 
+          border: '1px solid #ccc', 
+          borderRadius: 4,
+          fontSize: 14
+        }}
+      >
+        {options.map(opt => (
+          <option key={opt.value} value={opt.value}>{opt.label}</option>
+        ))}
+      </select>
+    </td>
+    <td style={{ padding: 8, border: '1px solid #ddd', color: '#6b7280', fontSize: 13 }}>
+      {unit}
+    </td>
+  </tr>
+);
+
+// Calculated Value Row Component
+const CalculatedRow = ({ 
+  label, 
+  value, 
+  unit,
+  highlight = false,
+  editable = false,
+  onChange
+}: { 
+  label: string; 
+  value: string;
+  unit?: string;
+  highlight?: boolean;
+  editable?: boolean;
+  onChange?: (value: string) => void;
+}) => (
+  <tr style={{ backgroundColor: highlight ? '#f0fdf4' : '#f8fafc' }}>
+    <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600, fontStyle: 'italic' }}>
+      {label}
+    </td>
+    <td style={{ padding: 8, border: '1px solid #ddd' }}>
+      {editable ? (
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => onChange?.(e.target.value)}
+          style={{ 
+            width: '100%', 
+            padding: 6, 
+            border: '1px solid #ccc', 
+            borderRadius: 4,
+            fontSize: 14,
+            fontWeight: 600
+          }}
+        />
+      ) : (
+        <div style={{ 
+          padding: 4, 
+          fontSize: 14, 
+          fontWeight: 600, 
+          color: highlight ? '#059669' : '#111827'
+        }}>
+          {value}
+        </div>
+      )}
+    </td>
+    <td style={{ padding: 8, border: '1px solid #ddd', color: '#6b7280', fontSize: 13, fontStyle: 'italic' }}>
+      {unit}
+    </td>
+  </tr>
+);
+
+// Summary Card Component - UPDATED with editable offer prices
+const SummaryCard = ({ 
+  calculations, 
+  periodYears,
+  startDate,
+  dmaPrice,
+  vasPrice,
+  onDmaPriceChange,
+  onVasPriceChange,
+  onPeriodChange,
+  onStartDateChange
+}: { 
+  calculations: CostCalculations; 
+  periodYears: string;
+  startDate: string;
+  dmaPrice: string;
+  vasPrice: string;
+  onDmaPriceChange: (value: string) => void;
+  onVasPriceChange: (value: string) => void;
+  onPeriodChange: (value: string) => void;
+  onStartDateChange: (value: string) => void;
+}) => {
+  const hasSavings = calculations.annualSavings > 0;
+  
+  // Calculate end date for display
+  const getEndDate = () => {
+    if (!startDate || !periodYears) return '';
+    const start = new Date(startDate);
+    const years = parseInt(periodYears);
+    if (isNaN(years)) return '';
+    const end = new Date(start);
+    end.setFullYear(start.getFullYear() + years);
+    return end.toLocaleDateString('en-AU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  };
+  
+  return (
+    <div style={{ 
+      background: hasSavings 
+        ? 'linear-gradient(135deg, #059669 0%, #10b981 100%)'
+        : 'linear-gradient(135deg, #dc2626 0%, #ef4444 100%)',
+      color: 'white',
+      padding: 20,
+      borderRadius: 12,
+      marginBottom: 24,
+      boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
+    }}>
+      {/* Main Savings Display */}
+      <div style={{ textAlign: 'center', marginBottom: 16 }}>
+        <div style={{ fontSize: 14, opacity: 0.9, marginBottom: 4 }}>
+          {hasSavings ? '💰 Potential Annual Savings' : '⚠️ Current Costs Lower Than Proposed'}
+        </div>
+        <div style={{ fontSize: 36, fontWeight: 700 }}>
+          {formatCurrency(Math.abs(calculations.annualSavings))}
+        </div>
+        {hasSavings && calculations.savingsPercentage > 0 && (
+          <div style={{ fontSize: 14, opacity: 0.9, marginTop: 4 }}>
+            {calculations.savingsPercentage.toFixed(1)}% reduction in metering costs
+          </div>
+        )}
+      </div>
+      
+      {/* Cost Summary Row */}
+      <div style={{ 
+        display: 'grid', 
+        gridTemplateColumns: '1fr 1fr 1fr', 
+        gap: 16, 
+        borderTop: '1px solid rgba(255,255,255,0.3)',
+        paddingTop: 16,
+        marginBottom: 16
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Current Annual</div>
+          <div style={{ fontSize: 20, fontWeight: 600 }}>
+            {formatCurrency(calculations.combinedAnnualCost)}
+          </div>
+        </div>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Proposed Annual</div>
+          <div style={{ fontSize: 20, fontWeight: 600 }}>
+            {formatCurrency(calculations.proposedAnnualCost)}
+          </div>
+        </div>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>
+            {periodYears} Year Total Savings
+          </div>
+          <div style={{ fontSize: 20, fontWeight: 600 }}>
+            {formatCurrency(Math.abs(calculations.totalSavingsOverPeriod))}
+          </div>
+        </div>
+      </div>
+
+      {/* Editable Offer Prices & Timeline Row */}
+      <div style={{ 
+        display: 'grid', 
+        gridTemplateColumns: '1fr 1fr 1fr 1fr', 
+        gap: 12, 
+        borderTop: '1px solid rgba(255,255,255,0.3)',
+        paddingTop: 16,
+        background: 'rgba(255,255,255,0.1)',
+        margin: '0 -20px -20px -20px',
+        padding: '16px 20px 20px 20px',
+        borderRadius: '0 0 12px 12px'
+      }}>
+        {/* DMA Offer Price */}
+        <div>
+          <div style={{ fontSize: 11, opacity: 0.8, marginBottom: 4, textAlign: 'center' }}>
+            📋 DMA Offer (Annual)
+          </div>
+          <div style={{ position: 'relative' }}>
+            <span style={{ 
+              position: 'absolute', 
+              left: 8, 
+              top: '50%', 
+              transform: 'translateY(-50%)',
+              color: '#374151',
+              fontWeight: 600,
+              fontSize: 14
+            }}>$</span>
+            <input
+              type="number"
+              value={dmaPrice}
+              onChange={(e) => onDmaPriceChange(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '8px 8px 8px 24px',
+                fontSize: 14,
+                fontWeight: 600,
+                border: '2px solid rgba(255,255,255,0.3)',
+                borderRadius: 6,
+                background: 'white',
+                color: '#111827',
+                textAlign: 'right'
+              }}
+              placeholder="700"
+            />
+          </div>
+        </div>
+
+        {/* VAS Offer Price */}
+        <div>
+          <div style={{ fontSize: 11, opacity: 0.8, marginBottom: 4, textAlign: 'center' }}>
+            ⚡ VAS Offer (Annual)
+          </div>
+          <div style={{ position: 'relative' }}>
+            <span style={{ 
+              position: 'absolute', 
+              left: 8, 
+              top: '50%', 
+              transform: 'translateY(-50%)',
+              color: '#374151',
+              fontWeight: 600,
+              fontSize: 14
+            }}>$</span>
+            <input
+              type="number"
+              value={vasPrice}
+              onChange={(e) => onVasPriceChange(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '8px 8px 8px 24px',
+                fontSize: 14,
+                fontWeight: 600,
+                border: '2px solid rgba(255,255,255,0.3)',
+                borderRadius: 6,
+                background: 'white',
+                color: '#111827',
+                textAlign: 'right'
+              }}
+              placeholder="200"
+            />
+          </div>
+        </div>
+
+        {/* Start Date */}
+        <div>
+          <div style={{ fontSize: 11, opacity: 0.8, marginBottom: 4, textAlign: 'center' }}>
+            📅 Start Date
+          </div>
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => onStartDateChange(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '8px',
+              fontSize: 14,
+              fontWeight: 600,
+              border: '2px solid rgba(255,255,255,0.3)',
+              borderRadius: 6,
+              background: 'white',
+              color: '#111827'
+            }}
+          />
+        </div>
+
+        {/* Period */}
+        <div>
+          <div style={{ fontSize: 11, opacity: 0.8, marginBottom: 4, textAlign: 'center' }}>
+            ⏱️ Period (Years)
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <input
+              type="number"
+              value={periodYears}
+              onChange={(e) => onPeriodChange(e.target.value)}
+              style={{
+                width: '60px',
+                padding: '8px',
+                fontSize: 14,
+                fontWeight: 600,
+                border: '2px solid rgba(255,255,255,0.3)',
+                borderRadius: 6,
+                background: 'white',
+                color: '#111827',
+                textAlign: 'center'
+              }}
+              min="1"
+              max="10"
+            />
+            <div style={{ fontSize: 11, opacity: 0.8 }}>
+              → {getEndDate()}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Cost Comparison Mini Card - UPDATED to support editable values
+const CostComparisonCard = ({ 
+  title, 
+  icon, 
+  currentDaily, 
+  currentAnnual, 
+  color,
+  editable = false,
+  onAnnualChange
+}: { 
+  title: string;
+  icon: string;
+  currentDaily: number;
+  currentAnnual: number;
+  color: string;
+  editable?: boolean;
+  onAnnualChange?: (value: string) => void;
+}) => (
+  <div style={{ 
+    background: 'white', 
+    padding: 16, 
+    borderRadius: 8, 
+    border: `2px solid ${color}`,
+    flex: 1
+  }}>
+    <div style={{ 
+      fontSize: 14, 
+      fontWeight: 600, 
+      color: '#374151', 
+      marginBottom: 12,
+      display: 'flex',
+      alignItems: 'center',
+      gap: 8
+    }}>
+      <span>{icon}</span>
+      {title}
+    </div>
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+      <div>
+        <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 2 }}>Daily Rate</div>
+        <div style={{ fontSize: 16, fontWeight: 600, color: '#111827' }}>
+          {formatCurrency(currentDaily)}
+        </div>
+      </div>
+      <div>
+        <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 2 }}>Annual Cost</div>
+        {editable && onAnnualChange ? (
+          <input
+            type="number"
+            value={currentAnnual.toFixed(2)}
+            onChange={(e) => onAnnualChange(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '4px 6px',
+              fontSize: 14,
+              fontWeight: 600,
+              border: '1px solid #d1d5db',
+              borderRadius: 4,
+              color: '#111827'
+            }}
+          />
+        ) : (
+          <div style={{ fontSize: 16, fontWeight: 600, color: '#111827' }}>
+            {formatCurrency(currentAnnual)}
+          </div>
+        )}
+      </div>
+    </div>
+  </div>
+);
 
 function DemandResponseModal({ 
   isOpen, 
@@ -2390,18 +2979,14 @@ function DMAModal({
   invoiceData, 
   session,
   token
-}: { 
-  isOpen: boolean; 
-  onClose: () => void; 
-  invoiceData: any; 
-  session: any;
-  token: string;
-}) {
+}: DMAModalProps) {
+  // State
   const [formData, setFormData] = useState<DMAData>({
     meteringRate: '',
-    meteringCost: '',
-    meteringDays: '',
     meteringCostType: 'daily',
+    meteringDays: '',
+    vasRate: '',
+    vasCostType: 'daily',
     dmaPrice: '700',
     vasPrice: '200',
     startDate: new Date().toISOString().split('T')[0],
@@ -2415,6 +3000,10 @@ function DMAModal({
   });
 
   const [sending, setSending] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
+
+  // Calculate all costs using the helper function
+  const calculations = calculateDMACosts(formData);
 
   // Calculate end date based on start date and period
   useEffect(() => {
@@ -2432,12 +3021,10 @@ function DMAModal({
     }
   }, [formData.startDate, formData.periodYears]);
 
-  // Add escape key handler
+  // Escape key handler
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        onClose();
-      }
+      if (e.key === 'Escape') onClose();
     };
 
     if (isOpen) {
@@ -2456,15 +3043,34 @@ function DMAModal({
     if (isOpen && invoiceData) {
       const invoiceDetails = invoiceData?.electricity_ci_invoice_details;
       
-      console.log('DMA Modal - Full invoiceData:', invoiceData);
-      console.log('DMA Modal - Extracted invoiceDetails:', invoiceDetails);
+      // Calculate VAS rate from invoice data
+      let vasRateDaily = '';
+      let vasPrice = '200';
+      
+      const vasRateRaw = invoiceDetails?.vas_rate || 
+        invoiceDetails?.full_invoice_data?.['Value Added Service rater in $/Meter/Day'];
+      
+      if (vasRateRaw) {
+        const vasRateInCents = parseFloat(vasRateRaw) || 0;
+        if (vasRateInCents > 0) {
+          const dailyVASRateInDollars = vasRateInCents / 100;
+          vasRateDaily = dailyVASRateInDollars.toString();
+          vasPrice = (dailyVASRateInDollars * 365).toFixed(0);
+        }
+      }
+      
+      const invoiceDays = invoiceDetails?.full_invoice_data?.['Invoice Review Number of Days'] 
+        ? String(invoiceDetails.full_invoice_data['Invoice Review Number of Days'])
+        : '';
       
       setFormData(prev => ({
         ...prev,
         meteringRate: invoiceDetails?.metering_rate || '',
-        meteringCost: '',
-        meteringDays: '',
+        meteringDays: invoiceDays,
         meteringCostType: 'daily',
+        vasRate: vasRateDaily,
+        vasCostType: 'daily',
+        vasPrice: vasPrice,
         invoiceLink: invoiceDetails?.invoice_link || '',
         siteAddress: invoiceDetails?.site_address || '',
         nmi: invoiceDetails?.nmi || '',
@@ -2473,106 +3079,97 @@ function DMAModal({
     }
   }, [isOpen, invoiceData]);
 
-  const handleInputChange = (field: keyof (DMAData & { meteringCostType: 'daily' | 'annual' }), value: string) => {
+  // Update handler
+  const updateField = (field: keyof DMAData, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  // Calculate daily rate from annual cost or vice versa
-  const getCalculatedDailyRate = (): number => {
-    if (formData.meteringCostType === 'daily') {
-      return parseFloat(formData.meteringRate) || 0;
-    } else {
-      // Calculate daily from annual
-      const annualCost = parseFloat(formData.meteringRate) || 0;
-      return annualCost / 365;
-    }
-  };
-
-  const getCalculatedAnnualCost = (): number => {
+  // Update annual cost (recalculates daily rate)
+  const updateAnnualMeterCost = (annualValue: string) => {
+    const annual = parseFloat(annualValue) || 0;
     if (formData.meteringCostType === 'annual') {
-      return parseFloat(formData.meteringRate) || 0;
+      updateField('meteringRate', annualValue);
     } else {
-      // Calculate annual from daily
-      const dailyRate = parseFloat(formData.meteringRate) || 0;
-      return dailyRate * 365;
+      updateField('meteringRate', (annual / 365).toString());
     }
   };
 
-  const generateDMATableHTML = () => {
-    const dmaPrice = parseFloat(formData.dmaPrice) || 0;
-    const vasPrice = parseFloat(formData.vasPrice) || 0;
-    const totalReplacementCost = dmaPrice + vasPrice;
-    const currentAnnualCost = getCalculatedAnnualCost();
-    const dailyRate = getCalculatedDailyRate();
-    const annualSavings = currentAnnualCost - totalReplacementCost;
-    const totalSavingsOverPeriod = annualSavings * (parseInt(formData.periodYears) || 0);
-    
+  const updateAnnualVasCost = (annualValue: string) => {
+    const annual = parseFloat(annualValue) || 0;
+    if (formData.vasCostType === 'annual') {
+      updateField('vasRate', annualValue);
+    } else {
+      updateField('vasRate', (annual / 365).toString());
+    }
+  };
+
+  // Generate table HTML for email/clipboard
+  const generateTableHTML = () => {
     const notesLine = formData.notes.trim() ? `\nNotes: ${formData.notes}` : '';
     
     return `DMA (DATA METERING ANALYSIS) REVIEW
-  
-  BUSINESS DETAILS
-  Site Address: ${formData.siteAddress}
-  NMI: ${formData.nmi}
-  
-  CURRENT METERING COSTS
-  Current Metering Rate: $${dailyRate.toFixed(2)}/day
-  Current Annual Cost: $${currentAnnualCost.toFixed(2)}
-  
-  PROPOSED DMA SOLUTION
-  DMA Price: $${formData.dmaPrice}
-  VAS Price: $${formData.vasPrice}
-  Total Replacement Cost: $${totalReplacementCost.toFixed(2)}
-  
-  PROJECT TIMELINE
-  Start Date: ${formData.startDate}
-  Period: ${formData.periodYears} years
-  End Date: ${formData.endDate}
-  
-  FINANCIAL ANALYSIS
-  Annual Savings: $${annualSavings.toFixed(2)}
-  Total Savings Over ${formData.periodYears} Years: $${totalSavingsOverPeriod.toFixed(2)}${notesLine}`;
+
+BUSINESS DETAILS
+Site Address: ${formData.siteAddress}
+NMI: ${formData.nmi}
+Invoice Number: ${formData.invoiceNumber}
+
+CURRENT METERING COSTS
+Meter Rate: ${formatCurrency(calculations.dailyMeterRate)}/day (${formatCurrency(calculations.annualMeterCost)}/year)
+VAS Rate: ${formatCurrency(calculations.dailyVasRate)}/day (${formatCurrency(calculations.annualVasCost)}/year)
+Combined Annual Cost: ${formatCurrency(calculations.combinedAnnualCost)}
+
+PROPOSED DMA SOLUTION
+DMA Price: ${formatCurrency(parseFloat(formData.dmaPrice) || 0)}/year
+VAS Price: ${formatCurrency(parseFloat(formData.vasPrice) || 0)}/year
+Total Proposed Cost: ${formatCurrency(calculations.proposedAnnualCost)}/year
+
+PROJECT TIMELINE
+Start Date: ${formData.startDate}
+Period: ${formData.periodYears} years
+End Date: ${formData.endDate}
+
+FINANCIAL ANALYSIS
+Annual Savings: ${formatCurrency(calculations.annualSavings)}
+Savings Percentage: ${calculations.savingsPercentage.toFixed(1)}%
+Total Savings Over ${formData.periodYears} Years: ${formatCurrency(calculations.totalSavingsOverPeriod)}${notesLine}`;
   };
 
   const copyToClipboard = () => {
-    const tableText = generateDMATableHTML();
-    navigator.clipboard.writeText(tableText).then(() => {
-      alert('DMA analysis copied to clipboard! You can now paste this directly into Gmail.');
+    navigator.clipboard.writeText(generateTableHTML()).then(() => {
+      alert('DMA analysis copied to clipboard!');
     });
   };
 
   const sendDMAReview = async () => {
     setSending(true);
     try {
-      const tableHTML = generateDMATableHTML();
-      const dailyRate = getCalculatedDailyRate();
-      const annualCost = getCalculatedAnnualCost();
-      
       const payload = {
-        // User information from session
         user_email: session?.user?.email || '',
         user_name: session?.user?.name || '',
         user_id: session?.user?.id || '',
-        
-        // DMA specific data
         site_address: formData.siteAddress,
         nmi: formData.nmi,
-        table_html: tableHTML,
+        table_html: generateTableHTML(),
         notes: formData.notes,
-        metering_rate: dailyRate.toFixed(2), // Always send as daily rate
-        metering_rate_annual: annualCost.toFixed(2), // Also send annual for reference
+        metering_rate: calculations.dailyMeterRate.toFixed(2),
+        metering_rate_annual: calculations.annualMeterCost.toFixed(2),
         metering_cost_type: formData.meteringCostType,
-        metering_cost: formData.meteringCost,
         metering_days: formData.meteringDays,
+        vas_rate: calculations.dailyVasRate.toFixed(2),
+        vas_rate_annual: calculations.annualVasCost.toFixed(2),
+        combined_annual_cost: calculations.combinedAnnualCost.toFixed(2),
         dma_price: formData.dmaPrice,
         vas_price: formData.vasPrice,
+        proposed_annual_cost: calculations.proposedAnnualCost.toFixed(2),
+        annual_savings: calculations.annualSavings.toFixed(2),
+        savings_percentage: calculations.savingsPercentage.toFixed(1),
         start_date: formData.startDate,
         period_years: formData.periodYears,
         end_date: formData.endDate,
+        total_savings: calculations.totalSavingsOverPeriod.toFixed(2),
         invoice_link: formData.invoiceLink,
         invoice_number: formData.invoiceNumber,
-        
-        // Timestamp for tracking
         timestamp: new Date().toISOString()
       };
       
@@ -2601,9 +3198,6 @@ function DMAModal({
 
   if (!isOpen) return null;
 
-  const dailyRate = getCalculatedDailyRate();
-  const annualCost = getCalculatedAnnualCost();
-
   return (
     <div 
       style={{
@@ -2620,302 +3214,334 @@ function DMAModal({
         padding: '20px'
       }}
       onClick={(e) => {
-        if (e.target === e.currentTarget) {
-          onClose();
-        }
+        if (e.target === e.currentTarget) onClose();
       }}
     >
       <div style={{
         backgroundColor: 'white',
-        borderRadius: 8,
+        borderRadius: 12,
         padding: 24,
         width: '100%',
-        maxWidth: '1200px',
+        maxWidth: '900px',
         maxHeight: '90vh',
         overflow: 'auto',
         boxShadow: '0 25px 50px rgba(0, 0, 0, 0.25)',
         position: 'relative'
       }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <h2 style={{ margin: 0, fontSize: 24, fontWeight: 600 }}>DMA (Data Metering Analysis) Review</h2>
+        {/* Header */}
+        <div style={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center', 
+          marginBottom: 20,
+          paddingBottom: 16,
+          borderBottom: '1px solid #e5e7eb'
+        }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: '#111827' }}>
+              📊 DMA Analysis
+            </h2>
+            <p style={{ margin: '4px 0 0', fontSize: 14, color: '#6b7280' }}>
+              Data Metering Agreement Review • {formData.siteAddress || 'No address'}
+            </p>
+          </div>
           <button 
             onClick={onClose}
             style={{
-              background: 'none',
+              background: '#f3f4f6',
               border: 'none',
-              fontSize: 24,
+              fontSize: 20,
               cursor: 'pointer',
-              color: '#666'
+              color: '#6b7280',
+              width: 36,
+              height: 36,
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
             }}
           >
             ×
           </button>
         </div>
 
-        <div style={{ marginBottom: 20 }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #ddd' }}>
-            <thead>
-              <tr style={{ backgroundColor: '#f5f5f5' }}>
-                <th style={{ padding: 12, textAlign: 'left', border: '1px solid #ddd' }}>Field</th>
-                <th style={{ padding: 12, textAlign: 'left', border: '1px solid #ddd' }}>Value</th>
-                <th style={{ padding: 12, textAlign: 'left', border: '1px solid #ddd' }}>Source</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>Site Address</td>
-                <td style={{ padding: 8, border: '1px solid #ddd' }}>
-                  <div style={{ padding: 4, fontSize: 14, fontWeight: 600, color: '#111827' }}>
-                    {formData.siteAddress || 'N/A'}
-                  </div>
-                </td>
-                <td style={{ padding: 8, border: '1px solid #ddd' }}>Invoice</td>
-              </tr>
-              <tr>
-                <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>NMI</td>
-                <td style={{ padding: 8, border: '1px solid #ddd' }}>
-                  <div style={{ padding: 4, fontSize: 14, fontWeight: 600, color: '#111827' }}>
-                    {formData.nmi || 'N/A'}
-                  </div>
-                </td>
-                <td style={{ padding: 8, border: '1px solid #ddd' }}>Invoice</td>
-              </tr>
-              <tr>
-                <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>Invoice Link</td>
-                <td style={{ padding: 8, border: '1px solid #ddd' }}>
-                  {formData.invoiceLink ? (
-                    <a 
-                      href={formData.invoiceLink} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      style={{ color: '#2563eb', textDecoration: 'underline' }}
-                    >
-                      View Invoice PDF
-                    </a>
-                  ) : (
-                    <span style={{ color: '#6b7280' }}>No invoice link available</span>
-                  )}
-                </td>
-                <td style={{ padding: 8, border: '1px solid #ddd' }}>Invoice</td>
-              </tr>
-              <tr style={{ backgroundColor: '#e6f3ff' }}>
-                <td colSpan={3} style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600, textAlign: 'center' }}>
-                  Current Metering Costs
-                </td>
-              </tr>
-              <tr>
-                <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>Cost Type</td>
-                <td style={{ padding: 8, border: '1px solid #ddd' }}>
-                  <select
-                    value={formData.meteringCostType}
-                    onChange={(e) => handleInputChange('meteringCostType', e.target.value as 'daily' | 'annual')}
-                    style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4 }}
-                  >
-                    <option value="daily">Daily Rate</option>
-                    <option value="annual">Annual Cost</option>
-                  </select>
-                </td>
-                <td style={{ padding: 8, border: '1px solid #ddd' }}>Cost Structure</td>
-              </tr>
-              <tr>
-                <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>
-                  {formData.meteringCostType === 'daily' ? 'Metering Rate (Daily)' : 'Metering Rate (Annual)'}
-                </td>
-                <td style={{ padding: 8, border: '1px solid #ddd' }}>
-                  <input
-                    type="text"
-                    value={formData.meteringRate}
-                    onChange={(e) => handleInputChange('meteringRate', e.target.value)}
-                    style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4 }}
-                    placeholder={formData.meteringCostType === 'daily' ? '$/day' : '$/year'}
-                  />
-                </td>
-                <td style={{ padding: 8, border: '1px solid #ddd' }}>
-                  {formData.meteringCostType === 'daily' ? '$/day (Editable)' : '$/year (Editable)'}
-                </td>
-              </tr>
-              {/* Show calculated values */}
-              {formData.meteringRate && (
-                <>
-                  <tr style={{ backgroundColor: '#f8fafc' }}>
-                    <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600, fontStyle: 'italic' }}>
-                      Calculated Daily Rate
-                    </td>
-                    <td style={{ padding: 8, border: '1px solid #ddd', fontStyle: 'italic' }}>
-                      ${dailyRate.toFixed(2)}
-                    </td>
-                    <td style={{ padding: 8, border: '1px solid #ddd', fontStyle: 'italic' }}>
-                      {formData.meteringCostType === 'daily' ? 'From input' : 'Annual ÷ 365'}
-                    </td>
-                  </tr>
-                  <tr style={{ backgroundColor: '#f8fafc' }}>
-                    <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>
-                      Annual Cost (Editable) - Required for comparison
-                    </td>
-                    <td style={{ padding: 8, border: '1px solid #ddd' }}>
-                      <input
-                        type="text"
-                        value={annualCost.toFixed(2)}
-                        onChange={(e) => {
-                          const newAnnualValue = e.target.value;
-                          // Update the meteringRate based on the new annual value
-                          if (formData.meteringCostType === 'annual') {
-                            handleInputChange('meteringRate', newAnnualValue);
-                          } else {
-                            // Convert annual back to daily and update meteringRate
-                            const dailyFromAnnual = (parseFloat(newAnnualValue) || 0) / 365;
-                            handleInputChange('meteringRate', dailyFromAnnual.toString());
-                          }
-                        }}
-                        style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4 }}
-                        placeholder="Annual cost"
-                      />
-                    </td>
-                    <td style={{ padding: 8, border: '1px solid #ddd' }}>
-                      $/year (Editable for comparison)
-                    </td>
-                  </tr>
-                </>
-              )}
-              <tr>
-                <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>Metering Days</td>
-                <td style={{ padding: 8, border: '1px solid #ddd' }}>
-                  <input
-                    type="text"
-                    value={formData.meteringDays}
-                    onChange={(e) => handleInputChange('meteringDays', e.target.value)}
-                    style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4 }}
-                    placeholder="Number of days"
-                  />
-                </td>
-                <td style={{ padding: 8, border: '1px solid #ddd' }}>Days (Invoice Period)</td>
-              </tr>
-              <tr style={{ backgroundColor: '#f0f9ff' }}>
-                <td colSpan={3} style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600, textAlign: 'center' }}>
-                  Proposed DMA Solution
-                </td>
-              </tr>
-              <tr>
-                <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>DMA Price</td>
-                <td style={{ padding: 8, border: '1px solid #ddd' }}>
-                  <input
-                    type="text"
-                    value={formData.dmaPrice}
-                    onChange={(e) => handleInputChange('dmaPrice', e.target.value)}
-                    style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4 }}
-                    placeholder="700"
-                  />
-                </td>
-                <td style={{ padding: 8, border: '1px solid #ddd' }}>$ (Per Annum)</td>
-              </tr>
-              <tr>
-                <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>VAS Price</td>
-                <td style={{ padding: 8, border: '1px solid #ddd' }}>
-                  <input
-                    type="text"
-                    value={formData.vasPrice}
-                    onChange={(e) => handleInputChange('vasPrice', e.target.value)}
-                    style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4 }}
-                    placeholder="200"
-                  />
-                </td>
-                <td style={{ padding: 8, border: '1px solid #ddd' }}>$ (Per Annum)</td>
-              </tr>
-              <tr style={{ backgroundColor: '#fefce8' }}>
-                <td colSpan={3} style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600, textAlign: 'center' }}>
-                  Project Timeline
-                </td>
-              </tr>
-              <tr>
-                <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>Start Date</td>
-                <td style={{ padding: 8, border: '1px solid #ddd' }}>
-                  <input
-                    type="date"
-                    value={formData.startDate}
-                    onChange={(e) => handleInputChange('startDate', e.target.value)}
-                    style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4 }}
-                  />
-                </td>
-                <td style={{ padding: 8, border: '1px solid #ddd' }}>DMA Start Date</td>
-              </tr>
-              <tr>
-                <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>Period (Years)</td>
-                <td style={{ padding: 8, border: '1px solid #ddd' }}>
-                  <input
-                    type="number"
-                    value={formData.periodYears}
-                    onChange={(e) => handleInputChange('periodYears', e.target.value)}
-                    style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4 }}
-                    placeholder="5"
-                    min="1"
-                  />
-                </td>
-                <td style={{ padding: 8, border: '1px solid #ddd' }}>DMA Period</td>
-              </tr>
-              <tr>
-                <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>End Date</td>
-                <td style={{ padding: 8, border: '1px solid #ddd' }}>
-                  <input
-                    type="date"
-                    value={formData.endDate}
-                    onChange={(e) => handleInputChange('endDate', e.target.value)}
-                    style={{ width: '100%', padding: 4, border: '1px solid #ccc', borderRadius: 4 }}
-                  />
-                </td>
-                <td style={{ padding: 8, border: '1px solid #ddd' }}>DMA End Date - Auto-calculated</td>
-              </tr>
-              <tr>
-                <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>Notes</td>
-                <td style={{ padding: 8, border: '1px solid #ddd' }}>
-                  <textarea
-                    value={formData.notes}
-                    onChange={(e) => handleInputChange('notes', e.target.value)}
-                    style={{ 
-                      width: '100%', 
-                      padding: 4, 
-                      border: '1px solid #ccc', 
-                      borderRadius: 4,
-                      minHeight: '60px',
-                      resize: 'vertical'
-                    }}
-                    placeholder="Optional notes..."
-                  />
-                </td>
-                <td style={{ padding: 8, border: '1px solid #ddd' }}>Optional</td>
-              </tr>
-            </tbody>
-          </table>
+        {/* Summary Card - Shows key metrics at a glance with editable offer prices */}
+        <SummaryCard 
+          calculations={calculations} 
+          periodYears={formData.periodYears}
+          startDate={formData.startDate}
+          dmaPrice={formData.dmaPrice}
+          vasPrice={formData.vasPrice}
+          onDmaPriceChange={(val) => updateField('dmaPrice', val)}
+          onVasPriceChange={(val) => updateField('vasPrice', val)}
+          onPeriodChange={(val) => updateField('periodYears', val)}
+          onStartDateChange={(val) => updateField('startDate', val)}
+        />
+
+        {/* Quick Cost Comparison Cards - Current Costs */}
+        <div style={{ display: 'flex', gap: 16, marginBottom: 24 }}>
+          <CostComparisonCard
+            title="Metering Charges"
+            icon="📏"
+            currentDaily={calculations.dailyMeterRate}
+            currentAnnual={calculations.annualMeterCost}
+            color="#3b82f6"
+            editable
+            onAnnualChange={updateAnnualMeterCost}
+          />
+          <CostComparisonCard
+            title="VAS Charges"
+            icon="⚡"
+            currentDaily={calculations.dailyVasRate}
+            currentAnnual={calculations.annualVasCost}
+            color="#8b5cf6"
+            editable
+            onAnnualChange={updateAnnualVasCost}
+          />
+          <CostComparisonCard
+            title="Combined Total"
+            icon="💰"
+            currentDaily={calculations.combinedDailyRate}
+            currentAnnual={calculations.combinedAnnualCost}
+            color="#059669"
+          />
         </div>
 
-        <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+        {/* Toggle Details Button */}
+        <button
+          onClick={() => setShowDetails(!showDetails)}
+          style={{
+            width: '100%',
+            padding: '12px 16px',
+            background: '#f8fafc',
+            border: '1px solid #e2e8f0',
+            borderRadius: 8,
+            cursor: 'pointer',
+            fontSize: 14,
+            fontWeight: 600,
+            color: '#374151',
+            marginBottom: 16,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8
+          }}
+        >
+          {showDetails ? '▲ Hide Detailed Breakdown' : '▼ Show Detailed Breakdown (if something looks wrong)'}
+        </button>
+
+        {/* Detailed Form - Collapsible */}
+        {showDetails && (
+          <div style={{ marginBottom: 20 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #ddd' }}>
+              <tbody>
+                {/* Site Information Section */}
+                <SectionHeader title="Site Information" icon="🏢" color="#f0f9ff" borderColor="#93c5fd" />
+                <InfoRow label="Site Address" value={formData.siteAddress} />
+                <InfoRow label="NMI" value={formData.nmi} />
+                <InfoRow 
+                  label="Invoice Link" 
+                  linkHref={formData.invoiceLink} 
+                  linkText="View Invoice PDF" 
+                />
+
+                {/* Current Metering Costs Section */}
+                <SectionHeader title="Current Metering Costs" icon="📏" color="#e0f2fe" borderColor="#7dd3fc" />
+                <SelectRow
+                  label="Meter Cost Type"
+                  value={formData.meteringCostType}
+                  onChange={(val) => updateField('meteringCostType', val as 'daily' | 'annual')}
+                  options={[
+                    { value: 'daily', label: 'Daily Rate' },
+                    { value: 'annual', label: 'Annual Cost' }
+                  ]}
+                  unit="Input Type"
+                />
+                <InputRow
+                  label={formData.meteringCostType === 'daily' ? 'Meter Rate (Daily)' : 'Meter Rate (Annual)'}
+                  value={formData.meteringRate}
+                  onChange={(val) => updateField('meteringRate', val)}
+                  placeholder={formData.meteringCostType === 'daily' ? '$/day' : '$/year'}
+                  unit={formData.meteringCostType === 'daily' ? '$/day' : '$/year'}
+                />
+                <CalculatedRow
+                  label="Calculated Daily Rate"
+                  value={formatCurrency(calculations.dailyMeterRate)}
+                  unit={formData.meteringCostType === 'daily' ? 'From input' : 'Annual ÷ 365'}
+                />
+                <CalculatedRow
+                  label="Annual Meter Cost"
+                  value={calculations.annualMeterCost.toFixed(2)}
+                  unit="$/year (editable)"
+                  editable
+                  onChange={updateAnnualMeterCost}
+                />
+
+                {/* VAS Costs Section */}
+                <SectionHeader title="VAS (Value Added Service) Costs" icon="⚡" color="#faf5ff" borderColor="#d8b4fe" />
+                <SelectRow
+                  label="VAS Cost Type"
+                  value={formData.vasCostType}
+                  onChange={(val) => updateField('vasCostType', val as 'daily' | 'annual')}
+                  options={[
+                    { value: 'daily', label: 'Daily Rate' },
+                    { value: 'annual', label: 'Annual Cost' }
+                  ]}
+                  unit="Input Type"
+                />
+                <InputRow
+                  label={formData.vasCostType === 'daily' ? 'VAS Rate (Daily)' : 'VAS Rate (Annual)'}
+                  value={formData.vasRate}
+                  onChange={(val) => updateField('vasRate', val)}
+                  placeholder={formData.vasCostType === 'daily' ? '$/day' : '$/year'}
+                  unit={formData.vasCostType === 'daily' ? '$/day' : '$/year'}
+                />
+                <CalculatedRow
+                  label="Calculated Daily VAS"
+                  value={formatCurrency(calculations.dailyVasRate)}
+                  unit={formData.vasCostType === 'daily' ? 'From input' : 'Annual ÷ 365'}
+                />
+                <CalculatedRow
+                  label="Annual VAS Cost"
+                  value={calculations.annualVasCost.toFixed(2)}
+                  unit="$/year (editable)"
+                  editable
+                  onChange={updateAnnualVasCost}
+                />
+
+                {/* Invoice Period Calculation */}
+                <SectionHeader title="Invoice Period Calculation" icon="📅" color="#fefce8" borderColor="#fde047" />
+                <InputRow
+                  label="Invoice Days"
+                  value={formData.meteringDays}
+                  onChange={(val) => updateField('meteringDays', val)}
+                  placeholder="Number of days"
+                  unit="Days"
+                />
+                {parseFloat(formData.meteringDays) > 0 && (
+                  <CalculatedRow
+                    label="Invoice Period Total Cost"
+                    value={formatCurrency(calculations.invoicePeriodCost)}
+                    unit={`(Meter + VAS) × ${formData.meteringDays} days`}
+                    highlight
+                  />
+                )}
+
+                {/* Proposed DMA Solution Section */}
+                <SectionHeader title="Proposed DMA Solution" icon="💡" color="#f0fdf4" borderColor="#86efac" />
+                <InputRow
+                  label="DMA Price (Annual)"
+                  value={formData.dmaPrice}
+                  onChange={(val) => updateField('dmaPrice', val)}
+                  placeholder="700"
+                  unit="$/year"
+                />
+                <InputRow
+                  label="VAS Price (Annual)"
+                  value={formData.vasPrice}
+                  onChange={(val) => updateField('vasPrice', val)}
+                  placeholder="200"
+                  unit="$/year"
+                />
+                <CalculatedRow
+                  label="Total Proposed Annual Cost"
+                  value={formatCurrency(calculations.proposedAnnualCost)}
+                  unit="DMA + VAS"
+                  highlight
+                />
+
+                {/* Project Timeline Section */}
+                <SectionHeader title="Project Timeline" icon="⏱️" color="#fff7ed" borderColor="#fdba74" />
+                <InputRow
+                  label="Start Date"
+                  value={formData.startDate}
+                  onChange={(val) => updateField('startDate', val)}
+                  type="date"
+                  unit="Contract Start"
+                />
+                <InputRow
+                  label="Period (Years)"
+                  value={formData.periodYears}
+                  onChange={(val) => updateField('periodYears', val)}
+                  placeholder="5"
+                  unit="Years"
+                />
+                <CalculatedRow
+                  label="End Date"
+                  value={formData.endDate}
+                  unit="Auto-calculated"
+                />
+
+                {/* Notes Section */}
+                <SectionHeader title="Additional Notes" icon="📝" color="#f8fafc" borderColor="#cbd5e1" />
+                <tr>
+                  <td style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600 }}>Notes</td>
+                  <td colSpan={2} style={{ padding: 8, border: '1px solid #ddd' }}>
+                    <textarea
+                      value={formData.notes}
+                      onChange={(e) => updateField('notes', e.target.value)}
+                      style={{ 
+                        width: '100%', 
+                        padding: 8, 
+                        border: '1px solid #ccc', 
+                        borderRadius: 4,
+                        minHeight: 60,
+                        resize: 'vertical',
+                        fontSize: 14
+                      }}
+                      placeholder="Optional notes..."
+                    />
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Action Buttons */}
+        <div style={{ 
+          display: 'flex', 
+          gap: 12, 
+          justifyContent: 'flex-end',
+          paddingTop: 16,
+          borderTop: '1px solid #e5e7eb'
+        }}>
           <button
             onClick={copyToClipboard}
             style={{
-              padding: '8px 16px',
+              padding: '10px 20px',
               backgroundColor: '#6b7280',
               color: 'white',
               border: 'none',
-              borderRadius: 4,
+              borderRadius: 6,
               cursor: 'pointer',
-              fontWeight: 600
+              fontWeight: 600,
+              fontSize: 14,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8
             }}
           >
-            Copy for Gmail
+            📋 Copy for Email
           </button>
           <button
             onClick={sendDMAReview}
             disabled={sending}
             style={{
-              padding: '8px 16px',
+              padding: '10px 24px',
               backgroundColor: sending ? '#9ca3af' : '#2563eb',
               color: 'white',
               border: 'none',
-              borderRadius: 4,
+              borderRadius: 6,
               cursor: sending ? 'not-allowed' : 'pointer',
-              fontWeight: 600
+              fontWeight: 600,
+              fontSize: 14,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8
             }}
           >
-            {sending ? 'Sending...' : 'Send DMA Review'}
+            {sending ? '⏳ Sending...' : '📤 Send DMA Review'}
           </button>
         </div>
       </div>
@@ -3030,12 +3656,68 @@ const EnhancedInvoiceDetails = ({ electricityData }: { electricityData: Electric
     'All Environmental Keys': Object.keys(fullData).filter(key => key.toLowerCase().includes('environmental'))
   });
 
-  const formatCurrency = (value: string | number) => {
-    const num = typeof value === 'string' ? parseFloat(value) : value;
+  const formatCurrency = (value: number): string => {
     return new Intl.NumberFormat('en-AU', {
       style: 'currency',
-      currency: 'AUD'
-    }).format(num);
+      currency: 'AUD',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }).format(value);
+  };
+
+  const calculateCosts = (formData: DMAData): CostCalculations => {
+    // Metering calculations
+    const meteringInput = parseFloat(formData.meteringRate) || 0;
+    const dailyMeterRate = formData.meteringCostType === 'daily' 
+      ? meteringInput 
+      : meteringInput / 365;
+    const annualMeterCost = formData.meteringCostType === 'annual' 
+      ? meteringInput 
+      : meteringInput * 365;
+  
+    // VAS calculations
+    const vasInput = parseFloat(formData.vasRate) || 0;
+    const dailyVasRate = formData.vasCostType === 'daily' 
+      ? vasInput 
+      : vasInput / 365;
+    const annualVasCost = formData.vasCostType === 'annual' 
+      ? vasInput 
+      : vasInput * 365;
+  
+    // Combined calculations
+    const combinedDailyRate = dailyMeterRate + dailyVasRate;
+    const combinedAnnualCost = annualMeterCost + annualVasCost;
+    
+    // Invoice period cost
+    const invoiceDays = parseFloat(formData.meteringDays) || 0;
+    const invoicePeriodCost = combinedDailyRate * invoiceDays;
+  
+    // Proposed costs
+    const dmaPrice = parseFloat(formData.dmaPrice) || 0;
+    const vasPrice = parseFloat(formData.vasPrice) || 0;
+    const proposedAnnualCost = dmaPrice + vasPrice;
+  
+    // Savings calculations
+    const annualSavings = combinedAnnualCost - proposedAnnualCost;
+    const periodYears = parseInt(formData.periodYears) || 0;
+    const totalSavingsOverPeriod = annualSavings * periodYears;
+    const savingsPercentage = combinedAnnualCost > 0 
+      ? (annualSavings / combinedAnnualCost) * 100 
+      : 0;
+  
+    return {
+      dailyMeterRate,
+      annualMeterCost,
+      dailyVasRate,
+      annualVasCost,
+      combinedDailyRate,
+      combinedAnnualCost,
+      invoicePeriodCost,
+      proposedAnnualCost,
+      annualSavings,
+      totalSavingsOverPeriod,
+      savingsPercentage
+    };
   };
 
   const formatNumber = (value: string | number | null | undefined, decimals = 2) => {
@@ -3141,6 +3823,17 @@ const EnhancedInvoiceDetails = ({ electricityData }: { electricityData: Electric
   const stateBenchmark = benchmarkData?.find((b: any) => b.State === state);
   console.log('Debug benchmark:', stateBenchmark);
   
+  // Calculate VAS rate in dollars (VAS rate is typically in cents)
+  const vasRateRaw = (electricityData as any).vas_rate || (fullData as any)['Value Added Service rater in $/Meter/Day'];
+  const vasRateInDollars = vasRateRaw ? parseFloat(vasRateRaw) / 100 : null;
+  
+  // Calculate total metering charge: (Meter Rate + VAS Rate) × Invoice Days
+  const meterRate = typeof fullData['Meter Rate'] === 'number' ? fullData['Meter Rate'] : parseFloat(String(fullData['Meter Rate'] || 0));
+  const invoiceDays = parseFloat(String((fullData as any)['Invoice Review Number of Days'] || 0));
+  const totalMeteringCharge = invoiceDays > 0 && meterRate > 0 
+    ? (meterRate + (vasRateInDollars || 0)) * invoiceDays 
+    : null;
+  
   return (
     <div style={{ marginTop: 16, padding: 16, backgroundColor: '#f8fafc', borderRadius: 6, border: '1px solid #e2e8f0' }}>
       {/* Enhanced detail cards grid */}
@@ -3206,7 +3899,7 @@ const EnhancedInvoiceDetails = ({ electricityData }: { electricityData: Electric
             <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 12, marginTop: 12 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: '#6b7280', fontSize: 14 }}>Avg Cost:</span>
-                <span style={{ fontWeight: 600, fontSize: 14 }}>{formatCurrency(electricityData.average_cost)}/kWh</span>
+                <span style={{ fontWeight: 600, fontSize: 14 }}>{formatCurrency(typeof electricityData.average_cost === 'string' ? parseFloat(electricityData.average_cost) || 0 : electricityData.average_cost || 0)}/kWh</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: '#6b7280', fontSize: 14 }}>Demand Capacity:</span>
@@ -3284,8 +3977,24 @@ const EnhancedInvoiceDetails = ({ electricityData }: { electricityData: Electric
               <span style={{ color: '#6b7280', fontSize: 14 }}>Meter Rate:</span>
               <span style={{ fontWeight: 600, fontSize: 14 }}>{formatCurrency(fullData['Meter Rate'] || 0)}/day</span>
             </div>
+            {vasRateInDollars !== null && (
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#6b7280', fontSize: 14 }}>VAS Meter Charge:</span>
+                <span style={{ fontWeight: 600, fontSize: 14 }}>
+                  {formatCurrency(vasRateInDollars)}/day
+                </span>
+              </div>
+            )}
+            {totalMeteringCharge !== null && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #e5e7eb', paddingTop: 12, marginTop: 12 }}>
+                <span style={{ color: '#6b7280', fontSize: 14 }}>Calculated Total (Meter + VAS):</span>
+                <span style={{ fontWeight: 600, fontSize: 14, color: '#2563eb' }}>
+                  {formatCurrency(totalMeteringCharge)} ({invoiceDays} days)
+                </span>
+              </div>
+            )}
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: '#6b7280', fontSize: 14 }}>Total Metering:</span>
+              <span style={{ color: '#6b7280', fontSize: 14 }}>Total Metering (Invoice):</span>
               <span style={{ fontWeight: 600, fontSize: 14 }}>{formatCurrency(fullData['Metering Charges'] || 0)}</span>
             </div>
           </div>
@@ -4468,11 +5177,11 @@ const EnhancedGasInvoiceDetails = ({ gasData }: { gasData: any }) => {
   );
 };
 
-function InvoiceResult({ result, session, token, autoOpenDMA = false }: { result: any; session: any; token: string; autoOpenDMA?: boolean }) {
+function InvoiceResult({ result, session, token, autoOpenDMA = false, autoExpandDetails = false }: { result: any; session: any; token: string; autoOpenDMA?: boolean; autoExpandDetails?: boolean }) {
   const [showDMAModal, setShowDMAModal] = useState(false);
   const [showCIOfferModal, setShowCIOfferModal] = useState(false);
   const [showCIGasOfferModal, setShowCIGasOfferModal] = useState(false);
-  const [expandedDetails, setExpandedDetails] = useState(false);
+  const [expandedDetails, setExpandedDetails] = useState(false); // Only show when button is clicked
   
   // Detect which invoice type is present
   const types = [
@@ -5377,7 +6086,15 @@ function IntervalDataSection({
 }
 
 export default function InfoToolPage({ title, description, endpoint, extraFields = [], isFileUpload = false, secondaryField, initialBusinessName = "", initialSecondaryValue = "", autoSubmit = false, formRef, initialExtraFields = {}, autoOpenDMA = false }: InfoToolPageProps) {
-  const { data: session } = useSession();
+  // ========== PROMINENT LOG - InfoToolPage Component Rendered ==========
+  console.log('🔵 ========== InfoToolPage Component Rendered ==========');
+  console.log('🔵 Title:', title);
+  console.log('🔵 AutoSubmit:', autoSubmit);
+  console.log('🔵 Initial Business Name:', initialBusinessName);
+  console.log('🔵 Initial Secondary Value:', initialSecondaryValue);
+  console.log('🔵 ====================================================');
+  
+  const { data: session, status } = useSession();
   const token = (session as any)?.id_token;
   const [businessName, setBusinessName] = useState(initialBusinessName);
   const [secondaryValue, setSecondaryValue] = useState(initialSecondaryValue);
@@ -5387,6 +6104,8 @@ export default function InfoToolPage({ title, description, endpoint, extraFields
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [showDemandModal, setShowDemandModal] = useState(false);
+  const [showResultModal, setShowResultModal] = useState(false);
+  const hasAutoSubmittedRef = useRef(false);
   const formElement = formRef || useRef<HTMLFormElement>(null);
 
   const handleFieldChange = (name: string, value: any) => {
@@ -5395,6 +6114,17 @@ export default function InfoToolPage({ title, description, endpoint, extraFields
 
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    
+    console.log('🔥🔥🔥 handleSubmit CALLED 🔥🔥🔥');
+    console.log('🔥 Business Name:', businessName);
+    console.log('🔥 Secondary Value:', secondaryValue);
+    
+    // Prevent double submission
+    if (loading) {
+      console.log('🔥 Already loading, skipping...');
+      return;
+    }
+    
     setError(null);
     setResult(null);
   
@@ -5477,17 +6207,72 @@ export default function InfoToolPage({ title, description, endpoint, extraFields
     }
   };
 
-  // Auto-submit if requested and both initial values are present
+  // Auto-submit if requested and both initial values are present (only once)
   useEffect(() => {
+    console.log('🟡 ========== AUTO-SUBMIT CHECK ==========');
+    console.log('🟡 AutoSubmit:', autoSubmit);
+    console.log('🟡 Has Auto-Submitted:', hasAutoSubmittedRef.current);
+    console.log('🟡 Loading:', loading);
+    console.log('🟡 Initial Business Name:', initialBusinessName);
+    console.log('🟡 Initial Secondary Value:', initialSecondaryValue);
+    console.log('🟡 Business Name (state):', businessName);
+    console.log('🟡 Secondary Value (state):', secondaryValue);
+    console.log('🟡 Has Token:', !!token);
+    console.log('🟡 Has Session:', !!session);
+    console.log('🟡 Session Status:', status);
+    console.log('🟡 =====================================');
+    
+    // Wait for session to be ready (either authenticated or if we have a token)
+    const isSessionReady = status === 'authenticated' || (status !== 'loading' && !!token);
+    const hasRequiredData = initialBusinessName || initialSecondaryValue || businessName || secondaryValue;
+    
+    console.log('🟢 ========== AUTO-SUBMIT CONDITIONS ==========');
+    console.log('🟢 AutoSubmit:', autoSubmit);
+    console.log('🟢 Has Auto-Submitted:', hasAutoSubmittedRef.current);
+    console.log('🟢 Loading:', loading);
+    console.log('🟢 Has Required Data:', hasRequiredData);
+    console.log('🟢 Is Session Ready:', isSessionReady);
+    console.log('🟢 Will Submit:', autoSubmit && !hasAutoSubmittedRef.current && !loading && hasRequiredData && isSessionReady);
+    console.log('🟢 ===========================================');
+    
     if (
       autoSubmit &&
-      (initialBusinessName || initialSecondaryValue) &&
-      token // Only auto-submit if token is available
+      !hasAutoSubmittedRef.current &&
+      !loading &&
+      hasRequiredData &&
+      isSessionReady
     ) {
-      handleSubmit();
+      console.log('✅✅✅ ALL CONDITIONS MET - AUTO-SUBMITTING... ✅✅✅');
+      hasAutoSubmittedRef.current = true;
+      
+      // Call handleSubmit directly using queueMicrotask to ensure it runs after current execution
+      // This avoids issues with React Strict Mode unmounting/remounting
+      queueMicrotask(() => {
+        console.log('🚀🚀🚀 CALLING handleSubmit NOW... 🚀🚀🚀');
+        handleSubmit();
+      });
+      
+      console.log('⏰ Queued handleSubmit to run after current execution');
+    } else if (autoSubmit && !hasAutoSubmittedRef.current) {
+      const reason = !autoSubmit ? 'autoSubmit false' :
+                    hasAutoSubmittedRef.current ? 'already submitted' :
+                    loading ? 'currently loading' :
+                    !hasRequiredData ? 'missing business name or identifier' :
+                    !isSessionReady ? 'session not ready' : 'unknown';
+      console.log('❌❌❌ AUTO-SUBMIT BLOCKED ❌❌❌');
+      console.log('❌ Reason:', reason);
+      console.log('❌ Details:', {
+        autoSubmit,
+        hasAutoSubmitted: hasAutoSubmittedRef.current,
+        loading,
+        hasRequiredData,
+        isSessionReady
+      });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoSubmit, initialBusinessName, initialSecondaryValue, token]);
+  }, [autoSubmit, initialBusinessName, initialSecondaryValue, businessName, secondaryValue, token, status, loading]);
+
+  // Note: No cleanup needed for queueMicrotask as it executes synchronously in the microtask queue
 
   // Update fields if initialExtraFields changes
   useEffect(() => {
@@ -5495,6 +6280,13 @@ export default function InfoToolPage({ title, description, endpoint, extraFields
       setFields((prev) => ({ ...initialExtraFields, ...prev }));
     }
   }, [JSON.stringify(initialExtraFields)]);
+
+  // Show result modal when result is set for auto-submitted data requests
+  useEffect(() => {
+    if (autoSubmit && result && typeof result === 'object' && result.message) {
+      setShowResultModal(true);
+    }
+  }, [result, autoSubmit]);
 
   // Helper to get identifier for interval data
   const getIdentifierForIntervalData = () => {
@@ -5616,8 +6408,130 @@ export default function InfoToolPage({ title, description, endpoint, extraFields
               <ResultMessage message={result.message} />
             </div>
           ) : (
-            <InvoiceResult result={result} session={session} token={token} autoOpenDMA={autoOpenDMA} />
+            <InvoiceResult result={result} session={session} token={token} autoOpenDMA={autoOpenDMA} autoExpandDetails={autoSubmit} />
           )}
+        </div>
+      )}
+      
+      {/* Result Modal for auto-submitted data requests */}
+      {showResultModal && result && typeof result === 'object' && result.message && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            padding: '20px'
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowResultModal(false);
+              if (autoSubmit) {
+                // Try to close the window/tab if it was opened by window.open
+                if (window.opener) {
+                  window.close();
+                } else {
+                  // If we can't close, at least try to go back or close
+                  setTimeout(() => {
+                    if (window.history.length > 1) {
+                      window.history.back();
+                    } else {
+                      window.close();
+                    }
+                  }, 100);
+                }
+              }
+            }
+          }}
+        >
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: 8,
+            padding: 24,
+            width: '100%',
+            maxWidth: '800px',
+            maxHeight: '90vh',
+            overflow: 'auto',
+            boxShadow: '0 25px 50px rgba(0, 0, 0, 0.25)',
+            position: 'relative'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <h2 style={{ margin: 0, fontSize: 24, fontWeight: 600 }}>Data Request Result</h2>
+              <button 
+                onClick={() => {
+                  setShowResultModal(false);
+                  if (autoSubmit) {
+                    // Try to close the window/tab if it was opened by window.open
+                    if (window.opener) {
+                      window.close();
+                    } else {
+                      // If we can't close, at least try to go back or close
+                      setTimeout(() => {
+                        if (window.history.length > 1) {
+                          window.history.back();
+                        } else {
+                          window.close();
+                        }
+                      }, 100);
+                    }
+                  }
+                }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: 24,
+                  cursor: 'pointer',
+                  color: '#666',
+                  padding: '0 8px'
+                }}
+              >
+                ×
+              </button>
+            </div>
+            <div style={{ background: '#f4f4f4', padding: 16, borderRadius: 6 }}>
+              <ResultMessage message={result.message} />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 20 }}>
+              <button
+                onClick={() => {
+                  setShowResultModal(false);
+                  if (autoSubmit) {
+                    // Try to close the window/tab if it was opened by window.open
+                    if (window.opener) {
+                      window.close();
+                    } else {
+                      // If we can't close, at least try to go back or close
+                      setTimeout(() => {
+                        if (window.history.length > 1) {
+                          window.history.back();
+                        } else {
+                          window.close();
+                        }
+                      }, 100);
+                    }
+                  }
+                }}
+                style={{
+                  padding: '10px 24px',
+                  backgroundColor: '#2563eb',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  fontSize: 14
+                }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
         </div>
       )}
       
