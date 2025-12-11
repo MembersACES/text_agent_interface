@@ -6096,6 +6096,8 @@ export default function InfoToolPage({ title, description, endpoint, extraFields
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [showDemandModal, setShowDemandModal] = useState(false);
+  const [showResultModal, setShowResultModal] = useState(false);
+  const hasAutoSubmittedRef = useRef(false);
   const formElement = formRef || useRef<HTMLFormElement>(null);
 
   const handleFieldChange = (name: string, value: any) => {
@@ -6104,6 +6106,12 @@ export default function InfoToolPage({ title, description, endpoint, extraFields
 
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    
+    // Prevent double submission
+    if (loading) {
+      return;
+    }
+    
     setError(null);
     setResult(null);
   
@@ -6186,14 +6194,21 @@ export default function InfoToolPage({ title, description, endpoint, extraFields
     }
   };
 
-  // Auto-submit if requested and both initial values are present
+  // Auto-submit if requested and both initial values are present (only once)
   useEffect(() => {
     if (
       autoSubmit &&
+      !hasAutoSubmittedRef.current &&
+      !loading &&
       (initialBusinessName || initialSecondaryValue) &&
       token // Only auto-submit if token is available
     ) {
-      handleSubmit();
+      hasAutoSubmittedRef.current = true;
+      const timer = setTimeout(() => {
+        handleSubmit();
+      }, 100); // Small delay to ensure component is fully mounted
+      
+      return () => clearTimeout(timer);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoSubmit, initialBusinessName, initialSecondaryValue, token]);
@@ -6204,6 +6219,13 @@ export default function InfoToolPage({ title, description, endpoint, extraFields
       setFields((prev) => ({ ...initialExtraFields, ...prev }));
     }
   }, [JSON.stringify(initialExtraFields)]);
+
+  // Show result modal when result is set for auto-submitted data requests
+  useEffect(() => {
+    if (autoSubmit && result && typeof result === 'object' && result.message) {
+      setShowResultModal(true);
+    }
+  }, [result, autoSubmit]);
 
   // Helper to get identifier for interval data
   const getIdentifierForIntervalData = () => {
@@ -6317,7 +6339,7 @@ export default function InfoToolPage({ title, description, endpoint, extraFields
         </button>
       </form>
       {error && <div style={{ color: "red", marginTop: 18 }}>{error}</div>}
-      {result && (
+      {result && !autoSubmit && (
         <div style={{ marginTop: 28, textAlign: "left" }}>
           <h3>Result:</h3>
           {typeof result === 'object' && result.message ? (
@@ -6327,6 +6349,128 @@ export default function InfoToolPage({ title, description, endpoint, extraFields
           ) : (
             <InvoiceResult result={result} session={session} token={token} autoOpenDMA={autoOpenDMA} />
           )}
+        </div>
+      )}
+      
+      {/* Result Modal for auto-submitted data requests */}
+      {showResultModal && result && typeof result === 'object' && result.message && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            padding: '20px'
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowResultModal(false);
+              if (autoSubmit) {
+                // Try to close the window/tab if it was opened by window.open
+                if (window.opener) {
+                  window.close();
+                } else {
+                  // If we can't close, at least try to go back or close
+                  setTimeout(() => {
+                    if (window.history.length > 1) {
+                      window.history.back();
+                    } else {
+                      window.close();
+                    }
+                  }, 100);
+                }
+              }
+            }
+          }}
+        >
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: 8,
+            padding: 24,
+            width: '100%',
+            maxWidth: '800px',
+            maxHeight: '90vh',
+            overflow: 'auto',
+            boxShadow: '0 25px 50px rgba(0, 0, 0, 0.25)',
+            position: 'relative'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <h2 style={{ margin: 0, fontSize: 24, fontWeight: 600 }}>Data Request Result</h2>
+              <button 
+                onClick={() => {
+                  setShowResultModal(false);
+                  if (autoSubmit) {
+                    // Try to close the window/tab if it was opened by window.open
+                    if (window.opener) {
+                      window.close();
+                    } else {
+                      // If we can't close, at least try to go back or close
+                      setTimeout(() => {
+                        if (window.history.length > 1) {
+                          window.history.back();
+                        } else {
+                          window.close();
+                        }
+                      }, 100);
+                    }
+                  }
+                }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: 24,
+                  cursor: 'pointer',
+                  color: '#666',
+                  padding: '0 8px'
+                }}
+              >
+                ×
+              </button>
+            </div>
+            <div style={{ background: '#f4f4f4', padding: 16, borderRadius: 6 }}>
+              <ResultMessage message={result.message} />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 20 }}>
+              <button
+                onClick={() => {
+                  setShowResultModal(false);
+                  if (autoSubmit) {
+                    // Try to close the window/tab if it was opened by window.open
+                    if (window.opener) {
+                      window.close();
+                    } else {
+                      // If we can't close, at least try to go back or close
+                      setTimeout(() => {
+                        if (window.history.length > 1) {
+                          window.history.back();
+                        } else {
+                          window.close();
+                        }
+                      }, 100);
+                    }
+                  }
+                }}
+                style={{
+                  padding: '10px 24px',
+                  backgroundColor: '#2563eb',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  fontSize: 14
+                }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
         </div>
       )}
       
