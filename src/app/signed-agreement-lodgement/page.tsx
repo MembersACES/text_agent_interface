@@ -476,18 +476,22 @@ export default function SignedAgreementLodgementPage() {
     return selectedUtilityType ? utilityTypes[selectedUtilityType as keyof typeof utilityTypes] || [] : [];
   };
 
-  // Check if current selection requires NMI
-  const requiresNMI = () => {
+  // Check if current selection typically uses NMI
+  const usesNMI = () => {
     return selectedUtilityType === "C&I Electricity" || 
            selectedUtilityType === "SME Electricity" || 
            selectedUtilityType === "DMA" ||
            (agreementType === "eoi" && contractType === "Direct Meter Agreement");
   };
 
-  // Check if current selection requires MIRN
-  const requiresMIRN = () => {
+  // Check if current selection typically uses MIRN
+  const usesMIRN = () => {
     return selectedUtilityType === "C&I Gas" || selectedUtilityType === "SME Gas";
   };
+  
+  // Legacy functions for backward compatibility
+  const requiresNMI = () => usesNMI();
+  const requiresMIRN = () => usesMIRN();
 
   const dispatchReauthEvent = () => {
     console.log("🔍 401 Unauthorized - dispatching reauthentication event");
@@ -530,17 +534,25 @@ export default function SignedAgreementLodgementPage() {
 
   // Get the identifier label
   const getIdentifierLabel = () => {
-    if (requiresNMI()) return "NMI";
-    if (requiresMIRN()) return "MIRN";
+    if (usesNMI()) return "NMI";
+    if (usesMIRN()) return "MIRN";
+    // For other types, show a generic identifier field
+    if (selectedUtilityType) return "Identifier (Optional)";
     return "";
   };
 
   // Build business name with identifier for submission
   const buildBusinessNameForSubmission = () => {
     let fullBusinessName = businessName.trim();
-    if (requiresNMI() && nmi.trim()) {
+    if (usesNMI() && nmi.trim()) {
       fullBusinessName += ` NMI: ${nmi.trim()}`;
-    } else if (requiresMIRN() && mirn.trim()) {
+    } else if (usesMIRN() && mirn.trim()) {
+      fullBusinessName += ` MIRN: ${mirn.trim()}`;
+    } else if (nmi.trim()) {
+      // Generic NMI if provided but not for electricity/DMA
+      fullBusinessName += ` NMI: ${nmi.trim()}`;
+    } else if (mirn.trim()) {
+      // Generic MIRN if provided but not for gas
       fullBusinessName += ` MIRN: ${mirn.trim()}`;
     }
     return fullBusinessName;
@@ -646,16 +658,7 @@ useEffect(() => {
       return;
     }
 
-    // Check for required identifiers
-    if (requiresNMI() && !nmi.trim()) {
-      setResult("❌ NMI is required for electricity and DMA agreements.");
-      return;
-    }
-
-    if (requiresMIRN() && !mirn.trim()) {
-      setResult("❌ MIRN is required for gas agreements.");
-      return;
-    }
+    // Identifiers are now optional, so no validation needed
 
     setLoading(true);
     setResult("");
@@ -876,19 +879,6 @@ useEffect(() => {
           <label className="block font-medium text-gray-700">
             Business Name *
           </label>
-          {businessName.trim() && (
-            <button
-              onClick={() => {
-                const params = new URLSearchParams();
-                params.set('businessName', businessName.trim());
-                window.open(`/business-info?${params.toString()}`, '_blank', 'noopener,noreferrer');
-              }}
-              className="px-3 py-1 text-sm rounded bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300"
-              title="View client profile for this business"
-            >
-              View Client Profile →
-            </button>
-          )}
         </div>
         <input
           type="text"
@@ -900,44 +890,60 @@ useEffect(() => {
         />
       </div>
 
-      {/* NMI/MIRN Field */}
-      {(requiresNMI() || requiresMIRN()) && (
+      {/* Identifier Field (NMI/MIRN) - Optional */}
+      {selectedUtilityType && (
         <div className="mb-4">
           <label className="block font-medium mb-2 text-gray-700">
-            {getIdentifierLabel()} *
+            {getIdentifierLabel()} <span className="text-gray-500 text-sm">(Optional)</span>
             <span className="text-sm text-gray-500 ml-1">
-              {requiresNMI() && "(National Meter Identifier - required for electricity/DMA)"}
-              {requiresMIRN() && "(Meter Installation Registration Number - required for gas)"}
+              {usesNMI() && "(National Meter Identifier - typically used for electricity/DMA)"}
+              {usesMIRN() && "(Meter Installation Registration Number - typically used for gas)"}
+              {!usesNMI() && !usesMIRN() && "(Enter NMI or MIRN if applicable)"}
             </span>
           </label>
-          <input
-            type="text"
-            value={requiresNMI() ? nmi : mirn}
-            onChange={(e) => {
-              if (requiresNMI()) {
-                setNmi(e.target.value);
-              } else if (requiresMIRN()) {
-                setMirn(e.target.value);
-              }
-            }}
-            placeholder={`Enter ${getIdentifierLabel()}...`}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            required
-          />
-          {(requiresNMI() && nmi.trim()) || (requiresMIRN() && mirn.trim()) ? (
+          <div className="flex gap-2">
+            {usesNMI() && (
+              <input
+                type="text"
+                value={nmi}
+                onChange={(e) => setNmi(e.target.value)}
+                placeholder="Enter NMI (optional)..."
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            )}
+            {usesMIRN() && (
+              <input
+                type="text"
+                value={mirn}
+                onChange={(e) => setMirn(e.target.value)}
+                placeholder="Enter MIRN (optional)..."
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            )}
+            {!usesNMI() && !usesMIRN() && (
+              <>
+                <input
+                  type="text"
+                  value={nmi}
+                  onChange={(e) => setNmi(e.target.value)}
+                  placeholder="NMI (optional)..."
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <input
+                  type="text"
+                  value={mirn}
+                  onChange={(e) => setMirn(e.target.value)}
+                  placeholder="MIRN (optional)..."
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </>
+            )}
+          </div>
+          {(nmi.trim() || mirn.trim()) && (
             <p className="mt-1 text-sm text-green-600">
               ✅ Full business identifier: "{buildBusinessNameForSubmission()}"
             </p>
-          ) : null}
-        </div>
-      )}
-
-      {/* Show helper text for utilities that don't need identifiers */}
-      {selectedUtilityType && !requiresNMI() && !requiresMIRN() && (
-        <div className="mb-4">
-          <p className="text-sm text-gray-500 italic">
-            ℹ️ No additional identifier required for {selectedUtilityType.toLowerCase()} agreements.
-          </p>
+          )}
         </div>
       )}
 
@@ -974,9 +980,7 @@ useEffect(() => {
           !files || 
           files.length === 0 ||
           !contractType || 
-          !businessName.trim() ||
-          (requiresNMI() && !nmi.trim()) ||
-          (requiresMIRN() && !mirn.trim())
+          !businessName.trim()
         }
         className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
       >
@@ -992,22 +996,6 @@ useEffect(() => {
             } p-3 rounded`}
             dangerouslySetInnerHTML={{ __html: result.replace(/\n/g, '<br/>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') }}
           />
-          {result.includes("✅") && submittedBusinessName && (
-            <div className="mt-3 pt-3 border-t border-green-200">
-              <button
-                onClick={() => {
-                  const params = new URLSearchParams();
-                  // Extract just the business name (before NMI/MIRN if present)
-                  const nameOnly = submittedBusinessName.split(' NMI:')[0].split(' MIRN:')[0].trim();
-                  params.set('businessName', nameOnly);
-                  window.open(`/business-info?${params.toString()}`, '_blank', 'noopener,noreferrer');
-                }}
-                className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors font-medium"
-              >
-                View Client Profile for {submittedBusinessName.split(' NMI:')[0].split(' MIRN:')[0]}
-              </button>
-            </div>
-          )}
         </div>
       )}
 
@@ -1020,7 +1008,7 @@ useEffect(() => {
           <li>{agreementType === "contract" ? "3" : "2"}. Choose the utility type/size (e.g., "C&I Electricity") or service category</li>
           <li>{agreementType === "contract" ? "4" : "3"}. Select the specific supplier or service</li>
           <li>{agreementType === "contract" ? "5" : "4"}. Enter the business name</li>
-          <li>{agreementType === "contract" ? "6" : "5"}. If required, enter the NMI (electricity/DMA) or MIRN (gas)</li>
+          <li>{agreementType === "contract" ? "6" : "5"}. Optionally enter the NMI (electricity/DMA) or MIRN (gas) if applicable</li>
           <li>{agreementType === "contract" ? "7" : "6"}. Upload the signed PDF agreement{multipleAttachments ? "s" : ""}</li>
           <li>{agreementType === "contract" ? "8" : "7"}. The system will automatically email the supplier and file the document{multipleAttachments ? "s" : ""}</li>
         </ul>
