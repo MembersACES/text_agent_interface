@@ -144,6 +144,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
   const [showDriveModal, setShowDriveModal] = useState(false);
   const [driveModalFilingType, setDriveModalFilingType] = useState("");
   const [driveModalBusinessName, setDriveModalBusinessName] = useState("");
+  const [driveModalContractKey, setDriveModalContractKey] = useState<string | null>(null); // Track which contract is being filed
   const [driveModalFile, setDriveModalFile] = useState<File | null>(null);
   const [driveModalFiles, setDriveModalFiles] = useState<File[]>([]);
   const [driveModalMultipleFiles, setDriveModalMultipleFiles] = useState(false);
@@ -461,6 +462,10 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
 
   React.useEffect(() => {
     if (driveModalResult === 'File successfully uploaded and Drive links updated!') {
+      // Don't auto-close if we're showing the lodge agreement button for signed contracts
+      const shouldShowLodgeButton = driveModalFilingType.startsWith('signed_') && driveModalContractKey;
+      const timeoutDuration = shouldShowLodgeButton ? 10000 : 3000; // 10 seconds if showing lodge button, 3 seconds otherwise
+      
       const timer = setTimeout(() => {
         setShowDriveModal(false);
         setDriveModalFile(null);
@@ -468,10 +473,61 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
         setDriveModalMultipleFiles(false);
         setDriveModalContractStatus('Pending Refresh');
         setDriveModalResult(null);
-      }, 3000);
+        setDriveModalContractKey(null);
+      }, timeoutDuration);
       return () => clearTimeout(timer);
     }
-  }, [driveModalResult]);
+  }, [driveModalResult, driveModalFilingType, driveModalContractKey]);
+
+  // Prepare file for lodgement transfer when button becomes visible
+  React.useEffect(() => {
+    // Only prepare file if we're showing the lodge agreement button
+    if (driveModalResult && 
+        driveModalResult.includes('success') && 
+        driveModalResult.includes('successfully') && 
+        driveModalFilingType.startsWith('signed_') && 
+        driveModalContractKey) {
+      
+      // Check if file is already in storage
+      const existingFileData = sessionStorage.getItem('lodgementFileTransfer') || localStorage.getItem('lodgementFileTransfer');
+      
+      if (!existingFileData) {
+        // File not in storage, try to get from state and convert
+        const fileToTransfer = driveModalMultipleFiles 
+          ? (driveModalFiles.length > 0 ? driveModalFiles[0] : null)
+          : driveModalFile;
+        
+        if (fileToTransfer) {
+          console.log('📤 Preparing file for transfer...', fileToTransfer.name);
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const base64String = reader.result as string;
+            const fileData = {
+              name: fileToTransfer.name,
+              type: fileToTransfer.type || 'application/pdf',
+              size: fileToTransfer.size,
+              data: base64String,
+              timestamp: Date.now()
+            };
+            
+            // Store in both storages
+            try {
+              const fileDataString = JSON.stringify(fileData);
+              sessionStorage.setItem('lodgementFileTransfer', fileDataString);
+              localStorage.setItem('lodgementFileTransfer', fileDataString);
+              console.log('✅ File prepared and stored for transfer');
+            } catch (e) {
+              console.error('❌ Error storing file:', e);
+            }
+          };
+          reader.onerror = () => {
+            console.error('❌ Error reading file');
+          };
+          reader.readAsDataURL(fileToTransfer);
+        }
+      }
+    }
+  }, [driveModalResult, driveModalFilingType, driveModalContractKey, driveModalFile, driveModalFiles, driveModalMultipleFiles]);
   // EOI Modal auto-close effect
   React.useEffect(() => {
     if (eoiResult === 'EOI successfully processed and uploaded!') {
@@ -561,17 +617,27 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
         }
       );
       
-      // ADD THIS CHECK
+      // Handle different response statuses
+      if (res.status === 401) {
+        // 401 is expected if user doesn't have access or token expired - not an error
+        setClientNotes([]);
+        return;
+      }
+      
       if (!res.ok) {
-        console.error('Failed to fetch notes:', res.status);
-        setClientNotes([]); // Set to empty array on error
+        // Only log as error if it's not a 401
+        console.warn('Failed to fetch notes:', res.status);
+        setClientNotes([]);
         return;
       }
       
       const data = await res.json();
       setClientNotes(Array.isArray(data) ? data : []); // Ensure it's always an array
     } catch (err) {
-      console.error('Error fetching notes:', err);
+      // Only log if it's not a network/abort error
+      if (err instanceof Error && err.name !== 'AbortError') {
+        console.warn('Error fetching notes:', err);
+      }
       setClientNotes([]); // Set to empty array on error
     } finally {
       setNotesLoading(false);
@@ -1001,6 +1067,73 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
     setDriveModalFiles([]);
     setDriveModalMultipleFiles(false);
     setDriveModalResult(null);
+    setDriveModalContractKey(null);
+  };
+
+  // Helper function to map contract key to lodgement contract type
+  const getLodgementContractType = (contractKey: string): string | null => {
+    // Map contract keys to the contract types used in signed agreement lodgement
+    const contractKeyToLodgementType: Record<string, string> = {
+      'C&I Electricity': 'C&I Electricity',
+      'SME Electricity': 'SME Electricity',
+      'C&I Gas': 'C&I Gas',
+      'SME Gas': 'SME Gas',
+      'Waste': 'Waste',
+      'Oil': 'Other', // Oil contracts use "Other" in lodgement
+      'DMA': 'DMA',
+    };
+    return contractKeyToLodgementType[contractKey] || null;
+  };
+
+  // Helper function to get utility type for lodgement form
+  const getLodgementUtilityType = (contractKey: string): string | null => {
+    // Map contract keys to utility types in the lodgement form
+    // Most contract keys match utility types directly
+    const validUtilityTypes = ['C&I Electricity', 'SME Electricity', 'C&I Gas', 'SME Gas', 'Waste', 'DMA', 'Other'];
+    if (validUtilityTypes.includes(contractKey)) {
+      return contractKey;
+    }
+    // Oil contracts don't have a direct utility type, return null to let user select
+    if (contractKey === 'Oil') {
+      return null; // Oil is not in standard utility types
+    }
+    return null;
+  };
+
+  // Helper function to check if current selection requires NMI
+  const requiresNMI = (contractKey: string): boolean => {
+    return contractKey === "C&I Electricity" || 
+           contractKey === "SME Electricity" || 
+           contractKey === "DMA";
+  };
+
+  // Helper function to check if current selection requires MIRN
+  const requiresMIRN = (contractKey: string): boolean => {
+    return contractKey === "C&I Gas" || contractKey === "SME Gas";
+  };
+
+  // Helper function to get NMI/MIRN from linked utilities
+  const getIdentifierForContract = (contractKey: string): { type: 'nmi' | 'mirn' | null; value: string } => {
+    const linked = info.Linked_Details?.linked_utilities || {};
+    
+    if (requiresNMI(contractKey)) {
+      const nmis = linked[contractKey];
+      if (typeof nmis === "string") {
+        const nmiList = nmis.split(",").map(n => n.trim()).filter(Boolean);
+        return { type: 'nmi', value: nmiList[0] || '' };
+      } else if (Array.isArray(nmis)) {
+        return { type: 'nmi', value: nmis[0] || '' };
+      }
+    } else if (requiresMIRN(contractKey)) {
+      const mirns = linked[contractKey];
+      if (typeof mirns === "string") {
+        const mirnList = mirns.split(",").map(m => m.trim()).filter(Boolean);
+        return { type: 'mirn', value: mirnList[0] || '' };
+      } else if (Array.isArray(mirns)) {
+        return { type: 'mirn', value: mirns[0] || '' };
+      }
+    }
+    return { type: null, value: '' };
   };
 
   // Helper function to check if a document has a file
@@ -1448,7 +1581,21 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
             </div>
             {/* Signed Contracts */}
             <div className="min-w-0">
-              <h3 className="font-semibold text-gray-800 text-base mb-4">Signed Contracts</h3>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold text-gray-800 text-base">Signed Contracts</h3>
+                <button
+                  onClick={() => {
+                    const params = new URLSearchParams();
+                    params.set('businessName', business.name || '');
+                    window.open(`/signed-agreement-lodgement?${params.toString()}`, '_blank', 'noopener,noreferrer');
+                  }}
+                  className="px-3 py-1.5 rounded bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 flex items-center gap-1"
+                  title="Lodge a new signed agreement for this client"
+                >
+                  <span>+</span>
+                  <span>Lodge Signed Agreement</span>
+                </button>
+              </div>
               <div className="space-y-2">
                 {contracts
                   .sort((a, b) => {
@@ -1504,6 +1651,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                             const filingType = contractKeyMap[key as keyof typeof contractKeyMap] || key.toLowerCase().replace(/[^a-z0-9]+/g, '_');
                             setDriveModalFilingType(filingType);
                             setDriveModalBusinessName(business.name || "");
+                            setDriveModalContractKey(key); // Store the contract key for later use
                             setShowDriveModal(true);
                           }}
                         >
@@ -2923,6 +3071,49 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                       : 'bg-red-50 text-red-700'
                   }`}>
                     {driveModalResult}
+                    {/* Show Lodge Agreement button after successful filing of signed contracts */}
+                    {driveModalResult.includes('success') && 
+                     driveModalResult.includes('successfully') && 
+                     driveModalFilingType.startsWith('signed_') && 
+                     driveModalContractKey && (
+                      <div className="mt-3 pt-3 border-t border-green-200">
+                        <p className="text-sm text-green-800 mb-2">
+                          Would you like to lodge this agreement with the retailer?
+                        </p>
+                        {(() => {
+                          // Build URL - this runs during render
+                          const utilityType = getLodgementUtilityType(driveModalContractKey);
+                          const contractType = getLodgementContractType(driveModalContractKey);
+                          const identifier = getIdentifierForContract(driveModalContractKey);
+                          
+                          const params = new URLSearchParams();
+                          params.set('businessName', driveModalBusinessName);
+                          params.set('hasFile', 'true');
+                          if (utilityType) {
+                            params.set('utilityType', utilityType);
+                          }
+                          if (contractType) {
+                            params.set('contractType', contractType);
+                          }
+                          if (identifier.type && identifier.value) {
+                            params.set(identifier.type, identifier.value);
+                          }
+                          
+                          const url = `/signed-agreement-lodgement?${params.toString()}`;
+                          
+                          return (
+                            <a
+                              href={url}
+                              className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors font-medium text-sm text-center block"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              Lodge Agreement with Retailer →
+                            </a>
+                          );
+                        })()}
+                      </div>
+                    )}
                   </div>
                 )}
                 
@@ -3099,14 +3290,120 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                               // Set the exact message that triggers modal close
                               setDriveModalResult('File successfully uploaded and Drive links updated!');
                               
+                              // Store the file in sessionStorage for potential lodgement transfer
+                              // Only do this for signed contracts
+                              if (driveModalFilingType.startsWith('signed_') && filesToUpload.length > 0) {
+                                const fileToStore = filesToUpload[0]; // Store the first file
+                                try {
+                                  const reader = new FileReader();
+                                  reader.onloadend = () => {
+                                    const base64String = reader.result as string;
+                                    const fileData = {
+                                      name: fileToStore.name,
+                                      type: fileToStore.type || 'application/pdf',
+                                      size: fileToStore.size,
+                                      data: base64String,
+                                      timestamp: Date.now()
+                                    };
+                                    
+                                    // Check size limit
+                                    const maxSize = 7 * 1024 * 1024; // 7MB
+                                    if (fileToStore.size <= maxSize) {
+                                      try {
+                                        sessionStorage.setItem('lodgementFileTransfer', JSON.stringify(fileData));
+                                        console.log('💾 File stored for lodgement transfer:', fileToStore.name);
+                                        console.log('💾 File data size in storage:', JSON.stringify(fileData).length, 'bytes');
+                                        // Verify it was stored
+                                        const verify = sessionStorage.getItem('lodgementFileTransfer');
+                                        console.log('💾 Verification - file in storage:', !!verify);
+                                      } catch (storageError: any) {
+                                        console.warn('Could not store file for transfer:', storageError);
+                                      }
+                                    } else {
+                                      console.warn('File too large to store:', fileToStore.size);
+                                    }
+                                  };
+                                  reader.onerror = () => {
+                                    console.warn('Error reading file for transfer storage');
+                                  };
+                                  reader.readAsDataURL(fileToStore);
+                                } catch (error) {
+                                  console.warn('Error preparing file for transfer:', error);
+                                }
+                              }
+                              
                             } catch (webhookErr) {
                               console.error("Error calling n8n webhook:", webhookErr);
                               // Still close modal even if webhook fails
                               setDriveModalResult('File successfully uploaded and Drive links updated!');
+                              
+                              // Store the file even if webhook fails
+                              if (driveModalFilingType.startsWith('signed_') && filesToUpload.length > 0) {
+                                const fileToStore = filesToUpload[0];
+                                try {
+                                  const reader = new FileReader();
+                                  reader.onloadend = () => {
+                                    const base64String = reader.result as string;
+                                    const fileData = {
+                                      name: fileToStore.name,
+                                      type: fileToStore.type || 'application/pdf',
+                                      size: fileToStore.size,
+                                      data: base64String,
+                                      timestamp: Date.now()
+                                    };
+                                    
+                                    const maxSize = 7 * 1024 * 1024;
+                                    if (fileToStore.size <= maxSize) {
+                                      try {
+                                        sessionStorage.setItem('lodgementFileTransfer', JSON.stringify(fileData));
+                                        console.log('File stored for lodgement transfer:', fileToStore.name);
+                                      } catch (storageError: any) {
+                                        console.warn('Could not store file for transfer:', storageError);
+                                      }
+                                    }
+                                  };
+                                  reader.onerror = () => console.warn('Error reading file for transfer storage');
+                                  reader.readAsDataURL(fileToStore);
+                                } catch (error) {
+                                  console.warn('Error preparing file for transfer:', error);
+                                }
+                              }
                             }
                           } else {
                             // Fallback if no setInfo function
                             setDriveModalResult('File successfully uploaded and Drive links updated!');
+                            
+                            // Store the file even in fallback case
+                            if (driveModalFilingType.startsWith('signed_') && filesToUpload.length > 0) {
+                              const fileToStore = filesToUpload[0];
+                              try {
+                                const reader = new FileReader();
+                                reader.onloadend = () => {
+                                  const base64String = reader.result as string;
+                                  const fileData = {
+                                    name: fileToStore.name,
+                                    type: fileToStore.type || 'application/pdf',
+                                    size: fileToStore.size,
+                                    data: base64String,
+                                    timestamp: Date.now()
+                                  };
+                                  
+                                  const maxSize = 7 * 1024 * 1024;
+                                  if (fileToStore.size <= maxSize) {
+                                    try {
+                                      sessionStorage.setItem('lodgementFileTransfer', JSON.stringify(fileData));
+                                      console.log('File stored for lodgement transfer:', fileToStore.name);
+                                    } catch (storageError: any) {
+                                      console.warn('Could not store file for transfer:', storageError);
+                                    }
+                                  }
+                                };
+                                reader.onerror = () => console.warn('Error reading file for transfer storage');
+                                reader.readAsDataURL(fileToStore);
+                              } catch (error) {
+                                console.warn('Error preparing file for transfer:', error);
+                              }
+                            }
                           }
                         } else {
                           setDriveModalResult(`Error: ${data.message}`);
