@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
+import { useSearchParams } from "next/navigation";
 import { getApiBaseUrl } from "@/lib/utils";
 import { signIn } from "next-auth/react";
 
@@ -12,25 +13,174 @@ interface ContractTypes {
 
 const UTILITY_TYPES = {
   "C&I Electricity": ["Origin C&I Electricity", "Momentum C&I Electricity", "Alinta C&I Electricity", "Other"],
-  "SME Electricity": ["Origin SME Electricity", "BlueNRG SME Electricity"],
-  "C&I Gas": ["Origin C&I Gas", "Alinta C&I Gas"],
-  "SME Gas": ["CovaU SME Gas"],
-  "Waste": ["Veolia Waste"],
-  "DMA": ["PowerMetric DMA"],
+  "SME Electricity": ["Origin SME Electricity", "BlueNRG SME Electricity", "Other"],
+  "C&I Gas": ["Origin C&I Gas", "Alinta C&I Gas", "Other"],
+  "SME Gas": ["CovaU SME Gas", "Other"],
+  "Waste": ["Veolia Waste", "Other"],
+  "DMA": ["PowerMetric DMA", "Other"],
   "Other": ["Other"]
 };
 
 const EOI_TYPES = {
-  "Energy Solutions": ["Direct Meter Agreement", "Solar Energy PPA", "Self Managed Certificates", "Large Generation Certificates Trading", "Self Managed VEECs", "Demand Response"],
-  "Waste Management": ["Cooking Oil Used Oil", "Waste Organic Recycling", "Waste Grease Trap", "Baled Cardboard", "Loose Cardboard", "Used Wax Cardboard", "Vic CDS Scheme"],
-  "Technology": ["Cleaning Robot", "Inbound Digital Voice Agent", "Telecommunication"],
-  "Business Services": ["Referral Distribution Program", "Wood Pallet", "Wood Cut"],
-  "Environmental": ["GHG Action Plan", "Government Incentives Vic G4"],
-  "Templates": ["New Placeholder Template"]
+  "Energy Solutions": ["Direct Meter Agreement", "Solar Energy PPA", "Self Managed Certificates", "Large Generation Certificates Trading", "Self Managed VEECs", "Demand Response", "Other"],
+  "Waste Management": ["Cooking Oil Used Oil", "Waste Organic Recycling", "Waste Grease Trap", "Baled Cardboard", "Loose Cardboard", "Used Wax Cardboard", "Vic CDS Scheme", "Other"],
+  "Technology": ["Cleaning Robot", "Inbound Digital Voice Agent", "Telecommunication", "Other"],
+  "Business Services": ["Referral Distribution Program", "Wood Pallet", "Wood Cut", "Other"],
+  "Environmental": ["GHG Action Plan", "Government Incentives Vic G4", "Other"],
+  "Templates": ["New Placeholder Template", "Other"]
+};
+
+// Contract email mappings (matching backend)
+const CONTRACT_EMAIL_MAPPINGS: Record<string, { name: string; email: string }> = {
+  "PowerMetric DMA": {
+    name: "PowerMetric",
+    email: "accountmanagement@powermetric.com.au, rmorse@powermetric.com.au, data.quote@fornrg.com"
+  },
+  "Origin C&I Electricity": {
+    name: "Origin C&I",
+    email: "MIContracts@originenergy.com.au, data.quote@fornrg.com"
+  },
+  "Origin SME Electricity": {
+    name: "Origin SME",
+    email: "MIContracts@originenergy.com.au, data.quote@fornrg.com"
+  },
+  "BlueNRG SME Electricity": {
+    name: "BlueNRG SME",
+    email: "data.quote@fornrg.com"
+  },
+  "Origin C&I Gas": {
+    name: "Origin C&I",
+    email: "MIContracts@originenergy.com.au, data.quote@fornrg.com"
+  },
+  "Momentum C&I Electricity": {
+    name: "Momentum",
+    email: "contracts.administration@momentum.com.au, data.quote@fornrg.com"
+  },
+  "CovaU SME Gas": {
+    name: "CovaU",
+    email: "corp.sales@covau.com.au, data.quote@fornrg.com"
+  },
+  "CovaU SME Electricity": {
+    name: "CovaU",
+    email: "corp.sales@covau.com.au, data.quote@fornrg.com"
+  },
+  "Veolia Waste": {
+    name: "Veolia",
+    email: "ric.luiyf@veolia.com, business@acesolutions.com.au"
+  },
+  "Alinta C&I Electricity": {
+    name: "Alinta",
+    email: "Andrew.Barnes@alintaenergy.com.au, Moulee.Siriharan@alintaenergy.com.au, data.quote@fornrg.com"
+  },
+  "Alinta C&I Gas": {
+    name: "Alinta",
+    email: "Andrew.Barnes@alintaenergy.com.au, Moulee.Siriharan@alintaenergy.com.au, data.quote@fornrg.com"
+  },
+  "Other": {
+    name: "Other",
+    email: "members@acesolutions.com.au, data.quote@fornrg.com, morgan.h@acesolutions.com.au"
+  },
+};
+
+// EOI email mappings (matching backend)
+const EOI_EMAIL_MAPPINGS: Record<string, { name: string; email: string }> = {
+  "Direct Meter Agreement": {
+    name: "DMA Supplier",
+    email: "data.quote@fornrg.com"
+  },
+  "Cleaning Robot": {
+    name: "Cleaning Tech",
+    email: "cleantech@supplier.com"
+  },
+  "Inbound Digital Voice Agent": {
+    name: "Voice Tech",
+    email: "voicetech@supplier.com"
+  },
+  "Cooking Oil Used Oil": {
+    name: "Oil Recycling",
+    email: "oilrecycling@supplier.com"
+  },
+  "Referral Distribution Program": {
+    name: "Distribution Partner",
+    email: "distribution@partner.com"
+  },
+  "Solar Energy PPA": {
+    name: "Solar Energy",
+    email: "data.quote@fornrg.com"
+  },
+  "Self Managed Certificates": {
+    name: "Certificate Management",
+    email: "certificates@supplier.com"
+  },
+  "Telecommunication": {
+    name: "Telecom",
+    email: "telecom@supplier.com"
+  },
+  "Wood Pallet": {
+    name: "Wood Pallet",
+    email: "woodpallet@supplier.com"
+  },
+  "Wood Cut": {
+    name: "Wood Processing",
+    email: "woodprocessing@supplier.com"
+  },
+  "Baled Cardboard": {
+    name: "Cardboard Recycling",
+    email: "cardboard@recycler.com"
+  },
+  "Loose Cardboard": {
+    name: "Cardboard Recycling",
+    email: "cardboard@recycler.com"
+  },
+  "Large Generation Certificates Trading": {
+    name: "LGC Trading",
+    email: "lgc@trading.com"
+  },
+  "GHG Action Plan": {
+    name: "Environmental",
+    email: "environment@supplier.com"
+  },
+  "Government Incentives Vic G4": {
+    name: "Government",
+    email: "government@supplier.com"
+  },
+  "Self Managed VEECs": {
+    name: "VEEC Management",
+    email: "veec@management.com"
+  },
+  "Demand Response": {
+    name: "Demand Response",
+    email: "demandresponse@supplier.com"
+  },
+  "Waste Organic Recycling": {
+    name: "Organic Waste",
+    email: "organicwaste@recycler.com"
+  },
+  "Waste Grease Trap": {
+    name: "Grease Trap",
+    email: "greasetrap@supplier.com"
+  },
+  "Used Wax Cardboard": {
+    name: "Wax Cardboard",
+    email: "waxcardboard@recycler.com"
+  },
+  "Vic CDS Scheme": {
+    name: "CDS Scheme",
+    email: "cds@scheme.com"
+  },
+  "New Placeholder Template": {
+    name: "Template",
+    email: "members@acesolutions.com.au, data.quote@fornrg.com"
+  },
+  "Other": {
+    name: "Other",
+    email: "members@acesolutions.com.au, data.quote@fornrg.com, morgan.h@acesolutions.com.au"
+  }
 };
 
 export default function SignedAgreementLodgementPage() {
   const { data: session } = useSession();
+  const searchParams = useSearchParams();
   const token = (session as any)?.id_token || (session as any)?.accessToken;
   const [agreementType, setAgreementType] = useState<"contract" | "eoi">("contract");
   const [selectedUtilityType, setSelectedUtilityType] = useState("");
@@ -43,6 +193,277 @@ export default function SignedAgreementLodgementPage() {
   const [result, setResult] = useState("");
   const [loading, setLoading] = useState(false);
   const [availableContracts, setAvailableContracts] = useState<ContractTypes>({ contracts: [], eois: [] });
+  const [submittedBusinessName, setSubmittedBusinessName] = useState("");
+
+  // Listen for file data from postMessage
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      console.log('📨 Received postMessage:', event.origin, event.data?.type);
+      // Only accept messages from same origin
+      if (event.origin !== window.location.origin) {
+        console.log('⚠️ Rejecting message from different origin:', event.origin);
+        return;
+      }
+      
+      if (event.data && event.data.type === 'LODGEMENT_FILE_TRANSFER' && event.data.fileData) {
+        console.log('📥 Received file data via postMessage!', event.data.fileData);
+        const fileData = event.data.fileData;
+        
+        try {
+          // Convert base64 back to File
+          const base64Data = fileData.data.split(',')[1];
+          const byteCharacters = atob(base64Data);
+          const byteNumbers = new Array(byteCharacters.length);
+          for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+          }
+          const byteArray = new Uint8Array(byteNumbers);
+          const blob = new Blob([byteArray], { type: fileData.type || 'application/pdf' });
+          const restoredFile = new File([blob], fileData.name, { type: fileData.type || 'application/pdf' });
+          
+          console.log('✅ File restored from postMessage:', { name: restoredFile.name, size: restoredFile.size });
+          
+          // Create a FileList using DataTransfer
+          const dataTransfer = new DataTransfer();
+          dataTransfer.items.add(restoredFile);
+          const fileList = dataTransfer.files;
+          
+          // Set the files state
+          setFiles(fileList);
+          
+          // Update the file input
+          setTimeout(() => {
+            const fileInput = document.getElementById("file-input") as HTMLInputElement;
+            if (fileInput) {
+              const dt = new DataTransfer();
+              dt.items.add(restoredFile);
+              fileInput.files = dt.files;
+              const changeEvent = new Event('change', { bubbles: true });
+              fileInput.dispatchEvent(changeEvent);
+              console.log('✅ File input updated from postMessage');
+            }
+          }, 200);
+          
+          // Show success message
+          setResult("✅ File loaded from previous upload. Ready to submit!");
+          setTimeout(() => setResult(""), 5000);
+        } catch (error) {
+          console.error('❌ Error processing file from postMessage:', error);
+        }
+      }
+    };
+    
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
+
+  // Load business name from URL query parameter
+  useEffect(() => {
+    console.log('🚀 Signed Agreement Lodgement page useEffect running');
+    const urlBusinessName = searchParams.get('businessName');
+    const urlUtilityType = searchParams.get('utilityType');
+    const urlContractType = searchParams.get('contractType');
+    const urlNmi = searchParams.get('nmi');
+    const urlMirn = searchParams.get('mirn');
+    const hasFile = searchParams.get('hasFile') === 'true';
+    
+    console.log('📋 URL params:', { urlBusinessName, urlUtilityType, urlContractType, urlNmi, urlMirn, hasFile });
+    
+    if (urlBusinessName) {
+      setBusinessName(decodeURIComponent(urlBusinessName));
+    }
+    if (urlUtilityType) {
+      setSelectedUtilityType(decodeURIComponent(urlUtilityType));
+    }
+    if (urlContractType) {
+      setContractType(decodeURIComponent(urlContractType));
+    }
+    if (urlNmi) {
+      setNmi(decodeURIComponent(urlNmi));
+    }
+    if (urlMirn) {
+      setMirn(decodeURIComponent(urlMirn));
+    }
+    
+    // Load file from sessionStorage if available
+    if (hasFile) {
+      console.log('🔍 hasFile is true, attempting to load file from sessionStorage');
+      console.log('🔍 Current URL:', window.location.href);
+      console.log('🔍 All sessionStorage keys:', Object.keys(sessionStorage));
+      
+      // Immediately check if file exists
+      const immediateCheck = sessionStorage.getItem('lodgementFileTransfer');
+      console.log('🔍 Immediate check for file:', !!immediateCheck);
+      
+      if (!immediateCheck) {
+        console.warn('⚠️ File not found in immediate check - this might be a timing issue');
+        // Show user-friendly message
+        setResult("ℹ️ Looking for file from previous upload...");
+      }
+      
+      // Use a longer delay to ensure the file input element exists and React has rendered
+      const timer = setTimeout(() => {
+        try {
+          // Check multiple times with increasing delays to handle timing issues
+          let attempts = 0;
+          const maxAttempts = 3;
+          
+          const tryLoadFile = () => {
+            attempts++;
+            // Try sessionStorage first, then localStorage as fallback
+            let fileDataStr = sessionStorage.getItem('lodgementFileTransfer');
+            if (!fileDataStr) {
+              console.log('🔍 File not in sessionStorage, checking localStorage...');
+              fileDataStr = localStorage.getItem('lodgementFileTransfer');
+              if (fileDataStr) {
+                console.log('✅ File found in localStorage!');
+              }
+            }
+            
+            console.log(`🔍 Attempt ${attempts}: Checking for file in sessionStorage/localStorage:`, !!fileDataStr);
+            
+            // Debug: Check what's actually in sessionStorage
+            if (attempts === 1) {
+              const allKeys = Object.keys(sessionStorage);
+              console.log('🔍 All sessionStorage keys on attempt 1:', allKeys);
+              console.log('🔍 Total sessionStorage size:', JSON.stringify(sessionStorage).length, 'bytes');
+              
+              allKeys.forEach(key => {
+                const value = sessionStorage.getItem(key);
+                console.log(`🔍 Key: "${key}", Value length: ${value?.length || 0}`);
+                
+                // Check if it looks like our file data
+                if (key.includes('lodgement') || key.includes('file') || key.includes('transfer')) {
+                  console.log(`✅ Found relevant key: ${key}`);
+                  try {
+                    const parsed = JSON.parse(value || '{}');
+                    console.log(`   Parsed data keys:`, Object.keys(parsed));
+                    console.log(`   Has 'data' field:`, !!parsed.data);
+                    console.log(`   Has 'name' field:`, !!parsed.name);
+                    console.log(`   Data length:`, parsed.data?.length || 0);
+                  } catch (e) {
+                    console.log(`   Not valid JSON:`, e);
+                  }
+                }
+              });
+              
+              // Also check localStorage as fallback
+              const localStorageKeys = Object.keys(localStorage);
+              console.log('🔍 localStorage keys:', localStorageKeys);
+            }
+            
+            if (fileDataStr) {
+              console.log('✅ File found in sessionStorage!');
+              const fileData = JSON.parse(fileDataStr);
+              console.log('✅ File data found:', { name: fileData.name, size: fileData.size, hasData: !!fileData.data, timestamp: fileData.timestamp });
+              
+              // Check if file data is recent (within 5 minutes)
+              const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
+              console.log('⏰ Time check - now:', Date.now(), 'file timestamp:', fileData.timestamp, 'fiveMinutesAgo:', fiveMinutesAgo);
+              
+              if (fileData.timestamp && fileData.timestamp > fiveMinutesAgo) {
+                console.log('✅ File data is recent, restoring...');
+                // Convert base64 back to File
+                const base64Data = fileData.data.split(',')[1]; // Remove data:type;base64, prefix
+                const byteCharacters = atob(base64Data);
+                const byteNumbers = new Array(byteCharacters.length);
+                for (let i = 0; i < byteCharacters.length; i++) {
+                  byteNumbers[i] = byteCharacters.charCodeAt(i);
+                }
+                const byteArray = new Uint8Array(byteNumbers);
+                const blob = new Blob([byteArray], { type: fileData.type || 'application/pdf' });
+                const restoredFile = new File([blob], fileData.name, { type: fileData.type || 'application/pdf' });
+                
+                console.log('✅ File restored:', { name: restoredFile.name, size: restoredFile.size, type: restoredFile.type });
+                
+                // Create a FileList using DataTransfer
+                const dataTransfer = new DataTransfer();
+                dataTransfer.items.add(restoredFile);
+                const fileList = dataTransfer.files;
+                
+                // Set the files state
+                setFiles(fileList);
+                console.log('✅ Files state set, count:', fileList.length);
+                
+                // Wait a bit more for React to render, then update the file input
+                setTimeout(() => {
+                  const fileInput = document.getElementById("file-input") as HTMLInputElement;
+                  console.log('🔍 Looking for file input element:', !!fileInput);
+                  
+                  if (fileInput) {
+                    // Create a new FileList and assign it
+                    const dt = new DataTransfer();
+                    dt.items.add(restoredFile);
+                    fileInput.files = dt.files;
+                    
+                    console.log('✅ File input updated, files count:', fileInput.files.length);
+                    
+                    // Trigger change event so the UI updates - this will call handleFileChange
+                    const changeEvent = new Event('change', { bubbles: true });
+                    fileInput.dispatchEvent(changeEvent);
+                    
+                    console.log('✅ File change event dispatched');
+                  } else {
+                    console.warn('⚠️ File input element not found, retrying...');
+                    // Retry after another delay
+                    setTimeout(() => {
+                      const retryInput = document.getElementById("file-input") as HTMLInputElement;
+                      if (retryInput) {
+                        const dt = new DataTransfer();
+                        dt.items.add(restoredFile);
+                        retryInput.files = dt.files;
+                        const changeEvent = new Event('change', { bubbles: true });
+                        retryInput.dispatchEvent(changeEvent);
+                        console.log('✅ File input updated on retry');
+                      }
+                    }, 500);
+                  }
+                }, 200);
+                
+                // Clear the sessionStorage and localStorage after use (but wait a bit to ensure it's loaded)
+                setTimeout(() => {
+                  const stillNeeded = sessionStorage.getItem('lodgementFileTransfer') || localStorage.getItem('lodgementFileTransfer');
+                  if (stillNeeded) {
+                    // Only clear if we successfully loaded the file
+                    sessionStorage.removeItem('lodgementFileTransfer');
+                    localStorage.removeItem('lodgementFileTransfer');
+                    console.log('🗑️ Cleared file from sessionStorage and localStorage after successful load');
+                  }
+                }, 3000); // Increased delay before clearing to 3 seconds
+                
+                // Show a message that the file was loaded
+                setResult("✅ File loaded from previous upload. Ready to submit!");
+                setTimeout(() => setResult(""), 5000);
+              } else {
+                // File data is too old, remove it
+                console.log('⚠️ File data is too old, removing');
+                sessionStorage.removeItem('lodgementFileTransfer');
+              }
+            } else if (attempts < maxAttempts) {
+              // File not found, retry after a delay
+              console.log(`⚠️ File not found on attempt ${attempts}, retrying in 200ms...`);
+              setTimeout(tryLoadFile, 200);
+            } else {
+              console.log('⚠️ No file data found in sessionStorage after all attempts');
+              // Show user-friendly message
+              setResult("ℹ️ File not found. Please select the file manually.");
+            }
+          };
+          
+          // Start trying to load the file
+          tryLoadFile();
+        } catch (error) {
+          console.error('❌ Error loading file from sessionStorage:', error);
+          console.error('❌ Error details:', error);
+          sessionStorage.removeItem('lodgementFileTransfer');
+        }
+      }, 300); // Initial delay
+      
+      return () => clearTimeout(timer);
+    } else {
+      console.log('⚠️ hasFile is false, skipping file load');
+    }
+  }, [searchParams]); // Remove handleFileChange from dependencies
 
   // Get utility types based on agreement type
   const getUtilityTypes = () => {
@@ -55,18 +476,22 @@ export default function SignedAgreementLodgementPage() {
     return selectedUtilityType ? utilityTypes[selectedUtilityType as keyof typeof utilityTypes] || [] : [];
   };
 
-  // Check if current selection requires NMI
-  const requiresNMI = () => {
+  // Check if current selection typically uses NMI
+  const usesNMI = () => {
     return selectedUtilityType === "C&I Electricity" || 
            selectedUtilityType === "SME Electricity" || 
            selectedUtilityType === "DMA" ||
            (agreementType === "eoi" && contractType === "Direct Meter Agreement");
   };
 
-  // Check if current selection requires MIRN
-  const requiresMIRN = () => {
+  // Check if current selection typically uses MIRN
+  const usesMIRN = () => {
     return selectedUtilityType === "C&I Gas" || selectedUtilityType === "SME Gas";
   };
+  
+  // Legacy functions for backward compatibility
+  const requiresNMI = () => usesNMI();
+  const requiresMIRN = () => usesMIRN();
 
   const dispatchReauthEvent = () => {
     console.log("🔍 401 Unauthorized - dispatching reauthentication event");
@@ -81,19 +506,53 @@ export default function SignedAgreementLodgementPage() {
     window.dispatchEvent(apiErrorEvent);
   };
 
+  // Get supplier email for selected contract type
+  const getSupplierEmail = (): { name: string; email: string } | null => {
+    if (!contractType) return null;
+    
+    const mapping = agreementType === "eoi" ? EOI_EMAIL_MAPPINGS : CONTRACT_EMAIL_MAPPINGS;
+    
+    // Try exact match first
+    if (contractType in mapping) {
+      return mapping[contractType];
+    }
+    
+    // Try case-insensitive match
+    const lowerContractType = contractType.toLowerCase();
+    for (const [key, value] of Object.entries(mapping)) {
+      if (key.toLowerCase() === lowerContractType) {
+        return value;
+      }
+    }
+    
+    // Default for unmatched types
+    return {
+      name: "Unknown Supplier",
+      email: "members@acesolutions.com.au"
+    };
+  };
+
   // Get the identifier label
   const getIdentifierLabel = () => {
-    if (requiresNMI()) return "NMI";
-    if (requiresMIRN()) return "MIRN";
+    if (usesNMI()) return "NMI";
+    if (usesMIRN()) return "MIRN";
+    // For other types, show a generic identifier field
+    if (selectedUtilityType) return "Identifier (Optional)";
     return "";
   };
 
   // Build business name with identifier for submission
   const buildBusinessNameForSubmission = () => {
     let fullBusinessName = businessName.trim();
-    if (requiresNMI() && nmi.trim()) {
+    if (usesNMI() && nmi.trim()) {
       fullBusinessName += ` NMI: ${nmi.trim()}`;
-    } else if (requiresMIRN() && mirn.trim()) {
+    } else if (usesMIRN() && mirn.trim()) {
+      fullBusinessName += ` MIRN: ${mirn.trim()}`;
+    } else if (nmi.trim()) {
+      // Generic NMI if provided but not for electricity/DMA
+      fullBusinessName += ` NMI: ${nmi.trim()}`;
+    } else if (mirn.trim()) {
+      // Generic MIRN if provided but not for gas
       fullBusinessName += ` MIRN: ${mirn.trim()}`;
     }
     return fullBusinessName;
@@ -199,16 +658,7 @@ useEffect(() => {
       return;
     }
 
-    // Check for required identifiers
-    if (requiresNMI() && !nmi.trim()) {
-      setResult("❌ NMI is required for electricity and DMA agreements.");
-      return;
-    }
-
-    if (requiresMIRN() && !mirn.trim()) {
-      setResult("❌ MIRN is required for gas agreements.");
-      return;
-    }
+    // Identifiers are now optional, so no validation needed
 
     setLoading(true);
     setResult("");
@@ -274,10 +724,15 @@ useEffect(() => {
       }
 
       if (res.ok) {
+        const submittedName = buildBusinessNameForSubmission();
+        setSubmittedBusinessName(submittedName);
         setResult(data.message || "✅ Agreement submitted successfully!");
-        // Reset form on success
+        // Reset form on success (but keep business name if it was from URL)
         setFiles(null);
-        setBusinessName("");
+        const urlBusinessName = searchParams.get('businessName');
+        if (!urlBusinessName) {
+          setBusinessName("");
+        }
         setNmi("");
         setMirn("");
         setContractType("");
@@ -397,14 +852,34 @@ useEffect(() => {
               </option>
             ))}
           </select>
+          {contractType && (() => {
+            const supplierInfo = getSupplierEmail();
+            if (supplierInfo) {
+              return (
+                <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                  <div className="text-sm">
+                    <div className="font-medium text-blue-900 mb-1">
+                      📧 Will be sent to: <span className="font-semibold">{supplierInfo.name}</span>
+                    </div>
+                    <div className="text-blue-700 text-xs break-all">
+                      {supplierInfo.email}
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+            return null;
+          })()}
         </div>
       )}
 
       {/* Business Name */}
       <div className="mb-4">
-        <label className="block font-medium mb-2 text-gray-700">
-          Business Name *
-        </label>
+        <div className="flex items-center justify-between mb-2">
+          <label className="block font-medium text-gray-700">
+            Business Name *
+          </label>
+        </div>
         <input
           type="text"
           value={businessName}
@@ -415,44 +890,60 @@ useEffect(() => {
         />
       </div>
 
-      {/* NMI/MIRN Field */}
-      {(requiresNMI() || requiresMIRN()) && (
+      {/* Identifier Field (NMI/MIRN) - Optional */}
+      {selectedUtilityType && (
         <div className="mb-4">
           <label className="block font-medium mb-2 text-gray-700">
-            {getIdentifierLabel()} *
+            {getIdentifierLabel()} <span className="text-gray-500 text-sm">(Optional)</span>
             <span className="text-sm text-gray-500 ml-1">
-              {requiresNMI() && "(National Meter Identifier - required for electricity/DMA)"}
-              {requiresMIRN() && "(Meter Installation Registration Number - required for gas)"}
+              {usesNMI() && "(National Meter Identifier - typically used for electricity/DMA)"}
+              {usesMIRN() && "(Meter Installation Registration Number - typically used for gas)"}
+              {!usesNMI() && !usesMIRN() && "(Enter NMI or MIRN if applicable)"}
             </span>
           </label>
-          <input
-            type="text"
-            value={requiresNMI() ? nmi : mirn}
-            onChange={(e) => {
-              if (requiresNMI()) {
-                setNmi(e.target.value);
-              } else if (requiresMIRN()) {
-                setMirn(e.target.value);
-              }
-            }}
-            placeholder={`Enter ${getIdentifierLabel()}...`}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            required
-          />
-          {(requiresNMI() && nmi.trim()) || (requiresMIRN() && mirn.trim()) ? (
+          <div className="flex gap-2">
+            {usesNMI() && (
+              <input
+                type="text"
+                value={nmi}
+                onChange={(e) => setNmi(e.target.value)}
+                placeholder="Enter NMI (optional)..."
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            )}
+            {usesMIRN() && (
+              <input
+                type="text"
+                value={mirn}
+                onChange={(e) => setMirn(e.target.value)}
+                placeholder="Enter MIRN (optional)..."
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            )}
+            {!usesNMI() && !usesMIRN() && (
+              <>
+                <input
+                  type="text"
+                  value={nmi}
+                  onChange={(e) => setNmi(e.target.value)}
+                  placeholder="NMI (optional)..."
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <input
+                  type="text"
+                  value={mirn}
+                  onChange={(e) => setMirn(e.target.value)}
+                  placeholder="MIRN (optional)..."
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </>
+            )}
+          </div>
+          {(nmi.trim() || mirn.trim()) && (
             <p className="mt-1 text-sm text-green-600">
               ✅ Full business identifier: "{buildBusinessNameForSubmission()}"
             </p>
-          ) : null}
-        </div>
-      )}
-
-      {/* Show helper text for utilities that don't need identifiers */}
-      {selectedUtilityType && !requiresNMI() && !requiresMIRN() && (
-        <div className="mb-4">
-          <p className="text-sm text-gray-500 italic">
-            ℹ️ No additional identifier required for {selectedUtilityType.toLowerCase()} agreements.
-          </p>
+          )}
         </div>
       )}
 
@@ -489,9 +980,7 @@ useEffect(() => {
           !files || 
           files.length === 0 ||
           !contractType || 
-          !businessName.trim() ||
-          (requiresNMI() && !nmi.trim()) ||
-          (requiresMIRN() && !mirn.trim())
+          !businessName.trim()
         }
         className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
       >
@@ -519,7 +1008,7 @@ useEffect(() => {
           <li>{agreementType === "contract" ? "3" : "2"}. Choose the utility type/size (e.g., "C&I Electricity") or service category</li>
           <li>{agreementType === "contract" ? "4" : "3"}. Select the specific supplier or service</li>
           <li>{agreementType === "contract" ? "5" : "4"}. Enter the business name</li>
-          <li>{agreementType === "contract" ? "6" : "5"}. If required, enter the NMI (electricity/DMA) or MIRN (gas)</li>
+          <li>{agreementType === "contract" ? "6" : "5"}. Optionally enter the NMI (electricity/DMA) or MIRN (gas) if applicable</li>
           <li>{agreementType === "contract" ? "7" : "6"}. Upload the signed PDF agreement{multipleAttachments ? "s" : ""}</li>
           <li>{agreementType === "contract" ? "8" : "7"}. The system will automatically email the supplier and file the document{multipleAttachments ? "s" : ""}</li>
         </ul>
