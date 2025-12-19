@@ -70,7 +70,9 @@ export const authOptions: NextAuthOptions = {
   pages: {
     error: '/auth/error', // Optional: custom error page
   },
-  debug: process.env.NODE_ENV === 'development', // Enable debug in development
+  // Only enable debug if explicitly set via environment variable
+  // This prevents the DEBUG_ENABLED warning in development
+  debug: process.env.NEXTAUTH_DEBUG === 'true',
 };
 
 async function refreshAccessToken(token: any) {

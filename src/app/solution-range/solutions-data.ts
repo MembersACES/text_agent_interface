@@ -384,6 +384,18 @@ export const solutionOptions: SolutionOption[] = [
   customSheetUrl: "https://docs.google.com/spreadsheets/d/1b-FsuFf3CqWdhnQcco0MXyJsPsFokZVcxBA0bMRrRKs/edit?gid=0#gid=0",
   customSheetLabel: "Purchase Order API Output",
 },
+// === CLIENT AGENT SLM (FRANKSTON RSL) ===
+{
+  id: "frankston_rsl_client_agent",
+  name: "Member Agent SLM - Frankston RSL",
+  description:
+    "A custom-made AI agent linked to the member profile, shared with the member so they can ask questions about their partnership and association with ACES. This agent is specifically configured for Frankston RSL and provides access to work in progress, action items, client profile details, invoice retrieval, and more.",
+  enabled: true,
+  category: "client_automation",
+  agentType: "client",
+  customSheetUrl: "https://client-individual-agent-672026052958.australia-southeast2.run.app/client/frankston_rsl/widget",
+  customSheetLabel: "Access Frankston RSL Agent",
+},
 
   {
     id: "event_referral",

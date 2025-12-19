@@ -1593,7 +1593,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                   title="Lodge a new signed agreement for this client"
                 >
                   <span>+</span>
-                  <span>Lodge Signed Agreement</span>
+                  <span>Lodge Retailer Agreement</span>
                 </button>
               </div>
               <div className="space-y-2">
@@ -1685,7 +1685,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                       onClick={() => setShowEOIModal(true)}
                       className="px-3 py-1.5 rounded bg-orange-600 text-white text-xs font-medium hover:bg-orange-700"
                     >
-                      Lodge EOI
+                      Upload EOI
                     </button>
                   </div>
                 </div>
