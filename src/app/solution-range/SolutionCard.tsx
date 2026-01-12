@@ -73,6 +73,7 @@ const solutionIdToSlug = (id: string): string => {
     trojan_oil_docket_reader_client: "trojan-oil-docket-reader",
     extrusions_purchase_order_reader: "extrusions-purchase-order-reader",
     frankston_rsl_client_agent: "frankston-rsl-agent",
+    pudu_multilanguage_maintenance_text_agent: "pudu-multilanguage-maintenance-agent",
     // AI Automation (Digital Voice Agents & Numbers)
     digital_voice_agents: "digital-inbound-receptionist",
     outbound_agent: "dynamic-outbound-andrew",
