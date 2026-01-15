@@ -1,5 +1,6 @@
 "use client";
 import React, { useState } from "react";
+import { useRouter } from "next/navigation";
 import type { SolutionOption } from "./solutions-data";
 
 type SubSolution = Omit<SolutionOption, "category" | "presentationId" | "enabled">;
@@ -65,7 +66,27 @@ function PhoneDisplay({ label, number }: { label?: string; number: string }) {
   );
 }
 
+// Helper function to convert solution ID to URL slug
+const solutionIdToSlug = (id: string): string => {
+  const slugMap: Record<string, string> = {
+    // Client Automation
+    trojan_oil_docket_reader_client: "trojan-oil-docket-reader",
+    extrusions_purchase_order_reader: "extrusions-purchase-order-reader",
+    frankston_rsl_client_agent: "frankston-rsl-agent",
+    pudu_multilanguage_maintenance_text_agent: "pudu-multilanguage-maintenance-agent",
+    // AI Automation (Digital Voice Agents & Numbers)
+    digital_voice_agents: "digital-inbound-receptionist",
+    outbound_agent: "dynamic-outbound-andrew",
+    dynamic_inbound_andrew: "dynamic-inbound-andrew",
+    inbound_booking_alex: "inbound-booking-alex",
+    pudu_maintenance_agent: "pudu-maintenance-agent",
+    trojan_oil_docket_reader: "trojan-oil-api-docket-reader",
+  };
+  return slugMap[id] || id.replace(/_/g, "-");
+};
+
 export default function EnhancedSolutionCard({ solution }: { solution: SolutionLike }) {
+  const router = useRouter();
   const [showCapabilities, setShowCapabilities] = useState(false);
   const [copiedPhone, setCopiedPhone] = useState(false);
 
@@ -261,6 +282,32 @@ export default function EnhancedSolutionCard({ solution }: { solution: SolutionL
                   className={`${!("presentationId" in solution && solution.presentationId) && !("pdfUrl" in solution && solution.pdfUrl) ? "w-full" : "flex-1"} px-4 py-2 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg hover:from-green-700 hover:to-green-800 transition-all duration-200 text-sm font-medium flex items-center justify-center gap-2 shadow-md hover:shadow-lg`}
                 >
                   <span>{((solution as SolutionOption).customSheetLabel) || "Sheet"}</span>
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                    />
+                  </svg>
+                </button>
+              )}
+              
+              {/* One Pager button - shows for client_automation and ai_automation solutions */}
+              {(((solution as SolutionOption).category === "client_automation") || ((solution as SolutionOption).category === "ai_automation")) && (
+                <button
+                  onClick={() => {
+                    const slug = solutionIdToSlug(solution.id);
+                    router.push(`/solution-range/one-pager/${slug}`);
+                  }}
+                  className="flex-1 px-4 py-2 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-lg hover:from-purple-700 hover:to-purple-800 transition-all duration-200 text-sm font-medium flex items-center justify-center gap-2 shadow-md hover:shadow-lg"
+                >
+                  <span>One Pager</span>
                   <svg
                     className="w-4 h-4"
                     fill="none"

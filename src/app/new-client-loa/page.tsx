@@ -168,7 +168,7 @@ export default function BlankLOAClientCreationPage() {
           <li>
             <span className="font-medium">PDF:</span>{' '}
             <a
-              href="https://drive.google.com/file/d/1yeMALd-XPnXp5bYhLEZOWbEaphyifH5L/view?usp=drive_link"
+              href="https://drive.google.com/file/d/10Fk9Vbhnud8XYrbw9IL6QvQrAQXif9UO/view?usp=drive_link" 
               target="_blank"
               rel="noopener noreferrer"
               className="text-blue-600 hover:underline"

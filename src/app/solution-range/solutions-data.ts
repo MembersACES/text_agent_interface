@@ -396,6 +396,18 @@ export const solutionOptions: SolutionOption[] = [
   customSheetUrl: "https://client-individual-agent-672026052958.australia-southeast2.run.app/client/frankston_rsl/widget",
   customSheetLabel: "Access Frankston RSL Agent",
 },
+// === PUDU MULTILANGUAGE MAINTENANCE TEXT AGENT ===
+{
+  id: "pudu_multilanguage_maintenance_text_agent",
+  name: "Pudu Multilanguage Maintenance Text Agent",
+  description:
+    "A multilingual text and voice support agent for Pudu CC1 robot maintenance, available in 10 languages. Provides troubleshooting guidance, maintenance procedures, and consumable replacement advice in the customer's preferred language.",
+  enabled: true,
+  category: "client_automation",
+  agentType: "client",
+  customSheetUrl: "https://pudu-chatbot-672026052958.australia-southeast2.run.app/",
+  customSheetLabel: "Access Multilanguage Agent",
+},
 
   {
     id: "event_referral",
