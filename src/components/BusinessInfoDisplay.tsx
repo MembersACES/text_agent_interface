@@ -824,8 +824,13 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
       return;
     }
 
-    if (!additionalDocFile.name.toLowerCase().endsWith('.pdf')) {
-      setAdditionalDocResult("Please upload a PDF file.");
+    // Validate file type
+    const fileName = additionalDocFile.name.toLowerCase();
+    const allowedExtensions = ['.pdf', '.xlsx', '.xls', '.docx', '.doc'];
+    const hasValidExtension = allowedExtensions.some(ext => fileName.endsWith(ext));
+    
+    if (!hasValidExtension) {
+      setAdditionalDocResult("Please upload a PDF, Excel (.xlsx, .xls), or Word (.docx, .doc) file.");
       return;
     }
 
@@ -835,7 +840,9 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
     try {
       // Call n8n directly with the file and required parameters
       const timestamp = new Date().toISOString();
-      const newFilename = `${business.name} - ${additionalDocType}.pdf`;
+      // Preserve the original file extension
+      const fileExtension = fileName.substring(fileName.lastIndexOf('.'));
+      const newFilename = `${business.name} - ${additionalDocType}${fileExtension}`;
 
       const formData = new FormData();
       formData.append("file", additionalDocFile);
@@ -3688,11 +3695,11 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
               <label className="font-semibold block mb-2">Document File:</label>
               <input
                 type="file"
-                accept="application/pdf"
+                accept=".pdf,.xlsx,.xls,.docx,.doc,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword"
                 onChange={handleAdditionalDocFileChange}
                 className="w-full"
               />
-              <p className="text-xs text-gray-500 mt-1">Accepted: PDF files only</p>
+              <p className="text-xs text-gray-500 mt-1">Accepted: PDF, Excel (.xlsx, .xls), and Word (.docx, .doc) files</p>
               {additionalDocFile && (
                 <div className="mt-2 text-sm text-gray-600">Selected file: {additionalDocFile?.name}</div>
               )}
