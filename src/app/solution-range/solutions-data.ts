@@ -12,7 +12,8 @@ export type SolutionCategory =
   | "other_solutions"
   | "ghg"
   | "robot_finance"
-  | "client_automation";
+  | "client_automation"
+  | "business_automation";
 
   export interface SolutionOption {
     id: string;
@@ -47,6 +48,7 @@ export const categoryLabels: Record<SolutionCategory, string> = {
   ghg: "🌍 GHG",
   robot_finance: "💰 Robot Finance",
   client_automation: "⚙️ Client Automation",
+  business_automation: "⚙️ Business Automation",
 };
 
 export const categoryDescriptions: Record<SolutionCategory, string> = {
@@ -74,6 +76,8 @@ export const categoryDescriptions: Record<SolutionCategory, string> = {
     "Flexible financing solutions for autonomous cleaning robots including finance partner programs and rent-to-own structures.",
   client_automation:
     "Client-specific automation solutions for document processing, data extraction, and API-driven workflows.",
+  business_automation:
+    "Business automation solutions for document processing, intelligent organization, and workflow automation that streamline operations and reduce manual tasks.",
 };
 
 export const solutionOptions: SolutionOption[] = [
@@ -407,6 +411,131 @@ export const solutionOptions: SolutionOption[] = [
   agentType: "client",
   customSheetUrl: "https://pudu-chatbot-672026052958.australia-southeast2.run.app/",
   customSheetLabel: "Access Multilanguage Agent",
+},
+// === INTELLIGENT DOCUMENT PROCESSOR ===
+{
+  id: "intelligent_document_processor",
+  name: "Intelligent Document Processor",
+  description:
+    "An AI-powered document processing automation that intelligently extracts, categorizes, and processes data from 8 different document types. Uses advanced OCR and machine learning to automatically identify document formats, extract key information, and route data to appropriate systems. Eliminates manual data entry and ensures consistent, accurate processing across invoices, receipts, forms, contracts, and more.",
+  enabled: true,
+  category: "business_automation",
+  agentType: "client",
+  imageUrl: "/solutions/intelligent-document-processor.png",
+  customSheetUrl: "/document-lodgement",
+  customSheetLabel: "Upload Invoices",
+  agentCapabilities: [
+    "🤖 AI-Powered document recognition and classification",
+    "Processes 8 different document types automatically",
+    "Advanced OCR and data extraction",
+    "Intelligent routing and categorization",
+    "Structured data output for system integration",
+    "Reduces manual entry errors and processing time"
+  ]
+},
+// === DRIVE MANAGEMENT ===
+{
+  id: "drive_management",
+  name: "Drive Management",
+  description:
+    "An intelligent document organization system that automatically files, categorizes, and syncs documents across your business systems. Uses smart folder structures, metadata tagging, and automated workflows to ensure documents are always in the right place, searchable, and accessible. Seamlessly integrates with existing systems to maintain data consistency and eliminate manual filing tasks. Includes Google Drive folder creation automation with user input workflows for LOA processing, linked file movement, and supplier folder updates.",
+  enabled: true,
+  category: "business_automation",
+  agentType: "client",
+  imageUrl: "/solutions/drive-management.png",
+  customSheetUrl: "/loa-upload",
+  customSheetLabel: "Upload LOA & Create Folders",
+  agentCapabilities: [
+    "📁 Auto-Filing with intelligent folder organization",
+    "🔗 System Sync across multiple platforms",
+    "Automated document categorization and tagging",
+    "Smart search and retrieval capabilities",
+    "Version control and document tracking",
+    "Google Drive client folder creation from templates",
+    "Linked record file movement & updating",
+    "Supplier folder updating with new agreements",
+    "Automatic client invoice filing into supplier folders",
+    "Seamless integration with existing workflows"
+  ]
+},
+// === GMAIL AUTOMATION ===
+{
+  id: "gmail_automation",
+  name: "Gmail Automation",
+  description:
+    "Automated Gmail management system using subject triggers to automatically draft, send, and file emails. Includes LLM document triggers for intelligent data capture, email subject code processing, and internal task automation. Streamlines communication workflows by automatically handling routine email tasks, filing documents, and triggering appropriate business processes based on email content and subject codes.",
+  enabled: true,
+  category: "business_automation",
+  agentType: "client",
+  imageUrl: "/solutions/gmail-automation.png",
+  agentCapabilities: [
+    "📧 Automated email drafting and sending",
+    "🤖 LLM Document Triggers for intelligent processing",
+    "📋 Email Subject Codes & Records management",
+    "✅ Internal Auto Tasks automation",
+    "📁 Automatic email and attachment filing",
+    "🔄 Data & Quote Request automation",
+    "📄 Signed Contract Lodgment processing",
+    "LLM Data Capture from emails"
+  ]
+},
+// === TASK MANAGEMENT AUTOMATION ===
+{
+  id: "task_management_automation",
+  name: "Task Management Automation",
+  description:
+    "Automated task management process and sheet system that helps track work to be done and assign tasks to team members. Streamlines workflow coordination by automatically creating, updating, and tracking tasks across the organization. Ensures nothing falls through the cracks and provides visibility into work status and assignments.",
+  enabled: true,
+  category: "business_automation",
+  agentType: "client",
+  imageUrl: "/solutions/task-management.png",
+  agentCapabilities: [
+    "📋 Automated task creation and tracking",
+    "👥 Task assignment and delegation",
+    "📊 Work status visibility and reporting",
+    "🔄 Automated task updates",
+    "📈 Work tracking and analytics",
+    "🔔 Task notifications and reminders"
+  ]
+},
+// === SUPPLIER DOCUMENT FILING & MANAGEMENT ===
+{
+  id: "supplier_document_filing",
+  name: "Supplier Document Filing & Management",
+  description:
+    "Automated supplier document filing and management system that uses email triggers to automatically file documents into correct locations based on predefined rules. Handles invoices, contracts, EOIs, and other supplier documents with intelligent routing and organization. Ensures all supplier-related documents are consistently stored in supplier-specific folders for easy access, efficiency, and compliance.",
+  enabled: true,
+  category: "business_automation",
+  agentType: "client",
+  imageUrl: "/solutions/supplier-filing.png",
+  agentCapabilities: [
+    "📧 Email trigger-based automatic filing",
+    "📁 Supplier-specific folder organization",
+    "📄 Automatic invoice processing (Trojan Oil, Origin Energy)",
+    "📋 Contract and EOI filing automation",
+    "🔍 Streamlined document access and search",
+    "✅ Compliance and consistency management",
+    "🔄 Real-time document updates"
+  ]
+},
+// === LLM DOCUMENT READER ===
+{
+  id: "llm_document_reader",
+  name: "LLM Document Reader",
+  description:
+    "Advanced LLM-powered document reader hosted on Google Cloud Console that intelligently reads, understands, and extracts information from various document types. Uses large language models to process documents contextually, extract key data points, and trigger appropriate workflows. Integrates seamlessly with Gmail automation and document processing systems for end-to-end document intelligence.",
+  enabled: true,
+  category: "business_automation",
+  agentType: "client",
+  imageUrl: "/solutions/llm-document-reader.png",
+  agentCapabilities: [
+    "🤖 LLM-powered document understanding",
+    "📄 Contextual data extraction",
+    "🔄 Automated workflow triggering",
+    "📧 Gmail integration for document processing",
+    "☁️ Google Cloud Console hosting",
+    "🔗 Seamless system integration"
+  ]
 },
 
   {
