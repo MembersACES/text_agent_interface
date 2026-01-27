@@ -23,7 +23,8 @@ export default function EnhancedSolutionRangePage() {
         (selectedCategory === "all" || s.category === selectedCategory) &&
         (s.name.toLowerCase().includes(search) ||
           s.description.toLowerCase().includes(search) ||
-          categoryLabels[s.category].toLowerCase().includes(search))
+          categoryLabels[s.category].toLowerCase().includes(search) ||
+          (s.agentCapabilities?.some(cap => cap.toLowerCase().includes(search)) ?? false))
       );
     });
   }, [searchTerm, selectedCategory]);
@@ -99,6 +100,46 @@ export default function EnhancedSolutionRangePage() {
               <p className="text-xs text-gray-500 mt-1">Matching criteria</p>
             </div>
           </div>
+        </div>
+
+        {/* Search Bar */}
+        <div className="bg-white rounded-xl shadow-md border border-gray-200 p-4">
+          <div className="relative">
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search solutions by name, description, or category..."
+              className="w-full px-4 py-3 pl-10 pr-10 text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+            />
+            <svg 
+              className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400"
+              fill="none" 
+              stroke="currentColor" 
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            {searchTerm && (
+              <button
+                onClick={() => setSearchTerm("")}
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                title="Clear search"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
+          </div>
+          {searchTerm && (
+            <div className="mt-2 text-sm text-gray-600">
+              Found {filteredCount} result{filteredCount !== 1 ? 's' : ''}
+              {selectedCategory !== "all" && (
+                <span> in {categoryLabels[selectedCategory as SolutionCategory]}</span>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Section Intro Divider */}
