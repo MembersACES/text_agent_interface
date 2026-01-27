@@ -621,6 +621,15 @@ export const solutionOptions: SolutionOption[] = [
     category: "renewable_energy",
     imageUrl: "/solutions/solar-monitoring.png"
   },
+  {
+    id: "solar_production_solutions",
+    name: "Solar Production Solutions",
+    description: "Comprehensive solar panel efficiency strategies focused on maintaining optimal system performance through regular cleaning, maintenance, and inspection. Clean panels typically recover 5-10% more output in normal conditions and can see gains of 20-30% or more where heavily soiled. Includes routine inspections to identify loose cables, inverter faults, hot spots, or shading problems early, ensuring systems continue producing clean energy as designed while protecting safety, compliance, and warranties.\n\n• Professional solar panel cleaning services\n• Routine system maintenance and inspection\n• Performance optimization and fault detection\n• Safety and compliance verification\n• Warranty protection and system longevity",
+    pdfUrl: "1x4ulo18VSDAk-68rOz-gVhQtBlDC1WHk",
+    enabled: true,
+    category: "renewable_energy",
+    imageUrl: "/solutions/solar-production.png"
+  },
 
   {
     id: "cooking_used_oil",
@@ -758,6 +767,15 @@ export const solutionOptions: SolutionOption[] = [
     enabled: true,
     category: "other_solutions",
     imageUrl: "/solutions/door-curtain.png"
+  },
+  {
+    id: "water_saving_solutions",
+    name: "Water Saving Solutions",
+    description: "Comprehensive water cost reduction strategies that combine innovative technologies with simple behavioral changes to achieve significant long-term water usage and cost savings. Solutions include robot floor cleaners that use precise water dosing instead of flooding floors, efficient fixtures with leak detection, wastewater reuse systems, and smart meter tracking to quickly identify and correct wasteful patterns.\n\n• Robot floor cleaners with precise water dosing technology\n• Efficient fixtures and rapid leak repair services\n• Wastewater reuse for toilets and gardens\n• Smart meter installation and usage tracking\n• Behavioral change programs for staff engagement\n• Water conservation aligned with UN Global Compact and SDGs",
+    pdfUrl: "1sOGf2z003lytFGKmxyVv6BH2d81_SY4u",
+    enabled: true,
+    category: "other_solutions",
+    imageUrl: "/solutions/water-saving.png"
   },
 
   {
