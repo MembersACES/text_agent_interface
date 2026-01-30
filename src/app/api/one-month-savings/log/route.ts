@@ -27,15 +27,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Get backend URL - for server-side, use environment variable or default to dev backend
-    let backendUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 
-                     process.env.BACKEND_API_URL || 
-                     getApiBaseUrl();
-    
-    // If we're in a dev/preview environment, use dev backend
-    if (process.env.VERCEL_ENV === 'preview' || process.env.VERCEL_URL?.includes('acesagentinterfacedev')) {
-      backendUrl = 'https://text-agent-backend-dev-672026052958.australia-southeast2.run.app';
-    }
+    // Get backend URL from environment variable (should be set in deployment)
+    const backendUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 
+                       process.env.BACKEND_API_URL ||
+                       'https://text-agent-backend-dev-672026052958.australia-southeast2.run.app'; // Fallback
     const token = (session as any)?.id_token || (session as any)?.accessToken;
     const apiKey = process.env.BACKEND_API_KEY || "test-key";
 
