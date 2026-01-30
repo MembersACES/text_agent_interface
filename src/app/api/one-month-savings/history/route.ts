@@ -73,6 +73,8 @@ export async function POST(req: NextRequest) {
     }
 
     const result = await backendResponse.json();
+    console.log("🔍 [One Month Savings History] Backend response data:", JSON.stringify(result, null, 2));
+    console.log("🔍 [One Month Savings History] Invoices count:", result.invoices?.length || 0);
     return NextResponse.json(result);
   } catch (error: any) {
     console.error("Error fetching invoice history:", error);

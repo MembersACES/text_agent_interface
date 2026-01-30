@@ -139,8 +139,13 @@ export default function OneMonthSavingsPage() {
 
       if (res.ok) {
         const data = await res.json();
-        console.log("🔍 [Frontend] History data received:", data);
-        setInvoiceHistory(data.invoices || []);
+        console.log("🔍 [Frontend] History data received:", JSON.stringify(data, null, 2));
+        console.log("🔍 [Frontend] Data keys:", Object.keys(data));
+        console.log("🔍 [Frontend] Invoices array:", data.invoices);
+        console.log("🔍 [Frontend] Invoices length:", data.invoices?.length || 0);
+        const invoices = data.invoices || [];
+        console.log("🔍 [Frontend] Setting invoice history with", invoices.length, "invoices");
+        setInvoiceHistory(invoices);
       } else {
         const errorText = await res.text();
         console.error("❌ [Frontend] History error:", errorText);
