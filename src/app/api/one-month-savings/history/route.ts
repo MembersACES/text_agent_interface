@@ -26,8 +26,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Get backend URL
-    const backendUrl = getApiBaseUrl();
+    // Get backend URL - for server-side, use environment variable or default to dev backend
+    let backendUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 
+                     process.env.BACKEND_API_URL || 
+                     getApiBaseUrl();
+    
+    // If we're in a dev/preview environment, use dev backend
+    if (process.env.VERCEL_ENV === 'preview' || process.env.VERCEL_URL?.includes('acesagentinterfacedev')) {
+      backendUrl = 'https://text-agent-backend-dev-672026052958.australia-southeast2.run.app';
+    }
+    
     const token = (session as any)?.id_token || (session as any)?.accessToken;
     const apiKey = process.env.BACKEND_API_KEY || "test-key";
 
@@ -37,6 +45,8 @@ export async function POST(req: NextRequest) {
     const fullUrl = `${backendUrl}/api/one-month-savings/history`;
     console.log("🔍 [One Month Savings History] Calling backend:", fullUrl);
     console.log("🔍 [One Month Savings History] Backend URL:", backendUrl);
+    console.log("🔍 [One Month Savings History] Env check - VERCEL_ENV:", process.env.VERCEL_ENV);
+    console.log("🔍 [One Month Savings History] Env check - VERCEL_URL:", process.env.VERCEL_URL);
     console.log("🔍 [One Month Savings History] Business name:", business_name);
     console.log("🔍 [One Month Savings History] Auth token type:", token ? "Google Token" : "API Key");
 

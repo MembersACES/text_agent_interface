@@ -534,7 +534,8 @@ export default function OneMonthSavingsPage() {
       const pdfBytes = await pdfDoc.save();
 
       // Create download link
-      const blob = new Blob([pdfBytes], { type: "application/pdf" });
+      // Uint8Array is compatible with Blob, but TypeScript needs explicit typing
+      const blob = new Blob([pdfBytes as BlobPart], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
