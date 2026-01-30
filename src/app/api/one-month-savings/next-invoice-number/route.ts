@@ -4,10 +4,10 @@ import { authOptions } from "@/lib/auth";
 import { getApiBaseUrl } from "@/lib/utils";
 
 /**
- * API Route: Log One Month Savings Invoice to Google Sheets
+ * API Route: Get Next Sequential Invoice Number
  *
- * This endpoint receives invoice data and forwards it to the backend
- * which logs it to Google Sheets via n8n webhook.
+ * This endpoint forwards the request to the backend
+ * which generates the next sequential invoice number.
  */
 
 export async function POST(req: NextRequest) {
@@ -17,15 +17,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const invoiceData = await req.json();
-
-    // Validate required fields
-    if (!invoiceData.invoice_number || !invoiceData.business_name) {
-      return NextResponse.json(
-        { error: "Missing required fields: invoice_number and business_name" },
-        { status: 400 }
-      );
-    }
+    const { business_name } = await req.json();
 
     // Get backend URL
     const backendUrl = getApiBaseUrl();
@@ -36,34 +28,41 @@ export async function POST(req: NextRequest) {
     const authToken = (token && token !== "undefined" && typeof token === "string") ? token : apiKey;
 
     // Forward to backend
-    const backendResponse = await fetch(`${backendUrl}/api/one-month-savings/log`, {
+    const backendResponse = await fetch(`${backendUrl}/api/one-month-savings/next-invoice-number`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${authToken}`,
       },
-      body: JSON.stringify({
-        ...invoiceData,
-        user_email: (session.user as any)?.email
+      body: JSON.stringify({ 
+        business_name: business_name || null,
+        user_email: (session.user as any)?.email 
       }),
     });
 
     if (!backendResponse.ok) {
       const errorText = await backendResponse.text();
       console.error("Backend error:", errorText);
-      return NextResponse.json(
-        { error: "Failed to log invoice to backend" },
-        { status: backendResponse.status }
-      );
+      // Fallback to random number generation
+      const prefix = "RA";
+      const number = Math.floor(Math.random() * 9000) + 1000;
+      return NextResponse.json({
+        invoice_number: `${prefix}${number}`,
+        fallback: true
+      });
     }
 
     const result = await backendResponse.json();
     return NextResponse.json(result);
   } catch (error: any) {
-    console.error("Error logging invoice:", error);
-    return NextResponse.json(
-      { error: error.message || "Failed to log invoice" },
-      { status: 500 }
-    );
+    console.error("Error getting next invoice number:", error);
+    // Fallback to random number generation
+    const prefix = "RA";
+    const number = Math.floor(Math.random() * 9000) + 1000;
+    return NextResponse.json({
+      invoice_number: `${prefix}${number}`,
+      fallback: true
+    });
   }
 }
+

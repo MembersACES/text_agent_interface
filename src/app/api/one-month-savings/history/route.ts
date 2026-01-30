@@ -1,16 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { getApiBaseUrl } from "@/lib/utils";
 
 /**
  * API Route: Get One Month Savings Invoice History
  *
  * This endpoint fetches invoice history for a specific business
- * from Google Sheets via an n8n webhook.
+ * from the backend, which retrieves it from Google Sheets via n8n webhook.
  */
-
-const N8N_WEBHOOK_URL = "https://membersaces.app.n8n.cloud/webhook/one-month-savings-history";
 
 export async function POST(req: NextRequest) {
   try {
+    const session = await getServerSession(authOptions);
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { business_name } = await req.json();
 
     if (!business_name) {
@@ -20,62 +26,38 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Fetch from n8n webhook (which reads from Google Sheets)
-    const webhookResponse = await fetch(N8N_WEBHOOK_URL, {
+    // Get backend URL
+    const backendUrl = getApiBaseUrl();
+    const token = (session as any)?.id_token || (session as any)?.accessToken;
+    const apiKey = process.env.BACKEND_API_KEY || "test-key";
+
+    // Use API key if token is not available (similar to send-quote-request)
+    const authToken = (token && token !== "undefined" && typeof token === "string") ? token : apiKey;
+
+    // Forward to backend
+    const backendResponse = await fetch(`${backendUrl}/api/one-month-savings/history`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        Authorization: `Bearer ${authToken}`,
       },
-      body: JSON.stringify({ business_name }),
+      body: JSON.stringify({ 
+        business_name,
+        user_email: (session.user as any)?.email 
+      }),
     });
 
-    if (!webhookResponse.ok) {
-      console.error("n8n webhook error:", await webhookResponse.text());
+    if (!backendResponse.ok) {
+      const errorText = await backendResponse.text();
+      console.error("Backend error:", errorText);
       return NextResponse.json({
         invoices: [],
         message: "Could not fetch invoice history",
       });
     }
 
-    const data = await webhookResponse.json();
-
-    // Transform the response to match our expected format
-    // n8n returns an array directly with keys: Member, Solution (with trailing space), Amount, Invoice Number, Due Date
-    const rows = Array.isArray(data) ? data : [];
-    const invoices = rows.map((row: any) => {
-      // Handle "Solution " key with trailing space
-      const solution = row["Solution "] || row["Solution"] || "";
-      
-      // Parse amount - handle both number and string formats
-      let amount = 0;
-      if (typeof row["Amount"] === "number") {
-        amount = row["Amount"];
-      } else if (typeof row["Amount"] === "string") {
-        amount = parseFloat(row["Amount"].replace(/[$,]/g, "")) || 0;
-      }
-
-      return {
-        invoice_number: row["Invoice Number"] || row.invoice_number || "",
-        business_name: row["Member"] || row.business_name || "",
-        business_abn: row["Business ABN"] || row.business_abn || "",
-        contact_name: row["Contact Name"] || row.contact_name || "",
-        contact_email: row["Contact Email"] || row.contact_email || "",
-        invoice_date: row["Invoice Date"] || row.invoice_date || "",
-        due_date: row["Due Date"] || row.due_date || "",
-        subtotal: row["Subtotal"] ? parseFloat(String(row["Subtotal"]).replace(/[$,]/g, "")) : amount / 1.1, // Estimate if not provided
-        total_gst: row["GST"] ? parseFloat(String(row["GST"]).replace(/[$,]/g, "")) : amount * 0.1 / 1.1, // Estimate if not provided
-        total_amount: amount,
-        status: row["Status"] || row.status || "Generated",
-        created_at: row["Created At"] || row.created_at || "",
-        line_items: solution ? [{ solution_label: solution.trim() }] : [],
-      };
-    });
-  
-
-    return NextResponse.json({
-      invoices,
-      count: invoices.length,
-    });
+    const result = await backendResponse.json();
+    return NextResponse.json(result);
   } catch (error: any) {
     console.error("Error fetching invoice history:", error);
     return NextResponse.json(

@@ -257,11 +257,38 @@ export default function OneMonthSavingsPage() {
   const totalGst = lineItems.reduce((sum, item) => sum + item.gst, 0);
   const totalAmount = lineItems.reduce((sum, item) => sum + item.total, 0);
 
-  // Generate invoice number
-  const generateInvoiceNumber = () => {
-    const prefix = "RA";
-    const number = Math.floor(Math.random() * 9000) + 1000;
-    return `${prefix}${number}`;
+  // Generate sequential invoice number
+  const generateInvoiceNumber = async () => {
+    try {
+      const backendUrl = process.env.NODE_ENV === "development"
+        ? "http://localhost:8000"
+        : "https://text-agent-backend-672026052958.australia-southeast2.run.app";
+
+      // Use API route instead of calling backend directly
+      const res = await fetch("/api/one-month-savings/next-invoice-number", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ business_name: businessInfo?.business_name || null }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        return data.invoice_number;
+      } else {
+        // Fallback to random if backend fails
+        const prefix = "RA";
+        const number = Math.floor(Math.random() * 9000) + 1000;
+        return `${prefix}${number}`;
+      }
+    } catch (error) {
+      console.error("Error generating invoice number:", error);
+      // Fallback to random if backend fails
+      const prefix = "RA";
+      const number = Math.floor(Math.random() * 9000) + 1000;
+      return `${prefix}${number}`;
+    }
   };
 
   // Format currency
@@ -311,7 +338,7 @@ export default function OneMonthSavingsPage() {
         console.warn("Could not load EGB logo:", logoError);
       }
 
-      const invoiceNumber = generateInvoiceNumber();
+      const invoiceNumber = await generateInvoiceNumber();
       const invoiceDate = new Date();
       const dueDate = new Date(invoiceDate);
       dueDate.setDate(dueDate.getDate() + 14);
