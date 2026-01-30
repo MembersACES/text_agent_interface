@@ -52,6 +52,7 @@ export const NAV_DATA = [
         items: [
           { title: "Document Generation", url: "/document-generation" },
           { title: "Signed Agreement Lodgement", url: "/signed-agreement-lodgement" },
+          { title: "1st Month Savings Invoice", url: "/one-month-savings" },
         ],
       },
       {
