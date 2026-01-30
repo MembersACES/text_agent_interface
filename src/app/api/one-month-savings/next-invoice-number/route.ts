@@ -27,8 +27,12 @@ export async function POST(req: NextRequest) {
     // Use API key if token is not available (similar to send-quote-request)
     const authToken = (token && token !== "undefined" && typeof token === "string") ? token : apiKey;
 
+    const fullUrl = `${backendUrl}/api/one-month-savings/next-invoice-number`;
+    console.log("🔍 [One Month Savings Next Invoice] Calling backend:", fullUrl);
+    console.log("🔍 [One Month Savings Next Invoice] Backend URL:", backendUrl);
+
     // Forward to backend
-    const backendResponse = await fetch(`${backendUrl}/api/one-month-savings/next-invoice-number`, {
+    const backendResponse = await fetch(fullUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -40,9 +44,12 @@ export async function POST(req: NextRequest) {
       }),
     });
 
+    console.log("🔍 [One Month Savings Next Invoice] Backend response status:", backendResponse.status);
+
     if (!backendResponse.ok) {
       const errorText = await backendResponse.text();
-      console.error("Backend error:", errorText);
+      console.error("❌ [One Month Savings Next Invoice] Backend error:", errorText);
+      console.error("❌ [One Month Savings Next Invoice] Status:", backendResponse.status);
       // Fallback to random number generation
       const prefix = "RA";
       const number = Math.floor(Math.random() * 9000) + 1000;

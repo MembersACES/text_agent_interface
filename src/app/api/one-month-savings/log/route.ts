@@ -35,8 +35,13 @@ export async function POST(req: NextRequest) {
     // Use API key if token is not available (similar to send-quote-request)
     const authToken = (token && token !== "undefined" && typeof token === "string") ? token : apiKey;
 
+    const fullUrl = `${backendUrl}/api/one-month-savings/log`;
+    console.log("🔍 [One Month Savings Log] Calling backend:", fullUrl);
+    console.log("🔍 [One Month Savings Log] Backend URL:", backendUrl);
+    console.log("🔍 [One Month Savings Log] Invoice number:", invoiceData.invoice_number);
+
     // Forward to backend
-    const backendResponse = await fetch(`${backendUrl}/api/one-month-savings/log`, {
+    const backendResponse = await fetch(fullUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -48,9 +53,12 @@ export async function POST(req: NextRequest) {
       }),
     });
 
+    console.log("🔍 [One Month Savings Log] Backend response status:", backendResponse.status);
+
     if (!backendResponse.ok) {
       const errorText = await backendResponse.text();
-      console.error("Backend error:", errorText);
+      console.error("❌ [One Month Savings Log] Backend error:", errorText);
+      console.error("❌ [One Month Savings Log] Status:", backendResponse.status);
       return NextResponse.json(
         { error: "Failed to log invoice to backend" },
         { status: backendResponse.status }

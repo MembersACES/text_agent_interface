@@ -34,8 +34,14 @@ export async function POST(req: NextRequest) {
     // Use API key if token is not available (similar to send-quote-request)
     const authToken = (token && token !== "undefined" && typeof token === "string") ? token : apiKey;
 
+    const fullUrl = `${backendUrl}/api/one-month-savings/history`;
+    console.log("🔍 [One Month Savings History] Calling backend:", fullUrl);
+    console.log("🔍 [One Month Savings History] Backend URL:", backendUrl);
+    console.log("🔍 [One Month Savings History] Business name:", business_name);
+    console.log("🔍 [One Month Savings History] Auth token type:", token ? "Google Token" : "API Key");
+
     // Forward to backend
-    const backendResponse = await fetch(`${backendUrl}/api/one-month-savings/history`, {
+    const backendResponse = await fetch(fullUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -47,9 +53,14 @@ export async function POST(req: NextRequest) {
       }),
     });
 
+    console.log("🔍 [One Month Savings History] Backend response status:", backendResponse.status);
+    console.log("🔍 [One Month Savings History] Backend response ok:", backendResponse.ok);
+
     if (!backendResponse.ok) {
       const errorText = await backendResponse.text();
-      console.error("Backend error:", errorText);
+      console.error("❌ [One Month Savings History] Backend error:", errorText);
+      console.error("❌ [One Month Savings History] Status:", backendResponse.status);
+      console.error("❌ [One Month Savings History] Status text:", backendResponse.statusText);
       return NextResponse.json({
         invoices: [],
         message: "Could not fetch invoice history",

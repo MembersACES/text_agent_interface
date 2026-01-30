@@ -127,18 +127,26 @@ export default function OneMonthSavingsPage() {
 
     setHistoryLoading(true);
     try {
+      console.log("🔍 [Frontend] Fetching invoice history for:", businessInfo.business_name);
       const res = await fetch("/api/one-month-savings/history", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ business_name: businessInfo.business_name }),
       });
 
+      console.log("🔍 [Frontend] History response status:", res.status);
+      console.log("🔍 [Frontend] History response ok:", res.ok);
+
       if (res.ok) {
         const data = await res.json();
+        console.log("🔍 [Frontend] History data received:", data);
         setInvoiceHistory(data.invoices || []);
+      } else {
+        const errorText = await res.text();
+        console.error("❌ [Frontend] History error:", errorText);
       }
     } catch (error) {
-      console.error("Error fetching invoice history:", error);
+      console.error("❌ [Frontend] Error fetching invoice history:", error);
     } finally {
       setHistoryLoading(false);
     }
