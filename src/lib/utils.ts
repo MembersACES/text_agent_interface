@@ -6,8 +6,29 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function getApiBaseUrl(): string {
-  // Check if we're on the dev frontend URL
-  if (typeof window !== 'undefined' && window.location.hostname.includes('acesagentinterfacedev')) {
+  // For server-side (Next.js API routes), check environment variables first
+  if (typeof window === 'undefined') {
+    // Server-side: check environment variables
+    if (process.env.NEXT_PUBLIC_API_BASE_URL) {
+      return process.env.NEXT_PUBLIC_API_BASE_URL;
+    }
+    if (process.env.BACKEND_API_URL) {
+      return process.env.BACKEND_API_URL;
+    }
+    // Check if we're in dev environment (Vercel preview or local)
+    if (process.env.VERCEL_ENV === 'preview' || process.env.VERCEL_URL?.includes('acesagentinterfacedev')) {
+      return 'https://text-agent-backend-dev-672026052958.australia-southeast2.run.app';
+    }
+    // Production uses production backend
+    if (process.env.NODE_ENV === "production") {
+      return "https://text-agent-backend-672026052958.australia-southeast2.run.app";
+    }
+    // Development uses dev backend
+    return "https://text-agent-backend-dev-672026052958.australia-southeast2.run.app";
+  }
+  
+  // Client-side: check if we're on the dev frontend URL
+  if (window.location.hostname.includes('acesagentinterfacedev')) {
     return 'https://text-agent-backend-dev-672026052958.australia-southeast2.run.app';
   }
   

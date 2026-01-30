@@ -62,6 +62,10 @@
       "Update LOA": {
         "path": "/update-loa",
         "description": "Update existing Letter of Authority documents"
+      },
+      "One Month Savings Invoice": {
+        "path": "/one-month-savings",
+        "description": "Generate and track 1st month savings tax invoices for clients where ACES has achieved savings on their services"
       }
     }
   },

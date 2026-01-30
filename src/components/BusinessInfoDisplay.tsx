@@ -460,6 +460,24 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
     window.open(`/solutions-strategy-generator?${params.toString()}`, "_blank");
   };
 
+  // Opens One Month Savings Invoice page with business info
+  const openOneMonthSavings = () => {
+    const params = new URLSearchParams();
+
+    if (business.name) params.set('businessName', business.name);
+    if (business.abn) params.set('abn', business.abn);
+    if (business.trading_name) params.set('tradingAs', business.trading_name);
+    if (contact.email) params.set('email', contact.email);
+    if (contact.telephone) params.set('phone', contact.telephone);
+    if (contact.postal_address) params.set('address', contact.postal_address);
+    if (contact.site_address) params.set('siteAddress', contact.site_address);
+    if (rep.contact_name) params.set('contactName', rep.contact_name);
+    if (rep.position) params.set('position', rep.position);
+    if (driveUrl) params.set('clientFolderUrl', driveUrl);
+
+    window.open(`/one-month-savings?${params.toString()}`, '_blank');
+  };
+
   React.useEffect(() => {
     if (driveModalResult === 'File successfully uploaded and Drive links updated!') {
       // Don't auto-close if we're showing the lodge agreement button for signed contracts
@@ -1287,6 +1305,12 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
             className="px-4 py-2 rounded-lg bg-blue-500 text-white text-base font-semibold hover:bg-blue-600 transition-colors shadow-md"
           >
             Update LOA
+          </button>
+          <button
+            onClick={openOneMonthSavings}
+            className="px-4 py-2 rounded-lg bg-emerald-500 text-white text-base font-semibold hover:bg-emerald-600 transition-colors shadow-md"
+          >
+            1st Month Savings Invoice
           </button>
         </div>
       </div>

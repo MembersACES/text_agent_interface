@@ -28,7 +28,11 @@ export async function runTool(message: string) {
     lower.includes("profile reset") ||
     lower.includes("asset") ||
     lower.includes("ghg") ||
-    lower.includes("carbon")
+    lower.includes("carbon") ||
+    lower.includes("savings") ||
+    lower.includes("invoice") ||
+    lower.includes("first month") ||
+    lower.includes("1st month")
   ) {
     return await runHelpTool(message);
   }

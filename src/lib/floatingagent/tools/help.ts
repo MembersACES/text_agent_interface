@@ -241,6 +241,36 @@ You can also use **Site Profiling** to run it manually.`,
     };
   }
 
+  // --- ONE MONTH SAVINGS INVOICE ---
+  if (
+    lower.includes("savings invoice") ||
+    lower.includes("first month savings") ||
+    lower.includes("1st month savings") ||
+    lower.includes("one month savings") ||
+    (lower.includes("invoice") && lower.includes("savings")) ||
+    (lower.includes("bill") && lower.includes("savings"))
+  ) {
+    return {
+      message: `💰 **1st Month Savings Tax Invoice** — Invoice clients for achieved savings:
+
+📋 **How to Generate a Savings Invoice:**
+1️⃣ Go to **Business Info** and select the client
+2️⃣ Click the **"1st Month Savings Invoice"** button in Quick Actions
+3️⃣ Add services where savings were achieved (Electricity, Gas, Waste, etc.)
+4️⃣ Enter the savings amount for each service
+5️⃣ GST (10%) is calculated automatically
+6️⃣ Generate and download the PDF invoice
+
+📊 **Invoice Tracking:**
+• All invoices are logged to a tracking sheet
+• View invoice history per client
+• Track status (Generated, Sent, Paid)
+
+💡 You can also access **One Month Savings Invoice** directly from the sidebar under Documents.`,
+      suggestedPage: "/one-month-savings",
+    };
+  }
+
   // --- DEFAULT HELP ---
   return {
     message: `🤖 I can help you navigate the ACES Dashboard.  
