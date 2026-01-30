@@ -67,9 +67,9 @@ interface InvoiceRecord {
   invoice_date: string;
   due_date: string;
   line_items: InvoiceLineItem[];
-  subtotal: number;
-  total_gst: number;
-  total_amount: number;
+  subtotal: number | string;
+  total_gst: number | string;
+  total_amount: number | string;
   status: string;
   created_at: string;
   pdf_url?: string;
@@ -305,11 +305,15 @@ export default function OneMonthSavingsPage() {
   };
 
   // Format currency
-  const formatCurrency = (amount: number) => {
+  const formatCurrency = (amount: number | string) => {
+    // Handle both number and string (in case backend returns formatted string)
+    const numAmount = typeof amount === 'string' 
+      ? parseFloat(amount.replace(/[^0-9.-]/g, '')) || 0 
+      : amount || 0;
     return new Intl.NumberFormat("en-AU", {
       style: "currency",
       currency: "AUD",
-    }).format(amount);
+    }).format(numAmount);
   };
 
   // Format date
@@ -544,9 +548,52 @@ export default function OneMonthSavingsPage() {
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `${businessInfo.business_name} - 1st Month Savings Invoice.pdf`;
+      const filename = `${businessInfo.business_name} - ${invoiceNumber}.pdf`;
+      link.download = filename;
       link.click();
       URL.revokeObjectURL(url);
+
+      // Upload to Google Drive (uses fixed folder, no client folder URL needed)
+      let uploadResult = "";
+      try {
+        console.log("📤 Uploading PDF to Google Drive...");
+        // Convert PDF bytes to base64 (handle large files)
+        const uint8Array = new Uint8Array(pdfBytes);
+        let binaryString = "";
+        const chunkSize = 8192;
+        for (let i = 0; i < uint8Array.length; i += chunkSize) {
+          const chunk = uint8Array.subarray(i, i + chunkSize);
+          binaryString += String.fromCharCode.apply(null, Array.from(chunk));
+        }
+        const base64Pdf = btoa(binaryString);
+
+        const uploadResponse = await fetch("/api/one-month-savings/upload-pdf", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            pdf_base64: base64Pdf,
+            filename: filename,
+            invoice_number: invoiceNumber,
+            business_name: businessInfo.business_name,
+          }),
+        });
+
+        console.log("📤 Upload response status:", uploadResponse.status);
+        
+        if (uploadResponse.ok) {
+          const uploadData = await uploadResponse.json();
+          uploadResult = ` and uploaded to Google Drive`;
+          console.log("✅ PDF uploaded to Drive:", uploadData);
+        } else {
+          const errorText = await uploadResponse.text();
+          console.error("❌ Error uploading PDF:", errorText);
+          console.error("❌ Upload response status:", uploadResponse.status);
+          uploadResult = ` (Drive upload failed: ${errorText.substring(0, 100)})`;
+        }
+      } catch (uploadError: any) {
+        console.error("Error uploading PDF to Drive:", uploadError);
+        uploadResult = ` (Drive upload error)`;
+      }
 
       // Log to Google Sheets
       const invoiceRecord: InvoiceRecord = {
@@ -576,7 +623,7 @@ export default function OneMonthSavingsPage() {
         console.error("Error logging invoice:", logError);
       }
 
-      setResult(`Invoice ${invoiceNumber} generated and downloaded successfully!`);
+      setResult(`Invoice ${invoiceNumber} generated and downloaded successfully!${uploadResult}`);
 
       // Refresh history
       fetchInvoiceHistory();
@@ -855,7 +902,11 @@ export default function OneMonthSavingsPage() {
                         </div>
                         <div className="text-right">
                           <p className="font-semibold text-emerald-600">
-                            {formatCurrency(invoice.total_amount)}
+                            {formatCurrency(
+                              typeof invoice.total_amount === 'string' 
+                                ? parseFloat(invoice.total_amount.replace(/[^0-9.-]/g, '')) || 0 
+                                : invoice.total_amount || 0
+                            )}
                           </p>
                           <span
                             className={`text-xs px-2 py-0.5 rounded-full ${
