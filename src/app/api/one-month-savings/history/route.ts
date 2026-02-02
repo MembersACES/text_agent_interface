@@ -40,6 +40,9 @@ export async function POST(req: NextRequest) {
     console.log("🔍 [One Month Savings History] Backend URL:", backendUrl);
     console.log("🔍 [One Month Savings History] NEXT_PUBLIC_API_BASE_URL:", process.env.NEXT_PUBLIC_API_BASE_URL || "NOT SET");
     console.log("🔍 [One Month Savings History] BACKEND_API_URL:", process.env.BACKEND_API_URL || "NOT SET");
+    console.log("🔍 [One Month Savings History] NODE_ENV:", process.env.NODE_ENV || "NOT SET");
+    console.log("🔍 [One Month Savings History] VERCEL_ENV:", process.env.VERCEL_ENV || "NOT SET");
+    console.log("🔍 [One Month Savings History] VERCEL_URL:", process.env.VERCEL_URL || "NOT SET");
     console.log("🔍 [One Month Savings History] Business name:", business_name);
     console.log("🔍 [One Month Savings History] Auth token type:", token ? "Google Token" : "API Key");
 
