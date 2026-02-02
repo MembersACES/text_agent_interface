@@ -9,8 +9,8 @@ export const authOptions: NextAuthOptions = {
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
       authorization: {
         params: {
-          // Minimal scopes - no extra permission screens
-          scope: "openid email profile",
+          // Include Drive scope for invoice PDF uploads
+          scope: "openid email profile https://www.googleapis.com/auth/drive.file",
           access_type: "offline",
           prompt: "consent"
         }
@@ -27,6 +27,7 @@ export const authOptions: NextAuthOptions = {
       }
       (session as any).accessToken = token.accessToken;
       (session as any).id_token = token.id_token;
+      (session as any).refreshToken = token.refreshToken; // Expose refresh token for Drive API
       
       // If there's a refresh error, we should handle it
       if (token.error === "RefreshAccessTokenError") {

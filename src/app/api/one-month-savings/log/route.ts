@@ -27,10 +27,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Get backend URL from environment variable (should be set in deployment)
-    const backendUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 
-                       process.env.BACKEND_API_URL ||
-                       'https://text-agent-backend-dev-672026052958.australia-southeast2.run.app'; // Fallback
+    // Get backend URL using utility function (handles local dev correctly)
+    const backendUrl = getApiBaseUrl();
     const token = (session as any)?.id_token || (session as any)?.accessToken;
     const apiKey = process.env.BACKEND_API_KEY || "test-key";
 

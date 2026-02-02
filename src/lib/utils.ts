@@ -9,11 +9,10 @@ export function getApiBaseUrl(): string {
   // For server-side (Next.js API routes), check environment variables first
   if (typeof window === 'undefined') {
     // Server-side: check environment variables
-    if (process.env.NEXT_PUBLIC_API_BASE_URL) {
-      return process.env.NEXT_PUBLIC_API_BASE_URL;
-    }
-    if (process.env.BACKEND_API_URL) {
-      return process.env.BACKEND_API_URL;
+    // But only use them if they point to a backend (not localhost:3000)
+    const envUrl = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.BACKEND_API_URL;
+    if (envUrl && !envUrl.includes('localhost:3000') && !envUrl.includes('localhost:3001')) {
+      return envUrl;
     }
     // Check if we're in dev environment (Vercel preview or local)
     if (process.env.VERCEL_ENV === 'preview' || process.env.VERCEL_URL?.includes('acesagentinterfacedev')) {
@@ -23,8 +22,8 @@ export function getApiBaseUrl(): string {
     if (process.env.NODE_ENV === "production") {
       return "https://text-agent-backend-672026052958.australia-southeast2.run.app";
     }
-    // Development uses dev backend
-    return "https://text-agent-backend-dev-672026052958.australia-southeast2.run.app";
+    // Local development uses local backend
+    return "http://localhost:8000";
   }
   
   // Client-side: check if we're on the dev frontend URL
