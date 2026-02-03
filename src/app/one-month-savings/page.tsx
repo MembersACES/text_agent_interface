@@ -73,6 +73,7 @@ interface InvoiceRecord {
   status: string;
   created_at: string;
   pdf_url?: string;
+  invoice_file_id?: string;
 }
 
 export default function OneMonthSavingsPage() {
@@ -555,6 +556,7 @@ export default function OneMonthSavingsPage() {
 
       // Upload to Google Drive (uses fixed folder, no client folder URL needed)
       let uploadResult = "";
+      let invoiceFileId = "";
       try {
         console.log("📤 Uploading PDF to Google Drive...");
         // Convert PDF bytes to base64 (handle large files)
@@ -582,8 +584,10 @@ export default function OneMonthSavingsPage() {
         
         if (uploadResponse.ok) {
           const uploadData = await uploadResponse.json();
+          invoiceFileId = uploadData.file_id || "";
           uploadResult = ` and uploaded to Google Drive`;
           console.log("✅ PDF uploaded to Drive:", uploadData);
+          console.log("✅ File ID captured:", invoiceFileId);
         } else {
           const errorText = await uploadResponse.text();
           console.error("❌ Error uploading PDF:", errorText);
@@ -610,6 +614,7 @@ export default function OneMonthSavingsPage() {
         total_amount: totalAmount,
         status: "Generated",
         created_at: new Date().toISOString(),
+        invoice_file_id: invoiceFileId, // Include the file ID
       };
 
       // Log to tracking sheet
@@ -935,6 +940,18 @@ export default function OneMonthSavingsPage() {
                           <span className="text-gray-400">No services listed</span>
                         )}
                       </div>
+                      {invoice.invoice_file_id && (
+                        <div className="mt-2">
+                          <a
+                            href={`https://drive.google.com/file/d/${invoice.invoice_file_id}/view`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1"
+                          >
+                            📄 View Invoice PDF
+                          </a>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
