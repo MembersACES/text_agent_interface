@@ -584,7 +584,17 @@ export default function OneMonthSavingsPage() {
         
         if (uploadResponse.ok) {
           const uploadData = await uploadResponse.json();
-          invoiceFileId = uploadData.file_id || "";
+          console.log("✅ Upload response data:", JSON.stringify(uploadData, null, 2));
+          invoiceFileId = uploadData.file_id || uploadData.fileId || "";
+          console.log("✅ File ID extracted:", invoiceFileId);
+          console.log("✅ File ID type:", typeof invoiceFileId);
+          console.log("✅ File ID length:", invoiceFileId ? invoiceFileId.length : 0);
+          
+          if (!invoiceFileId) {
+            console.warn("⚠️ WARNING: Upload succeeded but file_id is missing from response!");
+            console.warn("⚠️ Response keys:", Object.keys(uploadData));
+          }
+          
           uploadResult = ` and uploaded to Google Drive`;
           console.log("✅ PDF uploaded to Drive:", uploadData);
           console.log("✅ File ID captured:", invoiceFileId);
@@ -600,6 +610,10 @@ export default function OneMonthSavingsPage() {
       }
 
       // Log to Google Sheets
+      console.log("📝 Preparing invoice record for logging...");
+      console.log("📝 Invoice File ID to be logged:", invoiceFileId);
+      console.log("📝 Invoice File ID empty?", !invoiceFileId);
+      
       const invoiceRecord: InvoiceRecord = {
         invoice_number: invoiceNumber,
         business_name: businessInfo.business_name,
@@ -616,16 +630,31 @@ export default function OneMonthSavingsPage() {
         created_at: new Date().toISOString(),
         invoice_file_id: invoiceFileId, // Include the file ID
       };
+      
+      console.log("📝 Invoice record prepared:", JSON.stringify({
+        ...invoiceRecord,
+        line_items: `[${invoiceRecord.line_items.length} items]`
+      }, null, 2));
 
       // Log to tracking sheet
       try {
-        await fetch("/api/one-month-savings/log", {
+        console.log("📤 Sending invoice record to log endpoint...");
+        const logResponse = await fetch("/api/one-month-savings/log", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(invoiceRecord),
         });
+        
+        console.log("📤 Log response status:", logResponse.status);
+        if (logResponse.ok) {
+          const logData = await logResponse.json();
+          console.log("✅ Invoice logged successfully:", logData);
+        } else {
+          const errorText = await logResponse.text();
+          console.error("❌ Error logging invoice:", errorText);
+        }
       } catch (logError) {
-        console.error("Error logging invoice:", logError);
+        console.error("❌ Exception logging invoice:", logError);
       }
 
       setResult(`Invoice ${invoiceNumber} generated and downloaded successfully!${uploadResult}`);
