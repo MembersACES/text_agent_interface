@@ -12,6 +12,10 @@ export default function Base1Page() {
     process.env.BASE1_AGENT_PASSWORD ||
     "";
 
+  // Server-side logging so we can see what Cloud Run actually has
+  console.log("[Base1Page] env.NEXT_PUBLIC_BASE1_AGENT_URL:", process.env.NEXT_PUBLIC_BASE1_AGENT_URL);
+  console.log("[Base1Page] env.BASE1_AGENT_URL:", process.env.BASE1_AGENT_URL);
+
   return (
     <Base1Client base1Url={base1Url} base1Password={base1Password} />
   );
