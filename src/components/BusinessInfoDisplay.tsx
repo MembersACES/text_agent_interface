@@ -330,6 +330,38 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
     window.open(url, '_blank');
   };
 
+  const handleOpenBase2 = () => {
+    const params = new URLSearchParams();
+    if (business.name) {
+      params.set('businessName', business.name);
+    }
+    
+    const businessInfoToPass = {
+      name: business.name,
+      abn: business.abn,
+      trading_name: business.trading_name,
+      postal_address: contact.postal_address,
+      site_address: contact.site_address,
+      telephone: contact.telephone,
+      email: contact.email,
+      contact_name: rep.contact_name,
+      position: rep.position,
+      industry: business.industry,
+      website: business.website,
+      googleDriveLink: driveUrl,
+      utilities: linked,
+      retailers: retailers,
+      // Include document information for Cleaning eligibility check
+      floorPlan: info._processed_file_ids?.business_site_map_upload || info._processed_file_ids?.['Floor Plan'],
+      cleaningInvoice: info._processed_file_ids?.invoice_Cleaning || info._processed_file_ids?.['Cleaning Invoice']
+    };
+    
+    params.set('businessInfo', encodeURIComponent(JSON.stringify(businessInfoToPass)));
+    
+    const url = `/base-2?${params.toString()}`;
+    window.open(url, '_blank');
+  };
+
   const handleOpenPresentationGenerator = () => {
     const params = new URLSearchParams();
     
@@ -1311,6 +1343,12 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
             className="px-4 py-2 rounded-lg bg-emerald-500 text-white text-base font-semibold hover:bg-emerald-600 transition-colors shadow-md"
           >
             1st Month Savings Invoice
+          </button>
+          <button
+            onClick={handleOpenBase2}
+            className="px-4 py-2 rounded-lg bg-purple-500 text-white text-base font-semibold hover:bg-purple-600 transition-colors shadow-md"
+          >
+            Base 2 Review
           </button>
         </div>
       </div>

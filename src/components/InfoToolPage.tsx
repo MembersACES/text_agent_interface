@@ -5177,6 +5177,452 @@ const EnhancedGasInvoiceDetails = ({ gasData }: { gasData: any }) => {
   );
 };
 
+const EnhancedSMEGasInvoiceDetails = ({ smeGasData }: { smeGasData: any }) => {
+  const [benchmarkData, setBenchmarkData] = useState<any>(null);
+  const [benchmarkLoading, setBenchmarkLoading] = useState(false);
+  const [benchmarkError, setBenchmarkError] = useState<string | null>(null);
+  const [manualGasRate, setManualGasRate] = useState<number>(0);
+  const [manualBenchmarkRate, setManualBenchmarkRate] = useState<number>(0);
+
+  if (!smeGasData) return null;
+
+  const usage = smeGasData.usage || {};
+  const supplyCharge = smeGasData.supply_charge || {};
+
+  const formatCurrency = (value: string | number) => {
+    const num = typeof value === 'string' ? parseFloat(value) : value;
+    return new Intl.NumberFormat('en-AU', {
+      style: 'currency',
+      currency: 'AUD'
+    }).format(num);
+  };
+
+  const formatNumber = (value: string | number | null | undefined, decimals = 2) => {
+    if (value === null || value === undefined || value === '') {
+      return '';
+    }
+  
+    const num = typeof value === 'string' ? parseFloat(value) : value;
+  
+    if (isNaN(num)) {
+      return '';
+    }
+  
+    return num.toLocaleString('en-AU', {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
+    });
+  };
+
+  // Extract state from site address
+  const extractStateFromAddress = (address: string): string | null => {
+    if (!address) return null;
+    const stateMatch = address.match(/\b(NSW|VIC|QLD|SA|WA|TAS|NT|ACT)\b/i);
+    return stateMatch ? stateMatch[0].toUpperCase() : null;
+  };
+
+  // Fetch gas benchmark data
+  const fetchBenchmarkData = async () => {
+    setBenchmarkLoading(true);
+    setBenchmarkError(null);
+    
+    try {
+      const response = await fetch('https://membersaces.app.n8n.cloud/webhook/return_gas_rates', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({})
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch gas benchmark data');
+      }
+      
+      const data = await response.json();
+      console.log('Gas benchmark data:', data);
+      
+      setBenchmarkData(data);
+    } catch (error) {
+      console.error('Error fetching gas benchmark data:', error);
+      setBenchmarkError(error instanceof Error ? error.message : 'Failed to fetch gas benchmark data');
+    } finally {
+      setBenchmarkLoading(false);
+    }
+  };
+
+  // Auto-fetch benchmark data on component mount
+  useEffect(() => {
+    fetchBenchmarkData();
+  }, []);
+
+  const state = extractStateFromAddress(smeGasData.site_address || '');
+  const stateBenchmark = benchmarkData?.find((b: any) => b.State?.trim() === state);
+
+  // Calculate weighted average rate from blocks (rates are in c/MJ, convert to $/GJ)
+  let weightedRate = 0;
+  let totalConsumption = 0;
+  if (usage.block_1 && usage.block_1.consumption && usage.block_1.rate) {
+    const block1Consumption = parseFloat(usage.block_1.consumption);
+    const block1Rate = parseFloat(usage.block_1.rate); // c/MJ
+    weightedRate += (block1Consumption * block1Rate);
+    totalConsumption += block1Consumption;
+  }
+  if (usage.block_2 && usage.block_2.consumption && usage.block_2.rate) {
+    const block2Consumption = parseFloat(usage.block_2.consumption);
+    const block2Rate = parseFloat(usage.block_2.rate); // c/MJ
+    weightedRate += (block2Consumption * block2Rate);
+    totalConsumption += block2Consumption;
+  }
+
+  // Calculate average rate: (weighted sum) / total consumption, then convert c/MJ to $/GJ
+  // 1 c/MJ = 0.01 $/MJ = 10 $/GJ (since 1 GJ = 1000 MJ)
+  const avgRateCperMJ = totalConsumption > 0 ? (weightedRate / totalConsumption) : 0;
+  const currentGasRate = avgRateCperMJ * 10; // Convert c/MJ to $/GJ
+
+  // Extract usage quantity (in MJ, convert to GJ)
+  const generalUsageMJ = parseFloat(usage.general_usage_quantity || '0');
+  const gasQuantityGJ = generalUsageMJ > 0 ? generalUsageMJ / 1000 : 0; // Convert MJ to GJ
+
+  // Extract supply charge (rate is likely total for the period, quantity_days is the number of days)
+  const supplyRate = parseFloat(supplyCharge.rate || '0');
+  const supplyDays = parseFloat(supplyCharge.quantity_days || '0');
+  const dailySupply = supplyDays > 0 ? (supplyRate / supplyDays) : supplyRate;
+
+  return (
+    <div style={{ marginTop: 16, padding: 16, backgroundColor: '#f8fafc', borderRadius: 6, border: '1px solid #e2e8f0' }}>
+      {/* Usage Blocks Section */}
+      <div style={{ display: 'grid', gap: 20, gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', marginBottom: 32 }}>
+        
+        {/* Usage Overview */}
+        <div style={{ background: 'white', padding: 20, borderRadius: 8, border: '1px solid #e5e7eb' }}>
+          <h4 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16, color: '#111827' }}>
+            🔥 Gas Usage Overview
+          </h4>
+          <div style={{ display: 'grid', gap: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: '#6b7280', fontSize: 14 }}>Total Usage:</span>
+              <span style={{ fontWeight: 600, fontSize: 14 }}>
+                {formatNumber(generalUsageMJ)} MJ ({formatNumber(gasQuantityGJ, 3)} GJ)
+              </span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: '#6b7280', fontSize: 14 }}>Average Rate:</span>
+              <span style={{ fontWeight: 600, fontSize: 14 }}>
+                {formatNumber(avgRateCperMJ, 3)} c/MJ (${formatNumber(currentGasRate, 4)}/GJ)
+              </span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: '#6b7280', fontSize: 14 }}>Invoice Period:</span>
+              <span style={{ fontWeight: 600, fontSize: 14 }}>{smeGasData.invoice_review_days} days</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: '#6b7280', fontSize: 14 }}>Daily Supply Charge:</span>
+              <span style={{ fontWeight: 600, fontSize: 14 }}>
+                {dailySupply > 0 ? formatCurrency(dailySupply) : 'N/A'}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Block 1 Details */}
+        {usage.block_1 && (
+          <div style={{ background: 'white', padding: 20, borderRadius: 8, border: '1px solid #e5e7eb' }}>
+            <h4 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16, color: '#111827' }}>
+              📊 Block 1
+            </h4>
+            <div style={{ display: 'grid', gap: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#6b7280', fontSize: 14 }}>Consumption:</span>
+                <span style={{ fontWeight: 600, fontSize: 14 }}>
+                  {formatNumber(usage.block_1.consumption)} MJ
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#6b7280', fontSize: 14 }}>Rate:</span>
+                <span style={{ fontWeight: 600, fontSize: 14 }}>
+                  {formatNumber(usage.block_1.rate, 3)} c/MJ
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Block 2 Details */}
+        {usage.block_2 && (
+          <div style={{ background: 'white', padding: 20, borderRadius: 8, border: '1px solid #e5e7eb' }}>
+            <h4 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16, color: '#111827' }}>
+              📊 Block 2
+            </h4>
+            <div style={{ display: 'grid', gap: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#6b7280', fontSize: 14 }}>Consumption:</span>
+                <span style={{ fontWeight: 600, fontSize: 14 }}>
+                  {formatNumber(usage.block_2.consumption)} MJ
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#6b7280', fontSize: 14 }}>Rate:</span>
+                <span style={{ fontWeight: 600, fontSize: 14 }}>
+                  {formatNumber(usage.block_2.rate, 3)} c/MJ
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Supply Charge Details */}
+        {supplyCharge.rate && (
+          <div style={{ background: 'white', padding: 20, borderRadius: 8, border: '1px solid #e5e7eb' }}>
+            <h4 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16, color: '#111827' }}>
+              ⚡ Supply Charge
+            </h4>
+            <div style={{ display: 'grid', gap: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#6b7280', fontSize: 14 }}>Total Supply Charge:</span>
+                <span style={{ fontWeight: 600, fontSize: 14 }}>
+                  {formatCurrency(supplyCharge.rate)}
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#6b7280', fontSize: 14 }}>Period:</span>
+                <span style={{ fontWeight: 600, fontSize: 14 }}>
+                  {supplyCharge.quantity_days} days
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#6b7280', fontSize: 14 }}>Daily Rate:</span>
+                <span style={{ fontWeight: 600, fontSize: 14 }}>
+                  {dailySupply > 0 ? formatCurrency(dailySupply) : 'N/A'}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Comparison Section */}
+      <div style={{ display: 'grid', gap: 16 }}>
+        {/* Invoice Row */}
+        <div style={{ background: 'white', padding: 16, borderRadius: 6, border: '1px solid #e5e7eb' }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: '#374151', marginBottom: 12, textAlign: 'center' }}>
+            Invoice Data
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, alignItems: 'center' }}>
+            <div>
+              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, textAlign: 'center' }}>Gas Rate</div>
+              <div style={{ 
+                padding: '6px 8px',
+                fontSize: '14px',
+                fontWeight: 600,
+                textAlign: 'center',
+                background: '#f9fafb',
+                border: '1px solid #e5e7eb',
+                borderRadius: '4px'
+              }}>
+                ${formatNumber(currentGasRate, 4)}
+              </div>
+              <div style={{ fontSize: 11, textAlign: 'center', marginTop: 2, color: '#6b7280' }}>$/GJ</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, textAlign: 'center' }}>Quantity</div>
+              <div style={{ 
+                padding: '6px 8px',
+                fontSize: '14px',
+                fontWeight: 600,
+                textAlign: 'center',
+                background: '#f9fafb',
+                border: '1px solid #e5e7eb',
+                borderRadius: '4px'
+              }}>
+                {formatNumber(gasQuantityGJ, 3)} GJ
+              </div>
+              <div style={{ fontSize: 11, textAlign: 'center', marginTop: 2, color: '#6b7280' }}>Total usage</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, textAlign: 'center' }}>Total Cost</div>
+              <div style={{ 
+                padding: '6px 8px',
+                fontSize: '14px',
+                fontWeight: 600,
+                textAlign: 'center',
+                background: '#f9fafb',
+                border: '1px solid #e5e7eb',
+                borderRadius: '4px'
+              }}>
+                {formatCurrency(smeGasData.total_invoice_cost || '0')}
+              </div>
+              <div style={{ fontSize: 11, textAlign: 'center', marginTop: 2, color: '#6b7280' }}>Invoice total</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Industry Benchmark Row */}
+        {benchmarkLoading ? (
+          <div style={{ background: 'white', padding: 16, borderRadius: 6, border: '1px solid #e5e7eb', textAlign: 'center' }}>
+            <div style={{ fontSize: 14, color: '#6b7280' }}>Loading benchmark data...</div>
+          </div>
+        ) : benchmarkError ? (
+          <div style={{ background: '#fef2f2', padding: 16, borderRadius: 6, border: '1px solid #fecaca', textAlign: 'center' }}>
+            <div style={{ fontSize: 14, color: '#dc2626' }}>Error: {benchmarkError}</div>
+          </div>
+        ) : stateBenchmark ? (
+          <div style={{ background: 'white', padding: 16, borderRadius: 6, border: '1px solid #e5e7eb' }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: '#374151', marginBottom: 12, textAlign: 'center' }}>
+              Industry Benchmark ({state})
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, alignItems: 'center' }}>
+              <div>
+                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, textAlign: 'center' }}>Gas Rate</div>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={manualBenchmarkRate > 0 ? manualBenchmarkRate : parseFloat(stateBenchmark?.['Step1 Price'] || 0)}
+                  onChange={(e) => setManualBenchmarkRate(parseFloat(e.target.value) || 0)}
+                  style={{
+                    width: '100%',
+                    padding: '6px 8px',
+                    fontSize: '14px',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '4px',
+                    textAlign: 'center',
+                    fontWeight: 600
+                  }}
+                />
+                <div style={{ fontSize: 11, textAlign: 'center', marginTop: 2, color: '#6b7280' }}>$/GJ</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, textAlign: 'center' }}>Quantity</div>
+                <div style={{ 
+                  padding: '6px 8px',
+                  fontSize: '14px',
+                  fontWeight: 600,
+                  textAlign: 'center',
+                  background: '#f9fafb',
+                  border: '1px solid #e5e7eb',
+                  borderRadius: '4px'
+                }}>
+                  {formatNumber(gasQuantityGJ, 3)} GJ
+                </div>
+                <div style={{ fontSize: 11, textAlign: 'center', marginTop: 2, color: '#6b7280' }}>Same as invoice</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, textAlign: 'center' }}>Cost</div>
+                <div style={{ 
+                  padding: '6px 8px',
+                  fontSize: '14px',
+                  fontWeight: 600,
+                  textAlign: 'center',
+                  background: '#f9fafb',
+                  border: '1px solid #e5e7eb',
+                  borderRadius: '4px'
+                }}>
+                  {formatCurrency((manualBenchmarkRate > 0 ? manualBenchmarkRate : parseFloat(stateBenchmark?.['Step1 Price'] || 0)) * gasQuantityGJ)}
+                </div>
+                <div style={{ fontSize: 11, textAlign: 'center', marginTop: 2, color: '#6b7280' }}>Calculated</div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {/* Difference Analysis */}
+        {stateBenchmark && (
+          <>
+            <div style={{ background: 'white', padding: 16, borderRadius: 6, border: '1px solid #e5e7eb' }}>
+              <div style={{ fontSize: 14, fontWeight: 600, color: '#374151', marginBottom: 12, textAlign: 'center' }}>
+                Difference Analysis
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, textAlign: 'center' }}>Rate Difference</div>
+                  <div style={{ 
+                    padding: '6px 8px',
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    textAlign: 'center',
+                    background: currentGasRate > (manualBenchmarkRate > 0 ? manualBenchmarkRate : parseFloat(stateBenchmark?.['Step1 Price'] || 0)) ? '#fef2f2' : '#f0fdf4',
+                    border: `1px solid ${currentGasRate > (manualBenchmarkRate > 0 ? manualBenchmarkRate : parseFloat(stateBenchmark?.['Step1 Price'] || 0)) ? '#fecaca' : '#bbf7d0'}`,
+                    borderRadius: '4px',
+                    color: currentGasRate > (manualBenchmarkRate > 0 ? manualBenchmarkRate : parseFloat(stateBenchmark?.['Step1 Price'] || 0)) ? '#dc2626' : '#059669'
+                  }}>
+                    ${formatNumber(currentGasRate - (manualBenchmarkRate > 0 ? manualBenchmarkRate : parseFloat(stateBenchmark?.['Step1 Price'] || 0)), 4)}
+                  </div>
+                  <div style={{ fontSize: 11, textAlign: 'center', marginTop: 2, color: '#6b7280' }}>$/GJ</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, textAlign: 'center' }}>Usage Period</div>
+                  <div style={{ 
+                    padding: '6px 8px',
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    textAlign: 'center',
+                    background: '#f9fafb',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '4px'
+                  }}>
+                    {smeGasData.invoice_review_days} days
+                  </div>
+                  <div style={{ fontSize: 11, textAlign: 'center', marginTop: 2, color: '#6b7280' }}>Invoice period</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, textAlign: 'center' }}>Cost Difference</div>
+                  <div style={{ 
+                    padding: '6px 8px',
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    textAlign: 'center',
+                    background: (currentGasRate * gasQuantityGJ) > 
+                              (((manualBenchmarkRate > 0 ? manualBenchmarkRate : parseFloat(stateBenchmark?.['Step1 Price'] || 0)) * gasQuantityGJ)) ? '#fef2f2' : '#f0fdf4',
+                    border: `1px solid ${(currentGasRate * gasQuantityGJ) > 
+                                      (((manualBenchmarkRate > 0 ? manualBenchmarkRate : parseFloat(stateBenchmark?.['Step1 Price'] || 0)) * gasQuantityGJ)) ? '#fecaca' : '#bbf7d0'}`,
+                    borderRadius: '4px',
+                    color: (currentGasRate * gasQuantityGJ) > 
+                          (((manualBenchmarkRate > 0 ? manualBenchmarkRate : parseFloat(stateBenchmark?.['Step1 Price'] || 0)) * gasQuantityGJ)) ? '#dc2626' : '#059669'
+                  }}>
+                    {formatCurrency((currentGasRate * gasQuantityGJ) - 
+                                  (((manualBenchmarkRate > 0 ? manualBenchmarkRate : parseFloat(stateBenchmark?.['Step1 Price'] || 0)) * gasQuantityGJ)))}
+                  </div>
+                  <div style={{ fontSize: 11, textAlign: 'center', marginTop: 2, color: '#6b7280' }}>Invoice vs benchmark</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Performance Summary */}
+            <div style={{ 
+              background: currentGasRate > (manualBenchmarkRate > 0 ? manualBenchmarkRate : parseFloat(stateBenchmark?.['Step1 Price'] || 0)) ? '#fef2f2' : '#f0fdf4',
+              border: `1px solid ${currentGasRate > (manualBenchmarkRate > 0 ? manualBenchmarkRate : parseFloat(stateBenchmark?.['Step1 Price'] || 0)) ? '#fecaca' : '#bbf7d0'}`,
+              borderRadius: 6, 
+              padding: 16,
+              textAlign: 'center'
+            }}>
+              <div style={{ 
+                fontSize: 16, 
+                fontWeight: 600,
+                color: currentGasRate > (manualBenchmarkRate > 0 ? manualBenchmarkRate : parseFloat(stateBenchmark?.['Step1 Price'] || 0)) ? '#dc2626' : '#059669',
+                marginBottom: 4
+              }}>
+                {currentGasRate > (manualBenchmarkRate > 0 ? manualBenchmarkRate : parseFloat(stateBenchmark?.['Step1 Price'] || 0)) ? 
+                  'Above Industry Benchmark' : 
+                  'Below Industry Benchmark'
+                }
+              </div>
+              <div style={{ 
+                fontSize: 14, 
+                color: currentGasRate > (manualBenchmarkRate > 0 ? manualBenchmarkRate : parseFloat(stateBenchmark?.['Step1 Price'] || 0)) ? '#991b1b' : '#166534'
+              }}>
+                {currentGasRate > (manualBenchmarkRate > 0 ? manualBenchmarkRate : parseFloat(stateBenchmark?.['Step1 Price'] || 0)) ? 
+                  'Your gas rate is higher than the industry benchmark - there may be opportunities for savings.' :
+                  'Your gas rate is competitive compared to the industry benchmark.'
+                }
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
 function InvoiceResult({ result, session, token, autoOpenDMA = false, autoExpandDetails = false }: { result: any; session: any; token: string; autoOpenDMA?: boolean; autoExpandDetails?: boolean }) {
   const [showDMAModal, setShowDMAModal] = useState(false);
   const [showCIOfferModal, setShowCIOfferModal] = useState(false);
@@ -5424,6 +5870,10 @@ function InvoiceResult({ result, session, token, autoOpenDMA = false, autoExpand
         
         {type.key === 'gas_invoice_details' && expandedDetails && (
           <EnhancedGasInvoiceDetails gasData={details} />
+        )}
+        
+        {type.key === 'gas_sme_invoicedetails' && (
+          <EnhancedSMEGasInvoiceDetails smeGasData={details} />
         )}
       </div>
       
