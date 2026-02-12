@@ -45,6 +45,8 @@ function mapUtilityKey(key: string): string {
       return "waste";
     case "oil":
       return "oil";
+    case "cleaning":
+      return "cleaning";
     default:
       throw new Error(`Unknown utility key: ${key}`);
   }
@@ -390,6 +392,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
     if (linked["SME Gas"] || linked["Small Gas"]) linkedUtilities.push("GAS_SME");
     if (linked["Waste"]) linkedUtilities.push("WASTE");
     if (linked["Oil"]) linkedUtilities.push("COOKING_OIL");
+    if (linked["Cleaning"]) linkedUtilities.push("CLEANING");
     
     businessInfoToPass.utilities = linkedUtilities;
     
@@ -421,6 +424,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
     if (linked["SME Gas"] || linked["Small Gas"]) linkedUtilities.push("GAS_SME");
     if (linked["Waste"]) linkedUtilities.push("WASTE");
     if (linked["Oil"]) linkedUtilities.push("COOKING_OIL");
+    if (linked["Cleaning"]) linkedUtilities.push("CLEANING");
     
     if (linkedUtilities.length > 0) {
       params.set('utilities', linkedUtilities.join(','));
@@ -456,6 +460,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
     if (linked["SME Gas"] || linked["Small Gas"]) businessInfoToPass.utilities.push("GAS_SME");
     if (linked["Waste"]) businessInfoToPass.utilities.push("WASTE");
     if (linked["Oil"]) businessInfoToPass.utilities.push("COOKING_OIL");
+    if (linked["Cleaning"]) businessInfoToPass.utilities.push("CLEANING");
 
     // ❗ No encodeURIComponent here
     params.set("businessInfo", JSON.stringify(businessInfoToPass));
@@ -487,6 +492,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
     if (linked["SME Gas"] || linked["Small Gas"]) businessInfoToPass.utilities.push("GAS_SME");
     if (linked["Waste"]) businessInfoToPass.utilities.push("WASTE");
     if (linked["Oil"]) businessInfoToPass.utilities.push("COOKING_OIL");
+    if (linked["Cleaning"]) businessInfoToPass.utilities.push("CLEANING");
 
     params.set("businessInfo", JSON.stringify(businessInfoToPass));
     window.open(`/solutions-strategy-generator?${params.toString()}`, "_blank");
@@ -1941,6 +1947,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
               })(),
               { key: "Waste", label: "Account Number", tool: "waste", param: "account_number", requestType: "waste" },
               { key: "Oil", label: "Account Name", tool: "oil", param: "business_name", requestType: "oil" },
+              { key: "Cleaning", label: "Client Name", tool: "cleaning", param: "client_name", requestType: "cleaning" },
               { key: "Robot", label: "Robot Number", tool: "robot", param: "robot_number", requestType: "robot_data" },
             ]
             .filter(Boolean)
@@ -1969,11 +1976,14 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                         }
                         
                         const isOil = key === "Oil";
+                        const isCleaning = key === "Cleaning";
                         const invoiceBusinessName = isOil ? identifier : businessName;
+                        // For Cleaning, use the identifier from linked_utilities array (e.g., "Moama RSL")
+                        const displayValue = identifier;
                         
                         return (
                           <div key={identifier} className="border-l-2 border-blue-200 pl-3">
-                            <div className="text-sm font-medium">{label}: {identifier}</div>
+                            <div className="text-sm font-medium">{label}: {displayValue}</div>
                             {retailer && (
                               <div className="text-xs text-gray-500 mb-2">Retailer: {retailer}</div>
                             )}
@@ -1982,7 +1992,8 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                                 className="px-2 py-1 border border-gray-300 rounded text-xs text-gray-700 hover:bg-gray-100 flex-1"
                                 onClick={() => {
                                   let url = `/utility-invoice-info/${tool}?business_name=${encodeURIComponent(invoiceBusinessName)}&autoSubmit=1`;
-                                  if (param !== "business_name") url += `&${param}=${encodeURIComponent(identifier)}`;
+                                  if (param !== "business_name" && param !== "client_name") url += `&${param}=${encodeURIComponent(identifier)}`;
+                                  if (param === "client_name") url += `&client_name=${encodeURIComponent(displayValue)}`;
                                   
                                   // Add business information as URL parameters
                                   if (business.name) url += `&business_abn=${encodeURIComponent(business.abn || '')}`;
@@ -2001,7 +2012,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                               >
                                 Account Info
                               </button>
-                              {tool !== "robot" && (
+                              {tool !== "robot" && tool !== "cleaning" && (
                                 <button
                                   className="px-2 py-1 border border-gray-300 rounded text-xs text-gray-700 hover:bg-gray-100 flex-1"
                                   onClick={() => {
@@ -2021,32 +2032,34 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                                   Data Request
                                 </button>
                               )}
-                              <button
-                                className="px-2 py-1 border border-yellow-300 rounded text-xs text-yellow-700 bg-yellow-50 hover:bg-yellow-100 flex-1"
-                                onClick={() => {
-                                  const businessInfoToPass = {
-                                    business_name: business.name,
-                                    abn: business.abn,
-                                    trading_name: business.trading_name,
-                                    email: contact.email,
-                                    telephone: contact.telephone,
-                                    postal_address: contact.postal_address,
-                                    site_address: contact.site_address,
-                                    contact_name: rep.contact_name,
-                                    googleDriveLink: driveUrl,
-                                    loaLink: info._processed_file_ids?.["business_LOA"],
-                                  };
+                              {tool !== "cleaning" && (
+                                <button
+                                  className="px-2 py-1 border border-yellow-300 rounded text-xs text-yellow-700 bg-yellow-50 hover:bg-yellow-100 flex-1"
+                                  onClick={() => {
+                                    const businessInfoToPass = {
+                                      business_name: business.name,
+                                      abn: business.abn,
+                                      trading_name: business.trading_name,
+                                      email: contact.email,
+                                      telephone: contact.telephone,
+                                      postal_address: contact.postal_address,
+                                      site_address: contact.site_address,
+                                      contact_name: rep.contact_name,
+                                      googleDriveLink: driveUrl,
+                                      loaLink: info._processed_file_ids?.["business_LOA"],
+                                    };
 
-                                  const params = new URLSearchParams();
-                                  params.set("businessInfo", encodeURIComponent(JSON.stringify(businessInfoToPass)));
-                                  params.set("utility", mapUtilityKey(key)); 
-                                  params.set("identifier", identifier);
+                                    const params = new URLSearchParams();
+                                    params.set("businessInfo", encodeURIComponent(JSON.stringify(businessInfoToPass)));
+                                    params.set("utility", mapUtilityKey(key)); 
+                                    params.set("identifier", identifier);
 
-                                  window.open(`/quote-request?${params.toString()}`, "_blank");
-                                }}
-                              >
-                                Quote Request
-                              </button>
+                                    window.open(`/quote-request?${params.toString()}`, "_blank");
+                                  }}
+                                >
+                                  Quote Request
+                                </button>
+                              )}
                               {/* DMA Quick Access button - only for C&I Electricity */}
                               {key === "C&I Electricity" && tool === "ci-electricity" && (
                                 <button

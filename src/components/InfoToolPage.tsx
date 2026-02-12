@@ -5637,6 +5637,7 @@ function InvoiceResult({ result, session, token, autoOpenDMA = false, autoExpand
     { key: 'gas_sme_invoicedetails', label: 'SME Gas Invoice' },
     { key: 'waste_invoice_details', label: 'Waste Invoice' },
     { key: 'oil_invoice_details', label: 'Oil Invoice' },
+    { key: 'cleaning_invoice_details', label: 'Cleaning Invoice' },
   ];
   const type = types.find(t => result[t.key]);
   if (!type) return <pre style={{ background: '#f4f4f4', padding: 12, borderRadius: 6 }}>{JSON.stringify(result, null, 2)}</pre>;
@@ -5689,20 +5690,20 @@ function InvoiceResult({ result, session, token, autoOpenDMA = false, autoExpand
   return (
     <div style={{ marginTop: 20, background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
       {/* Updated Header Section - NEW LAYOUT */}
-      <div style={{ padding: 24, borderBottom: '1px solid #e5e7eb' }}>
+      <div style={{ padding: type.key === 'cleaning_invoice_details' ? '16px 20px' : '24px', borderBottom: '1px solid #e5e7eb' }}>
         {/* Top row with title and total cost */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: type.key === 'cleaning_invoice_details' ? '12px' : '16px' }}>
           <div>
-            <h3 style={{ fontSize: 28, fontWeight: 700, color: '#111827', margin: 0, lineHeight: 1.2 }}>
+            <h3 style={{ fontSize: type.key === 'cleaning_invoice_details' ? '22px' : '28px', fontWeight: 700, color: '#111827', margin: 0, lineHeight: 1.2 }}>
               {type.label.replace('C&I', 'C&I')} Analysis
             </h3>
           </div>
-          {details.total_invoice_cost && (
+          {(details.total_invoice_cost || details.total_amount) && (
             <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: 36, fontWeight: 700, color: '#111827', lineHeight: 1 }}>
-                ${parseFloat(details.total_invoice_cost.replace(/[^0-9.\-]/g, '')).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              <div style={{ fontSize: type.key === 'cleaning_invoice_details' ? '28px' : '36px', fontWeight: 700, color: '#111827', lineHeight: 1 }}>
+                ${parseFloat((details.total_invoice_cost || details.total_amount).toString().replace(/[^0-9.\-]/g, '')).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </div>
-              <div style={{ fontSize: 14, color: '#6b7280', marginTop: 4 }}>Total Invoice Cost</div>
+              <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>Total Invoice Cost</div>
             </div>
           )}
         </div>
@@ -5710,10 +5711,10 @@ function InvoiceResult({ result, session, token, autoOpenDMA = false, autoExpand
         {/* Metadata row - Invoice, NMI, Period */}
         <div style={{ 
           display: 'flex', 
-          gap: 24, 
-          fontSize: 14, 
+          gap: type.key === 'cleaning_invoice_details' ? '16px' : '24px', 
+          fontSize: 13, 
           color: '#6b7280',
-          marginBottom: 20,
+          marginBottom: type.key === 'cleaning_invoice_details' ? '12px' : '20px',
           flexWrap: 'wrap'
         }}>
           {details.invoice_number && (
@@ -5736,31 +5737,36 @@ function InvoiceResult({ result, session, token, autoOpenDMA = false, autoExpand
               <span style={{ fontWeight: 600, color: '#374151' }}>Period:</span> {details.invoice_review_period || details.period}
             </div>
           )}
+          {details.invoice_date && (
+            <div>
+              <span style={{ fontWeight: 600, color: '#374151' }}>Date:</span> {details.invoice_date}
+            </div>
+          )}
         </div>
 
         {/* Business details section */}
         <div style={{ 
           display: 'grid', 
-          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
-          gap: 16,
-          marginBottom: 20
+          gridTemplateColumns: type.key === 'cleaning_invoice_details' ? 'repeat(auto-fit, minmax(180px, 1fr))' : 'repeat(auto-fit, minmax(200px, 1fr))', 
+          gap: type.key === 'cleaning_invoice_details' ? '12px' : '16px',
+          marginBottom: type.key === 'cleaning_invoice_details' ? '12px' : '20px'
         }}>
-          {details.business_name && (
+          {(details.business_name || details.client_name) && (
             <div>
-              <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>Business</div>
-              <div style={{ fontSize: 16, fontWeight: 600, color: '#111827' }}>{details.business_name}</div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 2 }}>{details.client_name ? 'Client Name' : 'Business'}</div>
+              <div style={{ fontSize: type.key === 'cleaning_invoice_details' ? '14px' : '16px', fontWeight: 600, color: '#111827' }}>{details.business_name || details.client_name}</div>
             </div>
           )}
           {details.site_address && (
             <div>
-              <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>Site Address</div>
-              <div style={{ fontSize: 16, fontWeight: 600, color: '#111827' }}>{details.site_address}</div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 2 }}>Site Address</div>
+              <div style={{ fontSize: type.key === 'cleaning_invoice_details' ? '14px' : '16px', fontWeight: 600, color: '#111827' }}>{details.site_address}</div>
             </div>
           )}
-          {details.retailer && (
+          {(details.retailer || details.supplier_name) && (
             <div>
-              <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>Retailer</div>
-              <div style={{ fontSize: 16, fontWeight: 600, color: '#111827' }}>{details.retailer}</div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 2 }}>{details.supplier_name ? 'Supplier' : 'Retailer'}</div>
+              <div style={{ fontSize: type.key === 'cleaning_invoice_details' ? '14px' : '16px', fontWeight: 600, color: '#111827' }}>{details.retailer || details.supplier_name}</div>
             </div>
           )}
         </div>
@@ -5874,6 +5880,75 @@ function InvoiceResult({ result, session, token, autoOpenDMA = false, autoExpand
         
         {type.key === 'gas_sme_invoicedetails' && (
           <EnhancedSMEGasInvoiceDetails smeGasData={details} />
+        )}
+        
+        {/* Cleaning Invoice Services Table - Compact Design */}
+        {type.key === 'cleaning_invoice_details' && details.services && Array.isArray(details.services) && details.services.length > 0 && (
+          <div style={{ padding: '16px 20px', borderTop: '1px solid #e5e7eb', background: '#fafafa' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <h4 style={{ fontSize: 16, fontWeight: 700, color: '#111827', margin: 0 }}>Services</h4>
+              <div style={{ display: 'flex', gap: 16, fontSize: 13, color: '#6b7280' }}>
+                {details.subtotal && (
+                  <div>
+                    <span style={{ fontWeight: 600, color: '#374151' }}>Subtotal:</span> ${typeof details.subtotal === 'number' ? details.subtotal.toFixed(2) : parseFloat(details.subtotal || '0').toFixed(2)}
+                  </div>
+                )}
+                {details.total_gst && (
+                  <div>
+                    <span style={{ fontWeight: 600, color: '#374151' }}>GST:</span> ${typeof details.total_gst === 'number' ? details.total_gst.toFixed(2) : parseFloat(details.total_gst || '0').toFixed(2)}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div style={{ overflowX: 'auto', background: '#fff', borderRadius: 6, border: '1px solid #e5e7eb' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead>
+                  <tr style={{ background: 'linear-gradient(to bottom, #f9fafb, #f3f4f6)', borderBottom: '2px solid #e5e7eb' }}>
+                    <th style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 600, fontSize: 12, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Description</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600, fontSize: 12, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Qty</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600, fontSize: 12, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Unit Price</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 600, fontSize: 12, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px' }}>GST</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600, fontSize: 12, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {details.services.map((service: any, index: number) => (
+                    <tr key={index} style={{ 
+                      background: index % 2 === 0 ? '#fff' : '#fafafa',
+                      borderBottom: index < details.services.length - 1 ? '1px solid #f3f4f6' : 'none',
+                      transition: 'background-color 0.2s'
+                    }}>
+                      <td style={{ padding: '10px', color: '#111827', fontSize: 13, lineHeight: 1.4 }}>{service.description || 'N/A'}</td>
+                      <td style={{ padding: '10px', color: '#111827', textAlign: 'right', fontSize: 13, fontWeight: 500 }}>{service.quantity || '0'}</td>
+                      <td style={{ padding: '10px', color: '#111827', textAlign: 'right', fontSize: 13, fontWeight: 500 }}>
+                        ${typeof service.unit_price === 'number' ? service.unit_price.toFixed(2) : parseFloat(service.unit_price || '0').toFixed(2)}
+                      </td>
+                      <td style={{ padding: '10px', color: '#6b7280', textAlign: 'center', fontSize: 12 }}>{service.gst || 'N/A'}</td>
+                      <td style={{ padding: '10px', color: '#111827', fontWeight: 600, textAlign: 'right', fontSize: 13 }}>
+                        ${typeof service.amount === 'number' ? service.amount.toFixed(2) : parseFloat(service.amount || '0').toFixed(2)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {/* Summary Footer - Compact */}
+            <div style={{ 
+              marginTop: 12, 
+              padding: '12px 16px', 
+              background: 'linear-gradient(to right, #f3f4f6, #e5e7eb)', 
+              borderRadius: 6,
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              border: '2px solid #d1d5db'
+            }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: '#111827' }}>Total Amount</div>
+              <div style={{ fontSize: 20, fontWeight: 700, color: '#111827' }}>
+                ${typeof details.total_amount === 'number' ? details.total_amount.toFixed(2) : parseFloat(details.total_amount || '0').toFixed(2)}
+              </div>
+            </div>
+          </div>
         )}
       </div>
       
