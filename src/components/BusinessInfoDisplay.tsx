@@ -2105,7 +2105,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                 className="w-full px-6 py-3 flex items-center justify-center relative bg-gradient-to-r from-gray-50 to-gray-100 hover:from-gray-100 hover:to-gray-200 transition-all"
               >
                 <div className="flex items-center gap-3 text-sm text-gray-600">
-              <span>Cleaning</span>
+              <span>Cleaning (being removed/deprecated)</span>
               <span>Telecommunication</span>
               <span>Water</span>
               </div>
