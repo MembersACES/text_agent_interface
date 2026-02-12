@@ -5639,8 +5639,36 @@ function InvoiceResult({ result, session, token, autoOpenDMA = false, autoExpand
     { key: 'oil_invoice_details', label: 'Oil Invoice' },
     { key: 'cleaning_invoice_details', label: 'Cleaning Invoice' },
   ];
-  const type = types.find(t => result[t.key]);
-  if (!type) return <pre style={{ background: '#f4f4f4', padding: 12, borderRadius: 6 }}>{JSON.stringify(result, null, 2)}</pre>;
+  
+  // Debug logging
+  console.log('🔍 InvoiceResult - Checking result structure:', {
+    resultKeys: Object.keys(result || {}),
+    hasCleaningInvoiceDetails: !!(result && result.cleaning_invoice_details),
+    cleaningInvoiceDetails: result?.cleaning_invoice_details
+  });
+  
+  const type = types.find(t => result && result[t.key]);
+  if (!type) {
+    console.warn('⚠️ InvoiceResult - No matching invoice type found. Result keys:', Object.keys(result || {}));
+    return (
+      <div style={{ marginTop: 20, background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', padding: 16 }}>
+        <div style={{ color: '#dc2626', fontWeight: 600, marginBottom: 12 }}>
+          ⚠️ No matching invoice type found in result
+        </div>
+        <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>
+          Available keys in result: {Object.keys(result || {}).join(', ') || 'none'}
+        </div>
+        <details style={{ marginTop: 12 }}>
+          <summary style={{ cursor: 'pointer', color: '#2563eb', fontWeight: 600 }}>View Full Result</summary>
+          <pre style={{ background: '#f4f4f4', padding: 12, borderRadius: 6, marginTop: 8, overflow: 'auto', maxHeight: '400px' }}>
+            {JSON.stringify(result, null, 2)}
+          </pre>
+        </details>
+      </div>
+    );
+  }
+  
+  console.log('✅ InvoiceResult - Found invoice type:', type.key);
   const details = result[type.key];
   
   // Auto-open DMA modal if requested and result is C&I electricity
