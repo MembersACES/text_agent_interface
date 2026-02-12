@@ -12,6 +12,7 @@ const UTILITY_OPTIONS = {
   COOKING_OIL: "COOKING OIL",
   GREASE_TRAP: "GREASE TRAP",
   WATER: "WATER",
+  CLEANING: "CLEANING",
 };
 
 export default function UtilityLinkingPage() {
@@ -72,6 +73,14 @@ export default function UtilityLinkingPage() {
           address: record['Site Address'],
           retailer: record.Retailer,
           clientName: record['Client Name']
+        };
+      case 'CLEANING':
+        return {
+          identifier: record.invoice_number || record['Invoice Number'],
+          identifierLabel: 'Invoice Number',
+          address: record.client_address || record['Client Address'],
+          retailer: record.supplier_name || record['Supplier Name'],
+          clientName: record.client_name || record['Client Name']
         };
       default:
         return {

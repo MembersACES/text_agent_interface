@@ -45,6 +45,8 @@ function mapUtilityKey(key: string): string {
       return "waste";
     case "oil":
       return "oil";
+    case "cleaning":
+      return "cleaning";
     default:
       throw new Error(`Unknown utility key: ${key}`);
   }
@@ -83,8 +85,6 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
   const contact = info.contact_information || {};
   const rep = info.representative_details || {};
   const docs: Record<string, any> = (info && typeof info.business_documents === 'object' && info.business_documents !== null && !Array.isArray(info.business_documents)) ? info.business_documents : {};
-  console.log('docs object:', docs);
-  console.log('info.business_documents:', info.business_documents);
   const getFileUrl = (key: string): string | undefined => {
     const value = info._processed_file_ids?.[key];
     return (value && typeof value === 'string') ? value : undefined;
@@ -127,10 +127,6 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
       status: info._processed_file_ids?.["contract_DMA_status"]
     },
   ];
-  console.log('📋 Contracts array:', contracts);
-  console.log('🗂️ All _processed_file_ids:', info._processed_file_ids);
-  console.log('🔍 Looking for status keys like:', 'contract_C&I Electricity_status');
-  console.log('✅ C&I Electricity status specifically:', info._processed_file_ids?.["contract_C&I Electricity_status"]);
   
   const driveUrl = info.gdrive?.folder_url;
 
@@ -330,6 +326,38 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
     window.open(url, '_blank');
   };
 
+  const handleOpenBase2 = () => {
+    const params = new URLSearchParams();
+    if (business.name) {
+      params.set('businessName', business.name);
+    }
+    
+    const businessInfoToPass = {
+      name: business.name,
+      abn: business.abn,
+      trading_name: business.trading_name,
+      postal_address: contact.postal_address,
+      site_address: contact.site_address,
+      telephone: contact.telephone,
+      email: contact.email,
+      contact_name: rep.contact_name,
+      position: rep.position,
+      industry: business.industry,
+      website: business.website,
+      googleDriveLink: driveUrl,
+      utilities: linked,
+      retailers: retailers,
+      // Include document information for Cleaning eligibility check
+      floorPlan: info._processed_file_ids?.business_site_map_upload || info._processed_file_ids?.['Floor Plan'],
+      cleaningInvoice: info._processed_file_ids?.invoice_Cleaning || info._processed_file_ids?.['Cleaning Invoice']
+    };
+    
+    params.set('businessInfo', encodeURIComponent(JSON.stringify(businessInfoToPass)));
+    
+    const url = `/base-2?${params.toString()}`;
+    window.open(url, '_blank');
+  };
+
   const handleOpenPresentationGenerator = () => {
     const params = new URLSearchParams();
     
@@ -358,6 +386,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
     if (linked["SME Gas"] || linked["Small Gas"]) linkedUtilities.push("GAS_SME");
     if (linked["Waste"]) linkedUtilities.push("WASTE");
     if (linked["Oil"]) linkedUtilities.push("COOKING_OIL");
+    if (linked["Cleaning"]) linkedUtilities.push("CLEANING");
     
     businessInfoToPass.utilities = linkedUtilities;
     
@@ -389,6 +418,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
     if (linked["SME Gas"] || linked["Small Gas"]) linkedUtilities.push("GAS_SME");
     if (linked["Waste"]) linkedUtilities.push("WASTE");
     if (linked["Oil"]) linkedUtilities.push("COOKING_OIL");
+    if (linked["Cleaning"]) linkedUtilities.push("CLEANING");
     
     if (linkedUtilities.length > 0) {
       params.set('utilities', linkedUtilities.join(','));
@@ -424,6 +454,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
     if (linked["SME Gas"] || linked["Small Gas"]) businessInfoToPass.utilities.push("GAS_SME");
     if (linked["Waste"]) businessInfoToPass.utilities.push("WASTE");
     if (linked["Oil"]) businessInfoToPass.utilities.push("COOKING_OIL");
+    if (linked["Cleaning"]) businessInfoToPass.utilities.push("CLEANING");
 
     // ❗ No encodeURIComponent here
     params.set("businessInfo", JSON.stringify(businessInfoToPass));
@@ -455,6 +486,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
     if (linked["SME Gas"] || linked["Small Gas"]) businessInfoToPass.utilities.push("GAS_SME");
     if (linked["Waste"]) businessInfoToPass.utilities.push("WASTE");
     if (linked["Oil"]) businessInfoToPass.utilities.push("COOKING_OIL");
+    if (linked["Cleaning"]) businessInfoToPass.utilities.push("CLEANING");
 
     params.set("businessInfo", JSON.stringify(businessInfoToPass));
     window.open(`/solutions-strategy-generator?${params.toString()}`, "_blank");
@@ -569,18 +601,14 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
         body: JSON.stringify({ business_name: business.name })
       });
       const data = await res.json();
-      console.log('EOI webhook response:', data);
       if (data && Array.isArray(data) && data.length > 0) {
-        const businessData = data[0];
         const mappedFileIds: any = {};
-        console.log('Processing EOI data:', businessData);
         // Process each row in the data array
-        data.forEach((row: any, index: number) => {
+        data.forEach((row: any) => {
           const eoiType = row['EOI Type'];
           const eoiFileId = row['EOI File ID'];
           // Only process if EOI Type and File ID exist
           if (eoiType && typeof eoiType === 'string' && eoiFileId && typeof eoiFileId === 'string') {
-            console.log(`Processing EOI row ${index}: Type="${eoiType}", File ID="${eoiFileId}"`);
             // Only process if the file ID looks like a Google Drive file ID
             const googleDriveIdPattern = /^[a-zA-Z0-9_-]{10,}$/;
             if (googleDriveIdPattern.test(eoiFileId)) {
@@ -589,15 +617,9 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
               const mappedKey = `eoi_${cleanKey}`;
               // Create Google Drive URL
               mappedFileIds[mappedKey] = `https://drive.google.com/file/d/${eoiFileId}/view?usp=drivesdk`;
-              console.log(`✅ Mapped EOI: "${eoiType}" -> "${mappedKey}" -> ${eoiFileId}`);
-            } else {
-              console.log(`Skipping EOI "${eoiType}" - File ID "${eoiFileId}" doesn't look like a Google Drive file ID`);
             }
-          } else {
-            console.log(`Skipping EOI row ${index} - missing EOI Type or File ID`);
           }
         });
-        console.log('Final mapped EOI file IDs:', mappedFileIds);
         // Only update if we actually found valid EOI files
         if (Object.keys(mappedFileIds).length > 0) {
           setInfo((prevInfo: any) => ({
@@ -607,11 +629,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
               ...mappedFileIds
             }
           }));
-        } else {
-          console.log('No valid EOI file IDs found');
         }
-      } else {
-        console.log('No EOI data found for business:', business.name);
       }
     } catch (err) {
       console.error('Error loading EOI data:', err);
@@ -663,8 +681,6 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
   };
   React.useEffect(() => {
     if (business.name && typeof setInfo === "function") {
-      console.log('Loading EOI data for business:', business.name);
-      
       // Add a small delay to prevent rapid successive calls
       const timeoutId = setTimeout(() => {
         fetchEOIData();
@@ -684,7 +700,6 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
         body: JSON.stringify({ business_name: business.name })
       });
       const data = await res.json();
-      console.log('Additional documents webhook response:', data);
       
       if (data && Array.isArray(data)) {
         const docs = data.map((item: any) => {
@@ -693,7 +708,6 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
           const fileName = item['File Name'] || item['file_name'] || item['fileName'] || 'Unknown';
           // Check all possible field name variations for File ID
           const fileId = item['File ID'] || item['file_id'] || item['id'] || item['FileID'] || item['fileID'] || '';
-          console.log('Processing additional document:', { fileName, fileId, itemKeys: Object.keys(item) });
           return { fileName, id: fileId };
         });
         setAdditionalDocs(docs);
@@ -702,7 +716,6 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
         const fileName = data['File Name'] || data['file_name'] || data['fileName'] || 'Unknown';
         // Check all possible field name variations for File ID
         const fileId = data['File ID'] || data['file_id'] || data['id'] || data['FileID'] || data['fileID'] || '';
-        console.log('Processing single additional document:', { fileName, fileId, dataKeys: Object.keys(data) });
         setAdditionalDocs([{ fileName, id: fileId }]);
       } else {
         setAdditionalDocs([]);
@@ -733,7 +746,6 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
       // Check if response has content before parsing JSON
       const text = await res.text();
       if (!text || text.trim() === '') {
-        console.log('Engagement forms webhook returned empty response');
         setEngagementForms([]);
         return;
       }
@@ -742,12 +754,10 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
       try {
         data = JSON.parse(text);
       } catch (parseError) {
-        console.error('Error parsing engagement forms JSON:', parseError, 'Response text:', text);
+        console.error('Error parsing engagement forms JSON:', parseError);
         setEngagementForms([]);
         return;
       }
-      
-      console.log('Engagement forms webhook response:', data);
       
       if (data && Array.isArray(data)) {
         const forms = data.map((item: any) => {
@@ -1028,17 +1038,13 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
              if (data && Array.isArray(data) && data.length > 0) {
                const mappedFileIds: any = {};
                
-               console.log('Processing refresh EOI data:', data);
-               
                // Process each row in the data array
-               data.forEach((row, index) => {
+               data.forEach((row) => {
                  const eoiType = row['EOI Type'];
                  const eoiFileId = row['EOI File ID'];
                  
                  // Only process if EOI Type and File ID exist
                  if (eoiType && typeof eoiType === 'string' && eoiFileId && typeof eoiFileId === 'string') {
-                   console.log(`Processing refresh EOI row ${index}: Type="${eoiType}", File ID="${eoiFileId}"`);
-                   
                    // Only process if the file ID looks like a Google Drive file ID
                    const googleDriveIdPattern = /^[a-zA-Z0-9_-]{10,}$/;
                    if (googleDriveIdPattern.test(eoiFileId)) {
@@ -1048,13 +1054,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                      
                      // Create Google Drive URL
                      mappedFileIds[mappedKey] = `https://drive.google.com/file/d/${eoiFileId}/view?usp=drivesdk`;
-                     
-                     console.log(`✅ Refresh mapped EOI: "${eoiType}" -> "${mappedKey}" -> ${eoiFileId}`);
-                   } else {
-                     console.log(`Skipping refresh EOI "${eoiType}" - File ID "${eoiFileId}" doesn't look like a Google Drive file ID`);
                    }
-                 } else {
-                   console.log(`Skipping refresh EOI row ${index} - missing EOI Type or File ID`);
                  }
                });
               
@@ -1067,8 +1067,6 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                     ...mappedFileIds 
                   }
                 }));
-                
-                console.log('EOI data refreshed after upload:', mappedFileIds);
               }
             }
           } catch (err) {
@@ -1311,6 +1309,12 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
             className="px-4 py-2 rounded-lg bg-emerald-500 text-white text-base font-semibold hover:bg-emerald-600 transition-colors shadow-md"
           >
             1st Month Savings Invoice
+          </button>
+          <button
+            onClick={handleOpenBase2}
+            className="px-4 py-2 rounded-lg bg-purple-500 text-white text-base font-semibold hover:bg-purple-600 transition-colors shadow-md"
+          >
+            Base 2 Review
           </button>
         </div>
       </div>
@@ -1903,6 +1907,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
               })(),
               { key: "Waste", label: "Account Number", tool: "waste", param: "account_number", requestType: "waste" },
               { key: "Oil", label: "Account Name", tool: "oil", param: "business_name", requestType: "oil" },
+              { key: "Cleaning", label: "Client Name", tool: "cleaning", param: "client_name", requestType: "cleaning" },
               { key: "Robot", label: "Robot Number", tool: "robot", param: "robot_number", requestType: "robot_data" },
             ]
             .filter(Boolean)
@@ -1931,11 +1936,14 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                         }
                         
                         const isOil = key === "Oil";
+                        const isCleaning = key === "Cleaning";
                         const invoiceBusinessName = isOil ? identifier : businessName;
+                        // For Cleaning, use the identifier from linked_utilities array (e.g., "Moama RSL")
+                        const displayValue = identifier;
                         
                         return (
                           <div key={identifier} className="border-l-2 border-blue-200 pl-3">
-                            <div className="text-sm font-medium">{label}: {identifier}</div>
+                            <div className="text-sm font-medium">{label}: {displayValue}</div>
                             {retailer && (
                               <div className="text-xs text-gray-500 mb-2">Retailer: {retailer}</div>
                             )}
@@ -1944,7 +1952,8 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                                 className="px-2 py-1 border border-gray-300 rounded text-xs text-gray-700 hover:bg-gray-100 flex-1"
                                 onClick={() => {
                                   let url = `/utility-invoice-info/${tool}?business_name=${encodeURIComponent(invoiceBusinessName)}&autoSubmit=1`;
-                                  if (param !== "business_name") url += `&${param}=${encodeURIComponent(identifier)}`;
+                                  if (param !== "business_name" && param !== "client_name") url += `&${param}=${encodeURIComponent(identifier)}`;
+                                  if (param === "client_name") url += `&client_name=${encodeURIComponent(displayValue)}`;
                                   
                                   // Add business information as URL parameters
                                   if (business.name) url += `&business_abn=${encodeURIComponent(business.abn || '')}`;
@@ -1963,7 +1972,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                               >
                                 Account Info
                               </button>
-                              {tool !== "robot" && (
+                              {tool !== "robot" && tool !== "cleaning" && (
                                 <button
                                   className="px-2 py-1 border border-gray-300 rounded text-xs text-gray-700 hover:bg-gray-100 flex-1"
                                   onClick={() => {
@@ -1983,32 +1992,34 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                                   Data Request
                                 </button>
                               )}
-                              <button
-                                className="px-2 py-1 border border-yellow-300 rounded text-xs text-yellow-700 bg-yellow-50 hover:bg-yellow-100 flex-1"
-                                onClick={() => {
-                                  const businessInfoToPass = {
-                                    business_name: business.name,
-                                    abn: business.abn,
-                                    trading_name: business.trading_name,
-                                    email: contact.email,
-                                    telephone: contact.telephone,
-                                    postal_address: contact.postal_address,
-                                    site_address: contact.site_address,
-                                    contact_name: rep.contact_name,
-                                    googleDriveLink: driveUrl,
-                                    loaLink: info._processed_file_ids?.["business_LOA"],
-                                  };
+                              {tool !== "cleaning" && (
+                                <button
+                                  className="px-2 py-1 border border-yellow-300 rounded text-xs text-yellow-700 bg-yellow-50 hover:bg-yellow-100 flex-1"
+                                  onClick={() => {
+                                    const businessInfoToPass = {
+                                      business_name: business.name,
+                                      abn: business.abn,
+                                      trading_name: business.trading_name,
+                                      email: contact.email,
+                                      telephone: contact.telephone,
+                                      postal_address: contact.postal_address,
+                                      site_address: contact.site_address,
+                                      contact_name: rep.contact_name,
+                                      googleDriveLink: driveUrl,
+                                      loaLink: info._processed_file_ids?.["business_LOA"],
+                                    };
 
-                                  const params = new URLSearchParams();
-                                  params.set("businessInfo", encodeURIComponent(JSON.stringify(businessInfoToPass)));
-                                  params.set("utility", mapUtilityKey(key)); 
-                                  params.set("identifier", identifier);
+                                    const params = new URLSearchParams();
+                                    params.set("businessInfo", encodeURIComponent(JSON.stringify(businessInfoToPass)));
+                                    params.set("utility", mapUtilityKey(key)); 
+                                    params.set("identifier", identifier);
 
-                                  window.open(`/quote-request?${params.toString()}`, "_blank");
-                                }}
-                              >
-                                Quote Request
-                              </button>
+                                    window.open(`/quote-request?${params.toString()}`, "_blank");
+                                  }}
+                                >
+                                  Quote Request
+                                </button>
+                              )}
                               {/* DMA Quick Access button - only for C&I Electricity */}
                               {key === "C&I Electricity" && tool === "ci-electricity" && (
                                 <button
@@ -2094,7 +2105,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                 className="w-full px-6 py-3 flex items-center justify-center relative bg-gradient-to-r from-gray-50 to-gray-100 hover:from-gray-100 hover:to-gray-200 transition-all"
               >
                 <div className="flex items-center gap-3 text-sm text-gray-600">
-              <span>Cleaning</span>
+              <span>Cleaning (being removed/deprecated)</span>
               <span>Telecommunication</span>
               <span>Water</span>
               </div>

@@ -136,3 +136,91 @@ docker build -t acesagentinterface .
 
 #run
 docker run -p 8080:8080 --env-file .env.local acesagentinterface
+
+---
+
+## Base 1 Review - Quick Win Flow
+
+The Base 1 Review is a lead-magnet quick win feature that allows users to upload utility invoices and receive:
+- A Base1 Excel workbook (multi-sheet, one utility per sheet + invoice register + summary)
+- A short Base1 Summary PDF (1–2 pages)
+- A run_id that can be used later to create a Base 2 review after LOA + service fee
+
+### How to Run Locally
+
+1. **Backend Setup:**
+   ```bash
+   cd "C:\My Projects\text_agent_backend"
+   pip install -r requirements.txt  # This will install openpyxl, reportlab, PyPDF2
+   uvicorn main:app --reload
+   ```
+   The backend will run at `http://localhost:8000`
+
+2. **Frontend Setup:**
+   ```bash
+   cd "C:\My Projects\text_agent_interface"
+   npm install
+   npm run dev
+   ```
+   The frontend will run at `http://localhost:8080` (or `http://localhost:3000` depending on your Next.js config)
+
+3. **Access the Base 1 Page:**
+   Navigate to `http://localhost:8080/base-1` (or `http://localhost:3000/base-1`)
+
+### Testing the Flow
+
+1. **Create a Run:**
+   - Enter Business Name (required)
+   - Enter Email (required)
+   - Select State (optional)
+   - Click "Start Base 1 Review"
+   - A run_id will be generated and displayed
+
+2. **Upload Documents:**
+   - Drag and drop PDF files or click to select
+   - Multiple PDFs can be uploaded
+   - Files are validated (PDF only, max 20MB per file)
+   - Click "Start Base 1 Review" to upload files (if not already done)
+
+3. **Extract Documents:**
+   - Click "Extract Documents" button
+   - This runs stub extraction (placeholder fields)
+   - Extracted data will appear in the table below
+
+4. **Generate Outputs:**
+   - Click "Generate Base 1 Outputs" button
+   - This creates:
+     - Base1 Excel workbook with all sheets
+     - Base1 Summary PDF
+   - Download links will appear
+
+5. **Download Files:**
+   - Click "Download Base 1 Excel" to get the workbook
+   - Click "Download Base 1 Summary PDF" to get the summary
+
+### Where Outputs are Saved
+
+- **Backend Storage:**
+  - Documents: `storage/base1/{run_id}/documents/`
+  - Outputs: `storage/base1/{run_id}/outputs/`
+  - Run metadata: `storage/base1/runs.json`
+
+- **Files Generated:**
+  - Excel: `Base1_Review_{run_id_short}.xlsx`
+  - PDF: `Base1_Summary_{run_id_short}.pdf`
+
+### API Endpoints
+
+- `POST /api/base1/runs` - Create a new run
+- `POST /api/base1/runs/{run_id}/documents` - Upload PDF documents
+- `GET /api/base1/runs/{run_id}` - Get run details
+- `POST /api/base1/runs/{run_id}/extract` - Run stub extraction
+- `POST /api/base1/runs/{run_id}/generate` - Generate Excel and PDF outputs
+- `GET /api/base1/runs/{run_id}/outputs/{filename}` - Download generated files
+
+### Notes
+
+- Base 1 is a **lead magnet** - no authentication required
+- Extraction is **stub only** - returns placeholder fields with low confidence (0.3)
+- Full extraction requires Base 2 (not implemented yet)
+- All files are stored locally in the `storage/base1/` directory

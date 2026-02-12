@@ -14,6 +14,7 @@ type UtilityKey =
   | "GAS_SME"
   | "GREASE_TRAP"
   | "WATER"
+  | "CLEANING"
   | "ELECTRICITY_CI_INTERVAL"
   | "EOI";
 // ---- Catalogs ----
@@ -26,6 +27,7 @@ const LABELS: Record<UtilityKey, string> = {
   GAS_SME: "GAS SME",
   GREASE_TRAP: "GREASE TRAP",
   WATER: "WATER",
+  CLEANING: "CLEANING",
   ELECTRICITY_CI_INTERVAL: "C&I E Interval Data",
   EOI: "EOI",
 };
@@ -45,6 +47,8 @@ const API_ENDPOINTS: Record<UtilityKey, string> = {
   GREASE_TRAP:
     "https://aces-api-63gwbzzcdq-km.a.run.app/v1/grease-trap/process-invoice",
   WATER: "https://aces-api-63gwbzzcdq-km.a.run.app/v1/water/process-invoice",
+  CLEANING:
+    "https://aces-invoice-api-672026052958.australia-southeast2.run.app/v1/cleaning-invoice/process-invoice",
   ELECTRICITY_CI_INTERVAL:
     "https://aces-invoice-api-672026052958.australia-southeast2.run.app/v1/interval-ci-electricity/process-interval-ci-electricity-data",
   EOI: "https://aces-invoice-api-672026052958.australia-southeast2.run.app/v1/eoi/process-eoi",
@@ -65,6 +69,7 @@ const ACCEPTS: Record<UtilityKey, string> = {
   GAS_SME: "application/pdf",
   GREASE_TRAP: "application/pdf",
   WATER: "application/pdf",
+  CLEANING: "application/pdf",
 };
 
 // Friendly upload labels
@@ -79,6 +84,7 @@ const FRIENDLY_UPLOAD_LABEL: Record<UtilityKey, string> = {
   GAS_SME: "Upload Invoice (PDF)",
   GREASE_TRAP: "Upload Invoice (PDF)",
   WATER: "Upload Invoice (PDF)",
+  CLEANING: "Upload Invoice (PDF)",
 };
 
 // Partition utilities by category
@@ -91,6 +97,7 @@ const INVOICE_UTILS: UtilityKey[] = [
   "GAS_SME",
   "GREASE_TRAP",
   "WATER",
+  "CLEANING",
 ];
 
 const DATA_UTILS: UtilityKey[] = [

@@ -9,6 +9,7 @@ const UTILITY_OPTIONS = {
   GAS_SME: "GAS SME",
   GREASE_TRAP: "GREASE TRAP",
   WATER: "WATER",
+  CLEANING: "CLEANING",
 };
 
 interface UtilityLinkingToolProps {
