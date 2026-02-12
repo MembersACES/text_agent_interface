@@ -85,8 +85,6 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
   const contact = info.contact_information || {};
   const rep = info.representative_details || {};
   const docs: Record<string, any> = (info && typeof info.business_documents === 'object' && info.business_documents !== null && !Array.isArray(info.business_documents)) ? info.business_documents : {};
-  console.log('docs object:', docs);
-  console.log('info.business_documents:', info.business_documents);
   const getFileUrl = (key: string): string | undefined => {
     const value = info._processed_file_ids?.[key];
     return (value && typeof value === 'string') ? value : undefined;
@@ -129,10 +127,6 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
       status: info._processed_file_ids?.["contract_DMA_status"]
     },
   ];
-  console.log('📋 Contracts array:', contracts);
-  console.log('🗂️ All _processed_file_ids:', info._processed_file_ids);
-  console.log('🔍 Looking for status keys like:', 'contract_C&I Electricity_status');
-  console.log('✅ C&I Electricity status specifically:', info._processed_file_ids?.["contract_C&I Electricity_status"]);
   
   const driveUrl = info.gdrive?.folder_url;
 
@@ -607,18 +601,14 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
         body: JSON.stringify({ business_name: business.name })
       });
       const data = await res.json();
-      console.log('EOI webhook response:', data);
       if (data && Array.isArray(data) && data.length > 0) {
-        const businessData = data[0];
         const mappedFileIds: any = {};
-        console.log('Processing EOI data:', businessData);
         // Process each row in the data array
-        data.forEach((row: any, index: number) => {
+        data.forEach((row: any) => {
           const eoiType = row['EOI Type'];
           const eoiFileId = row['EOI File ID'];
           // Only process if EOI Type and File ID exist
           if (eoiType && typeof eoiType === 'string' && eoiFileId && typeof eoiFileId === 'string') {
-            console.log(`Processing EOI row ${index}: Type="${eoiType}", File ID="${eoiFileId}"`);
             // Only process if the file ID looks like a Google Drive file ID
             const googleDriveIdPattern = /^[a-zA-Z0-9_-]{10,}$/;
             if (googleDriveIdPattern.test(eoiFileId)) {
@@ -627,15 +617,9 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
               const mappedKey = `eoi_${cleanKey}`;
               // Create Google Drive URL
               mappedFileIds[mappedKey] = `https://drive.google.com/file/d/${eoiFileId}/view?usp=drivesdk`;
-              console.log(`✅ Mapped EOI: "${eoiType}" -> "${mappedKey}" -> ${eoiFileId}`);
-            } else {
-              console.log(`Skipping EOI "${eoiType}" - File ID "${eoiFileId}" doesn't look like a Google Drive file ID`);
             }
-          } else {
-            console.log(`Skipping EOI row ${index} - missing EOI Type or File ID`);
           }
         });
-        console.log('Final mapped EOI file IDs:', mappedFileIds);
         // Only update if we actually found valid EOI files
         if (Object.keys(mappedFileIds).length > 0) {
           setInfo((prevInfo: any) => ({
@@ -645,11 +629,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
               ...mappedFileIds
             }
           }));
-        } else {
-          console.log('No valid EOI file IDs found');
         }
-      } else {
-        console.log('No EOI data found for business:', business.name);
       }
     } catch (err) {
       console.error('Error loading EOI data:', err);
@@ -701,8 +681,6 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
   };
   React.useEffect(() => {
     if (business.name && typeof setInfo === "function") {
-      console.log('Loading EOI data for business:', business.name);
-      
       // Add a small delay to prevent rapid successive calls
       const timeoutId = setTimeout(() => {
         fetchEOIData();
@@ -722,7 +700,6 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
         body: JSON.stringify({ business_name: business.name })
       });
       const data = await res.json();
-      console.log('Additional documents webhook response:', data);
       
       if (data && Array.isArray(data)) {
         const docs = data.map((item: any) => {
@@ -731,7 +708,6 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
           const fileName = item['File Name'] || item['file_name'] || item['fileName'] || 'Unknown';
           // Check all possible field name variations for File ID
           const fileId = item['File ID'] || item['file_id'] || item['id'] || item['FileID'] || item['fileID'] || '';
-          console.log('Processing additional document:', { fileName, fileId, itemKeys: Object.keys(item) });
           return { fileName, id: fileId };
         });
         setAdditionalDocs(docs);
@@ -740,7 +716,6 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
         const fileName = data['File Name'] || data['file_name'] || data['fileName'] || 'Unknown';
         // Check all possible field name variations for File ID
         const fileId = data['File ID'] || data['file_id'] || data['id'] || data['FileID'] || data['fileID'] || '';
-        console.log('Processing single additional document:', { fileName, fileId, dataKeys: Object.keys(data) });
         setAdditionalDocs([{ fileName, id: fileId }]);
       } else {
         setAdditionalDocs([]);
@@ -771,7 +746,6 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
       // Check if response has content before parsing JSON
       const text = await res.text();
       if (!text || text.trim() === '') {
-        console.log('Engagement forms webhook returned empty response');
         setEngagementForms([]);
         return;
       }
@@ -780,12 +754,10 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
       try {
         data = JSON.parse(text);
       } catch (parseError) {
-        console.error('Error parsing engagement forms JSON:', parseError, 'Response text:', text);
+        console.error('Error parsing engagement forms JSON:', parseError);
         setEngagementForms([]);
         return;
       }
-      
-      console.log('Engagement forms webhook response:', data);
       
       if (data && Array.isArray(data)) {
         const forms = data.map((item: any) => {
@@ -1066,17 +1038,13 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
              if (data && Array.isArray(data) && data.length > 0) {
                const mappedFileIds: any = {};
                
-               console.log('Processing refresh EOI data:', data);
-               
                // Process each row in the data array
-               data.forEach((row, index) => {
+               data.forEach((row) => {
                  const eoiType = row['EOI Type'];
                  const eoiFileId = row['EOI File ID'];
                  
                  // Only process if EOI Type and File ID exist
                  if (eoiType && typeof eoiType === 'string' && eoiFileId && typeof eoiFileId === 'string') {
-                   console.log(`Processing refresh EOI row ${index}: Type="${eoiType}", File ID="${eoiFileId}"`);
-                   
                    // Only process if the file ID looks like a Google Drive file ID
                    const googleDriveIdPattern = /^[a-zA-Z0-9_-]{10,}$/;
                    if (googleDriveIdPattern.test(eoiFileId)) {
@@ -1086,13 +1054,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                      
                      // Create Google Drive URL
                      mappedFileIds[mappedKey] = `https://drive.google.com/file/d/${eoiFileId}/view?usp=drivesdk`;
-                     
-                     console.log(`✅ Refresh mapped EOI: "${eoiType}" -> "${mappedKey}" -> ${eoiFileId}`);
-                   } else {
-                     console.log(`Skipping refresh EOI "${eoiType}" - File ID "${eoiFileId}" doesn't look like a Google Drive file ID`);
                    }
-                 } else {
-                   console.log(`Skipping refresh EOI row ${index} - missing EOI Type or File ID`);
                  }
                });
               
@@ -1105,8 +1067,6 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                     ...mappedFileIds 
                   }
                 }));
-                
-                console.log('EOI data refreshed after upload:', mappedFileIds);
               }
             }
           } catch (err) {
