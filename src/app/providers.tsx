@@ -4,6 +4,7 @@ import { SidebarProvider } from "@/components/Layouts/sidebar/sidebar-context";
 import { ThemeProvider } from "next-themes";
 import { SessionProvider, useSession, signIn } from "next-auth/react";
 import { useEffect } from "react";
+import { ToastProvider } from "@/components/ui/toast";
 
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { data: session, status } = useSession();
@@ -93,7 +94,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <SessionProvider>
       <ThemeProvider defaultTheme="light" attribute="class">
         <SidebarProvider>
-          <AuthGate>{children}</AuthGate>
+          <ToastProvider>
+            <AuthGate>{children}</AuthGate>
+          </ToastProvider>
         </SidebarProvider>
       </ThemeProvider>
     </SessionProvider>

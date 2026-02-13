@@ -33,7 +33,7 @@ const config: Config = {
         },
         gray: {
           DEFAULT: "#EFF4FB",
-          dark: "#122031",
+          dark: "#0f172a", // Softer dark mode (slate-900)
           1: "#F9FAFB",
           2: "#F3F4F6",
           3: "#E5E7EB",

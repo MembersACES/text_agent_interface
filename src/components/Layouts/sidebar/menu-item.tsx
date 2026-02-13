@@ -4,11 +4,11 @@ import Link from "next/link";
 import { useSidebarContext } from "./sidebar-context";
 
 const menuItemBaseStyles = cva(
-  "rounded-lg px-3.5 font-medium text-dark-4 transition-all duration-200 dark:text-dark-6",
+  "rounded-lg px-3.5 font-medium text-dark-4 transition-all duration-200 dark:text-dark-6 relative",
   {
     variants: {
       isActive: {
-        true: "bg-[rgba(87,80,241,0.07)] text-primary hover:bg-[rgba(87,80,241,0.07)] dark:bg-[#FFFFFF1A] dark:text-white",
+        true: "bg-[rgba(87,80,241,0.12)] text-primary hover:bg-[rgba(87,80,241,0.15)] dark:bg-[#FFFFFF1A] dark:text-white before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:w-1 before:h-6 before:bg-primary before:rounded-r",
         false:
           "hover:bg-gray-100 hover:text-dark hover:dark:bg-[#FFFFFF1A] hover:dark:text-white",
       },

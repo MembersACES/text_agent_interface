@@ -49,7 +49,7 @@ export function Sidebar() {
 
       <aside
         className={cn(
-          "max-w-[290px] overflow-hidden border-r border-gray-200 bg-white transition-[width] duration-200 ease-linear dark:border-gray-800 dark:bg-gray-dark",
+          "max-w-[290px] overflow-hidden border-r border-gray-200 bg-white transition-[width] duration-300 ease-in-out dark:border-gray-800 dark:bg-gray-dark",
           isMobile ? "fixed bottom-0 top-0 z-50" : "sticky top-0 h-screen",
           isOpen ? "w-full" : "w-0"
         )}
@@ -87,9 +87,10 @@ export function Sidebar() {
           <div className="custom-scrollbar flex-1 overflow-y-auto pr-3 min-[850px]:mt-6">
             {NAV_DATA.map((section) => (
               <div key={section.label} className="mb-6">
-                <h2 className="mb-5 text-sm font-medium text-dark-4 dark:text-dark-6">
+                <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-dark-4 dark:text-dark-6 px-3.5">
                   {section.label}
                 </h2>
+                <div className="mb-4 h-px bg-stroke dark:bg-dark-3"></div>
 
                 <nav role="navigation" aria-label={section.label}>
                   <ul className="space-y-2">

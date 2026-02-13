@@ -15,7 +15,7 @@ export function Header() {
     <header className="sticky top-0 z-30 flex items-center justify-between border-b border-stroke bg-white px-4 py-5 shadow-1 dark:border-stroke-dark dark:bg-gray-dark md:px-5 2xl:px-10">
       <button
         onClick={toggleSidebar}
-        className="rounded-lg border px-1.5 py-1 dark:border-stroke-dark dark:bg-[#020D1A] hover:dark:bg-[#FFFFFF1A]"
+        className="rounded-lg border px-1.5 py-1 dark:border-stroke-dark dark:bg-gray-dark hover:dark:bg-[#FFFFFF1A] transition-all duration-200 active:scale-95"
       >
         <MenuIcon />
         <span className="sr-only">Toggle Sidebar</span>
@@ -38,7 +38,7 @@ export function Header() {
           <h1 className="mb-0.5 text-heading-5 font-bold text-dark dark:text-white">
             Dashboard
           </h1>
-          <p className="font-medium">ACES Admin Dashboard Solution</p>
+          <p className="text-sm text-gray-600 dark:text-gray-400">ACES Admin Dashboard Solution</p>
         </div>
       </div>
 
