@@ -18,13 +18,13 @@ interface Resource {
 }
 
 const RESOURCES: Resource[] = [
-    {
-        name: "ACES Demo",
-        link: "PLACEHOLDER LINK",
-        password: "PLACEHOLDER",
-        notes: "",
-      },
-    {
+  {
+    name: "ACES Demo",
+    link: "https://acesdemo-672026052958.australia-southeast2.run.app/",
+    password: "1234",
+    notes: "ACES Demo is a demo of the Aces Solutions platform. It is used to test the platform and the features of the platform.",
+  },
+  {
     name: "Pudu Maintenance English",
     link: "https://pudu-chatbot-english-672026052958.australia-southeast2.run.app/",
     password: "Bot_Maintenance_Agent!",
@@ -35,6 +35,12 @@ const RESOURCES: Resource[] = [
     link: "https://pudu-chatbot-672026052958.australia-southeast2.run.app/",
     password: "PuduAgent1!2@",
     notes: "",
+  },
+  {
+    name: "Airtable Integration",
+    link: "https://airtable.com/embed/appG1WoHcJt10iO5K/shrr1PYlng8vWqrF1?viewControls=on",
+    password: "N/A",
+    notes: "Access all Airtable databases (LOA, C&I E, SME E, C&I G, SME G, Waste)",
   },
 ];
 
