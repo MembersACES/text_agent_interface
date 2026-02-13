@@ -32,6 +32,7 @@ export default function BlankLOAClientCreationPage() {
     position: "",
   });
   const [loading, setLoading] = useState(false);
+  const [loadingBoth, setLoadingBoth] = useState(false);
   const [result, setResult] = useState("");
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -112,6 +113,81 @@ export default function BlankLOAClientCreationPage() {
     }
 
     setLoading(false);
+  };
+
+  const handleSubmitBoth = async () => {
+    if (!token) {
+      setResult("❌ Authentication required. Please log in.");
+      return;
+    }
+
+    const validationError = validateForm();
+    if (validationError) {
+      setResult(`❌ ${validationError}`);
+      return;
+    }
+
+    setLoadingBoth(true);
+    setResult("");
+
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/api/generate-loa-sfa-new`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
+        body: JSON.stringify(formData),
+      });
+
+      const data = await response.json();
+      
+      console.log("Backend response data:", data);
+
+      if (response.ok && data.status === "success") {
+        // Check for multiple document links
+        let resultMessage = `✅ ${data.message}\n\n`;
+        
+        if (data.loa_document_link && data.sfa_document_link) {
+          // Both documents generated with separate links
+          resultMessage += `📄 **LOA Link:** ${data.loa_document_link}\n\n📝 **SFA Link:** ${data.sfa_document_link}`;
+        } else if (data.document_links && Array.isArray(data.document_links)) {
+          // Array of document links
+          data.document_links.forEach((link: string, index: number) => {
+            const docType = index === 0 ? "LOA" : "SFA";
+            resultMessage += `📄 **${docType} Link:** ${link}\n\n`;
+          });
+        } else if (data.document_link) {
+          // Single document link (fallback - might only be SFA)
+          resultMessage += `📄 **Document Link:** ${data.document_link}\n\n⚠️ Note: Only one document link received. Please check if both LOA and SFA were generated.`;
+        } else {
+          // No document link in response
+          resultMessage += `⚠️ Documents generated but no links provided in response.`;
+        }
+        
+        setResult(resultMessage);
+        
+        // Reset form on success
+        setFormData({
+          business_name: "",
+          abn: "",
+          trading_as: "",
+          postal_address: "",
+          site_address: "",
+          telephone: "",
+          email: "",
+          contact_name: "",
+          position: "",
+        });
+      } else {
+        setResult(`❌ Generation failed: ${data.message || data.detail || response.statusText}`);
+      }
+    } catch (error: any) {
+      console.error("LOA & SFA generation error:", error);
+      setResult(`❌ Error: ${error.message}`);
+    }
+
+    setLoadingBoth(false);
   };
 
   const isFormValid = () => {
@@ -334,14 +410,23 @@ export default function BlankLOAClientCreationPage() {
         </div>
       </div>
 
-      {/* Submit Button */}
-      <button
-        onClick={handleSubmit}
-        disabled={loading || !isFormValid()}
-        className="w-full px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-lg font-medium"
-      >
-        {loading ? "Generating LOA..." : "Generate Letter of Authority"}
-      </button>
+      {/* Submit Buttons */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <button
+          onClick={handleSubmit}
+          disabled={loading || loadingBoth || !isFormValid()}
+          className="w-full px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-lg font-medium"
+        >
+          {loading ? "Generating LOA..." : "Generate Letter of Authority"}
+        </button>
+        <button
+          onClick={handleSubmitBoth}
+          disabled={loading || loadingBoth || !isFormValid()}
+          className="w-full px-6 py-3 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-lg font-medium"
+        >
+          {loadingBoth ? "Generating LOA & SFA..." : "Generate LOA & SFA"}
+        </button>
+      </div>
 
       {/* Result Display */}
       {result && (
