@@ -18,27 +18,21 @@ export default function Home() {
       <div className="mt-8 flex flex-wrap justify-center gap-4">
         <Link
           href="/business-info"
-          className="rounded-xl bg-primary px-6 py-3 text-white shadow-lg transition hover:bg-primary-dark"
+          className="rounded-xl bg-gradient-to-r from-blue-500 to-indigo-600 px-6 py-3 text-white shadow-lg transition hover:from-blue-600 hover:to-indigo-700 hover:shadow-xl"
         >
-          Client Proflie
+          Client Profile
         </Link>
         <Link
           href="/tasks"
-          className="rounded-xl border border-gray-300 px-6 py-3 text-gray-700 transition hover:border-gray-500 hover:text-black dark:text-white dark:border-gray-600"
+          className="rounded-xl bg-gradient-to-r from-blue-500 to-indigo-600 px-6 py-3 text-white shadow-lg transition hover:from-blue-600 hover:to-indigo-700 hover:shadow-xl"
         >
           View Tasks
         </Link>
         <Link
-          href="/agent"
-          className="rounded-xl border border-gray-300 px-6 py-3 text-gray-700 transition hover:border-gray-500 hover:text-black dark:text-white dark:border-gray-600"
+          href="/resources"
+          className="rounded-xl bg-gradient-to-r from-blue-500 to-indigo-600 px-6 py-3 text-white shadow-lg transition hover:from-blue-600 hover:to-indigo-700 hover:shadow-xl"
         >
-          Launch Agent
-        </Link>
-        <Link
-          href="/loa-upload"
-          className="rounded-xl border border-gray-300 px-6 py-3 text-gray-700 transition hover:border-gray-500 hover:text-black dark:text-white dark:border-gray-600"
-        >
-          Upload LOA
+          Key Resources
         </Link>
       </div>
 

@@ -15,6 +15,7 @@ export const NAV_DATA = [
       { title: "Client Profile", url: "/business-info", icon: Icons.User },
       { title: "Invoice & Data Lodgement", url: "/document-lodgement", icon: Icons.Table },
       { title: "Base 1 Review Agent", url: "/base-1", icon: Icons.Table },
+      { title: "Resources", url: "/resources", icon: Icons.Table },
     ],
   },
   {
