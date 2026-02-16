@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useRef } from "react";
 import { getApiBaseUrl } from "@/lib/utils";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
@@ -210,6 +210,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
   const [engagementFormResult, setEngagementFormResult] = useState<string | null>(null);
   const [engagementFormsRefreshing, setEngagementFormsRefreshing] = useState(false);
   const [engagementForms, setEngagementForms] = useState<Array<{ fileName: string; id: string }>>([]);
+  const engagementFormFileInputRef = useRef<HTMLInputElement>(null);
   const [sectionsOpen, setSectionsOpen] = useState({
     utilities: false,
     dataReports: false,
@@ -760,18 +761,72 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
       }
       
       if (data && Array.isArray(data)) {
-        const forms = data.map((item: any) => {
-          // Extract file name and id from the response
-          const fileName = item['File Name'] || item['file_name'] || item['fileName'] || 'Unknown';
-          const fileId = item['EF File ID'] || item['File ID'] || item['file_id'] || item['id'] || '';
-          return { fileName, id: fileId };
+        // New structure: data is array of business objects, each with engagement_forms array
+        const allForms: Array<{ fileName: string; id: string }> = [];
+        
+        data.forEach((item: any) => {
+          if (item?.engagement_forms && Array.isArray(item.engagement_forms)) {
+            // Map over engagement_forms array for this business
+            item.engagement_forms.forEach((form: any) => {
+              const fileName = form?.name || 
+                              item?.signedEF_row?.['File Name'] || 
+                              form?.raw?.name || 
+                              'Unknown';
+              const fileId = form?.fileId || 
+                            form?.raw?.id || 
+                            '';
+              if (fileId) {
+                allForms.push({ fileName, id: fileId });
+              }
+            });
+          } else {
+            // Fallback to old structure for backward compatibility
+            const fileName = item?.signedEF_row?.['File Name'] || 
+                            item?.drive_file?.name || 
+                            item['File Name'] || 
+                            item['file_name'] || 
+                            item['fileName'] || 
+                            'Unknown';
+            const fileId = item?.drive_file?.fileId || 
+                          item?.drive_file?.raw?.id || 
+                          item['EF File ID'] || 
+                          item['File ID'] || 
+                          item['file_id'] || 
+                          item['id'] || 
+                          '';
+            if (fileId) {
+              allForms.push({ fileName, id: fileId });
+            }
+          }
         });
-        setEngagementForms(forms);
+        
+        setEngagementForms(allForms);
       } else if (data && typeof data === 'object') {
         // Handle single object response
-        const fileName = data['File Name'] || data['file_name'] || data['fileName'] || 'Unknown';
-        const fileId = data['EF File ID'] || data['File ID'] || data['file_id'] || data['id'] || '';
-        setEngagementForms([{ fileName, id: fileId }]);
+        if (data?.engagement_forms && Array.isArray(data.engagement_forms)) {
+          // New structure with engagement_forms array
+          const forms = data.engagement_forms.map((form: any) => ({
+            fileName: form?.name || data?.signedEF_row?.['File Name'] || form?.raw?.name || 'Unknown',
+            id: form?.fileId || form?.raw?.id || ''
+          })).filter((form: any) => form.id); // Filter out forms without IDs
+          setEngagementForms(forms);
+        } else {
+          // Fallback to old structure
+          const fileName = data?.signedEF_row?.['File Name'] || 
+                          data?.drive_file?.name || 
+                          data['File Name'] || 
+                          data['file_name'] || 
+                          data['fileName'] || 
+                          'Unknown';
+          const fileId = data?.drive_file?.fileId || 
+                        data?.drive_file?.raw?.id || 
+                        data['EF File ID'] || 
+                        data['File ID'] || 
+                        data['file_id'] || 
+                        data['id'] || 
+                        '';
+          setEngagementForms(fileId ? [{ fileName, id: fileId }] : []);
+        }
       } else {
         setEngagementForms([]);
       }
@@ -918,7 +973,72 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
     }
   };
 
-  // Handle engagement form upload
+  // Handle engagement form upload - direct API call
+  const handleEngagementFormFileUpload = async (file: File) => {
+    if (!file) {
+      return;
+    }
+
+    setEngagementFormLoading(true);
+    setEngagementFormResult("");
+
+    try {
+      // Use business name as linked_business_name
+      const linkedBusinessName = businessName || business.name || '';
+
+      const formData = new FormData();
+      formData.append("file", file);
+      // Append linked_business_name (using business name)
+      if (linkedBusinessName) {
+        formData.append("linked_business_name", linkedBusinessName);
+      }
+
+      const res = await fetch('https://aces-invoice-api-672026052958.australia-southeast2.run.app/v1/ef/process-ef', {
+        method: 'POST',
+        body: formData
+      });
+
+      let data: any;
+      try {
+        data = await res.json();
+      } catch {
+        const text = await res.text();
+        data = { message: text || 'Unknown error' };
+      }
+      
+      if (res.ok) {
+        setEngagementFormResult("✅ Engagement form uploaded successfully!");
+        // Refresh the forms list
+        setTimeout(() => {
+          fetchEngagementForms();
+        }, 1000);
+        // Clear result after 3 seconds
+        setTimeout(() => {
+          setEngagementFormResult(null);
+        }, 3000);
+      } else {
+        setEngagementFormResult(`❌ Error: ${data.message || 'Failed to process form'}`);
+      }
+    } catch (err: any) {
+      setEngagementFormResult(`❌ Error: ${err.message}`);
+    } finally {
+      setEngagementFormLoading(false);
+    }
+  };
+
+  // Handle engagement form file input change
+  const handleEngagementFormFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      handleEngagementFormFileUpload(file);
+      // Reset the input so the same file can be selected again
+      if (engagementFormFileInputRef.current) {
+        engagementFormFileInputRef.current.value = '';
+      }
+    }
+  };
+
+  // Handle engagement form upload (old modal-based handler - kept for backward compatibility)
   const handleEngagementFormSubmit = async () => {
     if (!engagementFormFile) {
       setEngagementFormResult("No file selected.");
@@ -1784,13 +1904,32 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                   >
                     {engagementFormsRefreshing ? 'Refreshing…' : 'Refresh'}
                   </button>
+                  <input
+                    ref={engagementFormFileInputRef}
+                    type="file"
+                    accept="application/pdf"
+                    onChange={handleEngagementFormFileInputChange}
+                    className="hidden"
+                  />
                   <button
-                    onClick={() => setShowEngagementFormModal(true)}
-                    className="px-3 py-1.5 rounded bg-purple-600 text-white text-xs font-medium hover:bg-purple-700"
+                    onClick={() => engagementFormFileInputRef.current?.click()}
+                    disabled={engagementFormLoading}
+                    className="px-3 py-1.5 rounded bg-purple-600 text-white text-xs font-medium hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Upload Form
+                    {engagementFormLoading ? 'Uploading...' : 'Upload Form'}
                   </button>
                 </div>
+                {engagementFormResult && (
+                  <div
+                    className={`mt-2 px-3 py-2 rounded text-xs font-medium ${
+                      engagementFormResult.includes("✅") || engagementFormResult.includes("successfully")
+                        ? "bg-green-50 text-green-700"
+                        : "bg-red-50 text-red-700"
+                    }`}
+                  >
+                    {engagementFormResult}
+                  </div>
+                )}
               </div>
               <div className="space-y-2">
                 {engagementForms.length === 0 ? (
