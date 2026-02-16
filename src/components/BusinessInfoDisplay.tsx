@@ -929,15 +929,12 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
     setEngagementFormResult("");
 
     try {
-      // Get linked_business_name from various possible locations
-      const linkedBusinessName = 
-        info.linked_business_name || 
-        info.Linked_Details?.linked_business_name || 
-        business.linked_business_name || 
-        '';
+      // Use business name as linked_business_name
+      const linkedBusinessName = businessName || business.name || '';
 
       const formData = new FormData();
       formData.append("file", file);
+      // Append linked_business_name (using business name)
       if (linkedBusinessName) {
         formData.append("linked_business_name", linkedBusinessName);
       }
