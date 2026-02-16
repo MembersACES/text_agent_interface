@@ -762,16 +762,38 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
       
       if (data && Array.isArray(data)) {
         const forms = data.map((item: any) => {
-          // Extract file name and id from the response
-          const fileName = item['File Name'] || item['file_name'] || item['fileName'] || 'Unknown';
-          const fileId = item['EF File ID'] || item['File ID'] || item['file_id'] || item['id'] || '';
+          // Extract file name and id from the nested response structure
+          const fileName = item?.signedEF_row?.['File Name'] || 
+                          item?.drive_file?.name || 
+                          item['File Name'] || 
+                          item['file_name'] || 
+                          item['fileName'] || 
+                          'Unknown';
+          const fileId = item?.drive_file?.fileId || 
+                        item?.drive_file?.raw?.id || 
+                        item['EF File ID'] || 
+                        item['File ID'] || 
+                        item['file_id'] || 
+                        item['id'] || 
+                        '';
           return { fileName, id: fileId };
         });
         setEngagementForms(forms);
       } else if (data && typeof data === 'object') {
         // Handle single object response
-        const fileName = data['File Name'] || data['file_name'] || data['fileName'] || 'Unknown';
-        const fileId = data['EF File ID'] || data['File ID'] || data['file_id'] || data['id'] || '';
+        const fileName = data?.signedEF_row?.['File Name'] || 
+                        data?.drive_file?.name || 
+                        data['File Name'] || 
+                        data['file_name'] || 
+                        data['fileName'] || 
+                        'Unknown';
+        const fileId = data?.drive_file?.fileId || 
+                      data?.drive_file?.raw?.id || 
+                      data['EF File ID'] || 
+                      data['File ID'] || 
+                      data['file_id'] || 
+                      data['id'] || 
+                      '';
         setEngagementForms([{ fileName, id: fileId }]);
       } else {
         setEngagementForms([]);
