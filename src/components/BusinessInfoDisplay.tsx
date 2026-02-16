@@ -849,6 +849,135 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
       fetchAdditionalDocuments();
     }
   }, [business.name, fetchAdditionalDocuments]);
+
+  // Fetch file IDs from n8n webhook on initial load (includes SFA)
+  const fetchFileIDs = React.useCallback(async () => {
+    if (!business.name || typeof setInfo !== "function") return;
+    
+    try {
+      const webhookResponse = await fetch('https://membersaces.app.n8n.cloud/webhook/return_fileIDs', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          business_name: business.name
+        })
+      });
+      
+      const updatedData = await webhookResponse.json();
+      
+      // Check if we got valid data back
+      if (updatedData && Array.isArray(updatedData) && updatedData.length > 0) {
+        const businessData = updatedData[0];
+        
+        // Map the flat n8n structure to your expected _processed_file_ids structure
+        const mappedFileIds: any = {};
+        
+        // Map LOA
+        if (businessData['LOA File ID']) {
+          mappedFileIds['business_LOA'] = `https://drive.google.com/file/d/${businessData['LOA File ID']}/view?usp=drivesdk`;
+        }
+        
+        // Map WIP
+        if (businessData['WIP']) {
+          mappedFileIds['business_WIP'] = `https://drive.google.com/file/d/${businessData['WIP']}/view?usp=drivesdk`;
+        }
+        
+        // Map contracts WITH STATUS
+        if (businessData['SC C&I E']) {
+          mappedFileIds['contract_C&I Electricity'] = `https://drive.google.com/file/d/${businessData['SC C&I E']}/view?usp=drivesdk`;
+          if (businessData['SC C&I E Status:']) {
+            mappedFileIds['contract_C&I Electricity_status'] = businessData['SC C&I E Status:'];
+          }
+        }
+        if (businessData['SC SME E']) {
+          mappedFileIds['contract_SME Electricity'] = `https://drive.google.com/file/d/${businessData['SC SME E']}/view?usp=drivesdk`;
+          if (businessData['SC SME E Status:']) {
+            mappedFileIds['contract_SME Electricity_status'] = businessData['SC SME E Status:'];
+          }
+        }
+        if (businessData['SC C&I G']) {
+          mappedFileIds['contract_C&I Gas'] = `https://drive.google.com/file/d/${businessData['SC C&I G']}/view?usp=drivesdk`;
+          if (businessData['SC C&I G Status:']) {
+            mappedFileIds['contract_C&I Gas_status'] = businessData['SC C&I G Status:'];
+          }
+        }
+        if (businessData['SC SME G']) {
+          mappedFileIds['contract_SME Gas'] = `https://drive.google.com/file/d/${businessData['SC SME G']}/view?usp=drivesdk`;
+          if (businessData['SC SME G Status:']) {
+            mappedFileIds['contract_SME Gas_status'] = businessData['SC SME G Status:'];
+          }
+        }
+        if (businessData['SC Waste']) {
+          mappedFileIds['contract_Waste'] = `https://drive.google.com/file/d/${businessData['SC Waste']}/view?usp=drivesdk`;
+          if (businessData['SC Waste Status:']) {
+            mappedFileIds['contract_Waste_status'] = businessData['SC Waste Status:'];
+          }
+        }
+        if (businessData['SC Oil']) {
+          mappedFileIds['contract_Oil'] = `https://drive.google.com/file/d/${businessData['SC Oil']}/view?usp=drivesdk`;
+          if (businessData['SC Oil Status:']) {
+            mappedFileIds['contract_Oil_status'] = businessData['SC Oil Status:'];
+          }
+        }
+        if (businessData['SC DMA']) {
+          mappedFileIds['contract_DMA'] = `https://drive.google.com/file/d/${businessData['SC DMA']}/view?usp=drivesdk`;
+          if (businessData['SC DMA Status:']) {
+            mappedFileIds['contract_DMA_status'] = businessData['SC DMA Status:'];
+          }
+        }
+        
+        // Map other documents
+        if (businessData['Floor Plan']) {
+          mappedFileIds['business_site_map_upload'] = `https://drive.google.com/file/d/${businessData['Floor Plan']}/view?usp=drivesdk`;
+        }
+        if (businessData['Site Profiling']) {
+          mappedFileIds['business_site_profiling'] = `https://drive.google.com/file/d/${businessData['Site Profiling']}/view?usp=drivesdk`;
+        }
+        if (businessData['Service Fee Agreement']) {
+          mappedFileIds['business_service_fee_agreement'] = `https://drive.google.com/file/d/${businessData['Service Fee Agreement']}/view?usp=drivesdk`;
+        }
+        if (businessData['Initial Strategy']) {
+          mappedFileIds['business_initial_strategy'] = `https://drive.google.com/file/d/${businessData['Initial Strategy']}/view?usp=drivesdk`;
+        }
+        if (businessData['Amortisation Excel']) {
+          mappedFileIds['business_amortisation_excel'] = `https://drive.google.com/file/d/${businessData['Amortisation Excel']}/view?usp=drivesdk`;
+        }
+        if (businessData['Amortisation PDF']) {
+          mappedFileIds['business_amortisation_pdf'] = `https://drive.google.com/file/d/${businessData['Amortisation PDF']}/view?usp=drivesdk`;
+        }
+        // Map invoices
+        if (businessData['Cleaning Invoice']) {
+          mappedFileIds['invoice_Cleaning'] = `https://drive.google.com/file/d/${businessData['Cleaning Invoice']}/view?usp=drivesdk`;
+        }
+        if (businessData['Oil Invoice']) {
+          mappedFileIds['invoice_Oil'] = `https://drive.google.com/file/d/${businessData['Oil Invoice']}/view?usp=drivesdk`;
+        }
+        if (businessData['Water Invoice']) {
+          mappedFileIds['invoice_Water'] = `https://drive.google.com/file/d/${businessData['Water Invoice']}/view?usp=drivesdk`;
+        }
+        
+        // Update only the file IDs, keep everything else the same
+        setInfo((prevInfo: any) => ({
+          ...prevInfo,
+          _processed_file_ids: {
+            ...prevInfo._processed_file_ids,
+            ...mappedFileIds
+          }
+        }));
+      }
+    } catch (error) {
+      console.error("Error fetching file IDs from n8n:", error);
+    }
+  }, [business.name, setInfo]);
+
+  // Fetch file IDs on initial load
+  React.useEffect(() => {
+    if (business.name && typeof setInfo === "function") {
+      fetchFileIDs();
+    }
+  }, [business.name, setInfo, fetchFileIDs]);
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (driveModalMultipleFiles) {
@@ -1337,6 +1466,59 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
           <h3 className="text-lg font-bold text-gray-800 mb-3 text-center">Navigation Links</h3>
           <div className="bg-gray-100 rounded-lg p-4">
             <nav className="flex flex-wrap justify-center gap-2">
+            {/* LOA and SFA Display Items - Always show, positioned before other navigation links */}
+            {(() => {
+              const loaUrl = info._processed_file_ids?.["business_LOA"];
+              const hasLOA = !!loaUrl;
+              return (
+                <div className="px-4 py-2 text-sm font-bold text-gray-700 rounded-md flex items-center gap-2">
+                  <span>LOA</span>
+                  {hasLOA ? (
+                    <a
+                      href={loaUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="ml-1.5 px-1.5 py-0.5 rounded-full bg-gray-300 text-xs font-semibold hover:bg-gray-400 cursor-pointer"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      1
+                    </a>
+                  ) : (
+                    <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-gray-300 text-xs font-semibold">
+                      0
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
+            {(() => {
+              // Check multiple possible keys for SFA
+              const sfaUrl = info._processed_file_ids?.["business_service_fee_agreement"] 
+                || info._processed_file_ids?.["business_SFA"]
+                || info._processed_file_ids?.["Service Fee Agreement"]
+                || info._processed_file_ids?.["service_fee_agreement"];
+              const hasSFA = !!sfaUrl;
+              return (
+                <div className="px-4 py-2 text-sm font-bold text-gray-700 rounded-md flex items-center gap-2">
+                  <span>Service Fee Agreement</span>
+                  {hasSFA ? (
+                    <a
+                      href={sfaUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="ml-1.5 px-1.5 py-0.5 rounded-full bg-gray-300 text-xs font-semibold hover:bg-gray-400 cursor-pointer"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      1
+                    </a>
+                  ) : (
+                    <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-gray-300 text-xs font-semibold">
+                      0
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
             {[
               { key: 'documents', label: 'Business Documents & Signed Agreements', count: Object.keys(docs).length + contracts.filter(c => c.url).length + Object.keys(info._processed_file_ids || {}).filter(key => key.startsWith('eoi_')).length, expandSection: null },
               { key: 'utilities', label: 'Linked Utilities', count: Object.keys(linked).length, expandSection: null },
