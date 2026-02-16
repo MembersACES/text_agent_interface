@@ -761,40 +761,72 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
       }
       
       if (data && Array.isArray(data)) {
-        const forms = data.map((item: any) => {
-          // Extract file name and id from the nested response structure
-          const fileName = item?.signedEF_row?.['File Name'] || 
-                          item?.drive_file?.name || 
-                          item['File Name'] || 
-                          item['file_name'] || 
-                          item['fileName'] || 
-                          'Unknown';
-          const fileId = item?.drive_file?.fileId || 
-                        item?.drive_file?.raw?.id || 
-                        item['EF File ID'] || 
-                        item['File ID'] || 
-                        item['file_id'] || 
-                        item['id'] || 
-                        '';
-          return { fileName, id: fileId };
+        // New structure: data is array of business objects, each with engagement_forms array
+        const allForms: Array<{ fileName: string; id: string }> = [];
+        
+        data.forEach((item: any) => {
+          if (item?.engagement_forms && Array.isArray(item.engagement_forms)) {
+            // Map over engagement_forms array for this business
+            item.engagement_forms.forEach((form: any) => {
+              const fileName = form?.name || 
+                              item?.signedEF_row?.['File Name'] || 
+                              form?.raw?.name || 
+                              'Unknown';
+              const fileId = form?.fileId || 
+                            form?.raw?.id || 
+                            '';
+              if (fileId) {
+                allForms.push({ fileName, id: fileId });
+              }
+            });
+          } else {
+            // Fallback to old structure for backward compatibility
+            const fileName = item?.signedEF_row?.['File Name'] || 
+                            item?.drive_file?.name || 
+                            item['File Name'] || 
+                            item['file_name'] || 
+                            item['fileName'] || 
+                            'Unknown';
+            const fileId = item?.drive_file?.fileId || 
+                          item?.drive_file?.raw?.id || 
+                          item['EF File ID'] || 
+                          item['File ID'] || 
+                          item['file_id'] || 
+                          item['id'] || 
+                          '';
+            if (fileId) {
+              allForms.push({ fileName, id: fileId });
+            }
+          }
         });
-        setEngagementForms(forms);
+        
+        setEngagementForms(allForms);
       } else if (data && typeof data === 'object') {
         // Handle single object response
-        const fileName = data?.signedEF_row?.['File Name'] || 
-                        data?.drive_file?.name || 
-                        data['File Name'] || 
-                        data['file_name'] || 
-                        data['fileName'] || 
-                        'Unknown';
-        const fileId = data?.drive_file?.fileId || 
-                      data?.drive_file?.raw?.id || 
-                      data['EF File ID'] || 
-                      data['File ID'] || 
-                      data['file_id'] || 
-                      data['id'] || 
-                      '';
-        setEngagementForms([{ fileName, id: fileId }]);
+        if (data?.engagement_forms && Array.isArray(data.engagement_forms)) {
+          // New structure with engagement_forms array
+          const forms = data.engagement_forms.map((form: any) => ({
+            fileName: form?.name || data?.signedEF_row?.['File Name'] || form?.raw?.name || 'Unknown',
+            id: form?.fileId || form?.raw?.id || ''
+          })).filter((form: any) => form.id); // Filter out forms without IDs
+          setEngagementForms(forms);
+        } else {
+          // Fallback to old structure
+          const fileName = data?.signedEF_row?.['File Name'] || 
+                          data?.drive_file?.name || 
+                          data['File Name'] || 
+                          data['file_name'] || 
+                          data['fileName'] || 
+                          'Unknown';
+          const fileId = data?.drive_file?.fileId || 
+                        data?.drive_file?.raw?.id || 
+                        data['EF File ID'] || 
+                        data['File ID'] || 
+                        data['file_id'] || 
+                        data['id'] || 
+                        '';
+          setEngagementForms(fileId ? [{ fileName, id: fileId }] : []);
+        }
       } else {
         setEngagementForms([]);
       }
