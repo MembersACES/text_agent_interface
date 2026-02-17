@@ -26,8 +26,14 @@ const RESOURCES: Resource[] = [
   {
     name: "ACES Demo",
     link: "https://acesdemo-672026052958.australia-southeast2.run.app/",
-    password: "1234",
+    password: "ACES_demo1@!",
     notes: "ACES Demo is a demo of the Aces Solutions platform. It is used to test the platform and the features of the platform.",
+  },
+  {
+    name: "ACES Automation Hub",
+    link: "https://aces-automation-hub-672026052958.australia-southeast2.run.app/",
+    password: "ACES_auto_Hub1!",
+    notes: "ACES Automation Hub is a platform for automating the Aces Solutions platform. It is used to test the platform and the features of the platform.",
   },
   {
     name: "Interface Development",
@@ -38,13 +44,13 @@ const RESOURCES: Resource[] = [
   {
     name: "Pudu Maintenance English",
     link: "https://pudu-chatbot-english-672026052958.australia-southeast2.run.app/",
-    password: "Bot_Maintenance_Agent!",
+    password: "Bot_Maintenance_Agent!1",
     notes: "",
   },
   {
     name: "Pudu Multilanguage",
     link: "https://pudu-chatbot-672026052958.australia-southeast2.run.app/",
-    password: "PuduAgent1!2@",
+    password: "PuduAgent1!2@!",
     notes: "",
   },
   {
