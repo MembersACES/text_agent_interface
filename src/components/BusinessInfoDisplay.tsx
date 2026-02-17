@@ -211,6 +211,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
   const [engagementFormsRefreshing, setEngagementFormsRefreshing] = useState(false);
   const [engagementForms, setEngagementForms] = useState<Array<{ fileName: string; id: string }>>([]);
   const engagementFormFileInputRef = useRef<HTMLInputElement>(null);
+  const wipDataFetchingRef = useRef(false); // Prevent concurrent calls to fetchWIPData
   const [sectionsOpen, setSectionsOpen] = useState({
     utilities: false,
     dataReports: false,
@@ -691,55 +692,38 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
     }
   }, [business.name]); // Removed setInfo from dependencies to prevent multiple calls
 
-  // Fetch additional documents from n8n - defined with useCallback to avoid dependency issues
-  const fetchAdditionalDocuments = React.useCallback(async () => {
+  // Fetch both additional documents and engagement forms from unified n8n webhook
+  const fetchWIPData = React.useCallback(async () => {
     if (!business.name) return;
-    try {
-      const res = await fetch('https://membersaces.app.n8n.cloud/webhook/pull_additional_documents_WIP', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ business_name: business.name })
-      });
-      const data = await res.json();
-      
-      if (data && Array.isArray(data)) {
-        const docs = data.map((item: any) => {
-          // Extract file name and id from the response
-          // Check for various field name patterns that n8n might return
-          const fileName = item['File Name'] || item['file_name'] || item['fileName'] || 'Unknown';
-          // Check all possible field name variations for File ID
-          const fileId = item['File ID'] || item['file_id'] || item['id'] || item['FileID'] || item['fileID'] || '';
-          return { fileName, id: fileId };
-        });
-        setAdditionalDocs(docs);
-      } else if (data && typeof data === 'object') {
-        // Handle single object response
-        const fileName = data['File Name'] || data['file_name'] || data['fileName'] || 'Unknown';
-        // Check all possible field name variations for File ID
-        const fileId = data['File ID'] || data['file_id'] || data['id'] || data['FileID'] || data['fileID'] || '';
-        setAdditionalDocs([{ fileName, id: fileId }]);
-      } else {
-        setAdditionalDocs([]);
-      }
-    } catch (err) {
-      console.error('Error loading additional documents:', err);
-      setAdditionalDocs([]);
+    
+    // Prevent concurrent calls
+    if (wipDataFetchingRef.current) {
+      console.log('WIP data fetch already in progress, skipping duplicate call');
+      return;
     }
-  }, [business.name]);
-
-  // Fetch engagement forms from n8n - defined with useCallback to avoid dependency issues
-  const fetchEngagementForms = React.useCallback(async () => {
-    if (!business.name) return;
+    
+    wipDataFetchingRef.current = true;
     try {
-      const res = await fetch('https://membersaces.app.n8n.cloud/webhook/pull_signedEOI_WIP', {
+      // Support both flat and nested payload structures
+      const payload = { business_name: business.name };
+      
+      const res = await fetch('https://membersaces.app.n8n.cloud/webhook/pull_wip_both', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ business_name: business.name })
+        body: JSON.stringify(payload)
       });
       
-      // Check if response is ok and has content
+      // Check if response is ok
       if (!res.ok) {
-        console.error('Engagement forms webhook error:', res.status, res.statusText);
+        // If 404 or empty response, it's likely no files exist yet - not an error
+        if (res.status === 404) {
+          console.log('No WIP files found (404) - this is normal if no files uploaded yet');
+          setAdditionalDocs([]);
+          setEngagementForms([]);
+          return;
+        }
+        console.error('WIP data webhook error:', res.status, res.statusText);
+        setAdditionalDocs([]);
         setEngagementForms([]);
         return;
       }
@@ -747,6 +731,8 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
       // Check if response has content before parsing JSON
       const text = await res.text();
       if (!text || text.trim() === '') {
+        console.log('Empty response from WIP data webhook - no files found');
+        setAdditionalDocs([]);
         setEngagementForms([]);
         return;
       }
@@ -755,229 +741,109 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
       try {
         data = JSON.parse(text);
       } catch (parseError) {
-        console.error('Error parsing engagement forms JSON:', parseError);
+        console.error('Error parsing WIP data JSON:', parseError);
+        setAdditionalDocs([]);
         setEngagementForms([]);
         return;
       }
       
-      if (data && Array.isArray(data)) {
-        // New structure: data is array of business objects, each with engagement_forms array
-        const allForms: Array<{ fileName: string; id: string }> = [];
-        
-        data.forEach((item: any) => {
-          if (item?.engagement_forms && Array.isArray(item.engagement_forms)) {
-            // Map over engagement_forms array for this business
-            item.engagement_forms.forEach((form: any) => {
-              const fileName = form?.name || 
-                              item?.signedEF_row?.['File Name'] || 
-                              form?.raw?.name || 
-                              'Unknown';
-              const fileId = form?.fileId || 
-                            form?.raw?.id || 
-                            '';
-              if (fileId) {
-                allForms.push({ fileName, id: fileId });
-              }
-            });
-          } else {
-            // Fallback to old structure for backward compatibility
-            const fileName = item?.signedEF_row?.['File Name'] || 
-                            item?.drive_file?.name || 
-                            item['File Name'] || 
-                            item['file_name'] || 
-                            item['fileName'] || 
-                            'Unknown';
-            const fileId = item?.drive_file?.fileId || 
-                          item?.drive_file?.raw?.id || 
-                          item['EF File ID'] || 
-                          item['File ID'] || 
-                          item['file_id'] || 
-                          item['id'] || 
-                          '';
-            if (fileId) {
-              allForms.push({ fileName, id: fileId });
-            }
-          }
-        });
-        
-        setEngagementForms(allForms);
-      } else if (data && typeof data === 'object') {
-        // Handle single object response
-        if (data?.engagement_forms && Array.isArray(data.engagement_forms)) {
-          // New structure with engagement_forms array
-          const forms = data.engagement_forms.map((form: any) => ({
-            fileName: form?.name || data?.signedEF_row?.['File Name'] || form?.raw?.name || 'Unknown',
-            id: form?.fileId || form?.raw?.id || ''
-          })).filter((form: any) => form.id); // Filter out forms without IDs
-          setEngagementForms(forms);
-        } else {
-          // Fallback to old structure
-          const fileName = data?.signedEF_row?.['File Name'] || 
-                          data?.drive_file?.name || 
-                          data['File Name'] || 
-                          data['file_name'] || 
-                          data['fileName'] || 
-                          'Unknown';
-          const fileId = data?.drive_file?.fileId || 
-                        data?.drive_file?.raw?.id || 
-                        data['EF File ID'] || 
-                        data['File ID'] || 
-                        data['file_id'] || 
-                        data['id'] || 
-                        '';
-          setEngagementForms(fileId ? [{ fileName, id: fileId }] : []);
-        }
+      // Handle nested payload structure (if payload is nested)
+      if (data && typeof data === 'object' && data.body && typeof data.body === 'object') {
+        data = data.body;
+      }
+      
+      // Response is an array with one object: [{ ok, business_name, additional_documents, signedEF_row, engagement_forms, ... }]
+      // Extract the first element if it's an array
+      if (Array.isArray(data) && data.length > 0) {
+        data = data[0];
+      }
+      
+      // Process unified response structure
+      // Expected structure:
+      // {
+      //   additional_documents: array (may contain empty objects {}),
+      //   signedEF_row: object (may be empty {}),
+      //   engagement_forms: array,
+      //   file_count: number,
+      //   has_files: boolean,
+      //   ok: boolean,
+      //   business_name: string
+      // }
+      
+      // Process additional documents
+      // Filter out empty objects and map to { fileName, id }
+      if (data?.additional_documents && Array.isArray(data.additional_documents)) {
+        const docs = data.additional_documents
+          .filter((item: any) => {
+            // Filter out empty objects {} - check if object has any meaningful keys
+            if (!item || typeof item !== 'object') return false;
+            const keys = Object.keys(item);
+            // If only has row_number or no keys, it's likely empty
+            if (keys.length === 0 || (keys.length === 1 && keys[0] === 'row_number')) return false;
+            // Must have either File Name or File ID
+            return !!(item['File Name'] || item['File ID'] || item['file_name'] || item['file_id']);
+          })
+          .map((item: any) => {
+            // Extract file name and id from the response
+            const fileName = item['File Name'] || item['file_name'] || item['fileName'] || 'Unknown';
+            const fileId = item['File ID'] || item['file_id'] || item['id'] || item['FileID'] || item['fileID'] || '';
+            return { fileName, id: fileId };
+          })
+          .filter((doc: any) => doc.id); // Filter out docs without file IDs
+        setAdditionalDocs(docs);
       } else {
+        setAdditionalDocs([]);
+      }
+      
+      // Process engagement forms
+      // engagement_forms array contains objects with fileId and name directly
+      if (data?.engagement_forms && Array.isArray(data.engagement_forms) && data.engagement_forms.length > 0) {
+        const forms = data.engagement_forms
+          .map((form: any) => {
+            // Use fileId and name directly from the response
+            const fileName = form?.name || 
+                            form?.fileName || 
+                            'Unknown';
+            const fileId = form?.fileId || 
+                          form?.file_id || 
+                          form?.id || 
+                          '';
+            return { fileName, id: fileId };
+          })
+          .filter((form: any) => form.id); // Filter out forms without IDs
+        setEngagementForms(forms);
+      } else {
+        // Check signedEF_row as fallback (but it doesn't have fileId, so we can't use it directly)
+        // signedEF_row only has metadata like File Name, but not the actual file ID
+        // The engagement_forms array should have the actual fileId
         setEngagementForms([]);
       }
+      
     } catch (err) {
-      console.error('Error loading engagement forms:', err);
+      // Network errors or other fetch failures - log but don't show error to user
+      // This is expected if webhook is unavailable or no files exist
+      console.log('Error loading WIP data (may be normal if no files uploaded):', err);
+      setAdditionalDocs([]);
       setEngagementForms([]);
+    } finally {
+      wipDataFetchingRef.current = false;
     }
   }, [business.name]);
 
-  // Load engagement forms on mount
+  // Load both additional documents and engagement forms on mount (unified call)
   React.useEffect(() => {
     if (business.name) {
-      fetchEngagementForms();
-    }
-  }, [business.name, fetchEngagementForms]);
-
-  // Load additional documents on mount (auto-refresh like engagement forms)
-  React.useEffect(() => {
-    if (business.name) {
-      fetchAdditionalDocuments();
-    }
-  }, [business.name, fetchAdditionalDocuments]);
-
-  // Fetch file IDs from n8n webhook on initial load (includes SFA)
-  const fetchFileIDs = React.useCallback(async () => {
-    if (!business.name || typeof setInfo !== "function") return;
-    
-    try {
-      const webhookResponse = await fetch('https://membersaces.app.n8n.cloud/webhook/return_fileIDs', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          business_name: business.name
-        })
-      });
+      // Add a small delay to prevent rapid successive calls
+      const timeoutId = setTimeout(() => {
+        fetchWIPData();
+      }, 100); // 100ms delay to prevent rapid successive calls
       
-      const updatedData = await webhookResponse.json();
-      
-      // Check if we got valid data back
-      if (updatedData && Array.isArray(updatedData) && updatedData.length > 0) {
-        const businessData = updatedData[0];
-        
-        // Map the flat n8n structure to your expected _processed_file_ids structure
-        const mappedFileIds: any = {};
-        
-        // Map LOA
-        if (businessData['LOA File ID']) {
-          mappedFileIds['business_LOA'] = `https://drive.google.com/file/d/${businessData['LOA File ID']}/view?usp=drivesdk`;
-        }
-        
-        // Map WIP
-        if (businessData['WIP']) {
-          mappedFileIds['business_WIP'] = `https://drive.google.com/file/d/${businessData['WIP']}/view?usp=drivesdk`;
-        }
-        
-        // Map contracts WITH STATUS
-        if (businessData['SC C&I E']) {
-          mappedFileIds['contract_C&I Electricity'] = `https://drive.google.com/file/d/${businessData['SC C&I E']}/view?usp=drivesdk`;
-          if (businessData['SC C&I E Status:']) {
-            mappedFileIds['contract_C&I Electricity_status'] = businessData['SC C&I E Status:'];
-          }
-        }
-        if (businessData['SC SME E']) {
-          mappedFileIds['contract_SME Electricity'] = `https://drive.google.com/file/d/${businessData['SC SME E']}/view?usp=drivesdk`;
-          if (businessData['SC SME E Status:']) {
-            mappedFileIds['contract_SME Electricity_status'] = businessData['SC SME E Status:'];
-          }
-        }
-        if (businessData['SC C&I G']) {
-          mappedFileIds['contract_C&I Gas'] = `https://drive.google.com/file/d/${businessData['SC C&I G']}/view?usp=drivesdk`;
-          if (businessData['SC C&I G Status:']) {
-            mappedFileIds['contract_C&I Gas_status'] = businessData['SC C&I G Status:'];
-          }
-        }
-        if (businessData['SC SME G']) {
-          mappedFileIds['contract_SME Gas'] = `https://drive.google.com/file/d/${businessData['SC SME G']}/view?usp=drivesdk`;
-          if (businessData['SC SME G Status:']) {
-            mappedFileIds['contract_SME Gas_status'] = businessData['SC SME G Status:'];
-          }
-        }
-        if (businessData['SC Waste']) {
-          mappedFileIds['contract_Waste'] = `https://drive.google.com/file/d/${businessData['SC Waste']}/view?usp=drivesdk`;
-          if (businessData['SC Waste Status:']) {
-            mappedFileIds['contract_Waste_status'] = businessData['SC Waste Status:'];
-          }
-        }
-        if (businessData['SC Oil']) {
-          mappedFileIds['contract_Oil'] = `https://drive.google.com/file/d/${businessData['SC Oil']}/view?usp=drivesdk`;
-          if (businessData['SC Oil Status:']) {
-            mappedFileIds['contract_Oil_status'] = businessData['SC Oil Status:'];
-          }
-        }
-        if (businessData['SC DMA']) {
-          mappedFileIds['contract_DMA'] = `https://drive.google.com/file/d/${businessData['SC DMA']}/view?usp=drivesdk`;
-          if (businessData['SC DMA Status:']) {
-            mappedFileIds['contract_DMA_status'] = businessData['SC DMA Status:'];
-          }
-        }
-        
-        // Map other documents
-        if (businessData['Floor Plan']) {
-          mappedFileIds['business_site_map_upload'] = `https://drive.google.com/file/d/${businessData['Floor Plan']}/view?usp=drivesdk`;
-        }
-        if (businessData['Site Profiling']) {
-          mappedFileIds['business_site_profiling'] = `https://drive.google.com/file/d/${businessData['Site Profiling']}/view?usp=drivesdk`;
-        }
-        if (businessData['Service Fee Agreement']) {
-          mappedFileIds['business_service_fee_agreement'] = `https://drive.google.com/file/d/${businessData['Service Fee Agreement']}/view?usp=drivesdk`;
-        }
-        if (businessData['Initial Strategy']) {
-          mappedFileIds['business_initial_strategy'] = `https://drive.google.com/file/d/${businessData['Initial Strategy']}/view?usp=drivesdk`;
-        }
-        if (businessData['Amortisation Excel']) {
-          mappedFileIds['business_amortisation_excel'] = `https://drive.google.com/file/d/${businessData['Amortisation Excel']}/view?usp=drivesdk`;
-        }
-        if (businessData['Amortisation PDF']) {
-          mappedFileIds['business_amortisation_pdf'] = `https://drive.google.com/file/d/${businessData['Amortisation PDF']}/view?usp=drivesdk`;
-        }
-        // Map invoices
-        if (businessData['Cleaning Invoice']) {
-          mappedFileIds['invoice_Cleaning'] = `https://drive.google.com/file/d/${businessData['Cleaning Invoice']}/view?usp=drivesdk`;
-        }
-        if (businessData['Oil Invoice']) {
-          mappedFileIds['invoice_Oil'] = `https://drive.google.com/file/d/${businessData['Oil Invoice']}/view?usp=drivesdk`;
-        }
-        if (businessData['Water Invoice']) {
-          mappedFileIds['invoice_Water'] = `https://drive.google.com/file/d/${businessData['Water Invoice']}/view?usp=drivesdk`;
-        }
-        
-        // Update only the file IDs, keep everything else the same
-        setInfo((prevInfo: any) => ({
-          ...prevInfo,
-          _processed_file_ids: {
-            ...prevInfo._processed_file_ids,
-            ...mappedFileIds
-          }
-        }));
-      }
-    } catch (error) {
-      console.error("Error fetching file IDs from n8n:", error);
+      return () => clearTimeout(timeoutId);
     }
-  }, [business.name, setInfo]);
+  }, [business.name]); // Removed fetchWIPData from dependencies to prevent multiple calls
 
-  // Fetch file IDs on initial load
-  React.useEffect(() => {
-    if (business.name && typeof setInfo === "function") {
-      fetchFileIDs();
-    }
-  }, [business.name, setInfo, fetchFileIDs]);
+  // NOTE: File IDs are now fetched directly by the backend from Google Sheets
+  // and returned in info._processed_file_ids. No need for duplicate frontend call.
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (driveModalMultipleFiles) {
@@ -1086,7 +952,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
         setAdditionalDocResult("✅ Document uploaded successfully!");
         // Refresh the documents list
         setTimeout(() => {
-          fetchAdditionalDocuments();
+          fetchWIPData();
         }, 1000);
         // Reset modal after 2 seconds
         setTimeout(() => {
@@ -1139,7 +1005,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
         setEngagementFormResult("✅ Engagement form uploaded successfully!");
         // Refresh the forms list
         setTimeout(() => {
-          fetchEngagementForms();
+          fetchWIPData();
         }, 1000);
         // Clear result after 3 seconds
         setTimeout(() => {
@@ -1223,7 +1089,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
         setEngagementFormResult("✅ Engagement form uploaded successfully!");
         // Refresh the forms list
         setTimeout(() => {
-          fetchEngagementForms();
+          fetchWIPData();
         }, 1000);
         // Reset modal after 2 seconds
         setTimeout(() => {
@@ -1492,8 +1358,9 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
               );
             })()}
             {(() => {
-              // Check multiple possible keys for SFA
-              const sfaUrl = info._processed_file_ids?.["business_service_fee_agreement"] 
+              // Check multiple possible keys for SFA (backend uses "business_Service Fee Agreement")
+              const sfaUrl = info._processed_file_ids?.["business_Service Fee Agreement"]
+                || info._processed_file_ids?.["business_service_fee_agreement"] 
                 || info._processed_file_ids?.["business_SFA"]
                 || info._processed_file_ids?.["Service Fee Agreement"]
                 || info._processed_file_ids?.["service_fee_agreement"];
@@ -2077,7 +1944,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                       if (engagementFormsRefreshing) return;
                       setEngagementFormsRefreshing(true);
                       try {
-                        await fetchEngagementForms();
+                        await fetchWIPData();
                       } finally {
                         setEngagementFormsRefreshing(false);
                       }
@@ -2152,7 +2019,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                       if (additionalDocsRefreshing) return;
                       setAdditionalDocsRefreshing(true);
                       try {
-                        await fetchAdditionalDocuments();
+                        await fetchWIPData();
                       } finally {
                         setAdditionalDocsRefreshing(false);
                       }
@@ -3524,136 +3391,12 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                         
                         const data = await res.json();
                         if (data.status === 'success') {
-                          // 🔹 Call n8n webhook to get updated file IDs
-                          if (business.name && typeof setInfo === "function") {
-                            try {
-                              const webhookResponse = await fetch('https://membersaces.app.n8n.cloud/webhook/return_fileIDs', {
-                                method: 'POST',
-                                headers: {
-                                  'Content-Type': 'application/json',
-                                },
-                                body: JSON.stringify({
-                                  business_name: business.name
-                                })
-                              });
-                              
-                              const updatedData = await webhookResponse.json();
-                              console.log('Updated data from n8n:', updatedData);
-                              
-                              // Check if we got valid data back
-                              if (updatedData && Array.isArray(updatedData) && updatedData.length > 0) {
-                                const businessData = updatedData[0];
-                                console.log('Raw business data from n8n:', businessData);
-                                
-                                // Map the flat n8n structure to your expected _processed_file_ids structure
-                                const mappedFileIds: any = {};
-                                
-                                // Map LOA
-                                if (businessData['LOA File ID']) {
-                                  mappedFileIds['business_LOA'] = `https://drive.google.com/file/d/${businessData['LOA File ID']}/view?usp=drivesdk`;
-                                }
-                                
-                                // Map WIP
-                                if (businessData['WIP']) {
-                                  mappedFileIds['business_WIP'] = `https://drive.google.com/file/d/${businessData['WIP']}/view?usp=drivesdk`;
-                                }
-                                
-                                // Map contracts WITH STATUS
-                                if (businessData['SC C&I E']) {
-                                  mappedFileIds['contract_C&I Electricity'] = `https://drive.google.com/file/d/${businessData['SC C&I E']}/view?usp=drivesdk`;
-                                  if (businessData['SC C&I E Status:']) {
-                                    mappedFileIds['contract_C&I Electricity_status'] = businessData['SC C&I E Status:'];
-                                  }
-                                }
-                                if (businessData['SC SME E']) {
-                                  mappedFileIds['contract_SME Electricity'] = `https://drive.google.com/file/d/${businessData['SC SME E']}/view?usp=drivesdk`;
-                                  if (businessData['SC SME E Status:']) {
-                                    mappedFileIds['contract_SME Electricity_status'] = businessData['SC SME E Status:'];
-                                  }
-                                }
-                                if (businessData['SC C&I G']) {
-                                  mappedFileIds['contract_C&I Gas'] = `https://drive.google.com/file/d/${businessData['SC C&I G']}/view?usp=drivesdk`;
-                                  if (businessData['SC C&I G Status:']) {
-                                    mappedFileIds['contract_C&I Gas_status'] = businessData['SC C&I G Status:'];
-                                  }
-                                }
-                                if (businessData['SC SME G']) {
-                                  mappedFileIds['contract_SME Gas'] = `https://drive.google.com/file/d/${businessData['SC SME G']}/view?usp=drivesdk`;
-                                  if (businessData['SC SME G Status:']) {
-                                    mappedFileIds['contract_SME Gas_status'] = businessData['SC SME G Status:'];
-                                  }
-                                }
-                                if (businessData['SC Waste']) {
-                                  mappedFileIds['contract_Waste'] = `https://drive.google.com/file/d/${businessData['SC Waste']}/view?usp=drivesdk`;
-                                  if (businessData['SC Waste Status:']) {
-                                    mappedFileIds['contract_Waste_status'] = businessData['SC Waste Status:'];
-                                  }
-                                }
-                                if (businessData['SC Oil']) {
-                                  mappedFileIds['contract_Oil'] = `https://drive.google.com/file/d/${businessData['SC Oil']}/view?usp=drivesdk`;
-                                  if (businessData['SC Oil Status:']) {
-                                    mappedFileIds['contract_Oil_status'] = businessData['SC Oil Status:'];
-                                  }
-                                }
-                                if (businessData['SC DMA']) {
-                                  mappedFileIds['contract_DMA'] = `https://drive.google.com/file/d/${businessData['SC DMA']}/view?usp=drivesdk`;
-                                  if (businessData['SC DMA Status:']) {
-                                    mappedFileIds['contract_DMA_status'] = businessData['SC DMA Status:'];
-                                  }
-                                }
-                                
-                                // Map other documents
-                                if (businessData['Floor Plan']) {
-                                  mappedFileIds['business_site_map_upload'] = `https://drive.google.com/file/d/${businessData['Floor Plan']}/view?usp=drivesdk`;
-                                }
-                                if (businessData['Site Profiling']) {
-                                  mappedFileIds['business_site_profiling'] = `https://drive.google.com/file/d/${businessData['Site Profiling']}/view?usp=drivesdk`;
-                                }
-                                if (businessData['Service Fee Agreement']) {
-                                  mappedFileIds['business_service_fee_agreement'] = `https://drive.google.com/file/d/${businessData['Service Fee Agreement']}/view?usp=drivesdk`;
-                                }
-                                if (businessData['Initial Strategy']) {
-                                  mappedFileIds['business_initial_strategy'] = `https://drive.google.com/file/d/${businessData['Initial Strategy']}/view?usp=drivesdk`;
-                                }
-                                if (businessData['Amortisation Excel']) {
-                                  mappedFileIds['business_amortisation_excel'] = `https://drive.google.com/file/d/${businessData['Amortisation Excel']}/view?usp=drivesdk`;
-                                }
-                                if (businessData['Amortisation PDF']) {
-                                  mappedFileIds['business_amortisation_pdf'] = `https://drive.google.com/file/d/${businessData['Amortisation PDF']}/view?usp=drivesdk`;
-                                }
-                                // Map invoices
-                                if (businessData['Cleaning Invoice']) {
-                                  mappedFileIds['invoice_Cleaning'] = `https://drive.google.com/file/d/${businessData['Cleaning Invoice']}/view?usp=drivesdk`;
-                                }
-                                if (businessData['Oil Invoice']) {
-                                  mappedFileIds['invoice_Oil'] = `https://drive.google.com/file/d/${businessData['Oil Invoice']}/view?usp=drivesdk`;
-                                }
-                                if (businessData['Water Invoice']) {
-                                  mappedFileIds['invoice_Water'] = `https://drive.google.com/file/d/${businessData['Water Invoice']}/view?usp=drivesdk`;
-                                }
-                                
-                                console.log('Mapped file IDs:', mappedFileIds);
-
-                                if (businessData['Amortisation Excel']) {
-                                  mappedFileIds['business_amortisation_excel'] = `https://drive.google.com/file/d/${businessData['Amortisation Excel']}/view?usp=drivesdk`;
-                                }
-                                if (businessData['Amortisation PDF']) {
-                                  mappedFileIds['business_amortisation_pdf'] = `https://drive.google.com/file/d/${businessData['Amortisation PDF']}/view?usp=drivesdk`;
-                                }
-                                // Update only the file IDs, keep everything else the same
-                                setInfo((prevInfo: any) => ({
-                                  ...prevInfo,
-                                  _processed_file_ids: {
-                                    ...prevInfo._processed_file_ids,
-                                    ...mappedFileIds
-                                  }
-                                }));
-                              }
-                              
-                              // Set the exact message that triggers modal close
-                              setDriveModalResult('File successfully uploaded and Drive links updated!');
-                              
-                              // Store the file in sessionStorage for potential lodgement transfer
+                          // NOTE: File IDs are now fetched directly from Google Sheets by the backend.
+                          // File IDs will be updated when user clicks "Get Client Profile" again.
+                          // Set the exact message that triggers modal close
+                          setDriveModalResult('File successfully uploaded! Click "Get Client Profile" to refresh file links.');
+                          
+                          // Store the file in sessionStorage for potential lodgement transfer
                               // Only do this for signed contracts
                               if (driveModalFilingType.startsWith('signed_') && filesToUpload.length > 0) {
                                 const fileToStore = filesToUpload[0]; // Store the first file
@@ -3694,80 +3437,6 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                                   console.warn('Error preparing file for transfer:', error);
                                 }
                               }
-                              
-                            } catch (webhookErr) {
-                              console.error("Error calling n8n webhook:", webhookErr);
-                              // Still close modal even if webhook fails
-                              setDriveModalResult('File successfully uploaded and Drive links updated!');
-                              
-                              // Store the file even if webhook fails
-                              if (driveModalFilingType.startsWith('signed_') && filesToUpload.length > 0) {
-                                const fileToStore = filesToUpload[0];
-                                try {
-                                  const reader = new FileReader();
-                                  reader.onloadend = () => {
-                                    const base64String = reader.result as string;
-                                    const fileData = {
-                                      name: fileToStore.name,
-                                      type: fileToStore.type || 'application/pdf',
-                                      size: fileToStore.size,
-                                      data: base64String,
-                                      timestamp: Date.now()
-                                    };
-                                    
-                                    const maxSize = 7 * 1024 * 1024;
-                                    if (fileToStore.size <= maxSize) {
-                                      try {
-                                        sessionStorage.setItem('lodgementFileTransfer', JSON.stringify(fileData));
-                                        console.log('File stored for lodgement transfer:', fileToStore.name);
-                                      } catch (storageError: any) {
-                                        console.warn('Could not store file for transfer:', storageError);
-                                      }
-                                    }
-                                  };
-                                  reader.onerror = () => console.warn('Error reading file for transfer storage');
-                                  reader.readAsDataURL(fileToStore);
-                                } catch (error) {
-                                  console.warn('Error preparing file for transfer:', error);
-                                }
-                              }
-                            }
-                          } else {
-                            // Fallback if no setInfo function
-                            setDriveModalResult('File successfully uploaded and Drive links updated!');
-                            
-                            // Store the file even in fallback case
-                            if (driveModalFilingType.startsWith('signed_') && filesToUpload.length > 0) {
-                              const fileToStore = filesToUpload[0];
-                              try {
-                                const reader = new FileReader();
-                                reader.onloadend = () => {
-                                  const base64String = reader.result as string;
-                                  const fileData = {
-                                    name: fileToStore.name,
-                                    type: fileToStore.type || 'application/pdf',
-                                    size: fileToStore.size,
-                                    data: base64String,
-                                    timestamp: Date.now()
-                                  };
-                                  
-                                  const maxSize = 7 * 1024 * 1024;
-                                  if (fileToStore.size <= maxSize) {
-                                    try {
-                                      sessionStorage.setItem('lodgementFileTransfer', JSON.stringify(fileData));
-                                      console.log('File stored for lodgement transfer:', fileToStore.name);
-                                    } catch (storageError: any) {
-                                      console.warn('Could not store file for transfer:', storageError);
-                                    }
-                                  }
-                                };
-                                reader.onerror = () => console.warn('Error reading file for transfer storage');
-                                reader.readAsDataURL(fileToStore);
-                              } catch (error) {
-                                console.warn('Error preparing file for transfer:', error);
-                              }
-                            }
-                          }
                         } else {
                           setDriveModalResult(`Error: ${data.message}`);
                         }
