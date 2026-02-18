@@ -1078,7 +1078,7 @@ export default function Base2Page() {
           payload.comparison_demand_charge = util.comparisonDemandCharge?.toFixed(2) || '0';
           payload.demand_quantity = util.demandQuantity?.toFixed(2) || '0';
         } else if (util.utilityType === 'C&I Gas') {
-          webhookUrl = 'https://membersaces.app.n8n.cloud/webhook/generate-gas-ci-comparaison';
+          webhookUrl = 'https://membersaces.app.n8n.cloud/webhook/generate-gas-ci-comparaison-b2';
           // Add gas-specific fields
           const details = util.invoiceData?.gas_ci_invoice_details || {};
           const fullData = details?.full_invoice_data || {};

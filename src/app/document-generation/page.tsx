@@ -20,11 +20,12 @@ interface BusinessInfo {
 
 interface DocumentFormData extends BusinessInfo {
   expression_type?: string;
+  engagement_form_type?: string;
 }
 
-type DocumentCategory = "business-documents" | "eoi";
+type DocumentCategory = "business-documents" | "eoi" | "engagement-forms";
 type BusinessDocumentType = "loa" | "service-agreement";
-type DocumentType = BusinessDocumentType | "eoi";
+type DocumentType = BusinessDocumentType | "eoi" | "engagement-form";
 
 const DOCUMENT_CATEGORIES = {
   "business-documents": {
@@ -34,6 +35,10 @@ const DOCUMENT_CATEGORIES = {
   eoi: {
     label: "📨 Expression of Interest",
     description: "Generate EOI documents for various services and programs"
+  },
+  "engagement-forms": {
+    label: "📋 Engagement Forms",
+    description: "Generate Engagement Form documents for various services and programs"
   }
 };
 
@@ -106,10 +111,29 @@ export default function DocumentGenerationPage() {
   const [selectedBusinessDocumentType, setSelectedBusinessDocumentType] = useState<BusinessDocumentType | "">("");
   const [eoiTypes, setEoiTypes] = useState<string[]>([]);
   const [selectedEoiType, setSelectedEoiType] = useState("");
+  const [engagementFormTypes, setEngagementFormTypes] = useState<string[]>([]);
+  const [selectedEngagementFormType, setSelectedEngagementFormType] = useState("");
   const [loading, setLoading] = useState(false);
   const [businessLoading, setBusinessLoading] = useState(false);
   const [result, setResult] = useState("");
   const searchParams = useSearchParams();
+  
+  // Get category filter from URL
+  const categoryFilter = searchParams.get('categoryFilter');
+  
+  // Filter categories based on URL parameter
+  const filteredCategories = React.useMemo(() => {
+    if (categoryFilter === 'business-documents') {
+      return { "business-documents": DOCUMENT_CATEGORIES["business-documents"] };
+    } else if (categoryFilter === 'eoi-ef') {
+      return {
+        eoi: DOCUMENT_CATEGORIES.eoi,
+        "engagement-forms": DOCUMENT_CATEGORIES["engagement-forms"]
+      };
+    }
+    // No filter - show all categories
+    return DOCUMENT_CATEGORIES;
+  }, [categoryFilter]);
 
   // Fetch available EOI types when component mounts
   useEffect(() => {
@@ -133,6 +157,30 @@ export default function DocumentGenerationPage() {
     };
 
     fetchEoiTypes();
+  }, [token]);
+
+  // Fetch available Engagement Form types when component mounts
+  useEffect(() => {
+    const fetchEngagementFormTypes = async () => {
+      if (!token) return;
+      
+      try {
+        const response = await fetch(`${getApiBaseUrl()}/api/engagement-form-types`, {
+          headers: {
+            "Authorization": `Bearer ${token}`,
+          },
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          setEngagementFormTypes(data.engagement_form_types || []);
+        }
+      } catch (error) {
+        console.error("Error fetching Engagement Form types:", error);
+      }
+    };
+
+    fetchEngagementFormTypes();
   }, [token]);
 
   // Fetch business information
@@ -229,6 +277,14 @@ export default function DocumentGenerationPage() {
       }
     }
   }, [searchParams]);
+  
+  // Auto-select category if filter is applied and only one category available
+  useEffect(() => {
+    const categoryKeys = Object.keys(filteredCategories);
+    if (categoryKeys.length === 1 && !selectedDocumentCategory) {
+      setSelectedDocumentCategory(categoryKeys[0] as DocumentCategory);
+    }
+  }, [filteredCategories, selectedDocumentCategory]);
   // Handle editable business info changes
   const handleBusinessInfoChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -241,6 +297,7 @@ export default function DocumentGenerationPage() {
     setEditableBusinessInfo(null);
     setBusinessQuery("");
     setSelectedEoiType("");
+    setSelectedEngagementFormType("");
     setSelectedBusinessDocumentType("");
     setSelectedDocumentCategory("");
     setResult("");
@@ -250,6 +307,7 @@ export default function DocumentGenerationPage() {
   // Reset document selections when category changes
   useEffect(() => {
     setSelectedEoiType("");
+    setSelectedEngagementFormType("");
     setSelectedBusinessDocumentType("");
   }, [selectedDocumentCategory]);
 
@@ -280,6 +338,11 @@ export default function DocumentGenerationPage() {
       return;
     }
 
+    if (selectedDocumentCategory === "engagement-forms" && !selectedEngagementFormType) {
+      setResult("❌ Please select an Engagement Form type.");
+      return;
+    }
+
     setLoading(true);
     setResult("");
 
@@ -292,6 +355,12 @@ export default function DocumentGenerationPage() {
         formData = {
           ...editableBusinessInfo,
           expression_type: selectedEoiType
+        };
+      } else if (selectedDocumentCategory === "engagement-forms") {
+        endpoint = "/api/generate-engagement-form";
+        formData = {
+          ...editableBusinessInfo,
+          engagement_form_type: selectedEngagementFormType
         };
       } else {
         // Business documents
@@ -319,6 +388,7 @@ export default function DocumentGenerationPage() {
         
         // Reset selections but keep business info
         setSelectedEoiType("");
+        setSelectedEngagementFormType("");
         setSelectedBusinessDocumentType("");
         setBusinessQuery("");
       } else {
@@ -477,8 +547,8 @@ export default function DocumentGenerationPage() {
       {/* Document Category Selection */}
       <div className="mb-8">
         <h2 className="text-xl font-semibold mb-4 text-gray-800">2. Select Document Category</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {Object.entries(DOCUMENT_CATEGORIES).map(([category, config]) => (
+        <div className={`grid grid-cols-1 ${Object.keys(filteredCategories).length > 1 ? 'md:grid-cols-2' : 'md:grid-cols-1 max-w-md mx-auto'} gap-4`}>
+          {Object.entries(filteredCategories).map(([category, config]) => (
             <div
               key={category}
               className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${
@@ -554,6 +624,26 @@ export default function DocumentGenerationPage() {
         </div>
       )}
 
+      {/* Engagement Form Type Selection */}
+      {selectedDocumentCategory === "engagement-forms" && (
+        <div className="mb-8">
+          <h2 className="text-xl font-semibold mb-4 text-gray-800">3. Select Engagement Form Type</h2>
+          <select
+            value={selectedEngagementFormType}
+            onChange={(e) => setSelectedEngagementFormType(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            required
+          >
+            <option value="">Select Engagement Form type...</option>
+            {engagementFormTypes.map((type) => (
+              <option key={type} value={type}>
+                {type}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       {/* Generate Button */}
       <button
         onClick={handleGenerateDocument}
@@ -562,13 +652,16 @@ export default function DocumentGenerationPage() {
           !editableBusinessInfo || 
           !selectedDocumentCategory ||
           (selectedDocumentCategory === "business-documents" && !selectedBusinessDocumentType) ||
-          (selectedDocumentCategory === "eoi" && !selectedEoiType)
+          (selectedDocumentCategory === "eoi" && !selectedEoiType) ||
+          (selectedDocumentCategory === "engagement-forms" && !selectedEngagementFormType)
         }
         className="w-full px-6 py-3 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-lg font-medium"
       >
         {loading ? "Generating..." : `Generate ${
           selectedDocumentCategory === "eoi" 
             ? "Expression of Interest" 
+            : selectedDocumentCategory === "engagement-forms"
+            ? "Engagement Form"
             : selectedBusinessDocumentType
               ? BUSINESS_DOCUMENT_TYPES[selectedBusinessDocumentType].label
               : "Document"
@@ -610,7 +703,7 @@ export default function DocumentGenerationPage() {
         <ol className="text-sm text-gray-600 space-y-1">
           <li>1. Search for an existing business by name</li>
           <li>2. Review and edit the business details if needed</li>
-          <li>3. Select document category (Business Documents or EOI)</li>
+          <li>3. Select document category (Business Documents, EOI, or Engagement Forms)</li>
           <li>4. Choose the specific document type or EOI type</li>
           <li>5. Click "Generate" to create your document</li>
         </ol>

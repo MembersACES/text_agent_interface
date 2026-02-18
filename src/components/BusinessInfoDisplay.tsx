@@ -398,7 +398,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
     window.open(url, '_blank');
   };
 
-  const handleOpenDocumentGeneration = () => {
+  const handleOpenDocumentGeneration = (categoryFilter?: 'business-documents' | 'eoi-ef') => {
     const params = new URLSearchParams();
     
     if (business.name) params.set('businessName', business.name);
@@ -411,6 +411,11 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
     if (rep.contact_name) params.set('contactName', rep.contact_name);
     if (rep.position) params.set('position', rep.position);
     if (driveUrl) params.set('clientFolderUrl', driveUrl);
+    
+    // Add category filter if specified
+    if (categoryFilter) {
+      params.set('categoryFilter', categoryFilter);
+    }
     
     // Add utility information if available
     const linkedUtilities = [];
@@ -1426,10 +1431,16 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
         <h3 className="text-xl font-bold text-gray-800 mb-3 text-center">Quick Actions</h3>
         <div className="flex items-center justify-center gap-4 flex-wrap">
           <button
-            onClick={handleOpenDocumentGeneration}
+            onClick={() => handleOpenDocumentGeneration('business-documents')}
             className="px-4 py-2 rounded-lg bg-blue-500 text-white text-base font-semibold hover:bg-blue-600 transition-colors shadow-md"
           >
-           Generate Business Documents & EOI
+           Generate LOA and SFA
+          </button>
+          <button
+            onClick={() => handleOpenDocumentGeneration('eoi-ef')}
+            className="px-4 py-2 rounded-lg bg-blue-500 text-white text-base font-semibold hover:bg-blue-600 transition-colors shadow-md"
+          >
+           Generate EOI or EF
           </button>
           <button
             onClick={openSolutionsStrategyGenerator}
