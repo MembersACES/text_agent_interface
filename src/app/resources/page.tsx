@@ -36,6 +36,18 @@ const RESOURCES: Resource[] = [
     notes: "ACES Automation Hub is a platform for automating the Aces Solutions platform. It is used to test the platform and the features of the platform.",
   },
   {
+    name: "Text Agent Templates",
+    link: "https://text-agent-template-672026052958.australia-southeast2.run.app",
+    password: "CZA12!",
+    notes: "Text Agent Templates is a platform for creating and testing text agents. It is used to test the platform and the features of the platform.",
+  },
+  {
+    name: "Text Agent Templates Dev",
+    link: "https://text-agent-template-dev-672026052958.australia-southeast2.run.app",
+    password: "ACESmultiagent1!@",
+    notes: "Text Agent Templates Dev is a platform for creating and testing text agents. It is used to test the platform and the features of the platform.",
+  },
+  {
     name: "Interface Development",
     link: "https://acesagentinterfacedev-672026052958.australia-southeast2.run.app",
     password: "N/A",
