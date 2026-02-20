@@ -254,7 +254,7 @@ export default function Base2Page() {
         // Set comparison placeholder
         rates.comparisonGasRate = rates.currentGasRate && rates.currentGasRate > 0 
           ? parseFloat((rates.currentGasRate * 0.95).toFixed(4)) 
-          : 16.75;
+          : 17.8;
         rates.comparisonDailySupply = rates.currentDailySupply && rates.currentDailySupply > 0
           ? parseFloat((rates.currentDailySupply * 0.95).toFixed(2)) 
           : 1.20;
@@ -748,6 +748,30 @@ export default function Base2Page() {
     });
   };
 
+  const updateCurrentRate = (utilityType: string, identifier: string, field: keyof UtilityComparison, value: string) => {
+    setUtilityComparisons(prev => {
+      return prev.map(u => {
+        if (u.utilityType === utilityType && u.identifier === identifier) {
+          const parsedValue = value === '' ? undefined : (parseFloat(value) || 0);
+          return { ...u, [field]: parsedValue };
+        }
+        return u;
+      });
+    });
+  };
+
+  const updateUsage = (utilityType: string, identifier: string, field: keyof UtilityComparison, value: string) => {
+    setUtilityComparisons(prev => {
+      return prev.map(u => {
+        if (u.utilityType === utilityType && u.identifier === identifier) {
+          const parsedValue = value === '' ? undefined : (parseFloat(value) || 0);
+          return { ...u, [field]: parsedValue };
+        }
+        return u;
+      });
+    });
+  };
+
   const calculateSavings = (comparison: UtilityComparison) => {
     const savings: any = {};
     
@@ -1198,19 +1222,35 @@ export default function Base2Page() {
   const renderTableRows = (comparison: UtilityComparison, savings: any, isElectricity: boolean, isGas: boolean) => {
     const rows: React.ReactElement[] = [];
     
-    // Metering Price (Electricity only)
-    if (isElectricity && comparison.currentMeteringDaily) {
+    // Metering Price (Electricity only) - Always show for electricity
+    if (isElectricity) {
       rows.push(
         <tr key="metering">
           <td className="border border-gray-300 px-1 py-0.5 font-semibold text-xs">Metering Price</td>
-          <td className="border border-gray-300 px-1 py-0.5 text-right text-xs">
-            {comparison.currentMeteringDaily 
-              ? `$${comparison.currentMeteringDaily.toFixed(2)}/day` 
-              : 'N/A'}
-            <br />
-            {comparison.currentMeteringAnnual 
-              ? `$${comparison.currentMeteringAnnual.toFixed(2)}/yr` 
-              : ''}
+          <td className="border border-gray-300 px-1 py-0.5">
+            <div className="space-y-1">
+              <input
+                type="number"
+                step="0.01"
+                value={comparison.currentMeteringDaily || ''}
+                onChange={(e) => {
+                  const daily = parseFloat(e.target.value) || 0;
+                  updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentMeteringDaily', e.target.value);
+                  if (daily > 0) {
+                    updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentMeteringAnnual', (daily * 365).toFixed(2));
+                  } else {
+                    updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentMeteringAnnual', '');
+                  }
+                }}
+                className="w-full px-1 py-0.5 border border-gray-300 rounded text-right text-xs"
+                placeholder="Daily rate"
+              />
+              <div className="text-xs text-gray-500 text-right">
+                {comparison.currentMeteringAnnual 
+                  ? `$${comparison.currentMeteringAnnual.toFixed(2)}/yr` 
+                  : ''}
+              </div>
+            </div>
           </td>
           <td className="border border-gray-300 px-1 py-0.5 text-right text-xs">-</td>
           <td className="border border-gray-300 px-1 py-0.5">
@@ -1252,11 +1292,25 @@ export default function Base2Page() {
       rows.push(
         <tr key="peak">
           <td className="border border-gray-300 px-1 py-0.5 text-xs">Peak Rate (c/kWh)</td>
-          <td className="border border-gray-300 px-1 py-0.5 text-right text-xs">
-            {comparison.currentPeakRate ? `${comparison.currentPeakRate.toFixed(2)}` : 'N/A'}
+          <td className="border border-gray-300 px-1 py-0.5">
+            <input
+              type="number"
+              step="0.01"
+              value={comparison.currentPeakRate || ''}
+              onChange={(e) => updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentPeakRate', e.target.value)}
+              className="w-full px-1 py-0.5 border border-gray-300 rounded text-right text-xs"
+              placeholder="Current rate"
+            />
           </td>
-          <td className="border border-gray-300 px-1 py-0.5 text-right text-xs">
-            {comparison.peakUsage && comparison.peakUsage > 0 ? `${comparison.peakUsage.toFixed(0)} kWh` : '-'}
+          <td className="border border-gray-300 px-1 py-0.5">
+            <input
+              type="number"
+              step="0.01"
+              value={comparison.peakUsage || ''}
+              onChange={(e) => updateUsage(comparison.utilityType, comparison.identifier, 'peakUsage', e.target.value)}
+              className="w-full px-1 py-0.5 border border-gray-300 rounded text-right text-xs"
+              placeholder="Usage (kWh)"
+            />
           </td>
           <td className="border border-gray-300 px-1 py-0.5">
             <input
@@ -1280,11 +1334,25 @@ export default function Base2Page() {
       rows.push(
         <tr key="offpeak">
           <td className="border border-gray-300 px-1 py-0.5 text-xs">Off-Peak Rate (c/kWh)</td>
-          <td className="border border-gray-300 px-1 py-0.5 text-right text-xs">
-            {comparison.currentOffPeakRate ? `${comparison.currentOffPeakRate.toFixed(2)}` : 'N/A'}
+          <td className="border border-gray-300 px-1 py-0.5">
+            <input
+              type="number"
+              step="0.01"
+              value={comparison.currentOffPeakRate || ''}
+              onChange={(e) => updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentOffPeakRate', e.target.value)}
+              className="w-full px-1 py-0.5 border border-gray-300 rounded text-right text-xs"
+              placeholder="Current rate"
+            />
           </td>
-          <td className="border border-gray-300 px-1 py-0.5 text-right text-xs">
-            {comparison.offPeakUsage && comparison.offPeakUsage > 0 ? `${comparison.offPeakUsage.toFixed(0)} kWh` : '-'}
+          <td className="border border-gray-300 px-1 py-0.5">
+            <input
+              type="number"
+              step="0.01"
+              value={comparison.offPeakUsage || ''}
+              onChange={(e) => updateUsage(comparison.utilityType, comparison.identifier, 'offPeakUsage', e.target.value)}
+              className="w-full px-1 py-0.5 border border-gray-300 rounded text-right text-xs"
+              placeholder="Usage (kWh)"
+            />
           </td>
           <td className="border border-gray-300 px-1 py-0.5">
             <input
@@ -1309,8 +1377,15 @@ export default function Base2Page() {
         rows.push(
           <tr key="shoulder">
             <td className="border border-gray-300 px-1 py-0.5 text-xs">Shoulder Rate (c/kWh)</td>
-            <td className="border border-gray-300 px-1 py-0.5 text-right text-xs">
-              {comparison.currentShoulderRate.toFixed(2)}
+            <td className="border border-gray-300 px-1 py-0.5">
+              <input
+                type="number"
+                step="0.01"
+                value={comparison.currentShoulderRate || ''}
+                onChange={(e) => updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentShoulderRate', e.target.value)}
+                className="w-full px-1 py-0.5 border border-gray-300 rounded text-right text-xs"
+                placeholder="Current rate"
+              />
             </td>
             <td className="border border-gray-300 px-1 py-0.5 text-right text-xs">-</td>
             <td className="border border-gray-300 px-1 py-0.5">
@@ -1329,37 +1404,43 @@ export default function Base2Page() {
         );
       }
 
-      if (comparison.currentDailySupply && comparison.currentDailySupply > 0) {
-        rows.push(
-          <tr key="supply">
-            <td className="border border-gray-300 px-1 py-0.5 text-xs">Daily Supply Charge ($/day)</td>
-            <td className="border border-gray-300 px-1 py-0.5 text-right text-xs">
-              {comparison.currentDailySupply ? `$${comparison.currentDailySupply.toFixed(2)}` : 'N/A'}
-            </td>
-            <td className="border border-gray-300 px-1 py-0.5 text-right text-xs">-</td>
-            <td className="border border-gray-300 px-1 py-0.5">
-              <input
-                type="number"
-                step="0.01"
-                value={comparison.comparisonDailySupply || ''}
-                onChange={(e) => updateComparisonRate(comparison.utilityType, comparison.identifier, 'comparisonDailySupply', e.target.value)}
-                className="w-full px-1 py-0.5 border border-gray-300 rounded text-right text-xs"
-                placeholder="1.50"
-              />
-            </td>
-            <td className="border border-gray-300 px-1 py-0.5 text-right text-xs text-green-600 font-semibold">
-              {comparison.currentDailySupply && comparison.comparisonDailySupply
-                ? `$${((comparison.currentDailySupply - comparison.comparisonDailySupply) * 365).toFixed(2)}/yr`
-                : '-'}
-            </td>
-            <td className="border border-gray-300 px-1 py-0.5 text-right text-xs text-green-600 font-semibold">
-              {comparison.currentDailySupply && comparison.comparisonDailySupply
-                ? `${(((comparison.currentDailySupply - comparison.comparisonDailySupply) / comparison.currentDailySupply) * 100).toFixed(1)}%`
-                : '-'}
-            </td>
-          </tr>
-        );
-      }
+      // Always show Daily Supply Charge for electricity
+      rows.push(
+        <tr key="supply">
+          <td className="border border-gray-300 px-1 py-0.5 text-xs">Daily Supply Charge ($/day)</td>
+          <td className="border border-gray-300 px-1 py-0.5">
+            <input
+              type="number"
+              step="0.01"
+              value={comparison.currentDailySupply || ''}
+              onChange={(e) => updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentDailySupply', e.target.value)}
+              className="w-full px-1 py-0.5 border border-gray-300 rounded text-right text-xs"
+              placeholder="Current rate"
+            />
+          </td>
+          <td className="border border-gray-300 px-1 py-0.5 text-right text-xs">-</td>
+          <td className="border border-gray-300 px-1 py-0.5">
+            <input
+              type="number"
+              step="0.01"
+              value={comparison.comparisonDailySupply || ''}
+              onChange={(e) => updateComparisonRate(comparison.utilityType, comparison.identifier, 'comparisonDailySupply', e.target.value)}
+              className="w-full px-1 py-0.5 border border-gray-300 rounded text-right text-xs"
+              placeholder="1.50"
+            />
+          </td>
+          <td className="border border-gray-300 px-1 py-0.5 text-right text-xs text-green-600 font-semibold">
+            {comparison.currentDailySupply && comparison.comparisonDailySupply
+              ? `$${((comparison.currentDailySupply - comparison.comparisonDailySupply) * 365).toFixed(2)}/yr`
+              : '-'}
+          </td>
+          <td className="border border-gray-300 px-1 py-0.5 text-right text-xs text-green-600 font-semibold">
+            {comparison.currentDailySupply && comparison.comparisonDailySupply
+              ? `${(((comparison.currentDailySupply - comparison.comparisonDailySupply) / comparison.currentDailySupply) * 100).toFixed(1)}%`
+              : '-'}
+          </td>
+        </tr>
+      );
 
       // Demand Charge (C&I Electricity only) - Always show for C&I Electricity
       if (comparison.utilityType === 'C&I Electricity') {
@@ -1374,11 +1455,25 @@ export default function Base2Page() {
         rows.push(
           <tr key="demand">
             <td className="border border-gray-300 px-1 py-0.5 text-xs">Demand Charge ($/kVA/month)</td>
-            <td className="border border-gray-300 px-1 py-0.5 text-right text-xs">
-              {currentDemand > 0 ? `$${currentDemand.toFixed(2)}` : 'N/A'}
+            <td className="border border-gray-300 px-1 py-0.5">
+              <input
+                type="number"
+                step="0.01"
+                value={currentDemand > 0 ? currentDemand : ''}
+                onChange={(e) => updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentDemandCharge', e.target.value)}
+                className="w-full px-1 py-0.5 border border-gray-300 rounded text-right text-xs"
+                placeholder="Current rate"
+              />
             </td>
-            <td className="border border-gray-300 px-1 py-0.5 text-right text-xs">
-              {demandQty > 0 ? `${demandQty.toFixed(2)} kVA` : '-'}
+            <td className="border border-gray-300 px-1 py-0.5">
+              <input
+                type="number"
+                step="0.01"
+                value={demandQty > 0 ? demandQty : ''}
+                onChange={(e) => updateUsage(comparison.utilityType, comparison.identifier, 'demandQuantity', e.target.value)}
+                className="w-full px-1 py-0.5 border border-gray-300 rounded text-right text-xs"
+                placeholder="Quantity (kVA)"
+              />
             </td>
             <td className="border border-gray-300 px-1 py-0.5">
               <input
@@ -1410,13 +1505,29 @@ export default function Base2Page() {
       rows.push(
         <tr key="gas-rate">
           <td className="border border-gray-300 px-1 py-0.5 font-semibold text-xs">Gas Rate ($/GJ)</td>
-          <td className="border border-gray-300 px-1 py-0.5 text-right text-xs">
-            {comparison.currentGasRate ? `$${comparison.currentGasRate.toFixed(4)}` : 'N/A'}
+          <td className="border border-gray-300 px-1 py-0.5">
+            <input
+              type="number"
+              step="0.0001"
+              value={comparison.currentGasRate || ''}
+              onChange={(e) => updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentGasRate', e.target.value)}
+              className="w-full px-1 py-0.5 border border-gray-300 rounded text-right text-xs"
+              placeholder="Current rate"
+            />
           </td>
-          <td className="border border-gray-300 px-1 py-0.5 text-right text-xs">
-            {comparison.gasUsage && comparison.gasUsage > 0 ? `${comparison.gasUsage.toFixed(2)} GJ` : '-'}
+          <td className="border border-gray-300 px-1 py-0.5">
+            <input
+              type="number"
+              step="0.01"
+              value={comparison.gasUsage || ''}
+              onChange={(e) => updateUsage(comparison.utilityType, comparison.identifier, 'gasUsage', e.target.value)}
+              className="w-full px-1 py-0.5 border border-gray-300 rounded text-right text-xs"
+              placeholder="Usage (GJ)"
+            />
             {comparison.estimatedAnnualUsage && comparison.estimatedAnnualUsage > 0 && (
-              <><br />(Est. Annual: {comparison.estimatedAnnualUsage.toFixed(2)} GJ)</>
+              <div className="text-xs text-gray-500 text-right mt-1">
+                (Est. Annual: {comparison.estimatedAnnualUsage.toFixed(2)} GJ)
+              </div>
             )}
           </td>
           <td className="border border-gray-300 px-1 py-0.5">
@@ -1438,37 +1549,43 @@ export default function Base2Page() {
         </tr>
       );
 
-      if (comparison.currentDailySupply && comparison.currentDailySupply > 0) {
-        rows.push(
-          <tr key="gas-supply">
-            <td className="border border-gray-300 px-1 py-0.5 text-xs">Daily Supply Charge ($/day)</td>
-            <td className="border border-gray-300 px-1 py-0.5 text-right text-xs">
-              {comparison.currentDailySupply ? `$${comparison.currentDailySupply.toFixed(2)}` : 'N/A'}
-            </td>
-            <td className="border border-gray-300 px-1 py-0.5 text-right text-xs">-</td>
-            <td className="border border-gray-300 px-1 py-0.5">
-              <input
-                type="number"
-                step="0.01"
-                value={comparison.comparisonDailySupply || ''}
-                onChange={(e) => updateComparisonRate(comparison.utilityType, comparison.identifier, 'comparisonDailySupply', e.target.value)}
-                className="w-full px-1 py-0.5 border border-gray-300 rounded text-right text-xs"
-                placeholder="1.20"
-              />
-            </td>
-            <td className="border border-gray-300 px-1 py-0.5 text-right text-xs text-green-600 font-semibold">
-              {comparison.currentDailySupply && comparison.comparisonDailySupply
-                ? `$${((comparison.currentDailySupply - comparison.comparisonDailySupply) * 365).toFixed(2)}/yr`
-                : '-'}
-            </td>
-            <td className="border border-gray-300 px-1 py-0.5 text-right text-xs text-green-600 font-semibold">
-              {comparison.currentDailySupply && comparison.comparisonDailySupply
-                ? `${(((comparison.currentDailySupply - comparison.comparisonDailySupply) / comparison.currentDailySupply) * 100).toFixed(1)}%`
-                : '-'}
-            </td>
-          </tr>
-        );
-      }
+      // Always show Daily Supply Charge for gas
+      rows.push(
+        <tr key="gas-supply">
+          <td className="border border-gray-300 px-1 py-0.5 text-xs">Daily Supply Charge ($/day)</td>
+          <td className="border border-gray-300 px-1 py-0.5">
+            <input
+              type="number"
+              step="0.01"
+              value={comparison.currentDailySupply || ''}
+              onChange={(e) => updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentDailySupply', e.target.value)}
+              className="w-full px-1 py-0.5 border border-gray-300 rounded text-right text-xs"
+              placeholder="Current rate"
+            />
+          </td>
+          <td className="border border-gray-300 px-1 py-0.5 text-right text-xs">-</td>
+          <td className="border border-gray-300 px-1 py-0.5">
+            <input
+              type="number"
+              step="0.01"
+              value={comparison.comparisonDailySupply || ''}
+              onChange={(e) => updateComparisonRate(comparison.utilityType, comparison.identifier, 'comparisonDailySupply', e.target.value)}
+              className="w-full px-1 py-0.5 border border-gray-300 rounded text-right text-xs"
+              placeholder="1.20"
+            />
+          </td>
+          <td className="border border-gray-300 px-1 py-0.5 text-right text-xs text-green-600 font-semibold">
+            {comparison.currentDailySupply && comparison.comparisonDailySupply
+              ? `$${((comparison.currentDailySupply - comparison.comparisonDailySupply) * 365).toFixed(2)}/yr`
+              : '-'}
+          </td>
+          <td className="border border-gray-300 px-1 py-0.5 text-right text-xs text-green-600 font-semibold">
+            {comparison.currentDailySupply && comparison.comparisonDailySupply
+              ? `${(((comparison.currentDailySupply - comparison.comparisonDailySupply) / comparison.currentDailySupply) * 100).toFixed(1)}%`
+              : '-'}
+          </td>
+        </tr>
+      );
     }
 
     // Oil Rates
@@ -1476,11 +1593,25 @@ export default function Base2Page() {
       rows.push(
         <tr key="oil-rate">
           <td className="border border-gray-300 px-1 py-0.5 font-semibold text-xs">Oil Rate ($/L)</td>
-          <td className="border border-gray-300 px-1 py-0.5 text-right text-xs">
-            {comparison.currentOilRate ? `$${comparison.currentOilRate.toFixed(4)}` : 'N/A'}
+          <td className="border border-gray-300 px-1 py-0.5">
+            <input
+              type="number"
+              step="0.0001"
+              value={comparison.currentOilRate || ''}
+              onChange={(e) => updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentOilRate', e.target.value)}
+              className="w-full px-1 py-0.5 border border-gray-300 rounded text-right text-xs"
+              placeholder="Current rate"
+            />
           </td>
-          <td className="border border-gray-300 px-1 py-0.5 text-right text-xs">
-            {comparison.oilUsage && comparison.oilUsage > 0 ? `${comparison.oilUsage.toFixed(2)} L` : '-'}
+          <td className="border border-gray-300 px-1 py-0.5">
+            <input
+              type="number"
+              step="0.01"
+              value={comparison.oilUsage || ''}
+              onChange={(e) => updateUsage(comparison.utilityType, comparison.identifier, 'oilUsage', e.target.value)}
+              className="w-full px-1 py-0.5 border border-gray-300 rounded text-right text-xs"
+              placeholder="Usage (L)"
+            />
           </td>
           <td className="border border-gray-300 px-1 py-0.5">
             <input
@@ -1507,11 +1638,25 @@ export default function Base2Page() {
       rows.push(
         <tr key="waste-rate">
           <td className="border border-gray-300 px-1 py-0.5 font-semibold text-xs">Waste Rate ($/service)</td>
-          <td className="border border-gray-300 px-1 py-0.5 text-right text-xs">
-            {comparison.currentWasteRate ? `$${comparison.currentWasteRate.toFixed(2)}` : 'N/A'}
+          <td className="border border-gray-300 px-1 py-0.5">
+            <input
+              type="number"
+              step="0.01"
+              value={comparison.currentWasteRate || ''}
+              onChange={(e) => updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentWasteRate', e.target.value)}
+              className="w-full px-1 py-0.5 border border-gray-300 rounded text-right text-xs"
+              placeholder="Current rate"
+            />
           </td>
-          <td className="border border-gray-300 px-1 py-0.5 text-right text-xs">
-            {comparison.wasteUsage && comparison.wasteUsage > 0 ? `${comparison.wasteUsage.toFixed(0)}/mo` : '-'}
+          <td className="border border-gray-300 px-1 py-0.5">
+            <input
+              type="number"
+              step="0.01"
+              value={comparison.wasteUsage || ''}
+              onChange={(e) => updateUsage(comparison.utilityType, comparison.identifier, 'wasteUsage', e.target.value)}
+              className="w-full px-1 py-0.5 border border-gray-300 rounded text-right text-xs"
+              placeholder="Usage/month"
+            />
           </td>
           <td className="border border-gray-300 px-1 py-0.5">
             <input
@@ -1538,11 +1683,25 @@ export default function Base2Page() {
       rows.push(
         <tr key="cleaning-rate">
           <td className="border border-gray-300 px-1 py-0.5 font-semibold text-xs">Cleaning Rate ($/visit)</td>
-          <td className="border border-gray-300 px-1 py-0.5 text-right text-xs">
-            {comparison.currentCleaningRate ? `$${comparison.currentCleaningRate.toFixed(2)}` : 'N/A'}
+          <td className="border border-gray-300 px-1 py-0.5">
+            <input
+              type="number"
+              step="0.01"
+              value={comparison.currentCleaningRate || ''}
+              onChange={(e) => updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentCleaningRate', e.target.value)}
+              className="w-full px-1 py-0.5 border border-gray-300 rounded text-right text-xs"
+              placeholder="Current rate"
+            />
           </td>
-          <td className="border border-gray-300 px-1 py-0.5 text-right text-xs">
-            {comparison.cleaningUsage && comparison.cleaningUsage > 0 ? `${comparison.cleaningUsage.toFixed(0)}/mo` : '-'}
+          <td className="border border-gray-300 px-1 py-0.5">
+            <input
+              type="number"
+              step="0.01"
+              value={comparison.cleaningUsage || ''}
+              onChange={(e) => updateUsage(comparison.utilityType, comparison.identifier, 'cleaningUsage', e.target.value)}
+              className="w-full px-1 py-0.5 border border-gray-300 rounded text-right text-xs"
+              placeholder="Usage/month"
+            />
           </td>
           <td className="border border-gray-300 px-1 py-0.5">
             <input

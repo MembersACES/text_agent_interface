@@ -1304,10 +1304,10 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
     <React.Fragment>
       <div className="bg-white rounded-lg shadow-sm border mt-6">
       {/* Header with Business Name and Key Actions */}
-      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-6 py-4 border-b rounded-t-lg">
+      <div className="px-6 py-5 border-b rounded-t-lg" style={{background: 'linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%)'}}>
         <div className="text-center mb-4">
-          <h1 className="text-3xl font-bold text-gray-900 mb-3">{business.name || 'Business Details'}</h1>
-          <div className="flex items-center justify-center gap-4 text-sm text-gray-600">
+          <h1 className="text-3xl font-bold text-white mb-3">{business.name || 'Business Details'}</h1>
+          <div className="flex items-center justify-center gap-4 text-sm text-slate-300">
             {business.trading_name && (
               <span>Trading as: <span className="font-medium">{business.trading_name}</span></span>
             )}
@@ -1715,7 +1715,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                         : getDocumentFileUrl(doc);
 
                     return (
-                      <div key={doc} className="flex items-center justify-between p-2 rounded bg-gray-50 hover:bg-gray-100">
+                      <div key={doc} className={`flex items-center justify-between p-2 rounded border transition-all ${fileUrl ? 'bg-green-50 border-green-200 hover:bg-green-100' : 'bg-slate-50 border-slate-200'}`}>
                         <div className="flex-1">
                           <div className="text-sm font-medium">{doc}</div>
                           <div className="text-xs text-gray-500">
@@ -1838,7 +1838,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                                          status?.toLowerCase().includes('signed via aces');
                   
                     return (
-                      <div key={key} className="flex items-center justify-between p-2 rounded bg-gray-50 hover:bg-gray-100">
+                      <div key={key} className={`flex items-center justify-between p-2 rounded border transition-all ${url ? 'bg-green-50 border-green-200 hover:bg-green-100' : 'bg-slate-50 border-slate-200'}`}>
                         <div className="flex-1">
                           <div className="text-sm font-medium">{key}</div>
                           <div className="text-xs text-gray-500">
@@ -1995,8 +1995,10 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                 {engagementForms.length === 0 ? (
                   <div className="text-xs text-gray-400 mb-4">No engagement forms available</div>
                 ) : (
-                  engagementForms.map((form, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-2 rounded bg-gray-50 hover:bg-gray-100">
+                  engagementForms.map((form, idx) => {
+                    const fileUrl = form.id ? `https://drive.google.com/file/d/${form.id}/view?usp=drivesdk` : null;
+                    return (
+                    <div key={idx} className={`flex items-center justify-between p-2 rounded border transition-all ${fileUrl ? 'bg-green-50 border-green-200 hover:bg-green-100' : 'bg-slate-50 border-slate-200'}`}>
                       <div className="flex-1">
                         <div className="text-sm font-medium">{formatFileName(form.fileName)}</div>
                         <div className="text-xs text-gray-500">
@@ -2015,7 +2017,8 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                         </div>
                       </div>
                     </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </div>
@@ -2051,8 +2054,10 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                 {additionalDocs.length === 0 ? (
                   <div className="text-xs text-gray-400 mb-4">No additional documents available</div>
                 ) : (
-                  additionalDocs.map((doc, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-2 rounded bg-gray-50 hover:bg-gray-100">
+                  additionalDocs.map((doc, idx) => {
+                    const fileUrl = doc.id ? `https://drive.google.com/file/d/${doc.id}/view?usp=drivesdk` : null;
+                    return (
+                    <div key={idx} className={`flex items-center justify-between p-2 rounded border transition-all ${fileUrl ? 'bg-green-50 border-green-200 hover:bg-green-100' : 'bg-slate-50 border-slate-200'}`}>
                       <div className="flex-1">
                         <div className="text-sm font-medium">{formatFileName(doc.fileName)}</div>
                         <div className="text-xs text-gray-500">
@@ -2071,7 +2076,8 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                         </div>
                       </div>
                     </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </div>
