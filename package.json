@@ -30,6 +30,9 @@
     "react-markdown": "^10.1.0",
     "tailwind-merge": "^2.6.0"
   },
+  "overrides": {
+    "minimatch": ">=10.2.1"
+  },
   "devDependencies": {
     "@types/node": "^22",
     "@types/react": "19.0.8",

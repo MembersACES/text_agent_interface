@@ -96,6 +96,7 @@ export default function Base2Page() {
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [businessInfoData, setBusinessInfoData] = useState<any>(null); // Full business info from API
+  const [businessInfoFetchDone, setBusinessInfoFetchDone] = useState(false); // So we only run fetchUtilityInvoices once
 
   const token = (session as any)?.id_token;
 
@@ -107,11 +108,16 @@ export default function Base2Page() {
     return match ? match[1] : null;
   };
 
-  // Fetch business info from API to get document file IDs
+  // Fetch business info from API to get document file IDs (only when we have businessName)
   useEffect(() => {
-    const fetchBusinessInfo = async () => {
-      if (!businessName || !token) return;
+    if (!token) return;
+    if (!businessName) {
+      setBusinessInfoFetchDone(true); // No business name → no fetch needed, allow utilities to run
+      return;
+    }
 
+    let cancelled = false;
+    const fetchBusinessInfo = async () => {
       try {
         const response = await fetch(`${getApiBaseUrl()}/api/get-business-info`, {
           method: 'POST',
@@ -122,6 +128,7 @@ export default function Base2Page() {
           body: JSON.stringify({ business_name: businessName })
         });
 
+        if (cancelled) return;
         if (response.ok) {
           const data = await response.json();
           setBusinessInfoData(data);
@@ -131,19 +138,22 @@ export default function Base2Page() {
           console.error('Failed to fetch business info');
         }
       } catch (err) {
-        console.error('Error fetching business info:', err);
+        if (!cancelled) console.error('Error fetching business info:', err);
+      } finally {
+        if (!cancelled) setBusinessInfoFetchDone(true);
       }
     };
 
     fetchBusinessInfo();
+    return () => { cancelled = true; };
   }, [businessName, token]);
 
-  // Extract linked utilities and fetch invoice data
+  // Extract linked utilities and fetch invoice data — run only once when business info is ready
   useEffect(() => {
-    if (businessInfo && businessInfo.utilities && token) {
+    if (businessInfo && token && businessInfoFetchDone) {
       fetchUtilityInvoices();
     }
-  }, [businessInfo, businessInfoData, token]); // Also depend on businessInfoData for Cleaning check
+  }, [businessInfo, token, businessInfoFetchDone]);
 
   const extractCurrentRates = (invoiceData: any, utilityType: string): Partial<UtilityComparison> => {
     const rates: Partial<UtilityComparison> = {};
@@ -362,10 +372,8 @@ export default function Base2Page() {
           0;
         rates.currentDailySupply = dailySupply > 0 ? dailySupply : undefined;
         
-        // Set comparison placeholder
-        rates.comparisonGasRate = rates.currentGasRate && rates.currentGasRate > 0 
-          ? parseFloat((rates.currentGasRate * 0.95).toFixed(4)) 
-          : 16.75;
+        // C&I Gas: hardcoded comparison rate $/GJ
+        rates.comparisonGasRate = 17.8;
         rates.comparisonDailySupply = rates.currentDailySupply && rates.currentDailySupply > 0
           ? parseFloat((rates.currentDailySupply * 0.95).toFixed(2)) 
           : 1.20;
@@ -639,102 +647,86 @@ export default function Base2Page() {
       }
     }
 
-    // Set initial state
+    // Set initial state (one render with all cards in loading state)
     setUtilityComparisons(comparisons);
 
-    // Fetch invoice data for each utility (in parallel)
-    const fetchPromises = comparisons.map(async (comparison) => {
-      try {
-        let endpoint = '';
-        let body: any = { business_name: businessName || businessInfo?.name || '' };
+    // Fetch invoice data for each utility (in parallel); collect results and update state once
+    const results = await Promise.all(
+      comparisons.map(async (comparison): Promise<{ index: number; update: Partial<UtilityComparison> & { invoiceData?: any; loading: boolean; error?: string | null } }> => {
+        const index = comparisons.findIndex(
+          c => c.utilityType === comparison.utilityType && c.identifier === comparison.identifier
+        );
+        try {
+          let endpoint = '';
+          let body: any = { business_name: businessName || businessInfo?.name || '' };
 
-        if (comparison.utilityType === 'C&I Electricity') {
-          endpoint = `${getApiBaseUrl()}/api/get-electricity-ci-info`;
-          body.nmi = comparison.identifier;
-        } else if (comparison.utilityType === 'SME Electricity') {
-          endpoint = `${getApiBaseUrl()}/api/get-electricity-sme-info`;
-          body.nmi = comparison.identifier;
-        } else if (comparison.utilityType === 'C&I Gas') {
-          endpoint = `${getApiBaseUrl()}/api/get-gas-ci-info`;
-          body.mrin = comparison.identifier;
-        } else if (comparison.utilityType === 'SME Gas') {
-          endpoint = `${getApiBaseUrl()}/api/get-gas-sme-info`;
-          body.mrin = comparison.identifier;
-        } else if (comparison.utilityType === 'Oil') {
-          endpoint = `${getApiBaseUrl()}/api/get-oil-info`;
-          body.business_name = comparison.identifier;
-        } else if (comparison.utilityType === 'Waste') {
-          endpoint = `${getApiBaseUrl()}/api/get-waste-info`;
-          body.customer_number = comparison.identifier;
-        } else if (comparison.utilityType === 'Cleaning') {
-          // Cleaning endpoint - may need to be added
-          // For now, skip if no endpoint available
-          setUtilityComparisons(prev => {
-            return prev.map(u => 
-              u.utilityType === comparison.utilityType && u.identifier === comparison.identifier
-                ? { ...u, loading: false, error: 'Cleaning API endpoint not yet available' }
-                : u
-            );
+          if (comparison.utilityType === 'C&I Electricity') {
+            endpoint = `${getApiBaseUrl()}/api/get-electricity-ci-info`;
+            body.nmi = comparison.identifier;
+          } else if (comparison.utilityType === 'SME Electricity') {
+            endpoint = `${getApiBaseUrl()}/api/get-electricity-sme-info`;
+            body.nmi = comparison.identifier;
+          } else if (comparison.utilityType === 'C&I Gas') {
+            endpoint = `${getApiBaseUrl()}/api/get-gas-ci-info`;
+            body.mrin = comparison.identifier;
+          } else if (comparison.utilityType === 'SME Gas') {
+            endpoint = `${getApiBaseUrl()}/api/get-gas-sme-info`;
+            body.mrin = comparison.identifier;
+          } else if (comparison.utilityType === 'Oil') {
+            endpoint = `${getApiBaseUrl()}/api/get-oil-info`;
+            body.business_name = comparison.identifier;
+          } else if (comparison.utilityType === 'Waste') {
+            endpoint = `${getApiBaseUrl()}/api/get-waste-info`;
+            body.customer_number = comparison.identifier;
+          } else if (comparison.utilityType === 'Cleaning') {
+            return { index, update: { loading: false, error: 'Cleaning API endpoint not yet available' } };
+          }
+
+          if (!endpoint) {
+            console.log(`No endpoint for utility type: ${comparison.utilityType}`);
+            return { index, update: { loading: false, error: `No API endpoint available for ${comparison.utilityType}` } };
+          }
+
+          const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`,
+            },
+            body: JSON.stringify(body)
           });
-          return;
-        }
 
-        if (!endpoint) {
-          console.log(`No endpoint for utility type: ${comparison.utilityType}`);
-          setUtilityComparisons(prev => {
-            return prev.map(u => 
-              u.utilityType === comparison.utilityType && u.identifier === comparison.identifier
-                ? { ...u, loading: false, error: `No API endpoint available for ${comparison.utilityType}` }
-                : u
-            );
-          });
-          return;
-        }
-
-        const response = await fetch(endpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
-          body: JSON.stringify(body)
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          console.log(`Full API response for ${comparison.utilityType} ${comparison.identifier}:`, JSON.stringify(data, null, 2));
-          const extractedRates = extractCurrentRates(data, comparison.utilityType);
-          
-          setUtilityComparisons(prev => {
-            const updated = prev.map(u => 
-              u.utilityType === comparison.utilityType && u.identifier === comparison.identifier
-                ? { 
-                    ...u, 
-                    ...extractedRates,
-                    invoiceData: data, 
-                    loading: false 
-                  }
-                : u
-            );
-            return updated;
-          });
-        } else {
+          if (response.ok) {
+            const data = await response.json();
+            console.log(`Full API response for ${comparison.utilityType} ${comparison.identifier}:`, JSON.stringify(data, null, 2));
+            const extractedRates = extractCurrentRates(data, comparison.utilityType);
+            return {
+              index,
+              update: {
+                ...extractedRates,
+                invoiceData: data,
+                loading: false,
+                error: null,
+              },
+            };
+          }
           throw new Error('Failed to fetch invoice data');
+        } catch (err: any) {
+          return { index, update: { loading: false, error: err.message } };
         }
-      } catch (err: any) {
-        setUtilityComparisons(prev => {
-          const updated = prev.map(u => 
-            u.utilityType === comparison.utilityType && u.identifier === comparison.identifier
-              ? { ...u, loading: false, error: err.message }
-              : u
-          );
-          return updated;
-        });
-      }
-    });
+      })
+    );
 
-    // Wait for all fetches to complete
-    await Promise.all(fetchPromises);
+    // Single state update with all results (one re-render instead of one per utility)
+    setUtilityComparisons(prev => {
+      const next = [...prev];
+      for (const { index, update } of results) {
+        if (index >= 0 && index < next.length) {
+          next[index] = { ...next[index], ...update };
+        }
+      }
+      return next;
+    });
   };
 
   const updateComparisonRate = (utilityType: string, identifier: string, field: keyof UtilityComparison, value: string) => {
@@ -1404,43 +1396,45 @@ export default function Base2Page() {
         );
       }
 
-      // Always show Daily Supply Charge for electricity
-      rows.push(
-        <tr key="supply">
-          <td className="border border-gray-300 px-1 py-0.5 text-xs">Daily Supply Charge ($/day)</td>
-          <td className="border border-gray-300 px-1 py-0.5">
-            <input
-              type="number"
-              step="0.01"
-              value={comparison.currentDailySupply || ''}
-              onChange={(e) => updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentDailySupply', e.target.value)}
-              className="w-full px-1 py-0.5 border border-gray-300 rounded text-right text-xs"
-              placeholder="Current rate"
-            />
-          </td>
-          <td className="border border-gray-300 px-1 py-0.5 text-right text-xs">-</td>
-          <td className="border border-gray-300 px-1 py-0.5">
-            <input
-              type="number"
-              step="0.01"
-              value={comparison.comparisonDailySupply || ''}
-              onChange={(e) => updateComparisonRate(comparison.utilityType, comparison.identifier, 'comparisonDailySupply', e.target.value)}
-              className="w-full px-1 py-0.5 border border-gray-300 rounded text-right text-xs"
-              placeholder="1.50"
-            />
-          </td>
-          <td className="border border-gray-300 px-1 py-0.5 text-right text-xs text-green-600 font-semibold">
-            {comparison.currentDailySupply && comparison.comparisonDailySupply
-              ? `$${((comparison.currentDailySupply - comparison.comparisonDailySupply) * 365).toFixed(2)}/yr`
-              : '-'}
-          </td>
-          <td className="border border-gray-300 px-1 py-0.5 text-right text-xs text-green-600 font-semibold">
-            {comparison.currentDailySupply && comparison.comparisonDailySupply
-              ? `${(((comparison.currentDailySupply - comparison.comparisonDailySupply) / comparison.currentDailySupply) * 100).toFixed(1)}%`
-              : '-'}
-          </td>
-        </tr>
-      );
+      // Daily Supply Charge for SME Electricity only (not shown for C&I Electricity)
+      if (comparison.utilityType !== 'C&I Electricity') {
+        rows.push(
+          <tr key="supply">
+            <td className="border border-gray-300 px-1 py-0.5 text-xs">Daily Supply Charge ($/day)</td>
+            <td className="border border-gray-300 px-1 py-0.5">
+              <input
+                type="number"
+                step="0.01"
+                value={comparison.currentDailySupply || ''}
+                onChange={(e) => updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentDailySupply', e.target.value)}
+                className="w-full px-1 py-0.5 border border-gray-300 rounded text-right text-xs"
+                placeholder="Current rate"
+              />
+            </td>
+            <td className="border border-gray-300 px-1 py-0.5 text-right text-xs">-</td>
+            <td className="border border-gray-300 px-1 py-0.5">
+              <input
+                type="number"
+                step="0.01"
+                value={comparison.comparisonDailySupply || ''}
+                onChange={(e) => updateComparisonRate(comparison.utilityType, comparison.identifier, 'comparisonDailySupply', e.target.value)}
+                className="w-full px-1 py-0.5 border border-gray-300 rounded text-right text-xs"
+                placeholder="1.50"
+              />
+            </td>
+            <td className="border border-gray-300 px-1 py-0.5 text-right text-xs text-green-600 font-semibold">
+              {comparison.currentDailySupply && comparison.comparisonDailySupply
+                ? `$${((comparison.currentDailySupply - comparison.comparisonDailySupply) * 365).toFixed(2)}/yr`
+                : '-'}
+            </td>
+            <td className="border border-gray-300 px-1 py-0.5 text-right text-xs text-green-600 font-semibold">
+              {comparison.currentDailySupply && comparison.comparisonDailySupply
+                ? `${(((comparison.currentDailySupply - comparison.comparisonDailySupply) / comparison.currentDailySupply) * 100).toFixed(1)}%`
+                : '-'}
+            </td>
+          </tr>
+        );
+      }
 
       // Demand Charge (C&I Electricity only) - Always show for C&I Electricity
       if (comparison.utilityType === 'C&I Electricity') {
@@ -1549,43 +1543,45 @@ export default function Base2Page() {
         </tr>
       );
 
-      // Always show Daily Supply Charge for gas
-      rows.push(
-        <tr key="gas-supply">
-          <td className="border border-gray-300 px-1 py-0.5 text-xs">Daily Supply Charge ($/day)</td>
-          <td className="border border-gray-300 px-1 py-0.5">
-            <input
-              type="number"
-              step="0.01"
-              value={comparison.currentDailySupply || ''}
-              onChange={(e) => updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentDailySupply', e.target.value)}
-              className="w-full px-1 py-0.5 border border-gray-300 rounded text-right text-xs"
-              placeholder="Current rate"
-            />
-          </td>
-          <td className="border border-gray-300 px-1 py-0.5 text-right text-xs">-</td>
-          <td className="border border-gray-300 px-1 py-0.5">
-            <input
-              type="number"
-              step="0.01"
-              value={comparison.comparisonDailySupply || ''}
-              onChange={(e) => updateComparisonRate(comparison.utilityType, comparison.identifier, 'comparisonDailySupply', e.target.value)}
-              className="w-full px-1 py-0.5 border border-gray-300 rounded text-right text-xs"
-              placeholder="1.20"
-            />
-          </td>
-          <td className="border border-gray-300 px-1 py-0.5 text-right text-xs text-green-600 font-semibold">
-            {comparison.currentDailySupply && comparison.comparisonDailySupply
-              ? `$${((comparison.currentDailySupply - comparison.comparisonDailySupply) * 365).toFixed(2)}/yr`
-              : '-'}
-          </td>
-          <td className="border border-gray-300 px-1 py-0.5 text-right text-xs text-green-600 font-semibold">
-            {comparison.currentDailySupply && comparison.comparisonDailySupply
-              ? `${(((comparison.currentDailySupply - comparison.comparisonDailySupply) / comparison.currentDailySupply) * 100).toFixed(1)}%`
-              : '-'}
-          </td>
-        </tr>
-      );
+      // Daily Supply Charge for SME Gas only (not shown for C&I Gas)
+      if (comparison.utilityType !== 'C&I Gas') {
+        rows.push(
+          <tr key="gas-supply">
+            <td className="border border-gray-300 px-1 py-0.5 text-xs">Daily Supply Charge ($/day)</td>
+            <td className="border border-gray-300 px-1 py-0.5">
+              <input
+                type="number"
+                step="0.01"
+                value={comparison.currentDailySupply || ''}
+                onChange={(e) => updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentDailySupply', e.target.value)}
+                className="w-full px-1 py-0.5 border border-gray-300 rounded text-right text-xs"
+                placeholder="Current rate"
+              />
+            </td>
+            <td className="border border-gray-300 px-1 py-0.5 text-right text-xs">-</td>
+            <td className="border border-gray-300 px-1 py-0.5">
+              <input
+                type="number"
+                step="0.01"
+                value={comparison.comparisonDailySupply || ''}
+                onChange={(e) => updateComparisonRate(comparison.utilityType, comparison.identifier, 'comparisonDailySupply', e.target.value)}
+                className="w-full px-1 py-0.5 border border-gray-300 rounded text-right text-xs"
+                placeholder="1.20"
+              />
+            </td>
+            <td className="border border-gray-300 px-1 py-0.5 text-right text-xs text-green-600 font-semibold">
+              {comparison.currentDailySupply && comparison.comparisonDailySupply
+                ? `$${((comparison.currentDailySupply - comparison.comparisonDailySupply) * 365).toFixed(2)}/yr`
+                : '-'}
+            </td>
+            <td className="border border-gray-300 px-1 py-0.5 text-right text-xs text-green-600 font-semibold">
+              {comparison.currentDailySupply && comparison.comparisonDailySupply
+                ? `${(((comparison.currentDailySupply - comparison.comparisonDailySupply) / comparison.currentDailySupply) * 100).toFixed(1)}%`
+                : '-'}
+            </td>
+          </tr>
+        );
+      }
     }
 
     // Oil Rates
@@ -1766,7 +1762,7 @@ export default function Base2Page() {
       {/* Linked Utilities Section */}
       {utilityComparisons.length === 0 && businessInfo?.utilities && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
-          <p className="text-yellow-800">No utilities linked. Please link utilities in the client profile first.</p>
+          <p className="text-yellow-800">Loading Linked Utilites...</p>
         </div>
       )}
 
