@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getApiBaseUrl } from "@/lib/utils";
@@ -7,14 +7,11 @@ import { getApiBaseUrl } from "@/lib/utils";
  * API Route: GET Base 1 Landing Responses
  *
  * The browser calls THIS route (same origin, no CORS). This route then calls
- * the Python backend (getApiBaseUrl() + /api/base1-landing-responses) with the
- * user's token. So the backend is only hit from the server, not the browser.
- *
- * If you see 502: the backend is missing this endpoint, errored, or unreachable.
- * Deploy text_agent_backend with the latest code and ensure it is running.
+ * the Python backend with the user's token. Backend is chosen by request host:
+ * acesagentinterfacedev → dev backend, else production.
  */
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session) {
@@ -26,7 +23,8 @@ export async function GET() {
       return NextResponse.json({ error: "No token", rows: [] }, { status: 401 });
     }
 
-    const backendUrl = getApiBaseUrl();
+    const requestHost = request.headers.get("host") ?? undefined;
+    const backendUrl = getApiBaseUrl(requestHost);
     const fullUrl = `${backendUrl}/api/base1-landing-responses`;
 
     const res = await fetch(fullUrl, {
