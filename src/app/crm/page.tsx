@@ -214,9 +214,9 @@ export default function CrmDashboardPage() {
             </div>
 
             {/* Pipeline by stage & Offers by status charts */}
-            {(pipelineSummary?.by_stage?.length > 0 || (offersSummary?.by_status && Object.keys(offersSummary.by_status).length > 0)) && (
+            {((pipelineSummary?.by_stage?.length ?? 0) > 0 || (offersSummary?.by_status && Object.keys(offersSummary.by_status).length > 0)) && (
               <div className="mb-8 grid gap-4 md:grid-cols-2">
-                {pipelineSummary?.by_stage?.length > 0 && (
+                {(pipelineSummary?.by_stage?.length ?? 0) > 0 && (
                   <Card className="bg-white dark:bg-dark-2 border border-gray-200 dark:border-dark-3">
                     <CardContent className="p-4">
                       <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Pipeline by stage</h2>
