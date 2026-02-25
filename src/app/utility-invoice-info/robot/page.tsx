@@ -9,6 +9,8 @@ export default function RobotDataInfoPage() {
   const robotNumber = searchParams.get("robot_number") || "";
   const businessName = searchParams.get("business_name") || "";
   const autoSubmit = searchParams.get("autoSubmit") === "1";
+  const offerIdParam = searchParams.get("offerId");
+  const offerId = offerIdParam ? parseInt(offerIdParam, 10) : NaN;
   const formRef = useRef<any>(null);
 
   return (
@@ -21,6 +23,7 @@ export default function RobotDataInfoPage() {
       initialSecondaryValue={robotNumber}
       autoSubmit={autoSubmit}
       formRef={formRef}
+      offerId={Number.isNaN(offerId) ? undefined : offerId}
     />
   );
 }

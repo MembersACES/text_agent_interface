@@ -1230,6 +1230,22 @@ export default function Base2Page() {
             const first = successResults[0];
             const docLink = first.result.pdf_document_link || first.result.spreadsheet_document_link || undefined;
             const externalId = first.result.run_id || first.result.execution_id || `b2_${Date.now()}`;
+            // Derive a simple utility type and identifier for metadata
+            const simpleUtilityType = (u: UtilityComparison): string | undefined => {
+              if (u.utilityType.includes('Electricity')) return 'electricity';
+              if (u.utilityType.includes('Gas')) return 'gas';
+              if (u.utilityType === 'Waste') return 'waste';
+              if (u.utilityType === 'Oil') return 'oil';
+              if (u.utilityType === 'Cleaning') return 'cleaning';
+              return undefined;
+            };
+            const firstUtilityType = simpleUtilityType(first.util);
+            const firstIdentifierKey =
+              first.util.utilityType.includes('Electricity') ? 'nmi' :
+              first.util.utilityType.includes('Gas') ? 'mrin' :
+              first.util.utilityType === 'Waste' ? 'account_number' :
+              first.util.utilityType === 'Oil' ? 'account_name' :
+              'identifier';
             await fetch(`${baseUrl}/api/offers/${offerIdToUse}/activities`, {
               method: 'POST',
               headers,
@@ -1237,6 +1253,11 @@ export default function Base2Page() {
                 activity_type: 'base2_review',
                 document_link: normalizeDocumentLink(docLink) ?? undefined,
                 external_id: externalId,
+                metadata: {
+                  utility_type: firstUtilityType,
+                  [firstIdentifierKey]: first.util.identifier,
+                  source: 'base2_page',
+                },
                 created_by: session?.user?.email || undefined,
               }),
             });
@@ -1255,13 +1276,26 @@ export default function Base2Page() {
               const slug = comparisonTypeSlug(util, action === 'dma');
               if (slug) {
                 const comparisonDocLink = result.pdf_document_link || result.spreadsheet_document_link || undefined;
+                const utilityType = simpleUtilityType(util);
+                const identifierKey =
+                  util.utilityType.includes('Electricity') ? 'nmi' :
+                  util.utilityType.includes('Gas') ? 'mrin' :
+                  util.utilityType === 'Waste' ? 'account_number' :
+                  util.utilityType === 'Oil' ? 'account_name' :
+                  'identifier';
+                const metadata: Record<string, any> = {
+                  utility_type: utilityType,
+                  [identifierKey]: util.identifier,
+                  comparison_type: slug,
+                  source: 'base2_page',
+                };
                 await fetch(`${baseUrl}/api/offers/${offerIdToUse}/activities`, {
                   method: 'POST',
                   headers,
                   body: JSON.stringify({
-                    activity_type: 'comparison',
+                    activity_type: action === 'dma' ? 'dma_review_generated' : 'comparison',
                     document_link: normalizeDocumentLink(comparisonDocLink) ?? undefined,
-                    metadata: { comparison_type: slug },
+                    metadata,
                     created_by: session?.user?.email || undefined,
                   }),
                 });

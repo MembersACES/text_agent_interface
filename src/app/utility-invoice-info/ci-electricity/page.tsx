@@ -10,6 +10,8 @@ export default function CIElectricityInvoiceInfoPage() {
   const businessName = searchParams.get("business_name") || "";
   const autoSubmit = searchParams.get("autoSubmit") === "1";
   const autoOpenDMA = searchParams.get("autoOpenDMA") === "1";
+  const offerIdParam = searchParams.get("offerId");
+  const offerId = offerIdParam ? parseInt(offerIdParam, 10) : NaN;
   const formRef = useRef<any>(null);
 
   // Extract business information from URL parameters
@@ -51,6 +53,7 @@ export default function CIElectricityInvoiceInfoPage() {
       autoOpenDMA={autoOpenDMA}
       formRef={formRef}
       initialExtraFields={initialExtraFields}
+      offerId={Number.isNaN(offerId) ? undefined : offerId}
     />
   );
 } 

@@ -97,6 +97,80 @@ export default function OfferDetailPage() {
   const [clientsList, setClientsList] = useState<{ id: number; business_name: string }[]>([]);
   const [savingClient, setSavingClient] = useState(false);
 
+  const documents = useMemo(() => {
+    const items: {
+      href: string;
+      label: string;
+      created_at?: string;
+      created_by?: string | null;
+    }[] = [];
+    const seen = new Set<string>();
+
+    const addItem = (href: string | undefined, label: string, created_at?: string, created_by?: string | null) => {
+      if (!href) return;
+      if (seen.has(href)) return;
+      seen.add(href);
+      items.push({ href, label, created_at, created_by });
+    };
+
+    if (offer?.document_link) {
+      addItem(
+        documentLinkHref(offer.document_link),
+        offer.utility_type ? `${offer.utility_type} – Offer document` : "Offer document",
+        offer.created_at,
+        offer.created_by ?? null,
+      );
+    }
+
+    for (const a of activities) {
+      if (!a.document_link) continue;
+      const href = documentLinkHref(a.document_link);
+      if (!href) continue;
+      const meta = (a.metadata || {}) as Record<string, unknown>;
+      const rawUtility = typeof meta.utility_type === "string" ? meta.utility_type : undefined;
+      const utility =
+        rawUtility === "electricity"
+          ? "Electricity"
+          : rawUtility === "gas"
+          ? "Gas"
+          : rawUtility === "waste"
+          ? "Waste"
+          : rawUtility === "oil"
+          ? "Oil"
+          : rawUtility === "cleaning"
+          ? "Cleaning"
+          : rawUtility
+          ? String(rawUtility)
+          : undefined;
+
+      let baseLabel =
+        OFFER_ACTIVITY_LABELS[a.activity_type as OfferActivityType] ??
+        a.activity_type.replace(/_/g, " ");
+
+      if (a.activity_type === "comparison") {
+        const comparisonType = meta.comparison_type ? String(meta.comparison_type) : undefined;
+        if (comparisonType) {
+          baseLabel = `Comparison (${comparisonType.replace(/_/g, " ")})`;
+        }
+      } else if (a.activity_type === "dma_review_generated") {
+        baseLabel = "DMA review";
+      } else if (a.activity_type === "dma_email_sent") {
+        baseLabel = "DMA email";
+      }
+
+      const label = utility ? `${utility} – ${baseLabel}` : baseLabel;
+      addItem(href, label, a.created_at, a.created_by ?? null);
+    }
+
+    items.sort((a, b) => {
+      const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return tb - ta;
+    });
+
+    return items;
+  }, [offer, activities]);
+
   useEffect(() => {
     if (!offerId || !token) {
       setLoading(false);
@@ -447,19 +521,44 @@ export default function OfferDetailPage() {
                   <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-3">
                     Documents & Links
                   </h2>
-                  {documentLinkHref(offer.document_link) ? (
-                    <a
-                      href={documentLinkHref(offer.document_link)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-primary hover:underline"
-                    >
-                      Open Offer Document
-                    </a>
-                  ) : (
+                  {documents.length === 0 ? (
                     <p className="text-sm text-gray-500 dark:text-gray-400">
-                      No document link recorded for this offer.
+                      No documents recorded yet for this offer.
                     </p>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full text-xs">
+                        <thead>
+                          <tr className="text-left text-gray-500 dark:text-gray-400">
+                            <th className="py-1 pr-2 font-medium">Document</th>
+                            <th className="py-1 pr-2 font-medium whitespace-nowrap">Created</th>
+                            <th className="py-1 pr-2 font-medium whitespace-nowrap">By</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {documents.map((doc) => (
+                            <tr key={doc.href} className="border-t border-gray-100 dark:border-gray-800">
+                              <td className="py-1 pr-2">
+                                <a
+                                  href={doc.href}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-primary hover:underline"
+                                >
+                                  {doc.label}
+                                </a>
+                              </td>
+                              <td className="py-1 pr-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                                {doc.created_at ? formatDate(doc.created_at) : "—"}
+                              </td>
+                              <td className="py-1 pr-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                                {doc.created_by || "—"}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   )}
                 </div>
               </div>
@@ -515,22 +614,47 @@ export default function OfferDetailPage() {
               ) : (
                 <ul className="space-y-3">
                   {activities.map((a) => {
-                    const label =
+                    const meta = (a.metadata || {}) as Record<string, unknown>;
+                    const rawUtility = typeof meta.utility_type === "string" ? meta.utility_type : undefined;
+                    const utility =
+                      rawUtility === "electricity"
+                        ? "Electricity"
+                        : rawUtility === "gas"
+                        ? "Gas"
+                        : rawUtility === "waste"
+                        ? "Waste"
+                        : rawUtility === "oil"
+                        ? "Oil"
+                        : rawUtility === "cleaning"
+                        ? "Cleaning"
+                        : rawUtility
+                        ? String(rawUtility)
+                        : undefined;
+
+                    let baseLabel =
                       OFFER_ACTIVITY_LABELS[a.activity_type as OfferActivityType] ??
                       a.activity_type.replace(/_/g, " ");
-                    const comparisonType =
-                      a.activity_type === "comparison" && a.metadata?.comparison_type
-                        ? String(a.metadata.comparison_type)
-                        : null;
+
+                    if (a.activity_type === "comparison") {
+                      const comparisonType = meta.comparison_type ? String(meta.comparison_type) : undefined;
+                      if (comparisonType) {
+                        baseLabel = `Comparison (${comparisonType.replace(/_/g, " ")})`;
+                      }
+                    } else if (a.activity_type === "dma_review_generated") {
+                      baseLabel = "DMA review generated";
+                    } else if (a.activity_type === "dma_email_sent") {
+                      baseLabel = "DMA email sent";
+                    }
+
+                    const title = utility ? `${utility} – ${baseLabel}` : baseLabel;
+
                     return (
                       <li
                         key={a.id}
                         className="flex flex-col gap-1 text-sm border-l-2 border-gray-200 dark:border-gray-600 pl-3 py-1"
                       >
                         <span className="font-medium text-gray-800 dark:text-gray-100">
-                          {a.activity_type === "comparison" && comparisonType
-                            ? `Comparison (${comparisonType})`
-                            : label}
+                          {title}
                         </span>
                         <span className="text-xs text-gray-500 dark:text-gray-400">
                           {formatDate(a.created_at)}
@@ -546,9 +670,9 @@ export default function OfferDetailPage() {
                             Open document
                           </a>
                         )}
-                        {a.activity_type === "discrepancy_email_sent" && a.metadata?.summary != null ? (
+                        {a.activity_type === "discrepancy_email_sent" && meta.summary != null ? (
                           <span className="text-xs text-gray-600 dark:text-gray-300">
-                            {String(a.metadata.summary)}
+                            {String(meta.summary)}
                           </span>
                         ) : null}
                       </li>

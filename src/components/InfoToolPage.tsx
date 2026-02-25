@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useSession } from "next-auth/react";
 import ReactMarkdown from 'react-markdown';
+import { getApiBaseUrl } from "@/lib/utils";
 
 interface ExtraField {
   name: string;
@@ -23,6 +24,8 @@ interface InfoToolPageProps {
   formRef?: React.RefObject<HTMLFormElement>;
   initialExtraFields?: { [key: string]: any };
   autoOpenDMA?: boolean;
+  /** Optional offer id for logging DMA / utility invoice activities back to an offer */
+  offerId?: number;
 }
 
 interface CIElectricityOfferData {
@@ -1170,6 +1173,7 @@ interface DMAModalProps {
   invoiceData: any;
   session: any;
   token: string;
+  offerId?: number;
 }
 
 interface CostCalculations {
@@ -2978,7 +2982,8 @@ function DMAModal({
   onClose, 
   invoiceData, 
   session,
-  token
+  token,
+  offerId,
 }: DMAModalProps) {
   // State
   const [formData, setFormData] = useState<DMAData>({
@@ -3183,6 +3188,45 @@ Total Savings Over ${formData.periodYears} Years: ${formatCurrency(calculations.
       });
 
       if (response.ok) {
+        // Optionally parse response for any document links returned by the webhook
+        let responseData: any = null;
+        try {
+          responseData = await response.json();
+        } catch {
+          responseData = null;
+        }
+
+        // Log an offer activity when an offerId is available
+        if (offerId && session?.user?.email && token) {
+          try {
+            const baseUrl = getApiBaseUrl();
+            const documentLink =
+              typeof responseData === 'object' && responseData
+                ? responseData.pdf_document_link || responseData.spreadsheet_document_link || formData.invoiceLink || undefined
+                : formData.invoiceLink || undefined;
+            const metadata: Record<string, any> = {
+              utility_type: 'electricity',
+              nmi: formData.nmi,
+              source: 'utility_invoice_info_page',
+            };
+            await fetch(`${baseUrl}/api/offers/${offerId}/activities`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`,
+              },
+              body: JSON.stringify({
+                activity_type: 'dma_email_sent',
+                document_link: documentLink || undefined,
+                metadata,
+                created_by: session.user.email,
+              }),
+            });
+          } catch (logErr) {
+            console.warn('Failed to log DMA email activity:', logErr);
+          }
+        }
+
         alert('DMA Review sent successfully!');
         onClose();
       } else {
@@ -5623,7 +5667,7 @@ const EnhancedSMEGasInvoiceDetails = ({ smeGasData }: { smeGasData: any }) => {
   );
 };
 
-function InvoiceResult({ result, session, token, autoOpenDMA = false, autoExpandDetails = false }: { result: any; session: any; token: string; autoOpenDMA?: boolean; autoExpandDetails?: boolean }) {
+function InvoiceResult({ result, session, token, autoOpenDMA = false, autoExpandDetails = false, offerId }: { result: any; session: any; token: string; autoOpenDMA?: boolean; autoExpandDetails?: boolean; offerId?: number }) {
   const [showDMAModal, setShowDMAModal] = useState(false);
   const [showCIOfferModal, setShowCIOfferModal] = useState(false);
   const [showCIGasOfferModal, setShowCIGasOfferModal] = useState(false);
@@ -5997,6 +6041,7 @@ function InvoiceResult({ result, session, token, autoOpenDMA = false, autoExpand
             invoiceData={result}
             session={session}
             token={token}
+            offerId={offerId}
           />
         </>
       )}
@@ -6638,7 +6683,7 @@ function IntervalDataSection({
   );
 }
 
-export default function InfoToolPage({ title, description, endpoint, extraFields = [], isFileUpload = false, secondaryField, initialBusinessName = "", initialSecondaryValue = "", autoSubmit = false, formRef, initialExtraFields = {}, autoOpenDMA = false }: InfoToolPageProps) {
+export default function InfoToolPage({ title, description, endpoint, extraFields = [], isFileUpload = false, secondaryField, initialBusinessName = "", initialSecondaryValue = "", autoSubmit = false, formRef, initialExtraFields = {}, autoOpenDMA = false, offerId }: InfoToolPageProps) {
   // ========== PROMINENT LOG - InfoToolPage Component Rendered ==========
   console.log('🔵 ========== InfoToolPage Component Rendered ==========');
   console.log('🔵 Title:', title);
@@ -6961,7 +7006,7 @@ export default function InfoToolPage({ title, description, endpoint, extraFields
               <ResultMessage message={result.message} />
             </div>
           ) : (
-            <InvoiceResult result={result} session={session} token={token} autoOpenDMA={autoOpenDMA} autoExpandDetails={autoSubmit} />
+            <InvoiceResult result={result} session={session} token={token} autoOpenDMA={autoOpenDMA} autoExpandDetails={autoSubmit} offerId={offerId} />
           )}
         </div>
       )}

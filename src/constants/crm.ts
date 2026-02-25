@@ -50,6 +50,8 @@ export const OFFER_ACTIVITY_TYPES = [
   "ghg_offer",
   "engagement_form",
   "discrepancy_email_sent",
+  "dma_review_generated",
+  "dma_email_sent",
 ] as const;
 
 export type OfferActivityType = (typeof OFFER_ACTIVITY_TYPES)[number];
@@ -61,5 +63,7 @@ export const OFFER_ACTIVITY_LABELS: Record<OfferActivityType, string> = {
   ghg_offer: "GHG offer",
   engagement_form: "Engagement form generated",
   discrepancy_email_sent: "Discrepancy email sent",
+  dma_review_generated: "DMA review generated",
+  dma_email_sent: "DMA email sent",
 };
 
