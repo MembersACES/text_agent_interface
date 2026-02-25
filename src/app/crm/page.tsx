@@ -230,13 +230,13 @@ export default function CrmDashboardPage() {
                             colors: ["#5750F1"],
                             dataLabels: { enabled: false },
                             xaxis: {
-                              categories: pipelineSummary.by_stage.map((s) => s.stage.replace(/_/g, " ")),
+                              categories: (pipelineSummary?.by_stage ?? []).map((s) => s.stage.replace(/_/g, " ")),
                               labels: { style: { fontSize: "11px" } },
                             },
                             yaxis: { labels: { style: { fontSize: "11px" } } },
                             grid: { xaxis: { lines: { show: false } }, yaxis: { lines: { show: false } } },
                           } as ApexOptions}
-                          series={[{ name: "Clients", data: pipelineSummary.by_stage.map((s) => s.count) }]}
+                          series={[{ name: "Clients", data: (pipelineSummary?.by_stage ?? []).map((s) => s.count) }]}
                         />
                       </div>
                     </CardContent>
