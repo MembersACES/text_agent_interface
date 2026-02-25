@@ -5,8 +5,13 @@ import { getApiBaseUrl } from "@/lib/utils";
 
 /**
  * API Route: GET Base 1 Landing Responses
- * Proxies to the backend which reads from the Google Sheet.
- * Uses server session so the browser doesn't need to send the token.
+ *
+ * The browser calls THIS route (same origin, no CORS). This route then calls
+ * the Python backend (getApiBaseUrl() + /api/base1-landing-responses) with the
+ * user's token. So the backend is only hit from the server, not the browser.
+ *
+ * If you see 502: the backend is missing this endpoint, errored, or unreachable.
+ * Deploy text_agent_backend with the latest code and ensure it is running.
  */
 
 export async function GET() {

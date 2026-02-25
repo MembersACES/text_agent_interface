@@ -68,6 +68,7 @@ export default function Base1Client({
       .then((res) => {
         if (!res.ok) {
           if (res.status === 401) setLandingError("Please sign in to view Base 1 runs.");
+          else if (res.status === 502) setLandingError("Backend unavailable. Deploy text_agent_backend with the latest code (GET /api/base1-landing-responses) and ensure it is running.");
           else setLandingError("Couldn't load Base 1 runs. Try again.");
           return { rows: [] };
         }
@@ -94,6 +95,7 @@ export default function Base1Client({
       .then((res) => {
         if (!res.ok) {
           if (res.status === 401) setLandingError("Please sign in to view Base 1 runs.");
+          else if (res.status === 502) setLandingError("Backend unavailable. Deploy text_agent_backend with the latest code (GET /api/base1-landing-responses) and ensure it is running.");
           else setLandingError("Couldn't load Base 1 runs. Try again.");
           return { rows: [] };
         }
