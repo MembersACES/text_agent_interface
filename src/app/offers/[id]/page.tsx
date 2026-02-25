@@ -546,11 +546,11 @@ export default function OfferDetailPage() {
                             Open document
                           </a>
                         )}
-                        {a.activity_type === "discrepancy_email_sent" && a.metadata?.summary && (
+                        {a.activity_type === "discrepancy_email_sent" && a.metadata?.summary != null ? (
                           <span className="text-xs text-gray-600 dark:text-gray-300">
                             {String(a.metadata.summary)}
                           </span>
-                        )}
+                        ) : null}
                       </li>
                     );
                   })}
