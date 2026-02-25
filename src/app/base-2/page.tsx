@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { getApiBaseUrl } from "@/lib/utils";
+import { PageHeader } from "@/components/Layouts/PageHeader";
 
 interface BusinessInfo {
   name?: string;
@@ -80,11 +81,23 @@ interface UtilityComparison {
   };
 }
 
+/** Normalize document link before sending to API: strip leading =, fix https:/ → https://. */
+function normalizeDocumentLink(link: string | undefined): string | undefined {
+  if (!link || typeof link !== "string") return undefined;
+  let s = link.trim();
+  if (s.startsWith("=")) s = s.slice(1).trim();
+  if (s.startsWith("https:/") && !s.startsWith("https://")) s = "https://" + s.slice(7);
+  if (s.startsWith("http:/") && !s.startsWith("http://")) s = "http://" + s.slice(6);
+  return (s.startsWith("http://") || s.startsWith("https://")) ? s : undefined;
+}
+
 export default function Base2Page() {
   const { data: session } = useSession();
   const searchParams = useSearchParams();
   const urlBusinessName = searchParams.get('businessName') || "";
   const urlBusinessInfo = searchParams.get('businessInfo');
+  const urlOfferId = searchParams.get('offerId'); // optional: when set, log activities to this offer after success
+  const urlClientId = searchParams.get('clientId'); // optional: when set (and no offerId), create offer on success then log activities
   
   const [businessName, setBusinessName] = useState<string>(urlBusinessName);
   const [businessInfo, setBusinessInfo] = useState<BusinessInfo | null>(
@@ -992,6 +1005,7 @@ export default function Base2Page() {
     // Process each utility
     const results: string[] = [];
     const errors: string[] = [];
+    const successResults: { util: UtilityComparison; result: any }[] = []; // for activity logging when offerId is set
 
     for (const util of utilitiesToProcess) {
       const sendingKey = `${util.utilityType}-${util.identifier}-${action}`;
@@ -1141,6 +1155,7 @@ export default function Base2Page() {
           if (result.pdf_document_link) message += `\nPDF: ${result.pdf_document_link}`;
           if (result.spreadsheet_document_link) message += `\nSpreadsheet: ${result.spreadsheet_document_link}`;
           results.push(message);
+          successResults.push({ util, result });
         } else {
           const errorText = await response.text();
           errors.push(`${util.identifier}: ${errorText}`);
@@ -1172,6 +1187,90 @@ export default function Base2Page() {
       alert(summary);
       if (results.length > 0) {
         setSuccess(true);
+        // Log offer activities: use offerId from URL, or create a minimal offer when only clientId is in URL
+        const offerIdFromUrl = urlOfferId ? parseInt(urlOfferId, 10) : null;
+        const clientIdFromUrl = urlClientId ? parseInt(urlClientId, 10) : null;
+        const hasValidOfferId = offerIdFromUrl != null && !isNaN(offerIdFromUrl);
+        const hasValidClientId = clientIdFromUrl != null && !isNaN(clientIdFromUrl);
+
+        let offerIdToUse: number | null = hasValidOfferId ? offerIdFromUrl : null;
+        if (offerIdToUse == null && hasValidClientId && token && successResults.length > 0) {
+          const baseUrl = getApiBaseUrl();
+          const headers = {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          };
+          try {
+            const createRes = await fetch(`${baseUrl}/api/offers`, {
+              method: 'POST',
+              headers,
+              body: JSON.stringify({
+                client_id: clientIdFromUrl,
+                status: 'requested',
+                business_name: businessName || businessInfo?.name || undefined,
+              }),
+            });
+            if (createRes.ok) {
+              const created = await createRes.json();
+              offerIdToUse = created?.id ?? null;
+            }
+          } catch (createErr) {
+            console.warn('Failed to create offer for client (Base 2 success):', createErr);
+          }
+        }
+
+        if (offerIdToUse != null && token && successResults.length > 0) {
+          const baseUrl = getApiBaseUrl();
+          const headers = {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          };
+          try {
+            // One base2_review per run (first success)
+            const first = successResults[0];
+            const docLink = first.result.pdf_document_link || first.result.spreadsheet_document_link || undefined;
+            const externalId = first.result.run_id || first.result.execution_id || `b2_${Date.now()}`;
+            await fetch(`${baseUrl}/api/offers/${offerIdToUse}/activities`, {
+              method: 'POST',
+              headers,
+              body: JSON.stringify({
+                activity_type: 'base2_review',
+                document_link: normalizeDocumentLink(docLink) ?? undefined,
+                external_id: externalId,
+                created_by: session?.user?.email || undefined,
+              }),
+            });
+            // Comparison activities: one per success with comparison_type from utility/action
+            const comparisonTypeSlug = (util: UtilityComparison, isDma: boolean): string | null => {
+              if (isDma && util.utilityType === 'C&I Electricity') return 'dma';
+              if (util.utilityType === 'C&I Electricity') return 'electricity_ci';
+              if (util.utilityType === 'SME Electricity') return 'electricity_sme';
+              if (util.utilityType === 'C&I Gas' || util.utilityType === 'SME Gas') return 'gas';
+              if (util.utilityType === 'Oil') return 'oil';
+              if (util.utilityType === 'Waste') return 'waste';
+              if (util.utilityType === 'Cleaning') return 'cleaning';
+              return null;
+            };
+            for (const { util, result } of successResults) {
+              const slug = comparisonTypeSlug(util, action === 'dma');
+              if (slug) {
+                const comparisonDocLink = result.pdf_document_link || result.spreadsheet_document_link || undefined;
+                await fetch(`${baseUrl}/api/offers/${offerIdToUse}/activities`, {
+                  method: 'POST',
+                  headers,
+                  body: JSON.stringify({
+                    activity_type: 'comparison',
+                    document_link: normalizeDocumentLink(comparisonDocLink) ?? undefined,
+                    metadata: { comparison_type: slug },
+                    created_by: session?.user?.email || undefined,
+                  }),
+                });
+              }
+            }
+          } catch (err) {
+            console.warn('Failed to log offer activities:', err);
+          }
+        }
       }
       if (errors.length > 0) {
         setError(`${errors.length} error(s) occurred. See alert for details.`);
@@ -1743,7 +1842,7 @@ export default function Base2Page() {
 
   return (
     <div className="container mx-auto p-6 max-w-6xl">
-      <h1 className="text-3xl font-bold mb-6">Base 2 Review - Quick Rate Comparison</h1>
+      <PageHeader pageName="Base 2 Review" title="Base 2 Review - Quick Rate Comparison" />
 
       {/* Business Information Display */}
       {businessInfo && (

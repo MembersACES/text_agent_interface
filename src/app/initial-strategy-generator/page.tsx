@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { getApiBaseUrl } from "@/lib/utils";
 import { useSearchParams } from "next/navigation";
+import { PageHeader } from "@/components/Layouts/PageHeader";
 
 interface BusinessInfo {
   business_name: string;
@@ -20,6 +21,7 @@ interface BusinessInfo {
   website?: string;
   utilities?: string[];
   retailers?: any[];
+  client_id?: number | null;
 }
 
 interface SolutionOption {
@@ -220,7 +222,8 @@ export default function InitialStrategyGeneratorPage() {
         client_folder_url: searchParams.get('clientFolderUrl') || "",
         industry: searchParams.get('industry') || "",
         website: searchParams.get('website') || "",
-        utilities: searchParams.get('utilities')?.split(',') || []
+        utilities: searchParams.get('utilities')?.split(',') || [],
+        // client_id is not available in URL params; it will be populated when re-fetching from the API.
       };
       
       setSelectedBusiness(businessInfoFromUrl);
@@ -274,7 +277,8 @@ export default function InitialStrategyGeneratorPage() {
           client_folder_url: data.gdrive?.folder_url || "",
           industry: data.business_details?.industry || "",
           website: data.business_details?.website || "",
-          utilities: data.utilities || []
+          utilities: data.utilities || [],
+          client_id: typeof data.client_id === "number" ? data.client_id : null,
         };
         
         setSelectedBusiness(businessInfo);
@@ -565,7 +569,7 @@ export default function InitialStrategyGeneratorPage() {
 
   return (
     <div className="max-w-6xl mx-auto p-6">
-      <h1 className="text-3xl font-bold mb-8 text-gray-800">🚀 Initial Strategy Generator</h1>
+      <PageHeader pageName="Initial Strategy Generator" description="Generate initial strategy and proposals for a business." />
 
       {/* Business Search Section */}
       <div className="mb-8 p-6 bg-gray-50 rounded-lg">

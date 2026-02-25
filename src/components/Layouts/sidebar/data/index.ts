@@ -21,49 +21,18 @@ export const NAV_DATA = [
   {
     label: "Workflows",
     items: [
-      {
-        title: "Client Onboarding",
-        items: [
-          { title: "Google Drive - New Client Creation", url: "/loa-upload" },
-          { title: "Site Profiling", url: "/site-profiling" },
-          { title: "New Client LOA Generation", url: "/new-client-loa" },
-        ],
-      },
-      {
-        title: "Utility Information",
-        items: [
-          { title: "C&I Electricity Invoice Information", url: "/utility-invoice-info/ci-electricity" },
-          { title: "SME Electricity Invoice Information", url: "/utility-invoice-info/sme-electricity" },
-          { title: "C&I Gas Invoice Information", url: "/utility-invoice-info/ci-gas" },
-          { title: "SME Gas Invoice Information", url: "/utility-invoice-info/sme-gas" },
-          { title: "Waste Invoice Information", url: "/utility-invoice-info/waste" },
-          { title: "Oil Invoice Information", url: "/utility-invoice-info/oil" },
-          { title: "Robot Cleaning Data", url: "/utility-invoice-info/robot" },
-        ],
-      },
-      {
-        title: "Strategy & Proposals",
-        items: [
-          { title: "Initial Strategy Generator", url: "/initial-strategy-generator" },
-          { title: "Solutions Strategy Generator", url: "/strategy-generator" },
-          { title: "Canva Page", url: "/canva-pitch-deck" },
-        ],
-      },
-      {
-        title: "Documents",
-        items: [
-          { title: "Document Generation", url: "/document-generation" },
-          { title: "Signed Agreement Lodgement", url: "/signed-agreement-lodgement" },
-          { title: "1st Month Savings Invoice", url: "/one-month-savings" },
-        ],
-      },
-      {
-        title: "Integrations",
-        items: [
-          { title: "Airtable Integration", url: "/airtable-integration" },
-          { title: "Text Agent", url: "/agent" },
-        ],
-      },
+      { title: "Workflows", url: "/workflows", icon: Icons.FourCircle },
+    ],
+  },
+  {
+    label: "CRM",
+    items: [
+      { title: "CRM Dashboard", url: "/crm", icon: Icons.HomeIcon },
+      { title: "Clients", url: "/clients", icon: Icons.User },
+      { title: "Pipeline", url: "/pipeline", icon: Icons.TaskIcon },
+      { title: "Offers", url: "/offers", icon: Icons.Table },
+      { title: "Reports", url: "/reports", icon: Icons.Table },
+      { title: "Activity report", url: "/reports/activities", icon: Icons.Table },
     ],
   },
   {

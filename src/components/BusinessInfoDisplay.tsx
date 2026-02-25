@@ -75,6 +75,8 @@ function FileLink({ label, url }: { label: string; url?: string }) {
 export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: BusinessInfoDisplayProps) {
   if (!info) return null;
   const business = info.business_details || {};
+  const clientIdFromInfo: number | undefined =
+    typeof (info as any).client_id === "number" ? (info as any).client_id : undefined;
   const businessType =
   business.name?.toLowerCase().includes("trust")
     ? "Trust"
@@ -355,7 +357,10 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
     };
     
     params.set('businessInfo', encodeURIComponent(JSON.stringify(businessInfoToPass)));
-    
+    if (clientIdFromInfo != null && clientIdFromInfo !== undefined) {
+      params.set('clientId', String(clientIdFromInfo));
+    }
+
     const url = `/base-2?${params.toString()}`;
     window.open(url, '_blank');
   };
@@ -653,12 +658,24 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
   const fetchClientNotes = async () => {
     try {
       setNotesLoading(true);
-      const res = await fetch(
-        `${getApiBaseUrl()}/api/client-status/${encodeURIComponent(business.name)}`,
-        {
-          headers: { Authorization: `Bearer ${token}` }
-        }
-      );
+
+      let res: Response;
+      if (clientIdFromInfo) {
+        // Prefer client_id-based notes when available; business_name lookup is kept for legacy data.
+        res = await fetch(
+          `${getApiBaseUrl()}/api/clients/${clientIdFromInfo}/notes`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          },
+        );
+      } else {
+        res = await fetch(
+          `${getApiBaseUrl()}/api/client-status/${encodeURIComponent(business.name)}`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          },
+        );
+      }
       
       // Handle different response statuses
       if (res.status === 401) {
@@ -3872,15 +3889,31 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                   if (!currentNote.trim()) return;
                   
                   try {
-                    const url = editingNoteId
-                      ? `${getApiBaseUrl()}/api/client-status/${editingNoteId}`
-                      : `${getApiBaseUrl()}/api/client-status`;
-                    
-                    const method = editingNoteId ? 'PATCH' : 'POST';
-                    
-                    const body = editingNoteId
-                      ? { note: currentNote }
-                      : { business_name: business.name, note: currentNote };
+                    const baseUrl = getApiBaseUrl();
+                    const isEditing = !!editingNoteId;
+
+                    let url: string;
+                    let method: "POST" | "PATCH";
+                    let body: any;
+
+                    if (isEditing) {
+                      url = `${baseUrl}/api/client-status/${editingNoteId}`;
+                      method = "PATCH";
+                      body = { note: currentNote };
+                    } else if (clientIdFromInfo) {
+                      // When available, attach client_id so notes are linked to the canonical CRM client record.
+                      url = `${baseUrl}/api/clients/${clientIdFromInfo}/notes`;
+                      method = "POST";
+                      body = {
+                        business_name: business.name,
+                        note: currentNote,
+                        client_id: clientIdFromInfo,
+                      };
+                    } else {
+                      url = `${baseUrl}/api/client-status`;
+                      method = "POST";
+                      body = { business_name: business.name, note: currentNote };
+                    }
                     
                     const res = await fetch(url, {
                       method,

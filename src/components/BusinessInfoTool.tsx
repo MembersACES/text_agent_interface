@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 import BusinessInfoDisplay from "./BusinessInfoDisplay";
 import { getApiBaseUrl } from "@/lib/utils";
 
@@ -153,6 +154,14 @@ export default function BusinessInfoTool({
         </button>
       </div>
       {error && <div style={{ color: "red", marginTop: 10 }}>{error}</div>}
+      {businessInfo && typeof businessInfo === "object" && businessInfo !== null && (businessInfo as any).client_id != null && (
+        <div style={{ marginTop: 10, fontSize: 14, color: "var(--color-fg-muted, #57606a)" }}>
+          Client saved.{" "}
+          <Link href={`/clients/${(businessInfo as any).client_id}`} className="text-blue-600 hover:underline">
+            View client
+          </Link>
+        </div>
+      )}
       {businessInfo && (
         <div style={{ marginTop: 20, textAlign: "left" }}>
           {typeof businessInfo === 'object' && businessInfo !== null ? (
