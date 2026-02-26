@@ -103,6 +103,8 @@ export default function OfferDetailPage() {
   const [editUtilityType, setEditUtilityType] = useState("");
   const [editUtilityTypeIdentifier, setEditUtilityTypeIdentifier] = useState("");
   const [editIdentifier, setEditIdentifier] = useState("");
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
 
   const documents = useMemo(() => {
     const items: {
@@ -385,15 +387,54 @@ export default function OfferDetailPage() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(typeof data.detail === "string" ? data.detail : "Failed to update offer details");
+        throw new Error(
+          typeof data.detail === "string"
+            ? data.detail
+            : "Failed to update offer details",
+        );
       }
       const updated: Offer = await res.json();
       setOffer(updated);
       setEditingDetails(false);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to update offer details");
+      setError(
+        e instanceof Error
+          ? e.message
+          : "Failed to update offer details",
+      );
     } finally {
       setSavingDetails(false);
+    }
+  };
+
+  const handleDeleteOffer = async () => {
+    if (!offerId || !token) return;
+    try {
+      setDeleteSubmitting(true);
+      setError(null);
+      const res = await fetch(`${getApiBaseUrl()}/api/offers/${offerId}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(
+          typeof data.detail === "string"
+            ? data.detail
+            : "Failed to delete offer",
+        );
+      }
+      window.location.href = "/offers";
+    } catch (e: unknown) {
+      setError(
+        e instanceof Error ? e.message : "Failed to delete offer",
+      );
+    } finally {
+      setDeleteSubmitting(false);
+      setDeleteOpen(false);
     }
   };
 
@@ -411,7 +452,15 @@ export default function OfferDetailPage() {
         : `${offer.utility_type_identifier || offer.utility_type || "Offer"}${offer.identifier ? ` · ${offer.identifier}` : ""}`)
     : "Offer";
   const offerDescription = offer
-    ? `${offer.business_name || "Unlinked member"}${client ? ` – ${CLIENT_STAGE_LABELS[client.stage as keyof typeof CLIENT_STAGE_LABELS] ?? client.stage}` : ""}`
+    ? `${offer.business_name || "Unlinked member"}${
+        client
+          ? ` – ${
+              CLIENT_STAGE_LABELS[
+                client.stage as keyof typeof CLIENT_STAGE_LABELS
+              ] ?? client.stage
+            }`
+          : ""
+      }`
     : undefined;
 
   return (
@@ -502,6 +551,15 @@ export default function OfferDetailPage() {
                   className="inline-flex items-center px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
                 >
                   Log discrepancy email
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeleteOpen(true);
+                  }}
+                  className="inline-flex items-center px-3 py-1.5 rounded-md border border-red-300 text-xs font-medium text-red-700 hover:bg-red-50 dark:border-red-600 dark:text-red-300 dark:hover:bg-red-900/20"
+                >
+                  Delete offer
                 </button>
               </div>
             </div>
@@ -803,7 +861,45 @@ export default function OfferDetailPage() {
             Offer not found.
           </div>
         )}
-      </div>
+          </div>
+      {deleteOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 shadow-lg max-w-md w-full mx-2">
+            <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-2">
+              Delete offer?
+            </h3>
+            <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
+              This will permanently remove this offer and its activities from
+              the CRM. This action cannot be undone.
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (deleteSubmitting) return;
+                  setDeleteOpen(false);
+                }}
+                className="px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"
+                disabled={deleteSubmitting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteOffer}
+                disabled={deleteSubmitting}
+                className="px-3 py-1.5 rounded-md bg-red-600 text-white text-xs font-medium hover:bg-red-700 disabled:opacity-50"
+              >
+                {deleteSubmitting ? "Deleting…" : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

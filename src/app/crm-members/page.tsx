@@ -103,6 +103,9 @@ export default function ClientsPage() {
   const [bulkOwnerOpen, setBulkOwnerOpen] = useState(false);
   const [bulkOwnerEmail, setBulkOwnerEmail] = useState("");
   const [bulkOwnerSubmitting, setBulkOwnerSubmitting] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const PAGE_SIZE = 20;
 
@@ -324,6 +327,46 @@ export default function ClientsPage() {
     }
   };
 
+  const handleDeleteSelectedClients = async () => {
+    if (!token || selectedIds.size === 0) return;
+    setDeleteSubmitting(true);
+    setDeleteError(null);
+    const ids = Array.from(selectedIds);
+    try {
+      await Promise.all(
+        ids.map(async (id) => {
+          const res = await fetch(`${getApiBaseUrl()}/api/clients/${id}`, {
+            method: "DELETE",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+          });
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(
+              typeof data.detail === "string"
+                ? data.detail
+                : `Failed to delete member ${id}`,
+            );
+          }
+        }),
+      );
+      setClients((prev) => prev.filter((c) => !selectedIds.has(c.id)));
+      setTotalClients((prev) =>
+        Math.max(0, prev - selectedIds.size),
+      );
+      setSelectedIds(new Set());
+      setDeleteConfirmOpen(false);
+    } catch (err: unknown) {
+      setDeleteError(
+        err instanceof Error ? err.message : "Failed to delete selected members",
+      );
+    } finally {
+      setDeleteSubmitting(false);
+    }
+  };
+
   return (
     <>
       <PageHeader pageName="Members" description="Browse and open member records across the pipeline." />
@@ -514,6 +557,16 @@ export default function ClientsPage() {
             </button>
             <button
               type="button"
+              onClick={() => {
+                setDeleteError(null);
+                setDeleteConfirmOpen(true);
+              }}
+              className="px-3 py-1.5 rounded-md border border-red-300 text-sm font-medium text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20"
+            >
+              Delete
+            </button>
+            <button
+              type="button"
               onClick={() => setSelectedIds(new Set())}
               className="px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
             >
@@ -555,6 +608,53 @@ export default function ClientsPage() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {deleteConfirmOpen && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 shadow-lg max-w-md w-full mx-2">
+              <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-2">
+                Delete {selectedIds.size} member
+                {selectedIds.size === 1 ? "" : "s"}?
+              </h3>
+              <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
+                This will remove the selected member records from the CRM,
+                including their offers, tasks, and status notes. This action
+                cannot be undone.
+              </p>
+              {deleteError && (
+                <p className="mb-2 text-xs text-red-600 dark:text-red-400">
+                  {deleteError}
+                </p>
+              )}
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (deleteSubmitting) return;
+                    setDeleteConfirmOpen(false);
+                    setDeleteError(null);
+                  }}
+                  className="px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"
+                  disabled={deleteSubmitting}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteSelectedClients}
+                  disabled={deleteSubmitting}
+                  className="px-3 py-1.5 rounded-md bg-red-600 text-white text-xs font-medium hover:bg-red-700 disabled:opacity-50"
+                >
+                  {deleteSubmitting ? "Deleting…" : "Delete"}
+                </button>
+              </div>
             </div>
           </div>
         )}

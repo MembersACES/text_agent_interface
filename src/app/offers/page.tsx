@@ -68,6 +68,9 @@ export default function OffersPage() {
   const [totalOffers, setTotalOffers] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
   const PAGE_SIZE = 20;
+  const [deleteOfferId, setDeleteOfferId] = useState<number | null>(null);
+  const [deleteOfferSubmitting, setDeleteOfferSubmitting] = useState(false);
+  const [deleteOfferError, setDeleteOfferError] = useState<string | null>(null);
 
   const handleCreateOffer = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -110,6 +113,41 @@ export default function OffersPage() {
       setCreateOfferError(e instanceof Error ? e.message : "Failed to create offer");
     } finally {
       setCreateOfferSubmitting(false);
+    }
+  };
+
+  const handleDeleteOffer = async () => {
+    if (!token || deleteOfferId == null) return;
+    setDeleteOfferSubmitting(true);
+    setDeleteOfferError(null);
+    try {
+      const res = await fetch(
+        `${getApiBaseUrl()}/api/offers/${deleteOfferId}`,
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        },
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(
+          typeof data.detail === "string"
+            ? data.detail
+            : "Failed to delete offer",
+        );
+      }
+      setOffers((prev) => prev.filter((o) => o.id !== deleteOfferId));
+      setTotalOffers((prev) => Math.max(0, prev - 1));
+      setDeleteOfferId(null);
+    } catch (err: unknown) {
+      setDeleteOfferError(
+        err instanceof Error ? err.message : "Failed to delete offer",
+      );
+    } finally {
+      setDeleteOfferSubmitting(false);
     }
   };
 
@@ -429,17 +467,73 @@ export default function OffersPage() {
                         {formatDate(o.created_at)}
                       </td>
                       <td className="px-4 py-2 whitespace-nowrap">
-                        <Link
-                          href={`/offers/${o.id}`}
-                          className="text-primary text-xs font-medium hover:underline"
-                        >
-                          View
-                        </Link>
+                        <div className="flex items-center gap-3">
+                          <Link
+                            href={`/offers/${o.id}`}
+                            className="text-primary text-xs font-medium hover:underline"
+                          >
+                            View
+                          </Link>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDeleteOfferError(null);
+                              setDeleteOfferId(o.id);
+                            }}
+                            className="text-xs font-medium text-red-600 hover:underline dark:text-red-400"
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+            </div>
+          </div>
+        )}
+        {deleteOfferId != null && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 shadow-lg max-w-md w-full mx-2">
+              <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-2">
+                Delete offer?
+              </h3>
+              <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
+                This will permanently remove this offer and its activities from
+                the CRM. This action cannot be undone.
+              </p>
+              {deleteOfferError && (
+                <p className="mb-2 text-xs text-red-600 dark:text-red-400">
+                  {deleteOfferError}
+                </p>
+              )}
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (deleteOfferSubmitting) return;
+                    setDeleteOfferId(null);
+                    setDeleteOfferError(null);
+                  }}
+                  className="px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"
+                  disabled={deleteOfferSubmitting}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteOffer}
+                  disabled={deleteOfferSubmitting}
+                  className="px-3 py-1.5 rounded-md bg-red-600 text-white text-xs font-medium hover:bg-red-700 disabled:opacity-50"
+                >
+                  {deleteOfferSubmitting ? "Deleting…" : "Delete"}
+                </button>
+              </div>
             </div>
           </div>
         )}
