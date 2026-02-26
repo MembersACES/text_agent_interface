@@ -50,6 +50,18 @@ export default function Base1Client({
   const [landingError, setLandingError] = useState<string | null>(null);
   const iframeSrc = useMemo(() => base1Url, [base1Url]);
 
+  /** Rows sorted by Timestamp descending (most recent first) */
+  const sortedLandingRows = useMemo(() => {
+    if (!landingRows.length) return [];
+    return [...landingRows].sort((a, b) => {
+      const ta = a["Timestamp"] ?? "";
+      const tb = b["Timestamp"] ?? "";
+      if (!ta) return 1;
+      if (!tb) return -1;
+      return new Date(tb).getTime() - new Date(ta).getTime();
+    });
+  }, [landingRows]);
+
   useEffect(() => {
     console.log("[Base1Client] base1Url prop:", base1Url);
     console.log("[Base1Client] window.location.href:", window.location.href);
@@ -222,7 +234,7 @@ export default function Base1Client({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {landingRows.map((row, idx) => (
+                {sortedLandingRows.map((row, idx) => (
                   <TableRow key={idx}>
                     <TableCell>{row["Company Name"] ?? ""}</TableCell>
                     <TableCell>{row["Contact Name"] ?? ""}</TableCell>
