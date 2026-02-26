@@ -26,6 +26,7 @@ interface Offer {
   document_link?: string | null;
   created_at: string;
   updated_at: string;
+  created_by?: string | null;
   is_existing_client?: boolean;
 }
 
