@@ -17,6 +17,7 @@ interface SearchOffer {
   id: number;
   client_id?: number | null;
   business_name?: string | null;
+  utility_type?: string | null;
   utility_type_identifier?: string | null;
   utility_display?: string | null;
   identifier?: string | null;
