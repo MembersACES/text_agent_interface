@@ -129,7 +129,24 @@ The frontend application will now be running at `http://localhost:8080`.
 4.  Once authenticated, you can use the Business Info tool, retrieve invoices, and test the Drive Filing functionality.
 5.  Check the terminal windows for both projects for logs and error messages.
 
+---
 
+## CRM: Clients, Pipeline & Offers
+
+The CRM shows **all clients** (not just leads). Clients with offers in flight or signed customers live in stages such as **Offer Sent**, **Won**, or **Lost**.
+
+**How to use it**
+
+- **Clients list** — Primary place to work: search, open a client, edit details, add notes, link tasks and offers.
+- **Pipeline board** — High-level overview of where things sit (one glance). Useful as volume grows or when you want to quickly drag a few records through stages. Not meant to replace the Clients list as your main workspace.
+- **Offers** — Can act as the “active work” list (deals/quotes in flight) if you prefer to focus there for live opportunities.
+
+**Existing clients**
+
+- They can sit in **Won** (or a future stage like “Existing Client”) so the pipeline reflects reality.
+- You can rely more on the **Offers** list for active work and use the pipeline mainly for status at a glance.
+
+---
 
 #building 
 docker build -t acesagentinterface .

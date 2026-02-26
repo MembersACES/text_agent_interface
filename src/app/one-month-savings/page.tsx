@@ -47,6 +47,7 @@ interface BusinessInfo {
   contact_name: string;
   position: string;
   client_folder_url: string;
+  client_id?: number | null;
 }
 
 interface InvoiceLineItem {
@@ -116,6 +117,7 @@ export default function OneMonthSavingsPage() {
         contact_name: searchParams.get("contactName") || "",
         position: searchParams.get("position") || "",
         client_folder_url: searchParams.get("clientFolderUrl") || "",
+        // client_id is not available in URL params; it will be populated when re-fetching from the API.
       };
       setBusinessInfo(businessFromUrl);
       setResult(`Business loaded: ${businessName}`);
@@ -199,6 +201,7 @@ export default function OneMonthSavingsPage() {
           contact_name: data.representative_details?.contact_name || "",
           position: data.representative_details?.position || "",
           client_folder_url: data.gdrive?.folder_url || "",
+          client_id: typeof data.client_id === "number" ? data.client_id : null,
         };
         setBusinessInfo(info);
         setResult(`Business found: ${info.business_name}`);

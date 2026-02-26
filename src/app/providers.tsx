@@ -5,6 +5,7 @@ import { ThemeProvider } from "next-themes";
 import { SessionProvider, useSession, signIn } from "next-auth/react";
 import { useEffect } from "react";
 import { ToastProvider } from "@/components/ui/toast";
+import { CommandPaletteProvider } from "@/components/CommandPaletteContext";
 
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { data: session, status } = useSession();
@@ -95,7 +96,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <ThemeProvider defaultTheme="light" attribute="class">
         <SidebarProvider>
           <ToastProvider>
-            <AuthGate>{children}</AuthGate>
+            <CommandPaletteProvider>
+              <AuthGate>{children}</AuthGate>
+            </CommandPaletteProvider>
           </ToastProvider>
         </SidebarProvider>
       </ThemeProvider>

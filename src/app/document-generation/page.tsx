@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { getApiBaseUrl } from "@/lib/utils";
 import { useSearchParams } from "next/navigation";
+import { PageHeader } from "@/components/Layouts/PageHeader";
 
 interface BusinessInfo {
   business_name: string;
@@ -16,6 +17,7 @@ interface BusinessInfo {
   contact_name: string;
   position: string;
   client_folder_url: string;
+  client_id?: number | null;
 }
 
 interface DocumentFormData extends BusinessInfo {
@@ -218,6 +220,7 @@ export default function DocumentGenerationPage() {
           contact_name: data.representative_details?.contact_name || "",
           position: data.representative_details?.position || "",
           client_folder_url: data.gdrive?.folder_url || "",
+          client_id: typeof data.client_id === "number" ? data.client_id : null,
         };
         
         setSelectedBusiness(businessInfo);
@@ -255,6 +258,7 @@ export default function DocumentGenerationPage() {
         contact_name: searchParams.get('contactName') || "",
         position: searchParams.get('position') || "",
         client_folder_url: searchParams.get('clientFolderUrl') || "",
+        // client_id is not available in URL params; it will be populated when re-fetching from the API.
       };
       
       setSelectedBusiness(businessInfoFromUrl);
@@ -402,15 +406,23 @@ export default function DocumentGenerationPage() {
     setLoading(false);
   };
 
-  return (
-    <div className="max-w-4xl mx-auto mt-10 p-6 bg-white rounded-lg shadow-lg">
-      <h1 className="text-3xl font-bold mb-8 text-gray-800">Document Generation</h1>
+  const canGenerate =
+    editableBusinessInfo &&
+    selectedDocumentCategory &&
+    (selectedDocumentCategory !== "business-documents" || selectedBusinessDocumentType) &&
+    (selectedDocumentCategory !== "eoi" || selectedEoiType) &&
+    (selectedDocumentCategory !== "engagement-forms" || selectedEngagementFormType);
 
-      {/* Business Search Section */}
-      <div className="mb-8 p-6 bg-gray-50 rounded-lg">
-        <h2 className="text-xl font-semibold mb-4 text-gray-800">1. Select Business</h2>
-        
-        <div className="flex gap-4 mb-4">
+  return (
+    <div className="max-w-4xl mx-auto mt-10 p-6 pb-28 bg-white dark:bg-gray-dark rounded-lg shadow-lg">
+      <PageHeader pageName="Document Generation" description="Create LOA, EOI, engagement forms, and other client documents." />
+
+      {/* Step 1: Business */}
+      <section className="mb-10 pl-4 border-l-4 border-primary/30 dark:border-primary/40">
+        <h2 className="text-heading-6 font-bold text-dark dark:text-white mb-1">Step 1</h2>
+        <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">Select business</p>
+        <div className="p-6 bg-gray-50 dark:bg-dark-2 rounded-lg">
+          <div className="flex gap-4 mb-4">
           <input
             type="text"
             value={businessQuery}
@@ -537,16 +549,19 @@ export default function DocumentGenerationPage() {
               </div>
             </div>
             
-            <div className="mt-3 text-xs text-gray-600">
+            <div className="mt-3 text-xs text-gray-600 dark:text-gray-400">
               💡 Review and edit the information above before generating your document. All changes will be used in the generated document.
             </div>
           </div>
         )}
-      </div>
+        </div>
+      </section>
 
-      {/* Document Category Selection */}
-      <div className="mb-8">
-        <h2 className="text-xl font-semibold mb-4 text-gray-800">2. Select Document Category</h2>
+      {/* Step 2: Document Category */}
+      <section className="mb-10 pl-4 border-l-4 border-primary/30 dark:border-primary/40">
+        <h2 className="text-heading-6 font-bold text-dark dark:text-white mb-1">Step 2</h2>
+        <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">Select document category</p>
+        <div className="mb-8">
         <div className={`grid grid-cols-1 ${Object.keys(filteredCategories).length > 1 ? 'md:grid-cols-2' : 'md:grid-cols-1 max-w-md mx-auto'} gap-4`}>
           {Object.entries(filteredCategories).map(([category, config]) => (
             <div
@@ -567,16 +582,19 @@ export default function DocumentGenerationPage() {
                 />
                 <h3 className="font-semibold text-lg">{config.label}</h3>
               </div>
-              <p className="text-gray-600 text-sm">{config.description}</p>
+              <p className="text-gray-600 dark:text-gray-400 text-sm">{config.description}</p>
             </div>
           ))}
         </div>
-      </div>
+        </div>
+      </section>
 
-      {/* Business Document Type Selection */}
+      {/* Step 3: Document type (conditional) */}
       {selectedDocumentCategory === "business-documents" && (
-        <div className="mb-8">
-          <h2 className="text-xl font-semibold mb-4 text-gray-800">3. Select Business Document Type</h2>
+        <section className="mb-10 pl-4 border-l-4 border-primary/30 dark:border-primary/40">
+          <h2 className="text-heading-6 font-bold text-dark dark:text-white mb-1">Step 3</h2>
+          <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">Select business document type</p>
+          <div className="mb-8">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {Object.entries(BUSINESS_DOCUMENT_TYPES).map(([type, config]) => (
               <div
@@ -597,17 +615,19 @@ export default function DocumentGenerationPage() {
                   />
                   <h3 className="font-semibold text-lg">{config.label}</h3>
                 </div>
-                <p className="text-gray-600 text-sm">{config.description}</p>
+                <p className="text-gray-600 dark:text-gray-400 text-sm">{config.description}</p>
               </div>
             ))}
           </div>
-        </div>
+          </div>
+        </section>
       )}
 
-      {/* EOI Type Selection */}
       {selectedDocumentCategory === "eoi" && (
-        <div className="mb-8">
-          <h2 className="text-xl font-semibold mb-4 text-gray-800">3. Select EOI Type</h2>
+        <section className="mb-10 pl-4 border-l-4 border-primary/30 dark:border-primary/40">
+          <h2 className="text-heading-6 font-bold text-dark dark:text-white mb-1">Step 3</h2>
+          <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">Select EOI type</p>
+          <div className="mb-8">
           <select
             value={selectedEoiType}
             onChange={(e) => setSelectedEoiType(e.target.value)}
@@ -621,13 +641,15 @@ export default function DocumentGenerationPage() {
               </option>
             ))}
           </select>
-        </div>
+          </div>
+        </section>
       )}
 
-      {/* Engagement Form Type Selection */}
       {selectedDocumentCategory === "engagement-forms" && (
-        <div className="mb-8">
-          <h2 className="text-xl font-semibold mb-4 text-gray-800">3. Select Engagement Form Type</h2>
+        <section className="mb-10 pl-4 border-l-4 border-primary/30 dark:border-primary/40">
+          <h2 className="text-heading-6 font-bold text-dark dark:text-white mb-1">Step 3</h2>
+          <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">Select engagement form type</p>
+          <div className="mb-8">
           <select
             value={selectedEngagementFormType}
             onChange={(e) => setSelectedEngagementFormType(e.target.value)}
@@ -641,32 +663,38 @@ export default function DocumentGenerationPage() {
               </option>
             ))}
           </select>
-        </div>
+          </div>
+        </section>
       )}
 
-      {/* Generate Button */}
-      <button
-        onClick={handleGenerateDocument}
-        disabled={
-          loading || 
-          !editableBusinessInfo || 
-          !selectedDocumentCategory ||
-          (selectedDocumentCategory === "business-documents" && !selectedBusinessDocumentType) ||
-          (selectedDocumentCategory === "eoi" && !selectedEoiType) ||
-          (selectedDocumentCategory === "engagement-forms" && !selectedEngagementFormType)
-        }
-        className="w-full px-6 py-3 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-lg font-medium"
-      >
-        {loading ? "Generating..." : `Generate ${
-          selectedDocumentCategory === "eoi" 
-            ? "Expression of Interest" 
-            : selectedDocumentCategory === "engagement-forms"
-            ? "Engagement Form"
-            : selectedBusinessDocumentType
-              ? BUSINESS_DOCUMENT_TYPES[selectedBusinessDocumentType].label
-              : "Document"
-        }`}
-      </button>
+      {/* Sticky primary action bar */}
+      <div className="sticky bottom-0 -mx-6 -mb-6 px-6 py-4 bg-white dark:bg-gray-dark border-t border-stroke dark:border-dark-3 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-10">
+        <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+          <button
+            onClick={handleGenerateDocument}
+            disabled={loading || !canGenerate}
+            className="flex-1 sm:flex-none px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-base font-medium"
+          >
+            {loading ? "Generating..." : `Generate ${
+              selectedDocumentCategory === "eoi"
+                ? "Expression of Interest"
+                : selectedDocumentCategory === "engagement-forms"
+                ? "Engagement Form"
+                : selectedBusinessDocumentType
+                  ? BUSINESS_DOCUMENT_TYPES[selectedBusinessDocumentType].label
+                  : "Document"
+            }`}
+          </button>
+          {selectedBusiness && (
+            <button
+              onClick={handleNewSearch}
+              className="px-4 py-3 border border-stroke dark:border-dark-3 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-dark-2 transition-colors"
+            >
+              New business search
+            </button>
+          )}
+        </div>
+      </div>
 
       {/* Result Display */}
       {result && (
@@ -682,18 +710,6 @@ export default function DocumentGenerationPage() {
                 .replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-blue-600 underline">$1</a>')
             }}
           />
-        </div>
-      )}
-
-      {/* New Search Button - only show if business is selected */}
-      {selectedBusiness && (
-        <div className="mb-6 flex justify-end">
-          <button
-            onClick={handleNewSearch}
-            className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors text-sm"
-          >
-            🔄 New Business Search
-          </button>
         </div>
       )}
 

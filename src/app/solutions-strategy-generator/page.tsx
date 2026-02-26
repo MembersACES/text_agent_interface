@@ -20,6 +20,7 @@ interface BusinessInfo {
   website?: string;
   utilities?: string[];
   retailers?: any[];
+  client_id?: number | null;
 }
 
 type SolutionCategory =
@@ -697,7 +698,8 @@ export default function IndividualStrategyEmailPage() {
         client_folder_url: searchParams.get('clientFolderUrl') || "",
         industry: searchParams.get('industry') || "",
         website: searchParams.get('website') || "",
-        utilities: searchParams.get('utilities')?.split(',') || []
+        utilities: searchParams.get('utilities')?.split(',') || [],
+        // client_id is not available in URL params; it will be populated when re-fetching from the API.
       };
       
       setSelectedBusiness(businessInfoFromUrl);
@@ -751,7 +753,8 @@ export default function IndividualStrategyEmailPage() {
           client_folder_url: data.gdrive?.folder_url || "",
           industry: data.business_details?.industry || "",
           website: data.business_details?.website || "",
-          utilities: data.utilities || []
+          utilities: data.utilities || [],
+          client_id: typeof data.client_id === "number" ? data.client_id : null,
         };
         
         setSelectedBusiness(businessInfo);

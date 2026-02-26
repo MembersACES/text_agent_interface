@@ -4,6 +4,7 @@ import "@/css/style.css";
 import { Sidebar } from "@/components/Layouts/sidebar";
 import { Header } from "@/components/Layouts/header";
 import FloatingAgentChat from "@/components/FloatingAgentChat";
+import { CommandPalette } from "@/components/CommandPalette";
 
 import "flatpickr/dist/flatpickr.min.css";
 import "jsvectormap/dist/jsvectormap.css";
@@ -43,6 +44,7 @@ export default function RootLayout({ children }: PropsWithChildren) {
 
           {/* 👇 Floating Agent always available on all pages */}
           <FloatingAgentChat />
+          <CommandPalette />
         </Providers>
       </body>
     </html>

@@ -17,7 +17,9 @@ import {
   FileCheck,
   Sparkles,
   FolderPlus,
-  AlertCircle
+  AlertCircle,
+  LayoutDashboard,
+  ListTodo
 } from "lucide-react";
 import { getApiBaseUrl } from "@/lib/utils";
 
@@ -33,11 +35,45 @@ interface Task {
   updated_at: string;
 }
 
+interface PipelineSummary {
+  total_clients: number;
+  by_stage: { stage: string; count: number }[];
+  won_count: number;
+  lost_count: number;
+}
+
+interface TasksSummary {
+  total_tasks: number;
+  by_status: Record<string, number>;
+  overdue: number;
+  due_today: number;
+}
+
+interface OffersSummary {
+  total_offers: number;
+  by_status: Record<string, number>;
+  accepted: number;
+  lost: number;
+  win_rate: number;
+}
+
+interface ActivitiesSummary {
+  total: number;
+  by_type: Record<string, number>;
+}
+
+const crmSectionCards = [
+  { title: "Clients", description: "Browse and manage client records", href: "/clients", icon: Users, color: "from-blue-500 to-indigo-600" },
+  { title: "Pipeline", description: "View pipeline by stage and move clients", href: "/pipeline", icon: LayoutDashboard, color: "from-violet-500 to-purple-600" },
+  { title: "Offers", description: "Manage offers and quote requests", href: "/offers", icon: ListTodo, color: "from-emerald-500 to-teal-600" },
+  { title: "Activity report", description: "Recent offer activities and documents", href: "/reports/activities", icon: FileText, color: "from-amber-500 to-orange-600" },
+];
+
 const navigationCards = [
   // Row 1: Core tools
   {
-    title: "Client Profile",
-    description: "View and manage client information",
+    title: "Member Profile",
+    description: "View and manage the member's information",
     href: "/business-info",
     icon: Users,
     color: "from-blue-500 to-indigo-600",
@@ -150,6 +186,10 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [currentTime, setCurrentTime] = useState(formatTime());
+  const [pipelineSummary, setPipelineSummary] = useState<PipelineSummary | null>(null);
+  const [tasksSummary, setTasksSummary] = useState<TasksSummary | null>(null);
+  const [offersSummary, setOffersSummary] = useState<OffersSummary | null>(null);
+  const [activitiesSummary, setActivitiesSummary] = useState<ActivitiesSummary | null>(null);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -164,11 +204,13 @@ export default function Home() {
       return;
     }
 
-    const fetchTasks = async () => {
+    const fetchTasksAndMetrics = async () => {
       try {
         setLoading(true);
         
-        const response = await fetch(`${getApiBaseUrl()}/api/tasks/my`, {
+        const base = getApiBaseUrl();
+
+        const response = await fetch(`${base}/api/tasks/my`, {
           method: "GET",
           headers: {
             "Authorization": `Bearer ${token}`,
@@ -189,6 +231,70 @@ export default function Home() {
         const data = await response.json();
         const tasksList = Array.isArray(data) ? data : [];
         setTasks(tasksList);
+
+        // Fetch lightweight CRM summaries in parallel
+        try {
+          const [pipelineRes, tasksRes, offersRes, activitiesRes] = await Promise.all([
+            fetch(`${base}/api/reports/pipeline/summary`, {
+              headers: {
+                "Authorization": `Bearer ${token}`,
+                "Content-Type": "application/json",
+              },
+            }),
+            fetch(`${base}/api/reports/tasks/summary`, {
+              headers: {
+                "Authorization": `Bearer ${token}`,
+                "Content-Type": "application/json",
+              },
+            }),
+            fetch(`${base}/api/reports/offers/summary`, {
+              headers: {
+                "Authorization": `Bearer ${token}`,
+                "Content-Type": "application/json",
+              },
+            }),
+            fetch(`${base}/api/reports/activities/summary`, {
+              headers: {
+                "Authorization": `Bearer ${token}`,
+                "Content-Type": "application/json",
+              },
+            }),
+          ]);
+
+          if (pipelineRes.ok) {
+            const ps: PipelineSummary = await pipelineRes.json();
+            setPipelineSummary(ps);
+          } else {
+            setPipelineSummary(null);
+          }
+
+          if (tasksRes.ok) {
+            const ts: TasksSummary = await tasksRes.json();
+            setTasksSummary(ts);
+          } else {
+            setTasksSummary(null);
+          }
+
+          if (offersRes.ok) {
+            const os: OffersSummary = await offersRes.json();
+            setOffersSummary(os);
+          } else {
+            setOffersSummary(null);
+          }
+
+          if (activitiesRes.ok) {
+            const as: ActivitiesSummary = await activitiesRes.json();
+            setActivitiesSummary(as);
+          } else {
+            setActivitiesSummary(null);
+          }
+        } catch (err) {
+          console.warn("Failed to load CRM summaries", err);
+          setPipelineSummary(null);
+          setTasksSummary(null);
+          setOffersSummary(null);
+          setActivitiesSummary(null);
+        }
       } catch (err: any) {
         console.error("Error fetching tasks:", err);
         setTasks([]);
@@ -197,7 +303,7 @@ export default function Home() {
       }
     };
 
-    fetchTasks();
+    fetchTasksAndMetrics();
   }, [token]);
 
   const upcomingTasks = tasks
@@ -236,7 +342,7 @@ export default function Home() {
 
         {/* Compact Task Banner (if tasks exist) */}
         {!loading && upcomingTasks.length > 0 && (
-          <Card className="mb-8 border-l-4 border-l-primary shadow-sm">
+          <Card className="mb-10 border-l-4 border-l-primary shadow-sm">
             <CardContent className="p-4">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
@@ -292,25 +398,169 @@ export default function Home() {
 
         {/* Loading State for Tasks */}
         {loading && (
-          <div className="mb-8">
+          <div className="mb-10">
             <Skeleton className="h-32 w-full" />
           </div>
         )}
 
-        {/* Quick Access Section */}
-        <div className="mb-6">
+        {/* CRM Snapshot */}
+        {!loading && (pipelineSummary || tasksSummary || offersSummary || activitiesSummary) && (
+          <div className="mb-10">
+            <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
+              CRM Snapshot
+            </h2>
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              {pipelineSummary && (
+                <Link href="/pipeline">
+                  <Card className="bg-white dark:bg-dark-2 border border-gray-200 dark:border-dark-3 hover:border-primary/30 transition-colors">
+                    <CardContent className="p-4 space-y-2">
+                      <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                        Pipeline
+                      </p>
+                      <p className="text-2xl font-bold text-dark dark:text-white">
+                        {pipelineSummary.total_clients}
+                        <span className="text-sm font-normal text-gray-500 dark:text-gray-400 ml-1">
+                          clients
+                        </span>
+                      </p>
+                      <div className="flex items-center gap-4 text-xs text-gray-600 dark:text-gray-400">
+                        <span>Won: <span className="font-semibold text-emerald-600 dark:text-emerald-400">{pipelineSummary.won_count}</span></span>
+                        <span>Lost: <span className="font-semibold text-red-600 dark:text-red-400">{pipelineSummary.lost_count}</span></span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+              )}
+
+              {tasksSummary && (
+                <Link href="/tasks">
+                  <Card className="bg-white dark:bg-dark-2 border border-gray-200 dark:border-dark-3 hover:border-primary/30 transition-colors">
+                    <CardContent className="p-4 space-y-2">
+                      <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                        Tasks
+                      </p>
+                      <p className="text-2xl font-bold text-dark dark:text-white">
+                        {tasksSummary.total_tasks}
+                        <span className="text-sm font-normal text-gray-500 dark:text-gray-400 ml-1">
+                          total
+                        </span>
+                      </p>
+                      <div className="flex items-center gap-4 text-xs text-gray-600 dark:text-gray-400">
+                        <span>Overdue: <span className="font-semibold text-red-600 dark:text-red-400">{tasksSummary.overdue}</span></span>
+                        <span>Due today: <span className="font-semibold text-amber-600 dark:text-amber-400">{tasksSummary.due_today}</span></span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+              )}
+
+              {offersSummary && (
+                <Link href="/offers">
+                  <Card className="bg-white dark:bg-dark-2 border border-gray-200 dark:border-dark-3 hover:border-primary/30 transition-colors">
+                    <CardContent className="p-4 space-y-2">
+                      <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        Offers
+                      </p>
+                      <p className="text-2xl font-bold text-dark dark:text-white">
+                        {offersSummary.total_offers}
+                        <span className="text-sm font-normal text-gray-500 dark:text-gray-400 ml-1">
+                          total
+                        </span>
+                      </p>
+                      <div className="flex items-center gap-4 text-xs text-gray-600 dark:text-gray-400">
+                        <span>Accepted: <span className="font-semibold text-emerald-600 dark:text-emerald-400">{offersSummary.accepted}</span></span>
+                        <span>Win rate: <span className="font-semibold">
+                          {offersSummary.total_offers > 0
+                            ? `${Math.round((offersSummary.win_rate || 0) * 100)}%`
+                            : "—"}
+                        </span></span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+              )}
+
+              {activitiesSummary && (
+                <Link href="/reports/activities">
+                  <Card className="bg-white dark:bg-dark-2 border border-gray-200 dark:border-dark-3 hover:border-primary/30 transition-colors">
+                    <CardContent className="p-4 space-y-2">
+                      <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        Offer activities
+                      </p>
+                      <p className="text-2xl font-bold text-dark dark:text-white">
+                        {activitiesSummary.total}
+                        <span className="text-sm font-normal text-gray-500 dark:text-gray-400 ml-1">
+                          total
+                        </span>
+                      </p>
+                      <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-600 dark:text-gray-400">
+                        {Object.entries(activitiesSummary.by_type || {})
+                          .sort((a, b) => b[1] - a[1])
+                          .slice(0, 3)
+                          .map(([type, count]) => (
+                            <span key={type}>
+                              {type.replace(/_/g, " ")}: <span className="font-semibold">{count}</span>
+                            </span>
+                          ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+              )}
+            </div>
+          </div>
+        )}
+        {/* Jump to – tools and workflows in one grid */}
+        <div className="mb-10">
           <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">
-            Quick Access
+            Jump to
           </h2>
+          <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+            Quick access to key tools and workflows. For the full list, use <Link href="/workflows" className="text-primary hover:underline font-medium">Workflows</Link>.
+          </p>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {navigationCards.slice(0, 4).map((card) => {
+            {navigationCards.map((card) => {
               const Icon = card.icon;
               return (
                 <Link key={card.title} href={card.href}>
-                  <Card 
-                    hover 
-                    className="h-full transition-all duration-200 hover:shadow-xl hover:-translate-y-1 active:scale-[0.98] bg-white dark:bg-dark-2"
+                  <Card
+                    hover
+                    className="h-full transition-all duration-200 hover:shadow-xl hover:-translate-y-1 active:scale-[0.98] bg-white dark:bg-dark-2 border border-gray-200 dark:border-dark-3 hover:border-primary/30"
                   >
+                    <CardContent className="p-5">
+                      <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${card.color} flex items-center justify-center mb-4 shadow-lg`}>
+                        <Icon className="w-6 h-6 text-white" />
+                      </div>
+                      <h3 className="font-semibold text-dark dark:text-white mb-1.5 text-base">
+                        {card.title}
+                      </h3>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-3 line-clamp-2">
+                        {card.description}
+                      </p>
+                      <div className="flex items-center text-primary text-sm font-medium">
+                        Open <ArrowRight className="w-4 h-4 ml-1" />
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+              );
+            })}
+          </div>
+          
+        {/* CRM Section - single entry point to all CRM pages */}
+        <div className="mb-10">
+          <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">
+            CRM
+          </h2>
+          <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+            Clients, pipeline, offers, and activity report in one place.
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {crmSectionCards.map((card) => {
+              const Icon = card.icon;
+              return (
+                <Link key={card.title} href={card.href}>
+                  <Card className="h-full transition-all duration-200 hover:shadow-xl hover:-translate-y-1 active:scale-[0.98] bg-white dark:bg-dark-2 border border-gray-200 dark:border-dark-3 hover:border-primary/30">
                     <CardContent className="p-5">
                       <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${card.color} flex items-center justify-center mb-4 shadow-lg`}>
                         <Icon className="w-6 h-6 text-white" />
@@ -331,40 +581,6 @@ export default function Home() {
             })}
           </div>
         </div>
-
-        {/* Workflows Section */}
-        <div>
-          <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">
-            Workflows
-          </h2>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {navigationCards.slice(4, 8).map((card) => {
-              const Icon = card.icon;
-              return (
-                <Link key={card.title} href={card.href}>
-                  <Card 
-                    hover 
-                    className="h-full transition-all duration-200 hover:shadow-xl hover:-translate-y-1 active:scale-[0.98] bg-white dark:bg-dark-2"
-                  >
-                    <CardContent className="p-5">
-                      <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${card.color} flex items-center justify-center mb-4 shadow-lg`}>
-                        <Icon className="w-6 h-6 text-white" />
-                      </div>
-                      <h3 className="font-semibold text-dark dark:text-white mb-1.5 text-base">
-                        {card.title}
-                      </h3>
-                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-3 line-clamp-2">
-                        {card.description}
-                      </p>
-                      <div className="flex items-center text-primary text-sm font-medium">
-                        Open <ArrowRight className="w-4 h-4 ml-1" />
-                      </div>
-                    </CardContent>
-                  </Card>
-                </Link>
-              );
-            })}
-          </div>
         </div>
       </div>
     </div>

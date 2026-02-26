@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 import BusinessInfoDisplay from "./BusinessInfoDisplay";
 import { getApiBaseUrl } from "@/lib/utils";
 
@@ -149,10 +150,18 @@ export default function BusinessInfoTool({
           className="px-4 py-2 rounded bg-blue-600 text-white font-semibold hover:bg-blue-700 focus:outline-none disabled:bg-gray-400"
           disabled={loading}
         >
-          {loading ? "Loading..." : "Get Client Profile"}
+          {loading ? "Loading..." : "Get Member Profile"}
         </button>
       </div>
       {error && <div style={{ color: "red", marginTop: 10 }}>{error}</div>}
+      {businessInfo && typeof businessInfo === "object" && businessInfo !== null && (businessInfo as any).client_id != null && (
+        <div style={{ marginTop: 10, fontSize: 14, color: "var(--color-fg-muted, #57606a)" }}>
+          Member saved.{" "}
+          <Link href={`/members/${(businessInfo as any).client_id}`} className="text-blue-600 hover:underline">
+            View member
+          </Link>
+        </div>
+      )}
       {businessInfo && (
         <div style={{ marginTop: 20, textAlign: "left" }}>
           {typeof businessInfo === 'object' && businessInfo !== null ? (
