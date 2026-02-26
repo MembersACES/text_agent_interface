@@ -51,58 +51,72 @@ function ClientCard({
   const initials = client.business_name
     .split(" ").slice(0, 2).map((w) => w[0]).join("").toUpperCase();
 
-  const content = (
+  return (
     <div
       className={`rounded-lg border bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-700
         hover:border-gray-300 dark:hover:border-gray-600 hover:shadow-sm
-        transition-all duration-150 cursor-grab active:cursor-grabbing p-3
+        transition-all duration-150 p-3 flex items-start gap-2
         ${isDragging ? "opacity-40 scale-[0.97] rotate-1" : ""}`}
-      draggable
-      onDragStart={(e) => { setTimeout(onDragStart, 0); e.dataTransfer.effectAllowed = "move"; }}
-      onDragEnd={onDragEnd}
     >
-      <div className="flex items-start gap-2.5">
-        {onToggleSelect && (
-          <input
-            type="checkbox"
-            checked={selected ?? false}
-            onChange={() => onToggleSelect(client.id)}
-            onClick={(e) => e.stopPropagation()}
-            className="mt-1 shrink-0 rounded border-gray-300 dark:border-gray-600 text-primary focus:ring-primary"
-            aria-label={`Select ${client.business_name}`}
-          />
-        )}
-        <div className="w-7 h-7 rounded-md bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center flex-shrink-0 mt-0.5">
-          <span className="text-[10px] font-bold text-white">{initials}</span>
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-xs font-semibold text-gray-900 dark:text-gray-100 truncate">
-            {client.business_name}
-          </p>
-          {client.primary_contact_email && (
-            <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate mt-0.5">
-              {client.primary_contact_email}
-            </p>
-          )}
-          {client.owner_email && (
-            <p className="text-[10px] text-gray-400 dark:text-gray-500 truncate mt-0.5">
-              {client.owner_email.split("@")[0]}
-            </p>
-          )}
-          {offerCount != null && offerCount > 0 && (
-            <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5 font-medium">
-              {offerCount} offer{offerCount !== 1 ? "s" : ""}
-            </p>
-          )}
-        </div>
+      {/* Drag handle: only this area triggers drag so the card can stay a link */}
+      <div
+        className="shrink-0 cursor-grab active:cursor-grabbing touch-none p-1 -m-1 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+        draggable
+        onDragStart={(e) => {
+          e.dataTransfer.effectAllowed = "move";
+          setTimeout(onDragStart, 0);
+        }}
+        onDragEnd={onDragEnd}
+        title="Drag to move stage"
+        aria-label="Drag to move to another stage"
+      >
+        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+          <circle cx="9" cy="6" r="1.5" />
+          <circle cx="15" cy="6" r="1.5" />
+          <circle cx="9" cy="12" r="1.5" />
+          <circle cx="15" cy="12" r="1.5" />
+          <circle cx="9" cy="18" r="1.5" />
+          <circle cx="15" cy="18" r="1.5" />
+        </svg>
       </div>
+      <Link href={`/clients/${client.id}`} className="flex-1 min-w-0 block" tabIndex={-1}>
+        <div className="flex items-start gap-2.5">
+          {onToggleSelect && (
+            <input
+              type="checkbox"
+              checked={selected ?? false}
+              onChange={() => onToggleSelect(client.id)}
+              onClick={(e) => e.stopPropagation()}
+              className="mt-1 shrink-0 rounded border-gray-300 dark:border-gray-600 text-primary focus:ring-primary"
+              aria-label={`Select ${client.business_name}`}
+            />
+          )}
+          <div className="w-7 h-7 rounded-md bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center flex-shrink-0 mt-0.5">
+            <span className="text-[10px] font-bold text-white">{initials}</span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold text-gray-900 dark:text-gray-100 truncate">
+              {client.business_name}
+            </p>
+            {client.primary_contact_email && (
+              <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate mt-0.5">
+                {client.primary_contact_email}
+              </p>
+            )}
+            {client.owner_email && (
+              <p className="text-[10px] text-gray-400 dark:text-gray-500 truncate mt-0.5">
+                {client.owner_email.split("@")[0]}
+              </p>
+            )}
+            {offerCount != null && offerCount > 0 && (
+              <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5 font-medium">
+                {offerCount} offer{offerCount !== 1 ? "s" : ""}
+              </p>
+            )}
+          </div>
+        </div>
+      </Link>
     </div>
-  );
-
-  return (
-    <Link href={`/clients/${client.id}`} className="block" tabIndex={-1}>
-      {content}
-    </Link>
   );
 }
 
@@ -231,13 +245,15 @@ export default function PipelinePage() {
     return () => { cancelled = true; };
   }, [token, filterMine]);
 
-  // Only render columns for stages that actually have clients, preserving defined order
-  const activeColumns = useMemo(() => {
-    const stageSet = new Set(clients.map((c) => (c.stage || "lead").toLowerCase()));
-    return CLIENT_STAGES
-      .filter((id) => stageSet.has(id.toLowerCase()))
-      .map((id) => ({ id, label: CLIENT_STAGE_LABELS[id] ?? getCfg(id).label }));
-  }, [clients]);
+  // All pipeline stages in order (source of truth: CLIENT_STAGES); empty stages still get a column/drop target
+  const allColumns = useMemo(
+    () =>
+      CLIENT_STAGES.map((id) => ({
+        id,
+        label: CLIENT_STAGE_LABELS[id] ?? getCfg(id).label,
+      })),
+    []
+  );
 
   const grouped = useMemo(() => {
     const g: Record<string, Client[]> = {};
@@ -389,28 +405,33 @@ export default function PipelinePage() {
 
         {loading ? (
           <div className="py-16 text-center text-gray-400 text-sm">Loading pipeline…</div>
-        ) : clients.length === 0 ? (
-          <div className="py-16 text-center text-gray-400 text-sm">No clients in the pipeline yet.</div>
         ) : (
           <div
-            className="grid gap-4"
-            style={{ gridTemplateColumns: `repeat(${Math.min(activeColumns.length, 4)}, minmax(0, 1fr))` }}
+            className="overflow-x-auto overflow-y-hidden pb-2 -mx-1 px-1"
+            style={{ maxHeight: "calc(100vh - 220px)" }}
           >
-            {activeColumns.map((col) => (
-              <PipelineColumn
-                key={col.id}
-                stageKey={col.id}
-                label={col.label}
-                list={grouped[col.id.toLowerCase()] ?? []}
-                offerCountByClientId={offerCountByClientId}
-                dragging={dragging}
-                onDrop={handleDrop}
-                onDragStart={handleDragStart}
-                onDragEnd={handleDragEnd}
-                selectedIds={selectedIds}
-                onToggleSelect={toggleSelectClient}
-              />
-            ))}
+            <div
+              className="grid gap-4 min-h-[420px] w-max"
+              style={{
+                gridTemplateColumns: `repeat(${allColumns.length}, minmax(260px, 280px))`,
+              }}
+            >
+              {allColumns.map((col) => (
+                <PipelineColumn
+                  key={col.id}
+                  stageKey={col.id}
+                  label={col.label}
+                  list={grouped[col.id.toLowerCase()] ?? []}
+                  offerCountByClientId={offerCountByClientId}
+                  dragging={dragging}
+                  onDrop={handleDrop}
+                  onDragStart={handleDragStart}
+                  onDragEnd={handleDragEnd}
+                  selectedIds={selectedIds}
+                  onToggleSelect={toggleSelectClient}
+                />
+              ))}
+            </div>
           </div>
         )}
       </div>
