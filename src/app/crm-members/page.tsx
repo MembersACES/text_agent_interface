@@ -247,7 +247,7 @@ export default function ClientsPage() {
       setAddClientOpen(false);
       setAddClientForm({ business_name: "", primary_contact_email: "", stage: "lead", owner_email: "" });
       setClients((prev) => [created, ...prev]);
-      window.location.href = `/clients/${created.id}`;
+      window.location.href = `/crm-members/${created.id}`;
     } catch (err: any) {
       setAddClientError(err.message || "Failed to create member");
     } finally {
@@ -596,7 +596,7 @@ export default function ClientsPage() {
                             aria-label={`Select ${client.business_name}`}
                           />
                           <Link
-                            href={`/clients/${client.id}`}
+                            href={`/crm-members/${client.id}`}
                             className="block group flex-1 min-w-0"
                           >
                           <Card className="h-full border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 transition-all duration-200 group-hover:shadow-lg group-hover:-translate-y-0.5">

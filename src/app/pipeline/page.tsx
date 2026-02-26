@@ -79,7 +79,7 @@ function ClientCard({
           <circle cx="15" cy="18" r="1.5" />
         </svg>
       </div>
-      <Link href={`/clients/${client.id}`} className="flex-1 min-w-0 block" tabIndex={-1}>
+      <Link href={`/crm-members/${client.id}`} className="flex-1 min-w-0 block" tabIndex={-1}>
         <div className="flex items-start gap-2.5">
           {onToggleSelect && (
             <input

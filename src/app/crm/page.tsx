@@ -269,7 +269,7 @@ export default function CrmDashboardPage() {
             {/* Quick action: Add lead */}
             <div className="mb-8">
               <Link
-                href="/clients?openAdd=1"
+                href="/crm-members?openAdd=1"
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-primary bg-primary/10 text-primary dark:bg-primary/20 dark:border-primary/50 text-sm font-medium hover:bg-primary/20 dark:hover:bg-primary/30 transition-colors"
               >
                 <UserPlus className="w-4 h-4" />

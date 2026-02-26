@@ -147,7 +147,7 @@ export function CommandPalette() {
                     {result!.clients.map((c) => (
                       <li key={`c-${c.id}`}>
                         <Link
-                          href={`/clients/${c.id}`}
+                          href={`/crm-members/${c.id}`}
                           className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-left text-sm text-gray-900 dark:text-gray-100"
                           onClick={() => setOpen(false)}
                         >

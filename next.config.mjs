@@ -4,6 +4,12 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  async redirects() {
+    return [
+      { source: '/clients', destination: '/crm-members', permanent: true },
+      { source: '/clients/:id', destination: '/crm-members/:id', permanent: true },
+    ];
+  },
   images: {
     remotePatterns: [
       {

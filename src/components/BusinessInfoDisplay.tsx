@@ -1,8 +1,9 @@
-import React, { useState, useCallback, useRef } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import { getApiBaseUrl } from "@/lib/utils";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { combineFilesIntoPdf } from "@/lib/combineFiles";
+import { PrimaryButton, SecondaryButton, LinkButton } from "@/components/BusinessInfoButtons";
 
 
 function InfoRow({
@@ -219,7 +220,21 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
     dataReports: false,
     businessTools: false
   });
-  
+  const [showGenerateDocumentsMenu, setShowGenerateDocumentsMenu] = useState(false);
+  const [documentsSectionOpen, setDocumentsSectionOpen] = useState(true);
+  const generateDocumentsMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showGenerateDocumentsMenu) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (generateDocumentsMenuRef.current && !generateDocumentsMenuRef.current.contains(e.target as Node)) {
+        setShowGenerateDocumentsMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showGenerateDocumentsMenu]);
+
   // Helper to strip business name prefix from file names
   const formatFileName = (fileName: string): string => {
     if (!fileName || !business.name) return fileName;
@@ -1338,7 +1353,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                 href={driveUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-green-600 text-white font-semibold hover:bg-green-700 transition-colors text-base shadow-md"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 transition-colors text-base shadow-md"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
@@ -1443,43 +1458,48 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
         </div>
       </div>
 
-      {/* Quick Action Buttons Section */}
+      {/* Quick Actions */}
       <div className="border-b bg-gray-50 px-6 py-4">
-        <h3 className="text-xl font-bold text-gray-800 mb-3 text-center">Quick Actions</h3>
         <div className="flex items-center justify-center gap-4 flex-wrap">
-          <button
-            onClick={() => handleOpenDocumentGeneration('business-documents')}
-            className="px-4 py-2 rounded-lg bg-blue-500 text-white text-base font-semibold hover:bg-blue-600 transition-colors shadow-md"
-          >
-           Generate LOA and SFA
-          </button>
-          <button
-            onClick={() => handleOpenDocumentGeneration('eoi-ef')}
-            className="px-4 py-2 rounded-lg bg-blue-500 text-white text-base font-semibold hover:bg-blue-600 transition-colors shadow-md"
-          >
-           Generate EOI or EF
-          </button>
-          <button
-            onClick={openSolutionsStrategyGenerator}
-            className="px-4 py-2 rounded-lg bg-blue-500 text-white text-base font-semibold hover:bg-blue-600 transition-colors shadow-md"
-          >
-           Generate Solution Documents
-          </button>
-          
-          {onLinkUtility && (
-            <button
-              onClick={onLinkUtility}
-              className="px-4 py-2 rounded-lg bg-blue-500 text-white text-base font-semibold hover:bg-blue-600 transition-colors shadow-md"
+          {/* Generate Documents dropdown */}
+          <div className="relative" ref={generateDocumentsMenuRef}>
+            <PrimaryButton
+              onClick={() => setShowGenerateDocumentsMenu((v) => !v)}
+              className="min-w-[160px]"
             >
-              Link Utility Invoice
-            </button>
-          )}
-          <button
+              Generate Documents {showGenerateDocumentsMenu ? "▲" : "▼"}
+            </PrimaryButton>
+            {showGenerateDocumentsMenu && (
+              <div className="absolute left-0 top-full mt-1 z-50 min-w-[220px] rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+                <button
+                  type="button"
+                  onClick={() => { setShowGenerateDocumentsMenu(false); handleOpenDocumentGeneration('business-documents'); }}
+                  className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
+                >
+                  Generate LOA and SFA
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowGenerateDocumentsMenu(false); handleOpenDocumentGeneration('eoi-ef'); }}
+                  className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
+                >
+                  Generate EOI or EF
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowGenerateDocumentsMenu(false); openSolutionsStrategyGenerator(); }}
+                  className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
+                >
+                  Generate Solution Documents
+                </button>
+              </div>
+            )}
+          </div>
+          {/* Standalone buttons */}
+          <PrimaryButton
             onClick={() => {
               const params = new URLSearchParams();
               params.set('businessName', business.name);
-
-              // Use consistent, human-readable field names
               const businessInfoToPass = {
                 "Business Name": business.name || '',
                 "Business ABN": business.abn || '',
@@ -1491,28 +1511,18 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                 "Contact Name": rep.contact_name || '',
                 "Contact Position": rep.position || '',
               };
-
               params.set('businessInfo', encodeURIComponent(JSON.stringify(businessInfoToPass)));
-
-              // Navigate to LOA upload page in a new tab
               window.open(`/update-loa/upload?${params.toString()}`, '_blank');
             }}
-            className="px-4 py-2 rounded-lg bg-blue-500 text-white text-base font-semibold hover:bg-blue-600 transition-colors shadow-md"
           >
             Update LOA
-          </button>
-          <button
-            onClick={openOneMonthSavings}
-            className="px-4 py-2 rounded-lg bg-emerald-500 text-white text-base font-semibold hover:bg-emerald-600 transition-colors shadow-md"
-          >
+          </PrimaryButton>
+          <PrimaryButton onClick={openOneMonthSavings}>
             1st Month Savings Invoice
-          </button>
-          <button
-            onClick={handleOpenBase2}
-            className="px-4 py-2 rounded-lg bg-purple-500 text-white text-base font-semibold hover:bg-purple-600 transition-colors shadow-md"
-          >
+          </PrimaryButton>
+          <PrimaryButton onClick={handleOpenBase2}>
             Base 2 Review
-          </button>
+          </PrimaryButton>
         </div>
       </div>
 
@@ -1521,16 +1531,16 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
         <div className="flex items-center justify-between mb-2">
           <div className="flex-1"></div>
           <div className="flex items-center gap-2">
-            <h3 className="text-xl font-bold text-gray-800">Client Status Notes</h3>
+            <h3 className="text-xl font-bold text-gray-800">Member Status Notes</h3>
             {/* Info Icon with Tooltip */}
             <div className="relative group">
-              <button className="w-5 h-5 rounded-full bg-blue-100 text-blue-600 hover:bg-blue-200 flex items-center justify-center text-xs font-bold transition-colors">
+              <button className="w-5 h-5 rounded-full bg-gray-200 text-gray-600 hover:bg-gray-300 flex items-center justify-center text-xs font-bold transition-colors">
                 ?
               </button>
               {/* Tooltip */}
               <div className="absolute left-0 top-8 w-72 p-3 bg-gray-900 text-white text-xs rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
                 <div className="space-y-2">
-                  <p className="font-semibold">How Client Status Notes Work:</p>
+                  <p className="font-semibold">How Member Status Notes Work:</p>
                   <ul className="space-y-1 list-disc list-inside">
                     <li>First line appears as the note heading</li>
                     <li>Click any note to expand/collapse full content</li>
@@ -1545,16 +1555,15 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
             </div>
           </div>
           <div className="flex-1 flex justify-end">
-          <button
+          <PrimaryButton
             onClick={() => {
               setCurrentNote('');
               setEditingNoteId(null);
               setShowNoteModal(true);
             }}
-            className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition-colors shadow-md"
           >
-            + Add Client Status Note
-          </button>
+            + Add Member Status Note
+          </PrimaryButton>
           </div>
         </div>
         
@@ -1616,18 +1625,18 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                     
                     {/* Action buttons */}
                     <div className="flex gap-2 flex-shrink-0">
-                      <button 
+                      <LinkButton
                         onClick={(e) => {
                           e.stopPropagation();
                           setCurrentNote(note.note);
                           setEditingNoteId(note.id);
                           setShowNoteModal(true);
                         }}
-                        className="text-blue-600 hover:text-blue-800 text-sm px-3 py-1.5 hover:bg-blue-50 rounded font-medium"
                       >
                         Edit
-                      </button>
-                      <button 
+                      </LinkButton>
+                      <LinkButton
+                        danger
                         onClick={async (e) => {
                           e.stopPropagation();
                           if (!confirm('Delete this note?')) return;
@@ -1649,10 +1658,9 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                             alert('Error deleting note');
                           }
                         }}
-                        className="text-red-600 hover:text-red-800 text-sm px-3 py-1.5 hover:bg-red-50 rounded font-medium"
                       >
                         Delete
-                      </button>
+                      </LinkButton>
                     </div>
                   </div>
                 </div>
@@ -1694,9 +1702,16 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
           </div>
         </div>
 
-        {/* Documents Section */}
+        {/* Documents Section - collapsible */}
         <div id="documents" className="border-t pt-6">
-        <h2 className="text-xl font-bold text-gray-800 mb-3 text-center">Business Documents & Agreements</h2>
+          <button
+            onClick={() => setDocumentsSectionOpen((o) => !o)}
+            className="w-full flex items-center justify-between mb-3 px-1 py-2 rounded hover:bg-gray-50 transition-colors text-left"
+          >
+            <h2 className="text-xl font-bold text-gray-800">Business Documents & Agreements</h2>
+            <span className="text-gray-500">{documentsSectionOpen ? "▲" : "▼"}</span>
+          </button>
+          {documentsSectionOpen && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4" style={{ gridAutoFlow: 'row' }}>
             {/* Business Documents */}
             <div className="min-w-0">
@@ -1757,9 +1772,9 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                         <div className="flex gap-1">
                           {!isWIP && !isAmortisationAssetList && (
                             <>
-                              <button
-                              className="px-2 py-1 border border-gray-300 rounded text-xs text-gray-700 hover:bg-gray-200"
-                              onClick={() => {
+                              <SecondaryButton
+                                size="sm"
+                                onClick={() => {
                                   let filingType = doc.toLowerCase().replace(/[^a-z0-9]+/g, '_');
                                   if (filingType === 'site_profling') filingType = 'site_profiling';
                                   if (filingType === 'service_fee_agreement') filingType = 'savings';
@@ -1768,15 +1783,15 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                                   setDriveModalBusinessName(business.name || "");
                                   setShowDriveModal(true);
                                 }}
-                            >
-                              File
-                            </button>
+                              >
+                                File
+                              </SecondaryButton>
                               </>
                             )}
                           {isAmortisationAssetList && (
                             <>
-                              <button
-                                className="px-2 py-1 border border-blue-300 bg-blue-50 rounded text-xs text-blue-700 hover:bg-blue-100"
+                              <SecondaryButton
+                                size="sm"
                                 onClick={() => {
                                   setDriveModalFilingType('amortisation_excel');
                                   setDriveModalBusinessName(business.name || "");
@@ -1784,9 +1799,9 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                                 }}
                               >
                                 Excel
-                              </button>
-                              <button
-                                className="px-2 py-1 border border-red-300 bg-red-50 rounded text-xs text-red-700 hover:bg-red-100 ml-1"
+                              </SecondaryButton>
+                              <SecondaryButton
+                                size="sm"
                                 onClick={() => {
                                   setDriveModalFilingType('amortisation_pdf');
                                   setDriveModalBusinessName(business.name || "");
@@ -1794,16 +1809,13 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                                 }}
                               >
                                 PDF
-                              </button>
+                              </SecondaryButton>
                             </>
                           )}
                           {doc === "Site Profling" && (
-                            <button
-                              className="px-2 py-1 border border-blue-300 bg-blue-50 rounded text-xs text-blue-700 hover:bg-blue-100"
-                              onClick={handleOpenSiteProfiling}
-                            >
+                            <SecondaryButton size="sm" onClick={handleOpenSiteProfiling}>
                               New
-                            </button>
+                            </SecondaryButton>
                           )}
                         </div>
                       </div>
@@ -1815,18 +1827,6 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
             <div className="min-w-0">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-semibold text-gray-800 text-base">Signed Contracts</h3>
-                <button
-                  onClick={() => {
-                    const params = new URLSearchParams();
-                    params.set('businessName', business.name || '');
-                    window.open(`/signed-agreement-lodgement?${params.toString()}`, '_blank', 'noopener,noreferrer');
-                  }}
-                  className="px-3 py-1.5 rounded bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 flex items-center gap-1"
-                  title="Lodge a new signed agreement for this member"
-                >
-                  <span>+</span>
-                  <span>Lodge Retailer Agreement</span>
-                </button>
               </div>
               <div className="space-y-2">
                 {contracts
@@ -1877,8 +1877,8 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                             )}
                           </div>
                         </div>
-                        <button
-                          className="px-2 py-1 border border-gray-300 rounded text-xs text-gray-700 hover:bg-gray-200"
+                        <SecondaryButton
+                          size="sm"
                           onClick={() => {
                             const filingType = contractKeyMap[key as keyof typeof contractKeyMap] || key.toLowerCase().replace(/[^a-z0-9]+/g, '_');
                             setDriveModalFilingType(filingType);
@@ -1888,7 +1888,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                           }}
                         >
                           File
-                        </button>
+                        </SecondaryButton>
                       </div>
                     );
                   })}
@@ -1899,7 +1899,8 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
               <div className="mb-4">
                 <h3 className="font-semibold text-gray-800 text-base mb-2">Signed EOIs</h3>
                 <div className="flex items-center gap-2 flex-wrap">
-                    <button
+                    <SecondaryButton
+                      size="sm"
                       onClick={async () => {
                         if (eoiRefreshing) return;
                         setEoiRefreshing(true);
@@ -1909,16 +1910,15 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                           setEoiRefreshing(false);
                         }
                       }}
-                      className="px-2 py-1 rounded border border-gray-300 text-xs text-gray-700 hover:bg-gray-100"
                     >
                       {eoiRefreshing ? 'Refreshing…' : 'Refresh'}
-                    </button>
-                    <button
+                    </SecondaryButton>
+                    <PrimaryButton
+                      size="sm"
                       onClick={() => setShowEOIModal(true)}
-                      className="px-3 py-1.5 rounded bg-orange-600 text-white text-xs font-medium hover:bg-orange-700"
                     >
                       Upload EOI
-                    </button>
+                    </PrimaryButton>
                   </div>
                 </div>
               <div className="space-y-2">
@@ -1967,7 +1967,8 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
               <div className="mb-4">
                 <h3 className="font-semibold text-gray-800 text-base mb-2">Signed Engagement Forms</h3>
                 <div className="flex items-center gap-2">
-                  <button
+                  <SecondaryButton
+                    size="sm"
                     onClick={async () => {
                       if (engagementFormsRefreshing) return;
                       setEngagementFormsRefreshing(true);
@@ -1977,10 +1978,9 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                         setEngagementFormsRefreshing(false);
                       }
                     }}
-                    className="px-2 py-1 rounded border border-gray-300 text-xs text-gray-700 hover:bg-gray-100"
                   >
                     {engagementFormsRefreshing ? 'Refreshing…' : 'Refresh'}
-                  </button>
+                  </SecondaryButton>
                   <input
                     ref={engagementFormFileInputRef}
                     type="file"
@@ -1988,13 +1988,13 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                     onChange={handleEngagementFormFileInputChange}
                     className="hidden"
                   />
-                  <button
+                  <PrimaryButton
+                    size="sm"
                     onClick={() => engagementFormFileInputRef.current?.click()}
                     disabled={engagementFormLoading}
-                    className="px-3 py-1.5 rounded bg-purple-600 text-white text-xs font-medium hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {engagementFormLoading ? 'Uploading...' : 'Upload Form'}
-                  </button>
+                  </PrimaryButton>
                 </div>
                 {engagementFormResult && (
                   <div
@@ -2045,7 +2045,8 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
               <div className="mb-4">
                 <h3 className="font-semibold text-gray-800 text-base mb-2">Additional Documents</h3>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <button
+                  <SecondaryButton
+                    size="sm"
                     onClick={async () => {
                       if (additionalDocsRefreshing) return;
                       setAdditionalDocsRefreshing(true);
@@ -2055,16 +2056,15 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                         setAdditionalDocsRefreshing(false);
                       }
                     }}
-                    className="px-2 py-1 rounded border border-gray-300 text-xs text-gray-700 hover:bg-gray-100"
                   >
                     {additionalDocsRefreshing ? 'Refreshing…' : 'Refresh'}
-                  </button>
-                  <button
+                  </SecondaryButton>
+                  <PrimaryButton
+                    size="sm"
                     onClick={() => setShowAdditionalDocModal(true)}
-                    className="px-3 py-1.5 rounded bg-blue-600 text-white text-xs font-medium hover:bg-blue-700"
                   >
                     Upload Document
-                  </button>
+                  </PrimaryButton>
                 </div>
               </div>
               <div className="space-y-2">
@@ -2099,17 +2099,22 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
               </div>
             </div>
           </div>
+          )}
         </div>
         {/* Utilities Section */}
         <div id="utilities" className="border-t pt-6">
-          <div className="flex items-center justify-center gap-4 mb-3">
+          <div className="flex items-center justify-center gap-4 mb-3 flex-wrap">
             <h2 className="text-xl font-bold text-gray-800">Linked Utilities and Retailers</h2>
-            <button
+            {onLinkUtility && (
+              <PrimaryButton onClick={onLinkUtility}>
+                Link Utility Invoice
+              </PrimaryButton>
+            )}
+            <PrimaryButton
               onClick={() => window.open('/document-lodgement', '_blank')}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
             >
               Upload Invoice or Data
-            </button>
+            </PrimaryButton>
           </div>
           {Object.keys(linked).length === 0 && <div className="text-sm text-gray-400 mb-4">No linked utilities</div>}
           
@@ -2170,8 +2175,9 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                               <div className="text-xs text-gray-500 mb-2">Retailer: {retailer}</div>
                             )}
                             <div className="flex flex-wrap gap-1 mt-2">
-                              <button
-                                className="px-2 py-1 border border-gray-300 rounded text-xs text-gray-700 hover:bg-gray-100 flex-1"
+                              <SecondaryButton
+                                size="sm"
+                                className="flex-1"
                                 onClick={() => {
                                   let url = `/utility-invoice-info/${tool}?business_name=${encodeURIComponent(invoiceBusinessName)}&autoSubmit=1`;
                                   if (param !== "business_name" && param !== "client_name") url += `&${param}=${encodeURIComponent(identifier)}`;
@@ -2193,10 +2199,11 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                                 }}
                               >
                                 Account Info
-                              </button>
+                              </SecondaryButton>
                               {tool !== "robot" && tool !== "cleaning" && (
-                                <button
-                                  className="px-2 py-1 border border-gray-300 rounded text-xs text-gray-700 hover:bg-gray-100 flex-1"
+                                <SecondaryButton
+                                  size="sm"
+                                  className="flex-1"
                                   onClick={() => {
                                     setDataRequestSummary({
                                       businessName: invoiceBusinessName,
@@ -2212,11 +2219,12 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                                   }}
                                 >
                                   Data Request
-                                </button>
+                                </SecondaryButton>
                               )}
                               {tool !== "cleaning" && (
-                                <button
-                                  className="px-2 py-1 border border-yellow-300 rounded text-xs text-yellow-700 bg-yellow-50 hover:bg-yellow-100 flex-1"
+                                <SecondaryButton
+                                  size="sm"
+                                  className="flex-1"
                                   onClick={() => {
                                     const businessInfoToPass = {
                                       business_name: business.name,
@@ -2240,12 +2248,13 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                                   }}
                                 >
                                   Quote Request
-                                </button>
+                                </SecondaryButton>
                               )}
                               {/* DMA Quick Access button - only for C&I Electricity */}
                               {key === "C&I Electricity" && tool === "ci-electricity" && (
-                                <button
-                                  className="px-2 py-1 border border-blue-300 rounded text-xs text-blue-700 bg-blue-50 hover:bg-blue-100 flex-1"
+                                <SecondaryButton
+                                  size="sm"
+                                  className="flex-1"
                                   onClick={() => {
                                     let url = `/utility-invoice-info/${tool}?business_name=${encodeURIComponent(invoiceBusinessName)}&autoSubmit=1&autoOpenDMA=1`;
                                     if (param !== "business_name") url += `&${param}=${encodeURIComponent(identifier)}`;
@@ -2266,7 +2275,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                                   }}
                                 >
                                   DMA
-                                </button>
+                                </SecondaryButton>
                               )}
                             </div>
                           </div>
@@ -2498,7 +2507,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                     alert('WIP document not available');
                   }
                 }}
-                className="px-3 py-1.5 rounded border border-green-300 bg-green-50 text-green-700 text-xs font-medium hover:bg-green-100 transition-colors flex items-center gap-1"
+                className="px-3 py-1.5 rounded border border-gray-300 text-gray-700 bg-white text-xs font-medium hover:bg-gray-100 transition-colors flex items-center gap-1"
               >
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
@@ -2616,7 +2625,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                 <div className="text-center py-12 text-sm text-gray-400">
                   {ghgreportingLoading ? (
                     <div className="flex items-center justify-center gap-2">
-                      <div className="animate-spin h-5 w-5 border-2 border-green-600 border-t-transparent rounded-full"></div>
+                      <div className="animate-spin h-5 w-5 border-2 border-blue-600 border-t-transparent rounded-full"></div>
                       <span>Loading GHG reports...</span>
                     </div>
                   ) : (
@@ -2701,7 +2710,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                     alert('WIP document not available');
                   }
                 }}
-                className="px-3 py-1.5 rounded border border-green-300 bg-green-50 text-green-700 text-xs font-medium hover:bg-green-100 transition-colors flex items-center gap-1"
+                className="px-3 py-1.5 rounded border border-gray-300 text-gray-700 bg-white text-xs font-medium hover:bg-gray-100 transition-colors flex items-center gap-1"
               >
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
@@ -2734,7 +2743,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                 <div className="text-center py-8 text-sm text-gray-400">
                   {automationLoading ? (
                     <div className="flex items-center justify-center gap-2">
-                      <div className="animate-spin h-5 w-5 border-2 border-green-600 border-t-transparent rounded-full"></div>
+                      <div className="animate-spin h-5 w-5 border-2 border-blue-600 border-t-transparent rounded-full"></div>
                       Loading...
                     </div>
                   ) : (
@@ -2814,7 +2823,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                     alert('WIP document not available');
                   }
                 }}
-                className="px-3 py-1.5 rounded border border-green-300 bg-green-50 text-green-700 text-xs font-medium hover:bg-green-100 transition-colors flex items-center gap-1"
+                className="px-3 py-1.5 rounded border border-gray-300 text-gray-700 bg-white text-xs font-medium hover:bg-gray-100 transition-colors flex items-center gap-1"
               >
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
@@ -2942,7 +2951,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                   }
                 }}
                 disabled={advocacyLoading}
-                className="px-3 py-1.5 rounded border border-gray-300 text-gray-600 text-xs font-medium hover:bg-gray-50 hover:border-purple-400 hover:text-purple-600 disabled:opacity-50 transition-colors flex items-center gap-1"
+                className="px-3 py-1.5 rounded border border-gray-300 text-gray-600 text-xs font-medium hover:bg-gray-50 hover:border-blue-400 hover:text-blue-600 disabled:opacity-50 transition-colors flex items-center gap-1"
               >
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -2962,7 +2971,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                     alert('WIP document not available');
                   }
                 }}
-                className="px-3 py-1.5 rounded border border-green-300 bg-green-50 text-green-700 text-xs font-medium hover:bg-green-100 transition-colors flex items-center gap-1"
+                className="px-3 py-1.5 rounded border border-gray-300 text-gray-700 bg-white text-xs font-medium hover:bg-gray-100 transition-colors flex items-center gap-1"
               >
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
@@ -3016,7 +3025,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                         alert('Error saving meeting details');
                       }
                     }}
-                    className="px-3 py-1.5 bg-purple-600 text-white rounded-md hover:bg-purple-700 font-medium text-sm"
+                    className="px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium text-sm"
                   >
                     Save Meeting Details
                   </button>
@@ -3117,7 +3126,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                 <div className="text-center py-8 text-sm text-gray-400">
                   {advocacyLoading ? (
                     <div className="flex items-center justify-center gap-2">
-                      <div className="animate-spin h-5 w-5 border-2 border-purple-600 border-t-transparent rounded-full"></div>
+                      <div className="animate-spin h-5 w-5 border-2 border-blue-600 border-t-transparent rounded-full"></div>
                       Loading...
                     </div>
                   ) : (
@@ -3722,7 +3731,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                 Cancel
               </button>
               <button
-                className="px-4 py-2 rounded bg-orange-600 text-white font-semibold hover:bg-orange-700 focus:outline-none"
+                className="px-4 py-2 rounded bg-blue-600 text-white font-semibold hover:bg-blue-700 focus:outline-none"
                 onClick={handleEOISubmit}
                 disabled={!eoiFile || eoiLoading}
               >
@@ -3848,7 +3857,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                 Cancel
               </button>
               <button
-                className="px-4 py-2 rounded bg-purple-600 text-white font-semibold hover:bg-purple-700 focus:outline-none"
+                className="px-4 py-2 rounded bg-blue-600 text-white font-semibold hover:bg-blue-700 focus:outline-none"
                 onClick={handleEngagementFormSubmit}
                 disabled={!engagementFormFile || !engagementFormType.trim() || engagementFormLoading}
               >

@@ -271,7 +271,7 @@ export default function ActivityReportPage() {
                       </td>
                       <td className="px-4 py-2 text-sm">
                         {a.client_id ? (
-                          <Link href={`/clients/${a.client_id}`} className="text-primary hover:underline">
+                          <Link href={`/crm-members/${a.client_id}`} className="text-primary hover:underline">
                             {a.business_name ?? `Client ${a.client_id}`}
                           </Link>
                         ) : (

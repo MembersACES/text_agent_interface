@@ -28,7 +28,7 @@ export const NAV_DATA = [
     label: "CRM",
     items: [
       { title: "CRM Dashboard", url: "/crm", icon: Icons.HomeIcon },
-      { title: "Members", url: "/clients", icon: Icons.User },
+      { title: "Members", url: "/crm-members", icon: Icons.User },
       { title: "Pipeline", url: "/pipeline", icon: Icons.TaskIcon },
       { title: "Offers", url: "/offers", icon: Icons.Table },
       { title: "Reports", url: "/reports", icon: Icons.Table },

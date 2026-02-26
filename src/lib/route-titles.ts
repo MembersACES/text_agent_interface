@@ -47,8 +47,9 @@ const ROUTE_TITLES: Record<string, string> = {
   "/auth/sign-in": "Sign in",
 };
 
-/** Prefix matches for dynamic segments (e.g. /clients/123 -> "Member") */
+/** Prefix matches for dynamic segments (e.g. /crm-members/123 -> "Member") */
 const ROUTE_PREFIX_TITLES: { prefix: string; title: string }[] = [
+  { prefix: "/crm-members/", title: "Member" },
   { prefix: "/clients/", title: "Member" },
   { prefix: "/offers/", title: "Offer" },
 ];
