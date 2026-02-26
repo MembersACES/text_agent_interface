@@ -18,6 +18,7 @@ interface SearchOffer {
   client_id?: number | null;
   business_name?: string | null;
   utility_type_identifier?: string | null;
+  utility_display?: string | null;
   identifier?: string | null;
   status?: string;
 }
@@ -177,7 +178,7 @@ export function CommandPalette() {
                           onClick={() => setOpen(false)}
                         >
                           <span className="truncate">
-                            {o.business_name || "Offer"} {o.utility_type_identifier || o.identifier ? ` · ${o.utility_type_identifier || o.identifier}` : ""}
+                            {o.business_name || "Offer"}{(o.utility_display || o.utility_type_identifier || o.identifier) ? ` · ${(o.utility_display || o.utility_type_identifier || o.utility_type || "Offer") + (o.identifier ? " " + o.identifier : "")}` : ""}
                           </span>
                           {o.status && (
                             <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0 capitalize">

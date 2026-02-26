@@ -51,6 +51,7 @@ interface Offer {
   business_name?: string | null;
   utility_type?: string | null;
   utility_type_identifier?: string | null;
+  utility_display?: string | null;
   identifier?: string | null;
   status: string;
   created_at: string;
@@ -702,8 +703,7 @@ export default function ClientDetailPage() {
                                 href={`/offers/${o.id}`}
                                 className="font-medium text-gray-900 dark:text-gray-100 hover:underline truncate"
                               >
-                                {o.utility_type_identifier || o.utility_type || "Offer"}{" "}
-                                {o.identifier ? `· ${o.identifier}` : ""}
+                                {(o.utility_display || o.utility_type_identifier || o.utility_type || "Offer") + (o.identifier ? " " + o.identifier : "")}
                               </a>
                               <p className="text-xs text-gray-500 dark:text-gray-400">
                                 Created {formatDate(o.created_at)}

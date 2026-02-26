@@ -20,6 +20,7 @@ interface Offer {
   business_name?: string | null;
   utility_type?: string | null;
   utility_type_identifier?: string | null;
+  utility_display?: string | null;
   identifier?: string | null;
   status: OfferStatus;
   estimated_value?: number | null;
@@ -97,6 +98,11 @@ export default function OfferDetailPage() {
   const [loggingDiscrepancy, setLoggingDiscrepancy] = useState(false);
   const [clientsList, setClientsList] = useState<{ id: number; business_name: string }[]>([]);
   const [savingClient, setSavingClient] = useState(false);
+  const [editingDetails, setEditingDetails] = useState(false);
+  const [savingDetails, setSavingDetails] = useState(false);
+  const [editUtilityType, setEditUtilityType] = useState("");
+  const [editUtilityTypeIdentifier, setEditUtilityTypeIdentifier] = useState("");
+  const [editIdentifier, setEditIdentifier] = useState("");
 
   const documents = useMemo(() => {
     const items: {
@@ -347,6 +353,50 @@ export default function OfferDetailPage() {
     }
   };
 
+  const startEditingDetails = () => {
+    if (offer) {
+      setEditUtilityType(offer.utility_type ?? "");
+      setEditUtilityTypeIdentifier(offer.utility_type_identifier ?? "");
+      setEditIdentifier(offer.identifier ?? "");
+      setEditingDetails(true);
+    }
+  };
+
+  const cancelEditingDetails = () => {
+    setEditingDetails(false);
+  };
+
+  const handleSaveDetails = async () => {
+    if (!offerId || !token) return;
+    try {
+      setSavingDetails(true);
+      setError(null);
+      const res = await fetch(`${getApiBaseUrl()}/api/offers/${offerId}`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          utility_type: editUtilityType.trim() || null,
+          utility_type_identifier: editUtilityTypeIdentifier.trim() || null,
+          identifier: editIdentifier.trim() || null,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(typeof data.detail === "string" ? data.detail : "Failed to update offer details");
+      }
+      const updated: Offer = await res.json();
+      setOffer(updated);
+      setEditingDetails(false);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to update offer details");
+    } finally {
+      setSavingDetails(false);
+    }
+  };
+
   if (!offerId) {
     return (
       <div className="mt-4 text-sm text-red-600 dark:text-red-400">
@@ -356,7 +406,9 @@ export default function OfferDetailPage() {
   }
 
   const offerTitle = offer
-    ? `${offer.utility_type_identifier || offer.utility_type || "Offer"}${offer.identifier ? ` · ${offer.identifier}` : ""}`
+    ? (offer.utility_display
+        ? `${offer.utility_display}${offer.identifier ? ` ${offer.identifier}` : ""}`
+        : `${offer.utility_type_identifier || offer.utility_type || "Offer"}${offer.identifier ? ` · ${offer.identifier}` : ""}`)
     : "Offer";
   const offerDescription = offer
     ? `${offer.business_name || "Unlinked member"}${client ? ` – ${CLIENT_STAGE_LABELS[client.stage as keyof typeof CLIENT_STAGE_LABELS] ?? client.stage}` : ""}`
@@ -457,9 +509,70 @@ export default function OfferDetailPage() {
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-3">
                 <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
-                  <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-3">
-                    Offer Details
+                  <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-3 flex items-center justify-between">
+                    <span>Offer Details</span>
+                    {!editingDetails ? (
+                      <button
+                        type="button"
+                        onClick={startEditingDetails}
+                        className="text-xs font-medium text-primary hover:underline"
+                      >
+                        Edit
+                      </button>
+                    ) : null}
                   </h2>
+                  {editingDetails ? (
+                    <div className="space-y-3 text-sm">
+                      <label className="block">
+                        <span className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Utility type</span>
+                        <input
+                          type="text"
+                          value={editUtilityType}
+                          onChange={(e) => setEditUtilityType(e.target.value)}
+                          placeholder="e.g. electricity_ci, gas"
+                          className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 text-sm"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Utility type label (optional)</span>
+                        <input
+                          type="text"
+                          value={editUtilityTypeIdentifier}
+                          onChange={(e) => setEditUtilityTypeIdentifier(e.target.value)}
+                          placeholder="e.g. C&I Electricity"
+                          className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 text-sm"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Identifier (NMI, MIRN, etc.)</span>
+                        <input
+                          type="text"
+                          value={editIdentifier}
+                          onChange={(e) => setEditIdentifier(e.target.value)}
+                          placeholder="e.g. NMI or MIRN"
+                          className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 text-sm"
+                        />
+                      </label>
+                      <div className="flex gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={handleSaveDetails}
+                          disabled={savingDetails}
+                          className="px-3 py-1.5 rounded-md bg-primary text-white text-xs font-medium hover:opacity-90 disabled:opacity-50"
+                        >
+                          {savingDetails ? "Saving…" : "Save"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={cancelEditingDetails}
+                          disabled={savingDetails}
+                          className="px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
                   <dl className="space-y-2 text-sm">
                     <div className="flex justify-between gap-4">
                       <dt className="text-gray-500 dark:text-gray-400">
@@ -474,7 +587,8 @@ export default function OfferDetailPage() {
                         Utility
                       </dt>
                       <dd className="text-gray-900 dark:text-gray-100 text-right">
-                        {offer.utility_type_identifier ||
+                        {offer.utility_display ||
+                          offer.utility_type_identifier ||
                           offer.utility_type ||
                           "—"}
                       </dd>
@@ -514,6 +628,7 @@ export default function OfferDetailPage() {
                       </div>
                     )}
                   </dl>
+                  )}
                 </div>
               </div>
 

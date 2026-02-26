@@ -13,6 +13,7 @@ interface Offer {
   business_name?: string | null;
   utility_type?: string | null;
   utility_type_identifier?: string | null;
+  utility_display?: string | null;
   identifier?: string | null;
   status: OfferStatus;
   created_at: string;
@@ -48,6 +49,8 @@ export default function OffersPage() {
   const [error, setError] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>("");
   const [filterClientId, setFilterClientId] = useState<string>("");
+  const [filterUtility, setFilterUtility] = useState<string>("");
+  const [filterIdentifier, setFilterIdentifier] = useState<string>("");
   const [filterCreatedAfter, setFilterCreatedAfter] = useState<string>("");
   const [filterCreatedBefore, setFilterCreatedBefore] = useState<string>("");
   const [filterMine, setFilterMine] = useState(false);
@@ -149,6 +152,8 @@ export default function OffersPage() {
         params.set("offset", "0");
         if (filterStatus) params.set("status", filterStatus);
         if (filterClientId) params.set("client_id", filterClientId);
+        if (filterUtility.trim()) params.set("utility", filterUtility.trim());
+        if (filterIdentifier.trim()) params.set("identifier", filterIdentifier.trim());
         if (filterCreatedAfter) params.set("created_after", filterCreatedAfter);
         if (filterCreatedBefore) params.set("created_before", filterCreatedBefore);
         if (filterMine) params.set("mine", "1");
@@ -183,7 +188,7 @@ export default function OffersPage() {
     };
 
     fetchOffers();
-  }, [token, filterStatus, filterClientId, filterCreatedAfter, filterCreatedBefore, filterMine]);
+  }, [token, filterStatus, filterClientId, filterUtility, filterIdentifier, filterCreatedAfter, filterCreatedBefore, filterMine]);
 
   const loadMoreOffers = async () => {
     if (!token || loadingMore || offers.length >= totalOffers) return;
@@ -194,6 +199,8 @@ export default function OffersPage() {
       params.set("offset", String(offers.length));
       if (filterStatus) params.set("status", filterStatus);
       if (filterClientId) params.set("client_id", filterClientId);
+      if (filterUtility.trim()) params.set("utility", filterUtility.trim());
+      if (filterIdentifier.trim()) params.set("identifier", filterIdentifier.trim());
       if (filterCreatedAfter) params.set("created_after", filterCreatedAfter);
       if (filterCreatedBefore) params.set("created_before", filterCreatedBefore);
       if (filterMine) params.set("mine", "1");
@@ -235,6 +242,8 @@ export default function OffersPage() {
                   const params = new URLSearchParams();
                   if (filterStatus) params.set("status", filterStatus);
                   if (filterClientId) params.set("client_id", filterClientId);
+                  if (filterUtility.trim()) params.set("utility", filterUtility.trim());
+                  if (filterIdentifier.trim()) params.set("identifier", filterIdentifier.trim());
                   if (filterCreatedAfter) params.set("created_after", filterCreatedAfter);
                   if (filterCreatedBefore) params.set("created_before", filterCreatedBefore);
                   if (filterMine) params.set("mine", "1");
@@ -293,6 +302,26 @@ export default function OffersPage() {
               </select>
             </label>
             <label className="flex items-center gap-2">
+              <span className="text-gray-500 dark:text-gray-400">Utility</span>
+              <input
+                type="text"
+                value={filterUtility}
+                onChange={(e) => setFilterUtility(e.target.value)}
+                placeholder="Type or label"
+                className="rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 w-32"
+              />
+            </label>
+            <label className="flex items-center gap-2">
+              <span className="text-gray-500 dark:text-gray-400">Identifier</span>
+              <input
+                type="text"
+                value={filterIdentifier}
+                onChange={(e) => setFilterIdentifier(e.target.value)}
+                placeholder="NMI, MIRN…"
+                className="rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 w-28"
+              />
+            </label>
+            <label className="flex items-center gap-2">
               <span className="text-gray-500 dark:text-gray-400">From</span>
               <input
                 type="date"
@@ -310,12 +339,14 @@ export default function OffersPage() {
                 className="rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1"
               />
             </label>
-            {(filterStatus || filterClientId || filterCreatedAfter || filterCreatedBefore || filterMine) && (
+            {(filterStatus || filterClientId || filterUtility || filterIdentifier || filterCreatedAfter || filterCreatedBefore || filterMine) && (
               <button
                 type="button"
                 onClick={() => {
                   setFilterStatus("");
                   setFilterClientId("");
+                  setFilterUtility("");
+                  setFilterIdentifier("");
                   setFilterCreatedAfter("");
                   setFilterCreatedBefore("");
                   setFilterMine(false);
@@ -385,7 +416,7 @@ export default function OffersPage() {
                       </td>
                       <td className="px-4 py-2 whitespace-nowrap">
                         <div className="text-gray-900 dark:text-gray-100">
-                          {o.utility_type_identifier || o.utility_type || "—"}
+                          {o.utility_display || o.utility_type_identifier || o.utility_type || "—"}
                         </div>
                       </td>
                       <td className="px-4 py-2 whitespace-nowrap text-gray-700 dark:text-gray-300">
@@ -485,6 +516,7 @@ export default function OffersPage() {
                     placeholder="e.g. electricity_ci, gas"
                     className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 text-sm"
                   />
+                  <span className="block text-xs text-gray-400 dark:text-gray-500 mt-0.5">Recommended — helps filter and track offers</span>
                 </label>
                 <label className="block">
                   <span className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Utility type label (optional)</span>
@@ -497,14 +529,15 @@ export default function OffersPage() {
                   />
                 </label>
                 <label className="block">
-                  <span className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Identifier (NMI, MRIN, etc.)</span>
+                  <span className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Identifier (NMI, MIRN, etc.)</span>
                   <input
                     type="text"
                     value={createOfferForm.identifier}
                     onChange={(e) => setCreateOfferForm((f) => ({ ...f, identifier: e.target.value }))}
-                    placeholder="e.g. NMI or MRIN"
+                    placeholder="e.g. NMI or MIRN"
                     className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 text-sm"
                   />
+                  <span className="block text-xs text-gray-400 dark:text-gray-500 mt-0.5">Recommended for electricity/gas — used in list and filters</span>
                 </label>
                 <label className="block">
                   <span className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Estimated value (optional)</span>

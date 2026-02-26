@@ -32,6 +32,7 @@ interface ActivityItem {
   document_link?: string | null;
   created_at: string;
   created_by?: string | null;
+  offer_display?: string | null;
 }
 
 interface ClientOption {
@@ -280,7 +281,11 @@ export default function ActivityReportPage() {
                       </td>
                       <td className="px-4 py-2 text-sm">
                         <Link href={`/offers/${a.offer_id}`} className="text-primary hover:underline">
-                          Offer #{a.offer_id}
+                          {a.offer_display ? (
+                            <>{a.offer_display} <span className="text-gray-500 dark:text-gray-400">(Offer #{a.offer_id})</span></>
+                          ) : (
+                            <>Offer #{a.offer_id}</>
+                          )}
                         </Link>
                       </td>
                       <td className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300">
