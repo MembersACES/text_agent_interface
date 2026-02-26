@@ -229,8 +229,9 @@ export default function Base1Client({
                   <TableHead className="font-semibold">Contact Number</TableHead>
                   <TableHead className="font-semibold">State</TableHead>
                   <TableHead className="font-semibold">Timestamp</TableHead>
-                  <TableHead className="font-semibold">Additional Notes</TableHead>
+                  <TableHead className="font-semibold">Google Drive Folder</TableHead>
                   <TableHead className="font-semibold">Base 1 Review</TableHead>
+                  <TableHead className="font-semibold">Utility Types</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -242,7 +243,20 @@ export default function Base1Client({
                     <TableCell>{row["Contact Number"] ?? ""}</TableCell>
                     <TableCell>{row["State"] ?? ""}</TableCell>
                     <TableCell className="whitespace-nowrap text-gray-600 dark:text-gray-400">{formatTimestamp(row["Timestamp"] ?? "")}</TableCell>
-                    <TableCell className="max-w-[200px] truncate" title={row["Additional Notes"] ?? ""}>{row["Additional Notes"] ?? ""}</TableCell>
+                    <TableCell>
+                      {row["Google Drive Folder"] ? (
+                        <a
+                          href={row["Google Drive Folder"]}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-[#2d6b5a] hover:underline"
+                        >
+                          Open <ExternalLink className="h-3 w-3" />
+                        </a>
+                      ) : (
+                        "—"
+                      )}
+                    </TableCell>
                     <TableCell>
                       {row["Base 1 Review"] ? (
                         <a
@@ -257,6 +271,7 @@ export default function Base1Client({
                         "—"
                       )}
                     </TableCell>
+                    <TableCell>{row["Utility Types"] ?? ""}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
