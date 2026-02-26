@@ -1822,7 +1822,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                     window.open(`/signed-agreement-lodgement?${params.toString()}`, '_blank', 'noopener,noreferrer');
                   }}
                   className="px-3 py-1.5 rounded bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 flex items-center gap-1"
-                  title="Lodge a new signed agreement for this client"
+                  title="Lodge a new signed agreement for this member"
                 >
                   <span>+</span>
                   <span>Lodge Retailer Agreement</span>
@@ -2129,7 +2129,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
               })(),
               { key: "Waste", label: "Account Number", tool: "waste", param: "account_number", requestType: "waste" },
               { key: "Oil", label: "Account Name", tool: "oil", param: "business_name", requestType: "oil" },
-              { key: "Cleaning", label: "Client Name", tool: "cleaning", param: "client_name", requestType: "cleaning" },
+              { key: "Cleaning", label: "Member Name", tool: "cleaning", param: "client_name", requestType: "cleaning" },
               { key: "Robot", label: "Robot Number", tool: "robot", param: "robot_number", requestType: "robot_data" },
             ]
             .filter(Boolean)

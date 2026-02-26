@@ -42,9 +42,9 @@ export default function CleaningInvoiceInfoPage() {
   return (
     <InfoToolPage
       title="Cleaning Invoice Information"
-      description={"Enter a business name or Client Name to retrieve the latest cleaning invoice details."}
+      description={"Enter a business name or Member Name to retrieve the latest cleaning invoice details."}
       endpoint={`${getApiBaseUrl()}/api/get-cleaning-info`}
-      secondaryField={{ name: "client_name", label: "Client Name" }}
+      secondaryField={{ name: "client_name", label: "Member Name" }}
       initialBusinessName={businessName}
       initialSecondaryValue={clientName}
       autoSubmit={autoSubmit}

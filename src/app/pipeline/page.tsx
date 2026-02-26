@@ -27,7 +27,7 @@ const STAGE_CONFIG: Record<string, { label: string; dot: string; accent: string 
   analysis_in_progress: { label: "Analysis",        dot: "bg-blue-400",    accent: "border-t-blue-400"    },
   offer_sent:           { label: "Offer Sent",      dot: "bg-indigo-400",  accent: "border-t-indigo-400"  },
   won:                  { label: "Won",             dot: "bg-green-400",   accent: "border-t-green-400"   },
-  existing_client:      { label: "Existing Client", dot: "bg-emerald-400", accent: "border-t-emerald-400" },
+  existing_client:      { label: "Existing Member", dot: "bg-emerald-400", accent: "border-t-emerald-400" },
   lost:                 { label: "Lost",            dot: "bg-red-400",     accent: "border-t-red-400"     },
 };
 
@@ -222,7 +222,7 @@ export default function PipelinePage() {
         });
         if (!res.ok) {
           const d = await res.json().catch(() => ({}));
-          throw new Error(d.detail || "Failed to load clients");
+          throw new Error(d.detail || "Failed to load members");
         }
         const data: Client[] = await res.json();
         if (!cancelled) setClients(Array.isArray(data) ? data : []);
@@ -340,7 +340,7 @@ export default function PipelinePage() {
 
   return (
     <>
-      <PageHeader pageName="Pipeline" title="Client Pipeline" description="Drag clients between stages to update their status." />
+      <PageHeader pageName="Pipeline" title="Member Pipeline" description="Drag members between stages to update their status." />
       <div className="mt-4 space-y-5">
         <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
           <label className="flex items-center gap-2 cursor-pointer">
@@ -350,10 +350,10 @@ export default function PipelinePage() {
               onChange={(e) => setFilterMine(e.target.checked)}
               className="rounded border-gray-300 dark:border-gray-600 text-primary focus:ring-primary"
             />
-            <span className="text-sm text-gray-700 dark:text-gray-300">My clients</span>
+            <span className="text-sm text-gray-700 dark:text-gray-300">My members</span>
           </label>
           <span className="text-xs text-gray-500 dark:text-gray-400">
-            Total: <span className="font-semibold text-gray-900 dark:text-gray-100 tabular-nums">{clients.length}</span> clients
+            Total: <span className="font-semibold text-gray-900 dark:text-gray-100 tabular-nums">{clients.length}</span> members
           </span>
         </div>
 

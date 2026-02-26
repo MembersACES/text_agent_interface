@@ -298,7 +298,7 @@ export default function OfferDetailPage() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(typeof data.detail === "string" ? data.detail : "Failed to update client link");
+        throw new Error(typeof data.detail === "string" ? data.detail : "Failed to update member link");
       }
       const updated: Offer = await res.json();
       setOffer(updated);
@@ -309,7 +309,7 @@ export default function OfferDetailPage() {
         setClient(null);
       }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to update client link");
+      setError(e instanceof Error ? e.message : "Failed to update member link");
     } finally {
       setSavingClient(false);
     }
@@ -359,7 +359,7 @@ export default function OfferDetailPage() {
     ? `${offer.utility_type_identifier || offer.utility_type || "Offer"}${offer.identifier ? ` · ${offer.identifier}` : ""}`
     : "Offer";
   const offerDescription = offer
-    ? `${offer.business_name || "Unlinked client"}${client ? ` – ${CLIENT_STAGE_LABELS[client.stage as keyof typeof CLIENT_STAGE_LABELS] ?? client.stage}` : ""}`
+    ? `${offer.business_name || "Unlinked member"}${client ? ` – ${CLIENT_STAGE_LABELS[client.stage as keyof typeof CLIENT_STAGE_LABELS] ?? client.stage}` : ""}`
     : undefined;
 
   return (
@@ -380,14 +380,14 @@ export default function OfferDetailPage() {
           <>
             {offer.is_existing_client && (
               <p className="text-xs text-slate-600 dark:text-slate-400 -mt-2">
-                This offer is for an existing client.
+                This offer is for an existing member.
               </p>
             )}
             <div className="flex flex-col md:flex-row md:items-center md:justify-end gap-3">
               <div className="flex flex-wrap items-center gap-3">
                 <div>
                   <label className="block text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">
-                    Client
+                    Member
                   </label>
                   <select
                     value={offer.client_id ?? "unlinked"}

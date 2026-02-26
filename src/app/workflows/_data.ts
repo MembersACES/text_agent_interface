@@ -27,11 +27,11 @@ export interface WorkflowCard {
 /** Grouped workflow cards for the hub (same card design as home). */
 export const WORKFLOW_CARD_GROUPS: { label: string; cards: WorkflowCard[] }[] = [
   {
-    label: "Client Onboarding",
+    label: "Member Onboarding",
     cards: [
-      { title: "Google Drive - New Client Creation", description: "Create folder structure and file LOA", href: "/loa-upload", icon: FolderPlus, color: "from-green-500 to-emerald-600" },
+      { title: "Google Drive - New Member Creation", description: "Create folder structure and file LOA", href: "/loa-upload", icon: FolderPlus, color: "from-green-500 to-emerald-600" },
       { title: "Site Profiling", description: "Profile and capture site details", href: "/site-profiling", icon: MapPin, color: "from-teal-500 to-cyan-600" },
-      { title: "New Client LOA Generation", description: "Generate new LOA and/or SFA documents", href: "/new-client-loa", icon: FileSignature, color: "from-purple-500 to-pink-600" },
+      { title: "New Member LOA Generation", description: "Generate new LOA and/or SFA documents", href: "/new-client-loa", icon: FileSignature, color: "from-purple-500 to-pink-600" },
     ],
   },
   {
@@ -57,7 +57,7 @@ export const WORKFLOW_CARD_GROUPS: { label: string; cards: WorkflowCard[] }[] = 
   {
     label: "Documents",
     cards: [
-      { title: "Document Generation", description: "Create and manage client documents", href: "/document-generation", icon: FileCheck, color: "from-orange-500 to-amber-600" },
+      { title: "Document Generation", description: "Create and manage member documents", href: "/document-generation", icon: FileCheck, color: "from-orange-500 to-amber-600" },
       { title: "Signed Agreement Lodgement", description: "Lodge signed agreements", href: "/signed-agreement-lodgement", icon: FileUp, color: "from-emerald-500 to-teal-600" },
       { title: "1st Month Savings Invoice", description: "First month savings invoicing", href: "/one-month-savings", icon: Receipt, color: "from-cyan-500 to-blue-600" },
     ],
