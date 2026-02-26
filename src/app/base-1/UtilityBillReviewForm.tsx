@@ -212,7 +212,7 @@ export default function UtilityBillReviewForm() {
   return (
     <Card className="overflow-hidden border border-stroke dark:border-dark-3 bg-white dark:bg-gray-dark">
       <div className="bg-gradient-to-br from-[#1a4d3e] to-[#2d6b5a] px-6 py-8 text-center text-white">
-        <h2 className="text-xl font-semibold tracking-wide">Utility Bill Review Form</h2>
+        <h2 className="text-xl font-semibold tracking-wide">Base 1 Review Form</h2>
         <p className="mt-2 text-sm opacity-90">Complete cost analysis for all your utility services</p>
         <div className="mt-4 flex flex-wrap justify-center gap-2 border-t border-white/20 pt-4">
           {["⚡ Electricity", "🔥 Gas", "💧 Water", "🗑️ Waste", "🍳 Cooking Oil"].map((u) => (
@@ -253,7 +253,7 @@ export default function UtilityBillReviewForm() {
             </div>
             <div>
               <label htmlFor="email" className={labelClass}>
-                Email Address <span className="text-red-600">*</span>
+                Email Address (this will recieve the Base 1 review report & email) <span className="text-red-600">*</span>
               </label>
               <input
                 id="email"

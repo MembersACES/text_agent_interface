@@ -12,3 +12,4 @@ export default function Base1Page() {
     <Base1Client base1Url={BASE1_AGENT_URL} base1Password={BASE1_AGENT_PASSWORD} />
   );
 }
+

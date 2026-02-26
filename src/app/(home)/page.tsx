@@ -72,8 +72,8 @@ const crmSectionCards = [
 const navigationCards = [
   // Row 1: Core tools
   {
-    title: "Client Profile",
-    description: "View and manage client information",
+    title: "Member Profile",
+    description: "View and manage the member's information",
     href: "/business-info",
     icon: Users,
     color: "from-blue-500 to-indigo-600",

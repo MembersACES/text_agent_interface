@@ -79,7 +79,7 @@ export default function BusinessInfoPage() {
         textAlign: "center",
         color: "#1f2937",
         letterSpacing: "-0.02em"
-      }}>Client Profile</h1>
+      }}>Member Profile</h1>
       <div style={{ display: "flex", justifyContent: "center" }}>
         <BusinessInfoTool 
           token={token || ""} 

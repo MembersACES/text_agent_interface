@@ -1,7 +1,7 @@
 # n8n Webhook Analysis - Business Info Page
 
 ## Overview
-When a user clicks "Get Client Profile" on the business-info page, multiple n8n webhook calls are made. This document identifies all webhook calls and highlights opportunities for consolidation.
+When a user clicks "Get Member Profile" on the business-info page, multiple n8n webhook calls are made. This document identifies all webhook calls and highlights opportunities for consolidation.
 
 ## ✅ IMPLEMENTED OPTIMIZATIONS
 
@@ -167,8 +167,8 @@ These webhooks are called later when users perform specific actions (not on init
 - `opex_finance_email` - For sending finance emails (line 3293)
 
 **Note:** 
-- The `return_fileIDs` call after file uploads has been removed. File IDs will be refreshed when the user clicks "Get Client Profile" again.
+- The `return_fileIDs` call after file uploads has been removed. File IDs will be refreshed when the user clicks "Get Member Profile" again.
 - The `pull_additional_documents_WIP` and `pull_signedEOI_WIP` webhooks have been replaced with the unified `pull_wip_both` webhook.
 
-These are action-triggered and not part of the initial "Get Client Profile" flow.
+These are action-triggered and not part of the initial "Get Member Profile" flow.
 

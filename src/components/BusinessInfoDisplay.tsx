@@ -3426,9 +3426,9 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                         const data = await res.json();
                         if (data.status === 'success') {
                           // NOTE: File IDs are now fetched directly from Google Sheets by the backend.
-                          // File IDs will be updated when user clicks "Get Client Profile" again.
+                          // File IDs will be updated when user clicks "Get Member Profile" again.
                           // Set the exact message that triggers modal close
-                          setDriveModalResult('File successfully uploaded! Click "Get Client Profile" to refresh file links.');
+                          setDriveModalResult('File successfully uploaded! Click "Get Member Profile" to refresh file links.');
                           
                           // Store the file in sessionStorage for potential lodgement transfer
                               // Only do this for signed contracts

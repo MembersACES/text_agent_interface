@@ -6,7 +6,7 @@ const ROUTE_TITLES: Record<string, string> = {
   "/": "Dashboard",
   "/tasks": "Tasks",
   "/solution-range": "Solution Range",
-  "/business-info": "Client Profile",
+  "/business-info": "Member Profile",
   "/document-lodgement": "Invoice & Data Lodgement",
   "/base-1": "Base 1 Review Agent",
   "/resources": "Resources",
