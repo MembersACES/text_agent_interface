@@ -63,8 +63,8 @@ interface ActivitiesSummary {
 }
 
 const crmSectionCards = [
-  { title: "Clients", description: "Browse and manage client records", href: "/clients", icon: Users, color: "from-blue-500 to-indigo-600" },
-  { title: "Pipeline", description: "View pipeline by stage and move clients", href: "/pipeline", icon: LayoutDashboard, color: "from-violet-500 to-purple-600" },
+  { title: "Members", description: "Browse and manage member records", href: "/clients", icon: Users, color: "from-blue-500 to-indigo-600" },
+  { title: "Pipeline", description: "View pipeline by stage and move members", href: "/pipeline", icon: LayoutDashboard, color: "from-violet-500 to-purple-600" },
   { title: "Offers", description: "Manage offers and quote requests", href: "/offers", icon: ListTodo, color: "from-emerald-500 to-teal-600" },
   { title: "Activity report", description: "Recent offer activities and documents", href: "/reports/activities", icon: FileText, color: "from-amber-500 to-orange-600" },
 ];
@@ -101,14 +101,14 @@ const navigationCards = [
   },
   // Row 2: Workflows
   {
-    title: "Google Drive - New Client",
+    title: "Google Drive - New Member",
     description: "Create folder structure and file LOA",
     href: "/loa-upload",
     icon: FolderPlus,
     color: "from-green-500 to-emerald-600",
   },
   {
-    title: "New Client LOA",
+    title: "New Member LOA",
     description: "Generate new LOA and/or SFA documents",
     href: "/new-client-loa",
     icon: UserPlus,
@@ -116,7 +116,7 @@ const navigationCards = [
   },
   {
     title: "Document Generation",
-    description: "Create and manage client documents",
+    description: "Create and manage member documents",
     href: "/document-generation",
     icon: FileCheck,
     color: "from-orange-500 to-amber-600",
@@ -420,7 +420,7 @@ export default function Home() {
                       <p className="text-2xl font-bold text-dark dark:text-white">
                         {pipelineSummary.total_clients}
                         <span className="text-sm font-normal text-gray-500 dark:text-gray-400 ml-1">
-                          clients
+                          members
                         </span>
                       </p>
                       <div className="flex items-center gap-4 text-xs text-gray-600 dark:text-gray-400">
@@ -553,7 +553,7 @@ export default function Home() {
             CRM
           </h2>
           <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-            Clients, pipeline, offers, and activity report in one place.
+            Members, pipeline, offers, and activity report in one place.
           </p>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {crmSectionCards.map((card) => {

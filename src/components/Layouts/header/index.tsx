@@ -54,7 +54,7 @@ export function Header() {
           type="button"
           onClick={() => palette?.toggle()}
           className="flex items-center gap-2 rounded-lg border border-stroke dark:border-stroke-dark px-2.5 py-1.5 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-          title="Search clients and offers (Ctrl+K)"
+          title="Search members and offers (Ctrl+K)"
         >
           <Search className="w-4 h-4" />
           <span className="hidden sm:inline">Search</span>

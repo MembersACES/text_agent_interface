@@ -157,7 +157,7 @@ export default function ClientsPage() {
 
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
-          throw new Error(data.detail || data.message || "Failed to load clients");
+          throw new Error(data.detail || data.message || "Failed to load members");
         }
 
         const data = await res.json();
@@ -183,7 +183,7 @@ export default function ClientsPage() {
         }
       } catch (e: unknown) {
         console.error("Error fetching clients", e);
-        setError(e instanceof Error ? e.message : "Failed to load clients");
+        setError(e instanceof Error ? e.message : "Failed to load members");
         setClients([]);
         setTotalClients(0);
       } finally {
@@ -241,7 +241,7 @@ export default function ClientsPage() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.detail || "Failed to create client");
+        throw new Error(data.detail || "Failed to create member");
       }
       const created: Client = await res.json();
       setAddClientOpen(false);
@@ -249,7 +249,7 @@ export default function ClientsPage() {
       setClients((prev) => [created, ...prev]);
       window.location.href = `/clients/${created.id}`;
     } catch (err: any) {
-      setAddClientError(err.message || "Failed to create client");
+      setAddClientError(err.message || "Failed to create member");
     } finally {
       setAddClientSubmitting(false);
     }
@@ -326,7 +326,7 @@ export default function ClientsPage() {
 
   return (
     <>
-      <PageHeader pageName="Clients" description="Browse and open client records across the pipeline." />
+      <PageHeader pageName="Members" description="Browse and open member records across the pipeline." />
       <div className="mt-4">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-6">
           <div />
@@ -389,7 +389,7 @@ export default function ClientsPage() {
                 const blob = await res.blob();
                 const a = document.createElement("a");
                 a.href = URL.createObjectURL(blob);
-                a.download = "clients_export.csv";
+                a.download = "members_export.csv";
                 a.click();
                 URL.revokeObjectURL(a.href);
               }}

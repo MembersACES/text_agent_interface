@@ -378,7 +378,7 @@ export default function OffersPage() {
                           </span>
                           {o.is_existing_client && (
                             <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200">
-                              Existing client
+                              Existing member
                             </span>
                           )}
                         </div>
@@ -472,7 +472,7 @@ export default function OffersPage() {
                     type="text"
                     value={createOfferForm.business_name}
                     onChange={(e) => setCreateOfferForm((f) => ({ ...f, business_name: e.target.value }))}
-                    placeholder={createOfferForm.client_id && createOfferForm.client_id !== "unlinked" ? "Leave blank to use client name" : "e.g. Acme Pty Ltd"}
+                    placeholder={createOfferForm.client_id && createOfferForm.client_id !== "unlinked" ? "Leave blank to use member name" : "e.g. Acme Pty Ltd"}
                     className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 text-sm"
                   />
                 </label>

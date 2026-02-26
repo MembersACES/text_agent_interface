@@ -227,7 +227,7 @@ export default function ClientDetailPage() {
 
         if (!clientRes.ok) {
           const data = await clientRes.json().catch(() => ({}));
-          throw new Error(data.detail || "Failed to load client");
+          throw new Error(data.detail || "Failed to load member");
         }
 
         const clientData: Client = await clientRes.json();
@@ -275,7 +275,7 @@ export default function ClientDetailPage() {
         }
       } catch (e: any) {
         console.error("Error loading client view", e);
-        setError(e.message || "Failed to load client");
+        setError(e.message || "Failed to load member");
       } finally {
         setLoading(false);
       }
@@ -343,13 +343,13 @@ export default function ClientDetailPage() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.detail || "Failed to update client");
+        throw new Error(data.detail || "Failed to update member");
       }
       const updated: Client = await res.json();
       setClient(updated);
       setEditProfileOpen(false);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to update client");
+      setError(e instanceof Error ? e.message : "Failed to update member");
     } finally {
       setEditProfileSubmitting(false);
     }
@@ -463,7 +463,7 @@ export default function ClientDetailPage() {
 
   return (
     <>
-      <PageHeader pageName="Client" title={client?.business_name ?? "Client"} description="Client record and activity overview." />
+      <PageHeader pageName="Member" title={client?.business_name ?? "Member"} description="Member record and activity overview." />
       <div className="mt-4 space-y-4">
         {error && (
           <div className="p-3 rounded-md bg-red-50 border border-red-200 text-sm text-red-700">
@@ -867,7 +867,7 @@ export default function ClientDetailPage() {
                         value={newNote}
                         onChange={(e) => setNewNote(e.target.value)}
                         rows={3}
-                        placeholder="Add a note about this client..."
+                        placeholder="Add a note about this member..."
                         className="w-full px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary"
                       />
                       <div className="flex justify-end">

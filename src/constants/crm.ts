@@ -20,7 +20,7 @@ export const CLIENT_STAGE_LABELS: Record<ClientStage, string> = {
   analysis_in_progress: "Analysis In Progress",
   offer_sent: "Offer Sent",
   won: "Won",
-  existing_client: "Existing Client",
+  existing_client: "Existing Member",
   lost: "Lost",
 };
 

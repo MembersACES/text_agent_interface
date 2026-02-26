@@ -5825,7 +5825,7 @@ function InvoiceResult({ result, session, token, autoOpenDMA = false, autoExpand
         }}>
           {(details.business_name || details.client_name) && (
             <div>
-              <div style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 2 }}>{details.client_name ? 'Client Name' : 'Business'}</div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 2 }}>{details.client_name ? 'Member Name' : 'Business'}</div>
               <div style={{ fontSize: type.key === 'cleaning_invoice_details' ? '14px' : '16px', fontWeight: 600, color: '#111827' }}>{details.business_name || details.client_name}</div>
             </div>
           )}

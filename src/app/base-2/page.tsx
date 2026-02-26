@@ -91,6 +91,30 @@ function normalizeDocumentLink(link: string | undefined): string | undefined {
   return (s.startsWith("http://") || s.startsWith("https://")) ? s : undefined;
 }
 
+/** Modal: choose generate for this site only vs all sites of same type */
+interface GenerateChoiceModalState {
+  open: boolean;
+  comparison: UtilityComparison | null;
+  action: 'comparison' | 'dma';
+  matchingUtilities: UtilityComparison[];
+}
+
+/** One successful generation result for the result modal */
+interface GenerateResultItem {
+  identifier: string;
+  utilityType: string;
+  pdfUrl?: string;
+  spreadsheetUrl?: string;
+}
+
+/** Modal: show generation summary with links */
+interface GenerateResultModalState {
+  open: boolean;
+  actionName: string;
+  results: GenerateResultItem[];
+  errors: string[];
+}
+
 export default function Base2Page() {
   const { data: session } = useSession();
   const searchParams = useSearchParams();
@@ -110,6 +134,19 @@ export default function Base2Page() {
   const [error, setError] = useState<string | null>(null);
   const [businessInfoData, setBusinessInfoData] = useState<any>(null); // Full business info from API
   const [businessInfoFetchDone, setBusinessInfoFetchDone] = useState(false); // So we only run fetchUtilityInvoices once
+
+  const [generateChoiceModal, setGenerateChoiceModal] = useState<GenerateChoiceModalState>({
+    open: false,
+    comparison: null,
+    action: 'comparison',
+    matchingUtilities: [],
+  });
+  const [generateResultModal, setGenerateResultModal] = useState<GenerateResultModalState>({
+    open: false,
+    actionName: '',
+    results: [],
+    errors: [],
+  });
 
   const token = (session as any)?.id_token;
 
@@ -968,16 +1005,20 @@ export default function Base2Page() {
       return;
     }
 
-    // Multiple utilities - ask user
-    const actionName = action === 'dma' ? 'DMA Review' : 'Comparison';
-    const confirmed = window.confirm(
-      `Generate ${actionName} for:\n\n` +
-      `• This site only (${comparison.identifier})\n` +
-      `• All ${matchingUtilities.length} ${comparison.utilityType} sites\n\n` +
-      `Click OK for all sites, Cancel for this site only.`
-    );
+    // Multiple utilities - show in-app choice modal
+    setGenerateChoiceModal({
+      open: true,
+      comparison,
+      action,
+      matchingUtilities,
+    });
+  };
 
-    generateComparison(comparison, action, confirmed);
+  const handleGenerateChoiceConfirm = (generateAll: boolean) => {
+    const { comparison, action } = generateChoiceModal;
+    if (!comparison) return;
+    setGenerateChoiceModal(prev => ({ ...prev, open: false }));
+    generateComparison(comparison, action, generateAll);
   };
 
   const generateComparison = async (
@@ -1168,23 +1209,26 @@ export default function Base2Page() {
       }
     }
 
-    // Show results summary
+    // Show results in in-app result modal (no alert)
     if (results.length > 0 || errors.length > 0) {
       const actionName = action === 'dma' ? 'DMA Review' : 'Comparison';
-      let summary = `${actionName} Generation Summary:\n\n`;
-      if (results.length > 0) {
-        summary += `✅ Successfully generated ${results.length} ${results.length === 1 ? 'comparison' : 'comparisons'}:\n`;
-        results.forEach((r, i) => {
-          summary += `${i + 1}. ${r}\n`;
-        });
-      }
+      const resultItems: GenerateResultItem[] = successResults.map(({ util, result }) => ({
+        identifier: util.identifier,
+        utilityType: util.utilityType,
+        pdfUrl: result.pdf_document_link || undefined,
+        spreadsheetUrl: result.spreadsheet_document_link || undefined,
+      }));
+      setGenerateResultModal({
+        open: true,
+        actionName,
+        results: resultItems,
+        errors,
+      });
       if (errors.length > 0) {
-        summary += `\n❌ Errors (${errors.length}):\n`;
-        errors.forEach((e, i) => {
-          summary += `${i + 1}. ${e}\n`;
-        });
+        setError(`${errors.length} error(s) occurred. See summary for details.`);
+      } else {
+        setError(null);
       }
-      alert(summary);
       if (results.length > 0) {
         setSuccess(true);
         // Log offer activities: use offerId from URL, or create a minimal offer when only clientId is in URL
@@ -1305,9 +1349,6 @@ export default function Base2Page() {
             console.warn('Failed to log offer activities:', err);
           }
         }
-      }
-      if (errors.length > 0) {
-        setError(`${errors.length} error(s) occurred. See alert for details.`);
       }
     }
   };
@@ -2012,6 +2053,117 @@ export default function Base2Page() {
       {success && (
         <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded mb-4">
           ✅ Comparison saved successfully!
+        </div>
+      )}
+
+      {/* Generate choice modal: This site only vs All sites */}
+      {generateChoiceModal.open && generateChoiceModal.comparison && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" aria-modal="true" role="dialog">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full mx-4 p-6">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+              Generate {generateChoiceModal.action === 'dma' ? 'DMA Review' : 'Comparison'} for
+            </h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+              You have {generateChoiceModal.matchingUtilities.length} {generateChoiceModal.comparison.utilityType} site(s). Choose scope:
+            </p>
+            <div className="flex flex-col gap-3">
+              <button
+                type="button"
+                onClick={() => handleGenerateChoiceConfirm(false)}
+                className="w-full px-4 py-3 rounded-lg border-2 border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 font-medium text-left"
+              >
+                This site only ({generateChoiceModal.comparison.identifier})
+              </button>
+              <button
+                type="button"
+                onClick={() => handleGenerateChoiceConfirm(true)}
+                className="w-full px-4 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium"
+              >
+                All {generateChoiceModal.matchingUtilities.length} {generateChoiceModal.comparison.utilityType} sites
+              </button>
+              <button
+                type="button"
+                onClick={() => setGenerateChoiceModal(prev => ({ ...prev, open: false }))}
+                className="w-full px-4 py-2 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 font-medium"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Generate result modal: summary with PDF/Spreadsheet links */}
+      {generateResultModal.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" aria-modal="true" role="dialog">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                {generateResultModal.actionName} generation summary
+              </h3>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1">
+              {generateResultModal.results.length > 0 && (
+                <div className="mb-4">
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+                    Successfully generated {generateResultModal.results.length} {generateResultModal.results.length === 1 ? 'item' : 'items'}:
+                  </p>
+                  <ul className="space-y-3">
+                    {generateResultModal.results.map((item, i) => (
+                      <li key={i} className="border border-gray-200 dark:border-gray-600 rounded-lg p-3">
+                        <p className="font-medium text-gray-900 dark:text-white text-sm mb-2">
+                          {item.utilityType} – {item.identifier}
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {item.pdfUrl && (
+                            <a
+                              href={item.pdfUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center px-3 py-1.5 rounded-md bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200 text-sm font-medium hover:bg-red-200 dark:hover:bg-red-900/50"
+                            >
+                              Open PDF
+                            </a>
+                          )}
+                          {item.spreadsheetUrl && (
+                            <a
+                              href={item.spreadsheetUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center px-3 py-1.5 rounded-md bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200 text-sm font-medium hover:bg-green-200 dark:hover:bg-green-900/50"
+                            >
+                              Open spreadsheet
+                            </a>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {generateResultModal.errors.length > 0 && (
+                <div>
+                  <p className="text-sm font-medium text-red-700 dark:text-red-400 mb-2">
+                    Errors ({generateResultModal.errors.length})
+                  </p>
+                  <ul className="list-disc list-inside text-sm text-red-600 dark:text-red-300 space-y-1">
+                    {generateResultModal.errors.map((e, i) => (
+                      <li key={i}>{e}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+            <div className="p-4 border-t border-gray-200 dark:border-gray-700">
+              <button
+                type="button"
+                onClick={() => setGenerateResultModal(prev => ({ ...prev, open: false }))}
+                className="w-full px-4 py-2 rounded-lg bg-gray-800 dark:bg-gray-700 text-white hover:bg-gray-700 dark:hover:bg-gray-600 font-medium"
+              >
+                Done
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

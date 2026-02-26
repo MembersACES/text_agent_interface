@@ -102,7 +102,7 @@ export function CommandPalette() {
       className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh] px-4 bg-black/50"
       role="dialog"
       aria-modal="true"
-      aria-label="Search clients and offers"
+      aria-label="Search members and offers"
       onClick={() => setOpen(false)}
     >
       <div
@@ -117,7 +117,7 @@ export function CommandPalette() {
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search clients and offers..."
+            placeholder="Search members and offers..."
             className="flex-1 bg-transparent text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none text-sm py-1"
             autoFocus
             aria-label="Search"

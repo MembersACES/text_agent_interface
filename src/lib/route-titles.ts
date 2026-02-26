@@ -12,14 +12,14 @@ const ROUTE_TITLES: Record<string, string> = {
   "/resources": "Resources",
   "/workflows": "Workflows",
   "/crm": "CRM Dashboard",
-  "/clients": "Clients",
+  "/clients": "Members",
   "/pipeline": "Pipeline",
   "/offers": "Offers",
   "/reports": "Reports",
   "/reports/activities": "Activity report",
-  "/loa-upload": "Google Drive - New Client Creation",
+  "/loa-upload": "Google Drive - New Member Creation",
   "/site-profiling": "Site Profiling",
-  "/new-client-loa": "New Client LOA Generation",
+  "/new-client-loa": "New Member LOA Generation",
   "/utility-invoice-info/ci-electricity": "C&I Electricity Invoice Information",
   "/utility-invoice-info/sme-electricity": "SME Electricity Invoice Information",
   "/utility-invoice-info/ci-gas": "C&I Gas Invoice Information",
@@ -47,9 +47,9 @@ const ROUTE_TITLES: Record<string, string> = {
   "/auth/sign-in": "Sign in",
 };
 
-/** Prefix matches for dynamic segments (e.g. /clients/123 -> "Client") */
+/** Prefix matches for dynamic segments (e.g. /clients/123 -> "Member") */
 const ROUTE_PREFIX_TITLES: { prefix: string; title: string }[] = [
-  { prefix: "/clients/", title: "Client" },
+  { prefix: "/clients/", title: "Member" },
   { prefix: "/offers/", title: "Offer" },
 ];
 

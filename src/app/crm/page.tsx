@@ -64,8 +64,8 @@ interface ActivitiesSummary {
 }
 
 const crmSectionCards = [
-  { title: "Clients", description: "Browse and manage client records", href: "/clients", icon: Users, color: "from-blue-500 to-indigo-600" },
-  { title: "Pipeline", description: "View pipeline by stage and move clients", href: "/pipeline", icon: LayoutDashboard, color: "from-violet-500 to-purple-600" },
+  { title: "Members", description: "Browse and manage member records", href: "/clients", icon: Users, color: "from-blue-500 to-indigo-600" },
+  { title: "Pipeline", description: "View pipeline by stage and move members", href: "/pipeline", icon: LayoutDashboard, color: "from-violet-500 to-purple-600" },
   { title: "Offers", description: "Manage offers and quote requests", href: "/offers", icon: ListTodo, color: "from-emerald-500 to-teal-600" },
   { title: "Activity report", description: "Recent offer activities and documents", href: "/reports/activities", icon: FileText, color: "from-amber-500 to-orange-600" },
 ];
@@ -236,7 +236,7 @@ export default function CrmDashboardPage() {
                             yaxis: { labels: { style: { fontSize: "11px" } } },
                             grid: { xaxis: { lines: { show: false } }, yaxis: { lines: { show: false } } },
                           } as ApexOptions}
-                          series={[{ name: "Clients", data: (pipelineSummary?.by_stage ?? []).map((s) => s.count) }]}
+                          series={[{ name: "Members", data: (pipelineSummary?.by_stage ?? []).map((s) => s.count) }]}
                         />
                       </div>
                     </CardContent>
