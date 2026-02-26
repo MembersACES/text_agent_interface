@@ -103,6 +103,9 @@ export default function ClientsPage() {
   const [bulkOwnerOpen, setBulkOwnerOpen] = useState(false);
   const [bulkOwnerEmail, setBulkOwnerEmail] = useState("");
   const [bulkOwnerSubmitting, setBulkOwnerSubmitting] = useState(false);
+  const [bulkStageOpen, setBulkStageOpen] = useState(false);
+  const [bulkStage, setBulkStage] = useState<ClientStage>("lead");
+  const [bulkStageSubmitting, setBulkStageSubmitting] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -276,18 +279,19 @@ export default function ClientsPage() {
     return groups;
   }, [clients]);
 
-  const toggleSelectClient = (id: number) => {
+  const toggleSelectClient = (id: number | string) => {
+    const numericId = Number(id);
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(numericId)) next.delete(numericId);
+      else next.add(numericId);
       return next;
     });
   };
 
   const toggleSelectAll = () => {
     if (selectedIds.size === clients.length) setSelectedIds(new Set());
-    else setSelectedIds(new Set(clients.map((c) => c.id)));
+    else setSelectedIds(new Set(clients.map((c) => Number(c.id))));
   };
 
   const handleBulkAssignOwner = async (e: React.FormEvent) => {
@@ -297,7 +301,7 @@ export default function ClientsPage() {
     if (!email) return;
     setBulkOwnerSubmitting(true);
     try {
-      const res = await fetch(`${getApiBaseUrl()}/api/clients/bulk`, {
+      const res = await fetch(`${getApiBaseUrl()}/api/client-bulk-update`, {
         method: "PATCH",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -324,6 +328,87 @@ export default function ClientsPage() {
       setError(err instanceof Error ? err.message : "Failed to update owners");
     } finally {
       setBulkOwnerSubmitting(false);
+    }
+  };
+
+  const handleBulkUpdateStage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!token || selectedIds.size === 0) return;
+    const stage = bulkStage;
+    if (!stage) return;
+    const clientIds = Array.from(selectedIds).map((id) => Number(id));
+    console.log("[CRM] Bulk stage update → request", {
+      clientIds,
+      stage,
+      tokenPresent: !!token,
+    });
+    setBulkStageSubmitting(true);
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/client-bulk-update`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          client_ids: clientIds,
+          stage,
+        }),
+      });
+      if (!res.ok) {
+        let message = "Failed to update status";
+        try {
+          const text = await res.text();
+          let parsed: any = null;
+          try {
+            parsed = text ? JSON.parse(text) : null;
+          } catch {
+            // ignore JSON parse errors; we'll log raw text below
+          }
+
+          console.error("[CRM] Bulk stage update → non-OK response", {
+            url: `${getApiBaseUrl()}/api/client-bulk-update`,
+            status: res.status,
+            statusText: res.statusText,
+            rawBody: text,
+            parsedBody: parsed,
+          });
+
+          if (parsed) {
+            if (typeof parsed.detail === "string") {
+              message = parsed.detail;
+            } else if (Array.isArray(parsed.detail) && parsed.detail.length) {
+              const msgs = parsed.detail
+                .map((d: any) => d?.msg || d?.detail)
+                .filter(Boolean);
+              if (msgs.length) {
+                message = msgs.join("; ");
+              }
+            } else if (typeof parsed.message === "string") {
+              message = parsed.message;
+            }
+          } else if (res.status === 401) {
+            message = "Authentication required. Please log in again.";
+          }
+        } catch (parseErr) {
+          console.error("Error reading bulk status update error response", parseErr);
+        }
+        throw new Error(message);
+      }
+      const updated: Client[] = await res.json();
+      setClients((prev) =>
+        prev.map((c) => {
+          const u = updated.find((x) => x.id === c.id);
+          return u ? { ...c, stage: u.stage } : c;
+        }),
+      );
+      setBulkStageOpen(false);
+      setSelectedIds(new Set());
+    } catch (err) {
+      console.error(err);
+      setError(err instanceof Error ? err.message : "Failed to update status");
+    } finally {
+      setBulkStageSubmitting(false);
     }
   };
 
@@ -558,6 +643,16 @@ export default function ClientsPage() {
             <button
               type="button"
               onClick={() => {
+                setBulkStage("lead");
+                setBulkStageOpen(true);
+              }}
+              className="px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
+            >
+              Change status
+            </button>
+            <button
+              type="button"
+              onClick={() => {
                 setDeleteError(null);
                 setDeleteConfirmOpen(true);
               }}
@@ -605,6 +700,48 @@ export default function ClientsPage() {
                     className="px-3 py-1.5 rounded-md bg-primary text-white text-sm font-medium disabled:opacity-50"
                   >
                     {bulkOwnerSubmitting ? "Saving…" : "Assign"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {bulkStageOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" role="dialog" aria-modal="true">
+            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 shadow-lg max-w-md w-full mx-2">
+              <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-3">
+                Change status for {selectedIds.size} member{selectedIds.size === 1 ? "" : "s"}
+              </h3>
+              <form onSubmit={handleBulkUpdateStage} className="space-y-3">
+                <label className="block">
+                  <span className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Select status</span>
+                  <select
+                    value={bulkStage}
+                    onChange={(e) => setBulkStage(e.target.value as ClientStage)}
+                    className="w-full px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100"
+                  >
+                    {CLIENT_STAGES.map((s) => (
+                      <option key={s} value={s}>
+                        {CLIENT_STAGE_LABELS[s]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => { setBulkStageOpen(false); }}
+                    className="px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-sm font-medium"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={bulkStageSubmitting}
+                    className="px-3 py-1.5 rounded-md bg-primary text-white text-sm font-medium disabled:opacity-50"
+                  >
+                    {bulkStageSubmitting ? "Saving…" : "Update status"}
                   </button>
                 </div>
               </form>
@@ -689,7 +826,7 @@ export default function ClientsPage() {
                         <div key={client.id} className="flex items-start gap-2">
                           <input
                             type="checkbox"
-                            checked={selectedIds.has(client.id)}
+                            checked={selectedIds.has(Number(client.id))}
                             onChange={() => toggleSelectClient(client.id)}
                             onClick={(e) => e.stopPropagation()}
                             className="mt-4 shrink-0 rounded border-gray-300 dark:border-gray-600 text-primary focus:ring-primary"
@@ -728,15 +865,16 @@ export default function ClientsPage() {
                                 <StageBadge stage={client.stage} />
                               </div>
                               {client.gdrive_folder_url && (
-                                <a
-                                  href={client.gdrive_folder_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  onClick={(e) => e.stopPropagation()}
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    window.open(client.gdrive_folder_url!, "_blank", "noreferrer");
+                                  }}
                                   className="inline-flex items-center text-xs text-primary hover:underline mt-1"
                                 >
                                   Open Drive
-                                </a>
+                                </button>
                               )}
                             </CardContent>
                           </Card>

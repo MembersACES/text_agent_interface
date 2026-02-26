@@ -227,7 +227,7 @@ export default function UtilityBillReviewForm() {
           <div className="grid gap-5 sm:grid-cols-2">
             <div>
               <label htmlFor="fullName" className={labelClass}>
-                Full Name <span className="text-red-600">*</span>
+                Member Contact Name <span className="text-red-600">*</span>
               </label>
               <input
                 id="fullName"

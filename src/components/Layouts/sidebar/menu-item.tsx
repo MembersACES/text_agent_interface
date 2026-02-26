@@ -51,10 +51,13 @@ export function MenuItem(
     <button
       onClick={props.onClick}
       aria-expanded={props.isActive}
-      className={menuItemBaseStyles({
-        isActive: props.isActive,
-        className: "flex w-full items-center gap-3 py-3",
-      })}
+      className={cn(
+        menuItemBaseStyles({
+          isActive: props.isActive,
+          className: "flex w-full items-center gap-3 py-3",
+        }),
+        props.className,
+      )}
     >
       {props.children}
     </button>
