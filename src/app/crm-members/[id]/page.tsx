@@ -225,12 +225,12 @@ export default function ClientDetailPage() {
         description="Member record and activity overview."
       />
 
-      <div className="mt-4 space-y-4">
+      <div className="mt-4 space-y-4 lg:space-y-6">
         {error && (
-          <div className="p-3 rounded-md bg-red-50 border border-red-200 text-sm text-red-700 dark:bg-red-900/20 dark:border-red-800 dark:text-red-400">
-            {error}
-          </div>
-        )}
+            <div className="rounded-md border border-red-200/80 bg-red-50/80 px-3 py-2.5 text-xs text-red-700 dark:border-red-800/80 dark:bg-red-900/20 dark:text-red-300">
+              {error}
+            </div>
+          )}
 
         {loading && !client ? (
           <MemberLoadingSkeleton />
@@ -241,32 +241,38 @@ export default function ClientDetailPage() {
           />
         ) : (
           <>
-            <MemberProfileHeader
-              client={client}
-              stageValue={stageValue}
-              savingStage={actions.savingStage}
-              onStageChange={(value) => {
-                setStageValue(value);
-                actions.handleStageChange(value);
-              }}
-              onEditProfile={() => {
-                setEditProfileForm({
-                  business_name: client.business_name ?? "",
-                  primary_contact_email: client.primary_contact_email ?? "",
-                  gdrive_folder_url: client.gdrive_folder_url ?? "",
-                  owner_email: client.owner_email ?? "",
-                });
-                setEditProfileOpen(true);
-                setError(null);
-              }}
-              firstOfferId={offers[0]?.id ?? null}
-              businessInfo={businessInfo}
-            />
+                        <div className="rounded-xl border border-gray-200/80 dark:border-dark-3 bg-white dark:bg-dark-2 shadow-sm">
+              <div className="px-4 py-3 lg:px-5 lg:py-4">
+                <MemberProfileHeader
+                  client={client}
+                  stageValue={stageValue}
+                  savingStage={actions.savingStage}
+                  onStageChange={(value) => {
+                    setStageValue(value);
+                    actions.handleStageChange(value);
+                  }}
+                  onEditProfile={() => {
+                    setEditProfileForm({
+                      business_name: client.business_name ?? "",
+                      primary_contact_email: client.primary_contact_email ?? "",
+                      gdrive_folder_url: client.gdrive_folder_url ?? "",
+                      owner_email: client.owner_email ?? "",
+                    });
+                    setEditProfileOpen(true);
+                    setError(null);
+                  }}
+                  firstOfferId={offers[0]?.id ?? null}
+                  businessInfo={businessInfo}
+                />
+              </div>
 
-            <MemberTabs basePath={basePath} tabs={tabConfig} />
+              <div className="border-t border-gray-200/80 dark:border-dark-3 px-3">
+                <MemberTabs basePath={basePath} tabs={tabConfig} />
+              </div>
+            </div>
 
-            <div className="grid gap-4 lg:grid-cols-4">
-              <main className="space-y-4 lg:col-span-3">
+            <div className="grid gap-4 lg:gap-6 lg:grid-cols-4">
+              <main className="space-y-4 lg:space-y-5 lg:col-span-3">
                 {tab === "overview" && (
                   <OverviewTab
                     businessInfo={businessInfo}
@@ -277,6 +283,7 @@ export default function ClientDetailPage() {
                     tasks={tasks}
                     offers={offers}
                     activities={activities}
+                    notes={notes}
                     onCreateOfferClick={() => {
                       setCreateOfferOpen(true);
                       setError(null);
@@ -370,28 +377,28 @@ export default function ClientDetailPage() {
               title="Edit client profile"
               footer={
                 <div className="flex justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setEditProfileOpen(false)}
-                    className="px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    form="edit-profile-form"
-                    disabled={actions.editProfileSubmitting}
-                    className="px-3 py-1.5 rounded-md bg-primary text-white text-xs font-medium hover:opacity-90 disabled:opacity-50"
-                  >
-                    {actions.editProfileSubmitting ? "Saving..." : "Save"}
-                  </button>
+                            <button
+            type="button"
+            onClick={() => setEditProfileOpen(false)}
+            className="px-3.5 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-xs font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            form="edit-profile-form"
+            disabled={actions.editProfileSubmitting}
+            className="px-3.5 py-1.5 rounded-md bg-primary text-white text-xs font-medium shadow-sm hover:bg-primary/90 disabled:opacity-50"
+          >
+            {actions.editProfileSubmitting ? "Saving..." : "Save"}
+          </button>
                 </div>
               }
             >
               <form
                 id="edit-profile-form"
                 onSubmit={handleSaveProfile}
-                className="space-y-3"
+                className="space-y-4"
               >
                 <label className="block">
                   <span className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
@@ -406,7 +413,7 @@ export default function ClientDetailPage() {
                         business_name: e.target.value,
                       }))
                     }
-                    className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 text-sm"
+                    className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900/60 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary/60 focus:border-primary/60"
                   />
                 </label>
 
@@ -423,7 +430,7 @@ export default function ClientDetailPage() {
                         primary_contact_email: e.target.value,
                       }))
                     }
-                    className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 text-sm"
+                    className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900/60 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary/60 focus:border-primary/60"
                   />
                 </label>
 
@@ -441,7 +448,7 @@ export default function ClientDetailPage() {
                       }))
                     }
                     placeholder="https://drive.google.com/..."
-                    className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 text-sm"
+                    className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900/60 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary/60 focus:border-primary/60"
                   />
                 </label>
 
@@ -459,7 +466,7 @@ export default function ClientDetailPage() {
                       }))
                     }
                     placeholder="ACES team member"
-                    className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 text-sm"
+                    className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900/60 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary/60 focus:border-primary/60"
                   />
                 </label>
               </form>
@@ -491,7 +498,7 @@ export default function ClientDetailPage() {
                         estimated_value: "",
                       });
                     }}
-                    className="px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
+                    className="px-3.5 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-xs font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800"
                   >
                     Cancel
                   </button>
@@ -499,17 +506,17 @@ export default function ClientDetailPage() {
                     type="submit"
                     form="create-offer-form"
                     disabled={actions.createOfferSubmitting}
-                    className="px-3 py-1.5 rounded-md bg-primary text-white text-xs font-medium hover:opacity-90 disabled:opacity-50"
+                    className="px-3.5 py-1.5 rounded-md bg-primary text-white text-xs font-medium shadow-sm hover:bg-primary/90 disabled:opacity-50"
                   >
                     {actions.createOfferSubmitting ? "Creating..." : "Create"}
                   </button>
                 </div>
-              }
+              }              
             >
               <form
                 id="create-offer-form"
                 onSubmit={handleCreateOffer}
-                className="space-y-3"
+                className="space-y-4"
               >
                 <label className="block">
                   <span className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
@@ -525,7 +532,7 @@ export default function ClientDetailPage() {
                       }))
                     }
                     placeholder="e.g. electricity_ci, gas"
-                    className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 text-sm"
+                    className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900/60 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary/60 focus:border-primary/60"
                   />
                 </label>
 
@@ -543,7 +550,7 @@ export default function ClientDetailPage() {
                       }))
                     }
                     placeholder="e.g. C&I Electricity"
-                    className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 text-sm"
+                    className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900/60 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary/60 focus:border-primary/60"
                   />
                 </label>
 
@@ -561,7 +568,7 @@ export default function ClientDetailPage() {
                       }))
                     }
                     placeholder="e.g. NMI or MRIN"
-                    className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 text-sm"
+                    className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900/60 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary/60 focus:border-primary/60"
                   />
                 </label>
 
@@ -579,7 +586,7 @@ export default function ClientDetailPage() {
                       }))
                     }
                     placeholder="e.g. 50000"
-                    className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 text-sm"
+                    className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900/60 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary/60 focus:border-primary/60"
                   />
                 </label>
               </form>
@@ -600,24 +607,24 @@ export default function ClientDetailPage() {
                       setEditNoteOpen(false);
                       setEditNoteForm({ noteId: 0, note: "", note_type: "general" });
                     }}
-                    className="px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
+                    className="px-3.5 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-xs font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     form="edit-note-form"
-                    className="px-3 py-1.5 rounded-md bg-primary text-white text-xs font-medium hover:opacity-90 disabled:opacity-50"
+                    className="px-3.5 py-1.5 rounded-md bg-primary text-white text-xs font-medium shadow-sm hover:bg-primary/90 disabled:opacity-50"
                   >
                     Save
                   </button>
                 </div>
-              }
+              }              
             >
               <form
                 id="edit-note-form"
                 onSubmit={handleSaveEditNote}
-                className="space-y-3"
+                className="space-y-4"
               >
                 <label className="block">
                   <span className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
@@ -628,7 +635,7 @@ export default function ClientDetailPage() {
                     onChange={(e) =>
                       setEditNoteForm((f) => ({ ...f, note_type: e.target.value }))
                     }
-                    className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 text-sm"
+                    className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900/60 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary/60 focus:border-primary/60"
                   >
                     <option value="general">General</option>
                     <option value="call">Call</option>
@@ -646,7 +653,7 @@ export default function ClientDetailPage() {
                       setEditNoteForm((f) => ({ ...f, note: e.target.value }))
                     }
                     rows={4}
-                    className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 text-sm"
+                    className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900/60 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary/60 focus:border-primary/60"
                     required
                   />
                 </label>

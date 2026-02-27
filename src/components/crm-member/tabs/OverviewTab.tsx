@@ -4,10 +4,15 @@ import Link from "next/link";
 import { Skeleton } from "@/components/ui/skeleton";
 import { OfferStatusBadge } from "../shared/OfferStatusBadge";
 import { formatDate } from "../shared/formatDate";
-import { FileLink } from "../shared/FileLink";
 import { OFFER_ACTIVITY_LABELS } from "@/constants/crm";
 import type { OfferActivityType } from "@/constants/crm";
-import type { Task, Offer, ClientActivity } from "../types";
+import type { Task, Offer, ClientActivity, Note } from "../types";
+import {
+  getBusinessDocumentsForOverview,
+  getContractsFromBusinessInfo,
+  getDocumentsCountFromBusinessInfo,
+  getKeyDocumentsFromBusinessInfo,
+} from "./documentHelpers";
 
 export interface OverviewTabProps {
   businessInfo: Record<string, unknown> | null;
@@ -18,6 +23,7 @@ export interface OverviewTabProps {
   tasks: Task[];
   offers: Offer[];
   activities: ClientActivity[];
+  notes: Note[];
   onCreateOfferClick: () => void;
 }
 
@@ -149,6 +155,7 @@ export function OverviewTab({
   onToggleBusinessInfo,
   offers,
   activities,
+  notes,
   onCreateOfferClick,
 }: OverviewTabProps) {
   const biz = (businessInfo as any)?.business_details ?? {};
@@ -158,6 +165,23 @@ export function OverviewTab({
   const tradingName: string = biz?.trading_name ?? "";
   const postalAddress: string | undefined = contact?.postal_address;
   const siteAddress: string | undefined = contact?.site_address;
+
+  const documentsCount = getDocumentsCountFromBusinessInfo(
+    businessInfo as Record<string, unknown> | null
+  );
+
+  const contracts = getContractsFromBusinessInfo(
+    businessInfo as Record<string, unknown> | null
+  );
+  const hasContracts = contracts.some((c) => !!c.url);
+  const { loaUrl, sfaUrl, wipUrl, amortExcelUrl, amortPdfUrl } =
+    getKeyDocumentsFromBusinessInfo(
+      businessInfo as Record<string, unknown> | null
+    );
+
+  const overviewBusinessDocs = getBusinessDocumentsForOverview(
+    businessInfo as Record<string, unknown> | null
+  );
 
   return (
     <div className="space-y-4">
@@ -196,47 +220,254 @@ export function OverviewTab({
             <div className="px-5 pb-5">
               {businessInfo ? (
                 <>
-                  <div className="divide-y divide-gray-50 dark:divide-gray-800/40">
-                    <InfoRow label="Business name">{businessName || "—"}</InfoRow>
-                    <InfoRow label="Trading name">
-                      {tradingName || (
-                        <span className="text-xs text-gray-400">Not available</span>
-                      )}
-                    </InfoRow>
-                    <InfoRow label="Postal address">
-                      {postalAddress || (
-                        <span className="text-xs text-gray-400">Not available</span>
-                      )}
-                    </InfoRow>
-                    <InfoRow label="Site address">
-                      {siteAddress || (
-                        <span className="text-xs text-gray-400">Not available</span>
-                      )}
-                    </InfoRow>
-                    <InfoRow label="Drive folder">
-                      {driveUrl ? (
-                        <a
-                          href={driveUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline font-medium"
+                  <div className="grid gap-6 md:grid-cols-2">
+                    {/* Left: core business details */}
+                    <div>
+                      <div className="divide-y divide-gray-50 dark:divide-gray-800/40">
+                        <InfoRow label="Business name">
+                          {businessName || "—"}
+                        </InfoRow>
+                        <InfoRow label="Trading name">
+                          {tradingName || (
+                            <span className="text-xs text-gray-400">
+                              Not available
+                            </span>
+                          )}
+                        </InfoRow>
+                        <InfoRow label="Postal address">
+                          {postalAddress || (
+                            <span className="text-xs text-gray-400">
+                              Not available
+                            </span>
+                          )}
+                        </InfoRow>
+                        <InfoRow label="Site address">
+                          {siteAddress || (
+                            <span className="text-xs text-gray-400">
+                              Not available
+                            </span>
+                          )}
+                        </InfoRow>
+                        <InfoRow label="Drive folder">
+                          {driveUrl ? (
+                            <a
+                              href={driveUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline font-medium"
+                            >
+                              <IconFolder />
+                              Open Drive folder
+                            </a>
+                          ) : (
+                            <span className="text-gray-400">Not linked</span>
+                          )}
+                        </InfoRow>
+                      </div>
+                      <div className="pt-4 mt-2 border-t border-gray-50 dark:border-gray-800/40">
+                        <Link
+                          href={
+                            businessName
+                              ? `/business-info?business_name=${encodeURIComponent(
+                                  businessName
+                                )}`
+                              : "/business-info"
+                          }
+                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline"
                         >
-                          <IconFolder />
-                          Open Drive folder
-                        </a>
-                      ) : (
-                        <span className="text-gray-400">Not linked</span>
+                          Open full business view
+                          <IconExternal />
+                        </Link>
+                      </div>
+                    </div>
+
+                    {/* Right: documents & contracts quick view */}
+                    <div className="flex flex-col gap-3 md:border-l md:border-gray-50 md:dark:border-gray-800/40 md:pl-6">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex flex-col gap-1">
+                          <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">
+                            Documents & contracts
+                          </span>
+                          <div className="flex items-center gap-4 text-xs text-gray-600 dark:text-gray-300">
+                            <span>
+                              <span className="text-[11px] uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500 mr-1.5">
+                                Signed
+                              </span>
+                              <span className="font-semibold text-gray-900 dark:text-gray-100">
+                                {hasContracts
+                                  ? contracts.filter((c) => c.url).length
+                                  : 0}
+                              </span>
+                            </span>
+                            <span>
+                              <span className="text-[11px] uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500 mr-1.5">
+                                Docs
+                              </span>
+                              <span className="font-semibold text-gray-900 dark:text-gray-100">
+                                {documentsCount}
+                              </span>
+                            </span>
+                          </div>
+                        </div>
+                        <Link
+                          href="?tab=documents"
+                          scroll={false}
+                          className="text-[11px] font-semibold text-primary hover:underline"
+                        >
+                          Open documents tab
+                        </Link>
+                      </div>
+
+                      {hasContracts && (
+                        <div>
+                          <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">
+                            Contracts
+                          </p>
+                          <ul className="space-y-1.5">
+                            {contracts
+                              .filter((c) => c.url)
+                              .slice(0, 3)
+                              .map((c) => (
+                                <li
+                                  key={c.key}
+                                  className="flex items-center justify-between gap-2"
+                                >
+                                  <span className="truncate text-[11px] text-gray-700 dark:text-gray-200">
+                                    {c.key}
+                                  </span>
+                                  <a
+                                    href={c.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-[11px] font-semibold text-primary hover:underline"
+                                  >
+                                    Open
+                                  </a>
+                                </li>
+                              ))}
+                          </ul>
+                        </div>
                       )}
-                    </InfoRow>
-                  </div>
-                  <div className="pt-4 mt-2 border-t border-gray-50 dark:border-gray-800/40">
-                    <Link
-                      href={businessName ? `/business-info?business_name=${encodeURIComponent(businessName)}` : "/business-info"}
-                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline"
-                    >
-                      Open full business view
-                      <IconExternal />
-                    </Link>
+
+                      {documentsCount > 0 && (
+                        <div>
+                          <p className="mb-1 mt-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">
+                            Key documents
+                          </p>
+                          <ul className="space-y-1.5">
+                            {loaUrl && (
+                              <li className="flex items-center justify-between gap-2">
+                                <span className="truncate text-[11px] text-gray-700 dark:text-gray-200">
+                                  Letter of Authority
+                                </span>
+                                <a
+                                  href={loaUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-[11px] font-semibold text-primary hover:underline"
+                                >
+                                  Open
+                                </a>
+                              </li>
+                            )}
+                            {sfaUrl && (
+                              <li className="flex items-center justify-between gap-2">
+                                <span className="truncate text-[11px] text-gray-700 dark:text-gray-200">
+                                  Service Fee Agreement
+                                </span>
+                                <a
+                                  href={sfaUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-[11px] font-semibold text-primary hover:underline"
+                                >
+                                  Open
+                                </a>
+                              </li>
+                            )}
+                            {wipUrl && (
+                              <li className="flex items-center justify-between gap-2">
+                                <span className="truncate text-[11px] text-gray-700 dark:text-gray-200">
+                                  Work in Progress
+                                </span>
+                                <a
+                                  href={wipUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-[11px] font-semibold text-primary hover:underline"
+                                >
+                                  Open
+                                </a>
+                              </li>
+                            )}
+                            {(amortExcelUrl || amortPdfUrl) && (
+                              <li className="flex items-center justify-between gap-2">
+                                <span className="truncate text-[11px] text-gray-700 dark:text-gray-200">
+                                  Amortisation asset list
+                                </span>
+                                <span className="flex items-center gap-2">
+                                  {amortExcelUrl && (
+                                    <a
+                                      href={amortExcelUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-[11px] font-semibold text-primary hover:underline"
+                                    >
+                                      Excel
+                                    </a>
+                                  )}
+                                  {amortPdfUrl && (
+                                    <a
+                                      href={amortPdfUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-[11px] font-semibold text-primary hover:underline"
+                                    >
+                                      PDF
+                                    </a>
+                                  )}
+                                </span>
+                              </li>
+                            )}
+                          </ul>
+                        </div>
+                      )}
+
+                      {overviewBusinessDocs.length > 0 && (
+                        <div>
+                          <p className="mb-1 mt-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">
+                            All business documents
+                          </p>
+                          <ul className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                            {overviewBusinessDocs.map((doc) => (
+                              <li
+                                key={doc.name}
+                                className="flex items-center justify-between gap-2"
+                              >
+                                <span className="truncate text-[11px] text-gray-700 dark:text-gray-200">
+                                  {doc.name}
+                                </span>
+                                <a
+                                  href={doc.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-[11px] font-semibold text-primary hover:underline"
+                                >
+                                  Open
+                                </a>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {!hasContracts && documentsCount === 0 && (
+                        <p className="text-[11px] text-gray-400 dark:text-gray-500">
+                          No contracts or business documents linked yet. Add
+                          them from the Documents tab.
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </>
               ) : businessInfoLoading ? (
@@ -246,7 +477,9 @@ export function OverviewTab({
                   <Skeleton variant="text" className="w-2/5 h-4" />
                 </div>
               ) : (
-                <p className="text-sm text-gray-400 pt-4">No business information loaded yet.</p>
+                <p className="text-sm text-gray-400 pt-4">
+                  No business information loaded yet.
+                </p>
               )}
             </div>
           </>
@@ -259,6 +492,64 @@ export function OverviewTab({
         )}
       </Card>
 
+      {/* ── Client notes (quick view) ── */}
+      <Card>
+        <CardHeader
+          icon={<IconActivity />}
+          title="Client notes"
+          badge={notes.length > 0 ? <CountBadge count={notes.length} /> : undefined}
+          actions={
+            <Link
+              href="?tab=notes"
+              scroll={false}
+              className="text-xs text-primary font-semibold hover:underline"
+            >
+              Open full notes
+            </Link>
+          }
+        />
+        <Divider />
+        <div className="px-5 py-4">
+          {notes.length === 0 ? (
+            <div className="py-4 text-sm text-gray-400">
+              No notes yet for this client.
+              <br />
+              <span className="text-xs text-gray-400">
+                Use the Notes tab to capture context, calls, and decisions.
+              </span>
+            </div>
+          ) : (
+            <ul className="space-y-2 max-h-52 overflow-y-auto pr-1">
+              {notes
+                .slice()
+                .sort(
+                  (a, b) =>
+                    new Date(b.created_at).getTime() -
+                    new Date(a.created_at).getTime()
+                )
+                .slice(0, 4)
+                .map((n) => (
+                  <li
+                    key={n.id}
+                    className="rounded-md bg-gray-50 dark:bg-gray-900/60 border border-gray-100 dark:border-gray-800 px-3 py-2"
+                  >
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-1 flex justify-between gap-3">
+                      <span className="truncate">
+                        {n.user_email.split("@")[0] || "Note"}
+                      </span>
+                      <span className="shrink-0">
+                        {formatDate(n.created_at)}
+                      </span>
+                    </p>
+                    <p className="text-sm text-gray-800 dark:text-gray-100 line-clamp-3 whitespace-pre-wrap">
+                      {n.note}
+                    </p>
+                  </li>
+                ))}
+            </ul>
+          )}
+        </div>
+      </Card>
       {/* ── Offers & Quote Requests ── */}
       <Card>
         <CardHeader

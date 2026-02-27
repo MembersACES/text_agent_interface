@@ -6,6 +6,14 @@ import { useSession } from "next-auth/react";
 import { FileLink } from "../shared/FileLink";
 import { getApiBaseUrl } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
+import {
+  getBusinessDocumentFileUrl,
+  getBusinessDocumentsForOverview,
+  getContractsFromProcessed,
+  getDocumentsCountFromBusinessInfo,
+  getKeyDocumentsFromProcessed,
+  KEY_DOC_LABELS,
+} from "./documentHelpers";
 
 export interface DocumentsTabProps {
   businessInfo: Record<string, unknown> | null;
@@ -15,81 +23,7 @@ export interface DocumentsTabProps {
 
 interface SimpleDoc { fileName: string; id: string; }
 
-const CONTRACT_KEYS = [
-  "contract_C&I Electricity",
-  "contract_SME Electricity",
-  "contract_C&I Gas",
-  "contract_SME Gas",
-  "contract_Waste",
-  "contract_Oil",
-  "contract_DMA",
-];
-
-export function getDocumentsCountFromBusinessInfo(
-  businessInfo: Record<string, unknown> | null
-): number {
-  if (!businessInfo) return 0;
-
-  const processed =
-    (businessInfo._processed_file_ids as Record<string, unknown>) ?? {};
-
-  const docs: Record<string, any> =
-    businessInfo &&
-    typeof (businessInfo as any).business_documents === "object" &&
-    (businessInfo as any).business_documents !== null &&
-    !Array.isArray((businessInfo as any).business_documents)
-      ? ((businessInfo as any).business_documents as Record<string, any>)
-      : {};
-
-  const getBusinessDocumentFileUrlForCount = (
-    doc: string
-  ): string | undefined => {
-    const specialKeyMap: Record<string, string> = {
-      "Floor Plan (Exit Map)": "business_site_map_upload",
-    };
-    const docKey = `business_${doc}`;
-    const normalizedDocKey = `business_${doc
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "_")}`;
-    const specialMappedKey = specialKeyMap[doc];
-
-    const value =
-      (processed[docKey] as string | undefined) ??
-      (processed[normalizedDocKey] as string | undefined) ??
-      (specialMappedKey
-        ? (processed[specialMappedKey] as string | undefined)
-        : undefined);
-
-    return typeof value === "string" ? value : undefined;
-  };
-
-  const businessDocsCount = Object.keys(docs).filter((name) =>
-    getBusinessDocumentFileUrlForCount(name)
-  ).length;
-
-  const loaUrl = processed["business_LOA"];
-  const sfaRaw =
-    processed["business_Service Fee Agreement"] ??
-    processed["business_service_fee_agreement"] ??
-    processed["business_SFA"] ??
-    processed["Service Fee Agreement"] ??
-    processed["service_fee_agreement"];
-  const sfaUrl = typeof sfaRaw === "string" ? sfaRaw : undefined;
-  const wipUrl = processed["business_WIP"];
-  const amortExcelUrl = processed["business_amortisation_excel"];
-  const amortPdfUrl = processed["business_amortisation_pdf"];
-
-  return (
-    businessDocsCount +
-    (typeof loaUrl === "string" && loaUrl ? 1 : 0) +
-    (typeof sfaUrl === "string" && sfaUrl ? 1 : 0) +
-    (typeof wipUrl === "string" && wipUrl ? 1 : 0) +
-    ((typeof amortExcelUrl === "string" && amortExcelUrl) ||
-    (typeof amortPdfUrl === "string" && amortPdfUrl)
-      ? 1
-      : 0)
-  );
-}
+export { getDocumentsCountFromBusinessInfo } from "./documentHelpers";
 
 // ─── Sub-tab definitions ──────────────────────────────────────────────────────
 
@@ -293,33 +227,7 @@ export function DocumentsTab({ businessInfo, setBusinessInfo, businessName }: Do
   const { showToast } = useToast();
   const driveUrl = (info?.gdrive?.folder_url as string) || "";
   const driveFileUrl = (id: string) => `https://drive.google.com/file/d/${id}/view?usp=drivesdk`;
-  const loaUrl = processed["business_LOA"] as string | undefined;
-  const sfaRaw =
-    processed["business_Service Fee Agreement"] ??
-    processed["business_service_fee_agreement"] ??
-    processed["business_SFA"] ??
-    processed["Service Fee Agreement"] ??
-    processed["service_fee_agreement"];
-  const sfaUrl = typeof sfaRaw === "string" ? sfaRaw : undefined;
-  const wipUrl = processed["business_WIP"] as string | undefined;
-  const amortExcelUrl = processed["business_amortisation_excel"] as string | undefined;
-  const amortPdfUrl = processed["business_amortisation_pdf"] as string | undefined;
-
-  const getBusinessDocumentFileUrl = (doc: string): string | undefined => {
-    const specialKeyMap: Record<string, string> = {
-      "Floor Plan (Exit Map)": "business_site_map_upload",
-    };
-    const docKey = `business_${doc}`;
-    const normalizedDocKey = `business_${doc.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`;
-    const specialMappedKey = specialKeyMap[doc];
-
-    const value =
-      (processed[docKey] as string | undefined) ??
-      (processed[normalizedDocKey] as string | undefined) ??
-      (specialMappedKey ? (processed[specialMappedKey] as string | undefined) : undefined);
-
-    return typeof value === "string" ? value : undefined;
-  };
+  const { loaUrl, sfaUrl, wipUrl, amortExcelUrl, amortPdfUrl } = getKeyDocumentsFromProcessed(processed);
 
   // ── Data fetching ──────────────────────────────────────────────────────────
 
@@ -393,11 +301,7 @@ export function DocumentsTab({ businessInfo, setBusinessInfo, businessName }: Do
     Waste: "signed_WASTE", Oil: "signed_OIL", DMA: "signed_DMA",
   };
 
-  const contracts = ["C&I Electricity","SME Electricity","C&I Gas","SME Gas","Waste","Oil","DMA"].map((key) => ({
-    key,
-    url: processed[`contract_${key}`] as string | undefined,
-    status: processed[`contract_${key}_status`] as string | undefined,
-  }));
+  const contracts = getContractsFromProcessed(processed);
 
   const sortedContracts = [...contracts].sort((a, b) => {
     const aHas = !!a.url;
@@ -505,7 +409,8 @@ export function DocumentsTab({ businessInfo, setBusinessInfo, businessName }: Do
   const contractCount = contracts.filter((c) => c.url).length;
 
   const businessDocsCount =
-    Object.keys(docs).filter((name) => !!getBusinessDocumentFileUrl(name))
+    Object.keys(docs)
+      .filter((name) => !!getBusinessDocumentFileUrl(name, processed))
       .length +
     (wipUrl ? 1 : 0) +
     (amortExcelUrl || amortPdfUrl ? 1 : 0) +
@@ -642,60 +547,60 @@ export function DocumentsTab({ businessInfo, setBusinessInfo, businessName }: Do
             ) : (
               <div className="space-y-2">
                 {[
-                  "LOA",
-                  "Service Fee Agreement",
+                  KEY_DOC_LABELS.loa,
+                  KEY_DOC_LABELS.sfa,
                   ...Object.keys(docs),
-                  "Work in Progress (WIP)",
-                  "Amortisation / Asset List",
+                  KEY_DOC_LABELS.wip,
+                  KEY_DOC_LABELS.amortisation,
                 ]
                   .filter((doc, index, arr) => arr.indexOf(doc) === index)
                   .sort((docA, docB) => {
                     const order = (doc: string) => {
-                      if (doc === "LOA") return 0;
-                      if (doc === "Service Fee Agreement") return 1;
-                      if (doc === "Work in Progress (WIP)") return 2;
-                      if (doc === "Amortisation / Asset List") return 3;
+                      if (doc === KEY_DOC_LABELS.loa) return 0;
+                      if (doc === KEY_DOC_LABELS.sfa) return 1;
+                      if (doc === KEY_DOC_LABELS.wip) return 2;
+                      if (doc === KEY_DOC_LABELS.amortisation) return 3;
                       return 4;
                     };
                     const oa = order(docA);
                     const ob = order(docB);
                     if (oa !== ob) return oa - ob;
 
-                    const isWipA = docA === "Work in Progress (WIP)";
-                    const isWipB = docB === "Work in Progress (WIP)";
-                    const isAmortA = docA === "Amortisation / Asset List";
-                    const isAmortB = docB === "Amortisation / Asset List";
+                    const isWipA = docA === KEY_DOC_LABELS.wip;
+                    const isWipB = docB === KEY_DOC_LABELS.wip;
+                    const isAmortA = docA === KEY_DOC_LABELS.amortisation;
+                    const isAmortB = docB === KEY_DOC_LABELS.amortisation;
 
                     const fileUrlA =
-                      docA === "LOA"
+                      docA === KEY_DOC_LABELS.loa
                         ? loaUrl
-                        : docA === "Service Fee Agreement"
+                        : docA === KEY_DOC_LABELS.sfa
                           ? sfaUrl
                           : isWipA
                             ? wipUrl
                             : isAmortA
                               ? amortExcelUrl || amortPdfUrl
-                              : getBusinessDocumentFileUrl(docA);
+                              : getBusinessDocumentFileUrl(docA, processed);
                     const fileUrlB =
-                      docB === "LOA"
+                      docB === KEY_DOC_LABELS.loa
                         ? loaUrl
-                        : docB === "Service Fee Agreement"
+                        : docB === KEY_DOC_LABELS.sfa
                           ? sfaUrl
                           : isWipB
                             ? wipUrl
                             : isAmortB
                               ? amortExcelUrl || amortPdfUrl
-                              : getBusinessDocumentFileUrl(docB);
+                              : getBusinessDocumentFileUrl(docB, processed);
 
                     if (fileUrlA && !fileUrlB) return -1;
                     if (!fileUrlA && fileUrlB) return 1;
                     return 0;
                   })
                   .map((doc) => {
-                    const isLoa = doc === "LOA";
-                    const isSfa = doc === "Service Fee Agreement";
-                    const isWip = doc === "Work in Progress (WIP)";
-                    const isAmort = doc === "Amortisation / Asset List";
+                    const isLoa = doc === KEY_DOC_LABELS.loa;
+                    const isSfa = doc === KEY_DOC_LABELS.sfa;
+                    const isWip = doc === KEY_DOC_LABELS.wip;
+                    const isAmort = doc === KEY_DOC_LABELS.amortisation;
                     const fileUrl = isLoa
                       ? loaUrl
                       : isSfa
@@ -704,7 +609,7 @@ export function DocumentsTab({ businessInfo, setBusinessInfo, businessName }: Do
                           ? wipUrl
                           : isAmort
                             ? amortExcelUrl || amortPdfUrl
-                            : getBusinessDocumentFileUrl(doc);
+                            : getBusinessDocumentFileUrl(doc, processed);
 
                     return (
                       <div
