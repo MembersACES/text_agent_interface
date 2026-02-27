@@ -102,12 +102,6 @@ export function MemberProfileHeader({
                   ABN: {abn}
                 </span>
               )}
-              {client.external_business_id != null &&
-                String(client.external_business_id).trim() !== "" && (
-                  <span className="text-sm text-gray-500 dark:text-gray-400">
-                    ID: {String(client.external_business_id)}
-                  </span>
-                )}
             </div>
           </div>
 

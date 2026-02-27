@@ -103,6 +103,7 @@ export default function OfferDetailPage() {
   const [editUtilityType, setEditUtilityType] = useState("");
   const [editUtilityTypeIdentifier, setEditUtilityTypeIdentifier] = useState("");
   const [editIdentifier, setEditIdentifier] = useState("");
+  const [editDocumentLink, setEditDocumentLink] = useState("");
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
 
@@ -313,6 +314,7 @@ export default function OfferDetailPage() {
       setEditUtilityType(offer.utility_type ?? "");
       setEditUtilityTypeIdentifier(offer.utility_type_identifier ?? "");
       setEditIdentifier(offer.identifier ?? "");
+      setEditDocumentLink(offer.document_link ?? "");
       setEditingDetails(true);
     }
   };
@@ -336,6 +338,7 @@ export default function OfferDetailPage() {
           utility_type: editUtilityType.trim() || null,
           utility_type_identifier: editUtilityTypeIdentifier.trim() || null,
           identifier: editIdentifier.trim() || null,
+          document_link: editDocumentLink.trim() || null,
         }),
       });
       if (!res.ok) {
@@ -560,6 +563,16 @@ export default function OfferDetailPage() {
                           value={editIdentifier}
                           onChange={(e) => setEditIdentifier(e.target.value)}
                           placeholder="e.g. NMI or MIRN"
+                          className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 text-sm"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Document link (optional)</span>
+                        <input
+                          type="url"
+                          value={editDocumentLink}
+                          onChange={(e) => setEditDocumentLink(e.target.value)}
+                          placeholder="https://..."
                           className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 text-sm"
                         />
                       </label>

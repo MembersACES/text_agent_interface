@@ -16,26 +16,91 @@ export interface DocumentsTabProps {
 interface SimpleDoc { fileName: string; id: string; }
 
 const CONTRACT_KEYS = [
-  "contract_C&I Electricity","contract_SME Electricity","contract_C&I Gas",
-  "contract_SME Gas","contract_Waste","contract_Oil","contract_DMA",
+  "contract_C&I Electricity",
+  "contract_SME Electricity",
+  "contract_C&I Gas",
+  "contract_SME Gas",
+  "contract_Waste",
+  "contract_Oil",
+  "contract_DMA",
 ];
 
-export function getDocumentsCountFromBusinessInfo(businessInfo: Record<string, unknown> | null): number {
+export function getDocumentsCountFromBusinessInfo(
+  businessInfo: Record<string, unknown> | null
+): number {
   if (!businessInfo) return 0;
-  const processed = (businessInfo._processed_file_ids as Record<string, unknown>) ?? {};
-  return CONTRACT_KEYS.filter((k) => processed[k]).length +
-    Object.keys(processed).filter((k) => k.startsWith("eoi_")).length;
+
+  const processed =
+    (businessInfo._processed_file_ids as Record<string, unknown>) ?? {};
+
+  const docs: Record<string, any> =
+    businessInfo &&
+    typeof (businessInfo as any).business_documents === "object" &&
+    (businessInfo as any).business_documents !== null &&
+    !Array.isArray((businessInfo as any).business_documents)
+      ? ((businessInfo as any).business_documents as Record<string, any>)
+      : {};
+
+  const getBusinessDocumentFileUrlForCount = (
+    doc: string
+  ): string | undefined => {
+    const specialKeyMap: Record<string, string> = {
+      "Floor Plan (Exit Map)": "business_site_map_upload",
+    };
+    const docKey = `business_${doc}`;
+    const normalizedDocKey = `business_${doc
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")}`;
+    const specialMappedKey = specialKeyMap[doc];
+
+    const value =
+      (processed[docKey] as string | undefined) ??
+      (processed[normalizedDocKey] as string | undefined) ??
+      (specialMappedKey
+        ? (processed[specialMappedKey] as string | undefined)
+        : undefined);
+
+    return typeof value === "string" ? value : undefined;
+  };
+
+  const businessDocsCount = Object.keys(docs).filter((name) =>
+    getBusinessDocumentFileUrlForCount(name)
+  ).length;
+
+  const loaUrl = processed["business_LOA"];
+  const sfaRaw =
+    processed["business_Service Fee Agreement"] ??
+    processed["business_service_fee_agreement"] ??
+    processed["business_SFA"] ??
+    processed["Service Fee Agreement"] ??
+    processed["service_fee_agreement"];
+  const sfaUrl = typeof sfaRaw === "string" ? sfaRaw : undefined;
+  const wipUrl = processed["business_WIP"];
+  const amortExcelUrl = processed["business_amortisation_excel"];
+  const amortPdfUrl = processed["business_amortisation_pdf"];
+
+  return (
+    businessDocsCount +
+    (typeof loaUrl === "string" && loaUrl ? 1 : 0) +
+    (typeof sfaUrl === "string" && sfaUrl ? 1 : 0) +
+    (typeof wipUrl === "string" && wipUrl ? 1 : 0) +
+    ((typeof amortExcelUrl === "string" && amortExcelUrl) ||
+    (typeof amortPdfUrl === "string" && amortPdfUrl)
+      ? 1
+      : 0)
+  );
 }
 
 // ─── Sub-tab definitions ──────────────────────────────────────────────────────
 
-type DocTab = "contracts" | "eois" | "engagement" | "additional";
+type DocTab = "contracts" | "businessDocs" | "eois" | "engagement" | "additional";
 
 const DOC_TABS: { id: DocTab; label: string }[] = [
-  { id: "contracts",   label: "Contracts & Signed Agreements" },
-  { id: "eois",        label: "Signed EOIs" },
-  { id: "engagement",  label: "Signed Engagement Forms" },
-  { id: "additional",  label: "Additional Documents" },
+  { id: "contracts",    label: "Contracts & Signed Agreements" },
+  { id: "businessDocs", label: "Business Documents" },
+  { id: "eois",         label: "Signed EOIs" },
+  { id: "engagement",   label: "Signed Engagement Forms" },
+  { id: "additional",   label: "Additional Documents" },
 ];
 
 // ─── Design primitives ────────────────────────────────────────────────────────
@@ -190,8 +255,12 @@ export function DocumentsTab({ businessInfo, setBusinessInfo, businessName }: Do
   const info = businessInfo as any;
   const business = info?.business_details || {};
   const processed = info?._processed_file_ids || {};
+  const docs: Record<string, any> =
+    info && typeof info.business_documents === "object" && info.business_documents !== null && !Array.isArray(info.business_documents)
+      ? (info.business_documents as Record<string, any>)
+      : {};
 
-  const [activeTab, setActiveTab] = useState<DocTab>("contracts");
+  const [activeTab, setActiveTab] = useState<DocTab>("businessDocs");
   const [eoiRefreshing, setEoiRefreshing] = useState(false);
   const [additionalDocs, setAdditionalDocs] = useState<SimpleDoc[]>([]);
   const [engagementForms, setEngagementForms] = useState<SimpleDoc[]>([]);
@@ -224,6 +293,33 @@ export function DocumentsTab({ businessInfo, setBusinessInfo, businessName }: Do
   const { showToast } = useToast();
   const driveUrl = (info?.gdrive?.folder_url as string) || "";
   const driveFileUrl = (id: string) => `https://drive.google.com/file/d/${id}/view?usp=drivesdk`;
+  const loaUrl = processed["business_LOA"] as string | undefined;
+  const sfaRaw =
+    processed["business_Service Fee Agreement"] ??
+    processed["business_service_fee_agreement"] ??
+    processed["business_SFA"] ??
+    processed["Service Fee Agreement"] ??
+    processed["service_fee_agreement"];
+  const sfaUrl = typeof sfaRaw === "string" ? sfaRaw : undefined;
+  const wipUrl = processed["business_WIP"] as string | undefined;
+  const amortExcelUrl = processed["business_amortisation_excel"] as string | undefined;
+  const amortPdfUrl = processed["business_amortisation_pdf"] as string | undefined;
+
+  const getBusinessDocumentFileUrl = (doc: string): string | undefined => {
+    const specialKeyMap: Record<string, string> = {
+      "Floor Plan (Exit Map)": "business_site_map_upload",
+    };
+    const docKey = `business_${doc}`;
+    const normalizedDocKey = `business_${doc.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`;
+    const specialMappedKey = specialKeyMap[doc];
+
+    const value =
+      (processed[docKey] as string | undefined) ??
+      (processed[normalizedDocKey] as string | undefined) ??
+      (specialMappedKey ? (processed[specialMappedKey] as string | undefined) : undefined);
+
+    return typeof value === "string" ? value : undefined;
+  };
 
   // ── Data fetching ──────────────────────────────────────────────────────────
 
@@ -302,6 +398,13 @@ export function DocumentsTab({ businessInfo, setBusinessInfo, businessName }: Do
     url: processed[`contract_${key}`] as string | undefined,
     status: processed[`contract_${key}_status`] as string | undefined,
   }));
+
+  const sortedContracts = [...contracts].sort((a, b) => {
+    const aHas = !!a.url;
+    const bHas = !!b.url;
+    if (aHas === bHas) return 0;
+    return aHas ? -1 : 1;
+  });
 
   const contractType = (k: string) =>
     ({ "C&I Electricity":"C&I Electricity","SME Electricity":"SME Electricity","C&I Gas":"C&I Gas","SME Gas":"SME Gas",Waste:"Waste",Oil:"Other",DMA:"DMA" }[k] ?? null);
@@ -393,31 +496,58 @@ export function DocumentsTab({ businessInfo, setBusinessInfo, businessName }: Do
     finally { setEfLoading(false); }
   };
 
-  // ── Counts for tab badges ──────────────────────────────────────────────────
+  // ── Derived collections / counts ────────────────────────────────────────────
 
-  const eoiEntries = Object.entries(processed).filter(([k]) => k.startsWith("eoi_"));
+  const eoiEntries = Object.entries(processed).filter(([k]) =>
+    k.startsWith("eoi_")
+  );
+
   const contractCount = contracts.filter((c) => c.url).length;
+
+  const businessDocsCount =
+    Object.keys(docs).filter((name) => !!getBusinessDocumentFileUrl(name))
+      .length +
+    (wipUrl ? 1 : 0) +
+    (amortExcelUrl || amortPdfUrl ? 1 : 0) +
+    (loaUrl ? 1 : 0) +
+    (sfaUrl ? 1 : 0);
 
   const tabsWithCounts = DOC_TABS.map((t) => ({
     ...t,
     count:
-      t.id === "contracts"  ? contractCount :
-      t.id === "eois"       ? eoiEntries.length :
-      t.id === "engagement" ? engagementForms.length :
-      t.id === "additional" ? additionalDocs.length :
-      undefined,
+      t.id === "contracts"
+        ? contractCount
+        : t.id === "businessDocs"
+          ? businessDocsCount
+          : t.id === "eois"
+            ? eoiEntries.length
+            : t.id === "engagement"
+              ? engagementForms.length
+              : t.id === "additional"
+                ? additionalDocs.length
+                : undefined,
   }));
 
-  // ── Tab-level actions ──────────────────────────────────────────────────────
+  // ── Tab-level actions ───────────────────────────────────────────────────────
 
   const tabActions: Record<DocTab, React.ReactNode> = {
     contracts: null,
+    businessDocs: null,
     eois: (
       <>
-        <button type="button" onClick={fetchEOI} disabled={eoiRefreshing} className={linkBtn}>
+        <button
+          type="button"
+          onClick={fetchEOI}
+          disabled={eoiRefreshing}
+          className={linkBtn}
+        >
           {eoiRefreshing ? "Refreshing…" : "Refresh"}
         </button>
-        <button type="button" onClick={() => setShowEOIModal(true)} className={ghostBtn}>
+        <button
+          type="button"
+          onClick={() => setShowEOIModal(true)}
+          className={ghostBtn}
+        >
           Upload EOI
         </button>
       </>
@@ -425,22 +555,44 @@ export function DocumentsTab({ businessInfo, setBusinessInfo, businessName }: Do
     engagement: (
       <>
         <input
-          ref={efRef} type="file" accept="application/pdf" className="hidden"
-          onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadEF(f); e.target.value = ""; }}
+          ref={efRef}
+          type="file"
+          accept="application/pdf"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) uploadEF(f);
+            e.target.value = "";
+          }}
         />
-        <button type="button" onClick={() => efRef.current?.click()} disabled={efLoading} className={ghostBtn}>
+        <button
+          type="button"
+          onClick={() => efRef.current?.click()}
+          disabled={efLoading}
+          className={ghostBtn}
+        >
           {efLoading ? "Uploading…" : "Upload Form"}
         </button>
       </>
     ),
     additional: (
       <>
-        <button type="button" onClick={fetchWIP} disabled={wipLoading} className={linkBtn}>
+        <button
+          type="button"
+          onClick={fetchWIP}
+          disabled={wipLoading}
+          className={linkBtn}
+        >
           {wipLoading ? "Refreshing…" : "Refresh"}
         </button>
         <button
           type="button"
-          onClick={() => { setShowAddDocModal(true); setAddDocFile(null); setAddDocType(""); setAddDocResult(""); }}
+          onClick={() => {
+            setShowAddDocModal(true);
+            setAddDocFile(null);
+            setAddDocType("");
+            setAddDocResult("");
+          }}
           className={ghostBtn}
         >
           Upload Document
@@ -475,17 +627,182 @@ export function DocumentsTab({ businessInfo, setBusinessInfo, businessName }: Do
           actions={tabActions[activeTab]}
         />
 
+        {/* ── Business Documents ── */}
+        {activeTab === "businessDocs" && (
+          <div className="px-5 py-5">
+            {Object.keys(docs).length === 0 &&
+            !wipUrl &&
+            !amortExcelUrl &&
+            !amortPdfUrl &&
+            !loaUrl &&
+            !sfaUrl ? (
+              <p className="text-sm text-gray-400">
+                No business documents available.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {[
+                  "LOA",
+                  "Service Fee Agreement",
+                  ...Object.keys(docs),
+                  "Work in Progress (WIP)",
+                  "Amortisation / Asset List",
+                ]
+                  .filter((doc, index, arr) => arr.indexOf(doc) === index)
+                  .sort((docA, docB) => {
+                    const order = (doc: string) => {
+                      if (doc === "LOA") return 0;
+                      if (doc === "Service Fee Agreement") return 1;
+                      if (doc === "Work in Progress (WIP)") return 2;
+                      if (doc === "Amortisation / Asset List") return 3;
+                      return 4;
+                    };
+                    const oa = order(docA);
+                    const ob = order(docB);
+                    if (oa !== ob) return oa - ob;
+
+                    const isWipA = docA === "Work in Progress (WIP)";
+                    const isWipB = docB === "Work in Progress (WIP)";
+                    const isAmortA = docA === "Amortisation / Asset List";
+                    const isAmortB = docB === "Amortisation / Asset List";
+
+                    const fileUrlA =
+                      docA === "LOA"
+                        ? loaUrl
+                        : docA === "Service Fee Agreement"
+                          ? sfaUrl
+                          : isWipA
+                            ? wipUrl
+                            : isAmortA
+                              ? amortExcelUrl || amortPdfUrl
+                              : getBusinessDocumentFileUrl(docA);
+                    const fileUrlB =
+                      docB === "LOA"
+                        ? loaUrl
+                        : docB === "Service Fee Agreement"
+                          ? sfaUrl
+                          : isWipB
+                            ? wipUrl
+                            : isAmortB
+                              ? amortExcelUrl || amortPdfUrl
+                              : getBusinessDocumentFileUrl(docB);
+
+                    if (fileUrlA && !fileUrlB) return -1;
+                    if (!fileUrlA && fileUrlB) return 1;
+                    return 0;
+                  })
+                  .map((doc) => {
+                    const isLoa = doc === "LOA";
+                    const isSfa = doc === "Service Fee Agreement";
+                    const isWip = doc === "Work in Progress (WIP)";
+                    const isAmort = doc === "Amortisation / Asset List";
+                    const fileUrl = isLoa
+                      ? loaUrl
+                      : isSfa
+                        ? sfaUrl
+                        : isWip
+                          ? wipUrl
+                          : isAmort
+                            ? amortExcelUrl || amortPdfUrl
+                            : getBusinessDocumentFileUrl(doc);
+
+                    return (
+                      <div
+                        key={doc}
+                        className={`flex items-center justify-between px-4 py-2 rounded border transition-colors ${
+                          fileUrl
+                            ? "bg-emerald-50 border-emerald-200 dark:bg-emerald-900/10 dark:border-emerald-800"
+                            : "bg-gray-50 border-gray-200 dark:bg-gray-900/40 dark:border-gray-700"
+                        }`}
+                      >
+                        <div className="min-w-0 pr-2">
+                          <div className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">
+                            {doc}
+                          </div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                            {isAmort ? (
+                              <>
+                                {amortExcelUrl && (
+                                  <>
+                                    <FileLink
+                                      label="Excel"
+                                      url={amortExcelUrl}
+                                    />
+                                    {amortPdfUrl && " | "}
+                                  </>
+                                )}
+                                {amortPdfUrl && (
+                                  <FileLink label="PDF" url={amortPdfUrl} />
+                                )}
+                                {!amortExcelUrl &&
+                                  !amortPdfUrl &&
+                                  "Not available"}
+                              </>
+                            ) : fileUrl ? (
+                              <FileLink
+                                label={isLoa || isSfa ? "Open file" : "View File"}
+                                url={fileUrl}
+                              />
+                            ) : (
+                              "Not available"
+                            )}
+                          </div>
+                        </div>
+                        {!isWip && !isAmort && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              let filingType = doc
+                                .toLowerCase()
+                                .replace(/[^a-z0-9]+/g, "_");
+                              if (filingType === "site_profling")
+                                filingType = "site_profiling";
+                              if (filingType === "service_fee_agreement")
+                                filingType = "savings";
+                              if (
+                                filingType.includes("exit_map") ||
+                                filingType.includes("exitmap") ||
+                                filingType.includes("floor_plan_exit_map")
+                              ) {
+                                filingType = "site_map_upload";
+                              }
+                              setDriveFilingType(filingType);
+                              setDriveBizName(business?.name || "");
+                              setDriveContractKey(null);
+                              setDriveResult(null);
+                              setDriveFile(null);
+                              setShowDriveModal(true);
+                            }}
+                            className={ghostBtn}
+                          >
+                            File
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ── Contracts & Signed Agreements ── */}
         {activeTab === "contracts" && (
           <div className="divide-y divide-gray-50 dark:divide-gray-800/40">
-            {contracts.map((c) => (
+            {sortedContracts.map((c) => (
               <div
                 key={c.key}
                 className="flex items-center justify-between gap-3 px-5 py-3.5 hover:bg-gray-50/50 dark:hover:bg-white/[0.02] transition-colors"
               >
                 <div className="flex items-center gap-2.5 min-w-0">
-                  <span className={`w-2 h-2 rounded-full shrink-0 ${c.url ? "bg-emerald-400" : "bg-gray-200 dark:bg-gray-700"}`} />
-                  <span className="text-sm font-medium text-gray-800 dark:text-gray-200">{c.key}</span>
+                  <span
+                    className={`w-2 h-2 rounded-full shrink-0 ${
+                      c.url ? "bg-emerald-400" : "bg-gray-200 dark:bg-gray-700"
+                    }`}
+                  />
+                  <span className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                    {c.key}
+                  </span>
                   <span className="text-[11px] text-gray-400 truncate">
                     {c.status || (c.url ? "" : "Not available")}
                   </span>
@@ -498,21 +815,38 @@ export function DocumentsTab({ businessInfo, setBusinessInfo, businessName }: Do
                       rel="noopener noreferrer"
                       className={openBtn}
                     >
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                      <svg
+                        className="w-3 h-3"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                        viewBox="0 0 24 24"
+                        aria-hidden
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                        />
                       </svg>
                       Open Contract
                     </a>
                   ) : (
-                    <span className="text-[11px] text-gray-300 dark:text-gray-700 px-2">No file</span>
+                    <span className="text-[11px] text-gray-300 dark:text-gray-700 px-2">
+                      No file
+                    </span>
                   )}
                   <button
                     type="button"
                     onClick={() => {
-                      setDriveFilingType(CONTRACT_TO_FILING[c.key] ?? c.key.toLowerCase().replace(/[^a-z0-9]+/g, "_"));
+                      setDriveFilingType(
+                        CONTRACT_TO_FILING[c.key] ??
+                          c.key.toLowerCase().replace(/[^a-z0-9]+/g, "_")
+                      );
                       setDriveBizName(business?.name || "");
                       setDriveContractKey(c.key);
-                      setDriveResult(null); setDriveFile(null);
+                      setDriveResult(null);
+                      setDriveFile(null);
                       setShowDriveModal(true);
                     }}
                     className={ghostBtn}
@@ -529,17 +863,38 @@ export function DocumentsTab({ businessInfo, setBusinessInfo, businessName }: Do
         {activeTab === "eois" && (
           <div className="px-5 py-5">
             {eoiEntries.length === 0 ? (
-              <p className="text-sm text-gray-400">No EOIs have been processed yet.</p>
+              <p className="text-sm text-gray-400">
+                No EOIs have been processed yet.
+              </p>
             ) : (
               <ul className="divide-y divide-gray-50 dark:divide-gray-800/40">
                 {eoiEntries.map(([key, url]) => (
-                  <li key={key} className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
+                  <li
+                    key={key}
+                    className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
+                  >
                     <span className="text-sm text-gray-700 dark:text-gray-300 truncate">
                       {key.replace(/^eoi_/, "").replace(/_/g, " ")}
                     </span>
-                    <a href={String(url)} target="_blank" rel="noopener noreferrer" className={openBtn}>
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    <a
+                      href={String(url)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={openBtn}
+                    >
+                      <svg
+                        className="w-3 h-3"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                        viewBox="0 0 24 24"
+                        aria-hidden
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                        />
                       </svg>
                       Open EOI
                     </a>
@@ -553,17 +908,43 @@ export function DocumentsTab({ businessInfo, setBusinessInfo, businessName }: Do
         {/* ── Signed Engagement Forms ── */}
         {activeTab === "engagement" && (
           <div className="px-5 py-5 space-y-4">
-            {efResult && <Alert msg={efResult} successStart="Engagement form uploaded" />}
+            {efResult && (
+              <Alert
+                msg={efResult}
+                successStart="Engagement form uploaded"
+              />
+            )}
             {engagementForms.length === 0 ? (
               <p className="text-sm text-gray-400">No engagement forms found.</p>
             ) : (
               <ul className="divide-y divide-gray-50 dark:divide-gray-800/40">
                 {engagementForms.map((f) => (
-                  <li key={f.id} className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
-                    <span className="text-sm text-gray-700 dark:text-gray-300 truncate">{f.fileName}</span>
-                    <a href={driveFileUrl(f.id)} target="_blank" rel="noopener noreferrer" className={openBtn}>
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  <li
+                    key={f.id}
+                    className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
+                  >
+                    <span className="text-sm text-gray-700 dark:text-gray-300 truncate">
+                      {f.fileName}
+                    </span>
+                    <a
+                      href={driveFileUrl(f.id)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={openBtn}
+                    >
+                      <svg
+                        className="w-3 h-3"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                        viewBox="0 0 24 24"
+                        aria-hidden
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                        />
                       </svg>
                       Open Form
                     </a>
@@ -578,15 +959,38 @@ export function DocumentsTab({ businessInfo, setBusinessInfo, businessName }: Do
         {activeTab === "additional" && (
           <div className="px-5 py-5">
             {additionalDocs.length === 0 ? (
-              <p className="text-sm text-gray-400">No additional documents found.</p>
+              <p className="text-sm text-gray-400">
+                No additional documents found.
+              </p>
             ) : (
               <ul className="divide-y divide-gray-50 dark:divide-gray-800/40">
                 {additionalDocs.map((doc) => (
-                  <li key={doc.id} className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
-                    <span className="text-sm text-gray-700 dark:text-gray-300 truncate">{doc.fileName}</span>
-                    <a href={driveFileUrl(doc.id)} target="_blank" rel="noopener noreferrer" className={openBtn}>
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  <li
+                    key={doc.id}
+                    className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
+                  >
+                    <span className="text-sm text-gray-700 dark:text-gray-300 truncate">
+                      {doc.fileName}
+                    </span>
+                    <a
+                      href={driveFileUrl(doc.id)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={openBtn}
+                    >
+                      <svg
+                        className="w-3 h-3"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                        viewBox="0 0 24 24"
+                        aria-hidden
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                        />
                       </svg>
                       Open
                     </a>

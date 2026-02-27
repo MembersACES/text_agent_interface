@@ -152,9 +152,12 @@ export function OverviewTab({
   onCreateOfferClick,
 }: OverviewTabProps) {
   const biz = (businessInfo as any)?.business_details ?? {};
+  const contact = (businessInfo as any)?.contact_information ?? {};
   const driveUrl = (businessInfo as any)?.gdrive?.folder_url as string | undefined;
   const businessName: string = biz?.name ?? "";
-  const abn: string = biz?.abn ?? "";
+  const tradingName: string = biz?.trading_name ?? "";
+  const postalAddress: string | undefined = contact?.postal_address;
+  const siteAddress: string | undefined = contact?.site_address;
 
   return (
     <div className="space-y-4">
@@ -195,7 +198,21 @@ export function OverviewTab({
                 <>
                   <div className="divide-y divide-gray-50 dark:divide-gray-800/40">
                     <InfoRow label="Business name">{businessName || "—"}</InfoRow>
-                    <InfoRow label="ABN">{abn || "—"}</InfoRow>
+                    <InfoRow label="Trading name">
+                      {tradingName || (
+                        <span className="text-xs text-gray-400">Not available</span>
+                      )}
+                    </InfoRow>
+                    <InfoRow label="Postal address">
+                      {postalAddress || (
+                        <span className="text-xs text-gray-400">Not available</span>
+                      )}
+                    </InfoRow>
+                    <InfoRow label="Site address">
+                      {siteAddress || (
+                        <span className="text-xs text-gray-400">Not available</span>
+                      )}
+                    </InfoRow>
                     <InfoRow label="Drive folder">
                       {driveUrl ? (
                         <a
