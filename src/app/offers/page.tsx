@@ -5,7 +5,13 @@ import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { getApiBaseUrl } from "@/lib/utils";
 import { PageHeader } from "@/components/Layouts/PageHeader";
-import { OfferStatus, OFFER_STATUSES, OFFER_STATUS_LABELS } from "@/constants/crm";
+import {
+  OfferStatus,
+  OFFER_STATUSES,
+  OFFER_STATUS_LABELS,
+  OFFER_PIPELINE_STAGE_LABELS,
+  type OfferPipelineStage,
+} from "@/constants/crm";
 
 interface Offer {
   id: number;
@@ -16,6 +22,7 @@ interface Offer {
   utility_display?: string | null;
   identifier?: string | null;
   status: OfferStatus;
+  pipeline_stage?: OfferPipelineStage | null;
   created_at: string;
   is_existing_client?: boolean;
 }
@@ -430,6 +437,9 @@ export default function OffersPage() {
                       Status
                     </th>
                     <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-gray-300">
+                      Pipeline
+                    </th>
+                    <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-gray-300">
                       Created
                     </th>
                     <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-gray-300">
@@ -462,6 +472,11 @@ export default function OffersPage() {
                       </td>
                       <td className="px-4 py-2 whitespace-nowrap text-gray-700 dark:text-gray-300">
                         {OFFER_STATUS_LABELS[o.status] ?? o.status}
+                      </td>
+                      <td className="px-4 py-2 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                        {o.pipeline_stage
+                          ? OFFER_PIPELINE_STAGE_LABELS[o.pipeline_stage] ?? o.pipeline_stage.replace(/_/g, " ")
+                          : "—"}
                       </td>
                       <td className="px-4 py-2 whitespace-nowrap text-gray-700 dark:text-gray-300">
                         {formatDate(o.created_at)}

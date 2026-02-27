@@ -10,8 +10,10 @@ import {
   OFFER_STATUSES,
   OFFER_STATUS_LABELS,
   OFFER_ACTIVITY_LABELS,
+  OFFER_PIPELINE_STAGE_LABELS,
   OfferStatus,
   type OfferActivityType,
+  type OfferPipelineStage,
 } from "@/constants/crm";
 
 interface Offer {
@@ -23,6 +25,7 @@ interface Offer {
   utility_display?: string | null;
   identifier?: string | null;
   status: OfferStatus;
+  pipeline_stage?: OfferPipelineStage | null;
   estimated_value?: number | null;
   document_link?: string | null;
   created_at: string;
@@ -93,9 +96,6 @@ export default function OfferDetailPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [discrepancyModalOpen, setDiscrepancyModalOpen] = useState(false);
-  const [discrepancySummary, setDiscrepancySummary] = useState("");
-  const [loggingDiscrepancy, setLoggingDiscrepancy] = useState(false);
   const [clientsList, setClientsList] = useState<{ id: number; business_name: string }[]>([]);
   const [savingClient, setSavingClient] = useState(false);
   const [editingDetails, setEditingDetails] = useState(false);
@@ -242,55 +242,6 @@ export default function OfferDetailPage() {
     fetchAll();
   }, [offerId, token]);
 
-  const handleLogDiscrepancyEmail = async () => {
-    if (!offerId || !token) return;
-    try {
-      setLoggingDiscrepancy(true);
-      setError(null);
-      const res = await fetch(
-        `${getApiBaseUrl()}/api/offers/${offerId}/activities`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            activity_type: "discrepancy_email_sent",
-            metadata: discrepancySummary.trim()
-              ? { summary: discrepancySummary.trim() }
-              : undefined,
-            created_by: (session as any)?.user?.email,
-          }),
-        },
-      );
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.detail || "Failed to log discrepancy email");
-      }
-      setDiscrepancyModalOpen(false);
-      setDiscrepancySummary("");
-      // Refetch activities
-      const listRes = await fetch(
-        `${getApiBaseUrl()}/api/offers/${offerId}/activities`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        },
-      );
-      if (listRes.ok) {
-        const list: OfferActivity[] = await listRes.json();
-        setActivities(list);
-      }
-    } catch (e: any) {
-      setError(e.message || "Failed to log discrepancy email");
-    } finally {
-      setLoggingDiscrepancy(false);
-    }
-  };
-
   const handleClientChange = async (newClientId: number | null) => {
     if (!offerId || !token || !offer) return;
     try {
@@ -354,6 +305,8 @@ export default function OfferDetailPage() {
       setSaving(false);
     }
   };
+
+  // Pipeline stage is derived from activities; we only display it here.
 
   const startEditingDetails = () => {
     if (offer) {
@@ -531,6 +484,18 @@ export default function OfferDetailPage() {
                     ))}
                   </select>
                 </div>
+                <div>
+                  <label className="block text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">
+                    Pipeline
+                  </label>
+                  <div className="inline-flex items-center px-2.5 py-1 rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-xs font-medium text-gray-700 dark:text-gray-200">
+                    {offer.pipeline_stage
+                      ? OFFER_PIPELINE_STAGE_LABELS[
+                          offer.pipeline_stage as keyof typeof OFFER_PIPELINE_STAGE_LABELS
+                        ] ?? offer.pipeline_stage.replace(/_/g, " ")
+                      : "No structured stage"}
+                  </div>
+                </div>
                 {client && (
                   <a
                     href={`/crm-members/${client.id}`}
@@ -539,19 +504,6 @@ export default function OfferDetailPage() {
                     View Client
                   </a>
                 )}
-                <a
-                  href={`/base-2?businessName=${encodeURIComponent(offer.business_name || "")}&offerId=${offerId}`}
-                  className="inline-flex items-center px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
-                >
-                  Open in Base 2
-                </a>
-                <button
-                  type="button"
-                  onClick={() => setDiscrepancyModalOpen(true)}
-                  className="inline-flex items-center px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
-                >
-                  Log discrepancy email
-                </button>
                 <button
                   type="button"
                   onClick={() => {
@@ -737,44 +689,6 @@ export default function OfferDetailPage() {
                 </div>
               </div>
             </div>
-
-            {/* Log discrepancy email modal */}
-            {discrepancyModalOpen && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" role="dialog" aria-modal="true">
-                <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 shadow-lg max-w-md w-full mx-2">
-                  <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-2">
-                    Log discrepancy email
-                  </h3>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-                    Record that a discrepancy email was sent for this offer. Add an optional summary below.
-                  </p>
-                  <textarea
-                    value={discrepancySummary}
-                    onChange={(e) => setDiscrepancySummary(e.target.value)}
-                    placeholder="Optional summary (e.g. what was sent or to whom)"
-                    rows={3}
-                    className="w-full text-sm rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 mb-3"
-                  />
-                  <div className="flex justify-end gap-2">
-                    <button
-                      type="button"
-                      onClick={() => { setDiscrepancyModalOpen(false); setDiscrepancySummary(""); }}
-                      className="px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleLogDiscrepancyEmail}
-                      disabled={loggingDiscrepancy}
-                      className="px-3 py-1.5 rounded-md bg-primary text-white text-xs font-medium hover:opacity-90 disabled:opacity-50"
-                    >
-                      {loggingDiscrepancy ? "Logging…" : "Log"}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
 
             {/* Activities timeline */}
             <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
