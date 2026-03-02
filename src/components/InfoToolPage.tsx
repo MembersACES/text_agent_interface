@@ -2992,8 +2992,8 @@ function DMAModal({
     meteringDays: '',
     vasRate: '',
     vasCostType: 'daily',
-    dmaPrice: '700',
-    vasPrice: '200',
+    dmaPrice: '600',
+    vasPrice: '300',
     startDate: new Date().toISOString().split('T')[0],
     periodYears: '5',
     endDate: '',
@@ -3048,19 +3048,17 @@ function DMAModal({
     if (isOpen && invoiceData) {
       const invoiceDetails = invoiceData?.electricity_ci_invoice_details;
       
-      // Calculate VAS rate from invoice data
+      // Current VAS from invoice: field may be in $/day or cents/day ("Value Added Service rater in $/Meter/Day")
       let vasRateDaily = '';
-      let vasPrice = '200';
-      
-      const vasRateRaw = invoiceDetails?.vas_rate || 
+      const vasRateRaw = invoiceDetails?.vas_rate ?? 
         invoiceDetails?.full_invoice_data?.['Value Added Service rater in $/Meter/Day'];
       
-      if (vasRateRaw) {
-        const vasRateInCents = parseFloat(vasRateRaw) || 0;
-        if (vasRateInCents > 0) {
-          const dailyVASRateInDollars = vasRateInCents / 100;
+      if (vasRateRaw != null && vasRateRaw !== '') {
+        const num = parseFloat(String(vasRateRaw)) || 0;
+        if (num > 0) {
+          // If value >= 10 assume cents/day, else assume already $/day
+          const dailyVASRateInDollars = num >= 10 ? num / 100 : num;
           vasRateDaily = dailyVASRateInDollars.toString();
-          vasPrice = (dailyVASRateInDollars * 365).toFixed(0);
         }
       }
       
@@ -3070,16 +3068,17 @@ function DMAModal({
       
       setFormData(prev => ({
         ...prev,
-        meteringRate: invoiceDetails?.metering_rate || '',
+        meteringRate: invoiceDetails?.metering_rate ?? '',
         meteringDays: invoiceDays,
         meteringCostType: 'daily',
         vasRate: vasRateDaily,
         vasCostType: 'daily',
-        vasPrice: vasPrice,
-        invoiceLink: invoiceDetails?.invoice_link || '',
-        siteAddress: invoiceDetails?.site_address || '',
-        nmi: invoiceDetails?.nmi || '',
-        invoiceNumber: invoiceDetails?.invoice_number || ''
+        dmaPrice: '600',
+        vasPrice: '300',
+        invoiceLink: invoiceDetails?.invoice_link ?? '',
+        siteAddress: invoiceDetails?.site_address ?? '',
+        nmi: invoiceDetails?.nmi ?? '',
+        invoiceNumber: invoiceDetails?.invoice_number ?? ''
       }));
     }
   }, [isOpen, invoiceData]);
@@ -3166,6 +3165,8 @@ Total Savings Over ${formData.periodYears} Years: ${formatCurrency(calculations.
         combined_annual_cost: calculations.combinedAnnualCost.toFixed(2),
         dma_price: formData.dmaPrice,
         vas_price: formData.vasPrice,
+        comparison_meter_annual: formData.dmaPrice,
+        comparison_vas_annual: formData.vasPrice,
         proposed_annual_cost: calculations.proposedAnnualCost.toFixed(2),
         annual_savings: calculations.annualSavings.toFixed(2),
         savings_percentage: calculations.savingsPercentage.toFixed(1),

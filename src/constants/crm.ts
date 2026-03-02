@@ -69,6 +69,8 @@ export const OFFER_ACTIVITY_TYPES = [
   "discrepancy_email_sent",
   "dma_review_generated",
   "dma_email_sent",
+  "manual_document",
+  "manual_activity",
 ] as const;
 
 export type OfferActivityType = (typeof OFFER_ACTIVITY_TYPES)[number];
@@ -87,5 +89,7 @@ export const OFFER_ACTIVITY_LABELS: Record<OfferActivityType, string> = {
   discrepancy_email_sent: "Discrepancy email sent",
   dma_review_generated: "DMA review generated",
   dma_email_sent: "DMA email sent",
+  manual_document: "Document / link added",
+  manual_activity: "Activity note",
 };
 
