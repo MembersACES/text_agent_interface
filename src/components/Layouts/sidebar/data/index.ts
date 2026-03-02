@@ -1,4 +1,21 @@
-import * as Icons from "../icons";
+import {
+  Activity,
+  BarChart3,
+  Bot,
+  Building2,
+  CheckSquare,
+  FileUp,
+  GitBranch,
+  HandCoins,
+  Home,
+  KeyRound,
+  LayoutDashboard,
+  LayoutGrid,
+  Lightbulb,
+  Lock,
+  Users,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import ACESLogo from "@/../public/images/logo/CARBON ZERO Logo.png";
 
 export const ACES_BRAND = {
@@ -6,32 +23,52 @@ export const ACES_BRAND = {
   logo: ACESLogo,
 };
 
-export const NAV_DATA = [
+export type NavItemIcon = LucideIcon;
+
+export interface NavLinkItem {
+  title: string;
+  url: string;
+  icon?: NavItemIcon;
+}
+
+export interface NavGroupItem {
+  title: string;
+  icon?: NavItemIcon;
+  items: { title: string; url: string }[];
+}
+
+export interface NavSection {
+  label: string;
+  items: (NavLinkItem | NavGroupItem)[];
+}
+
+export const NAV_DATA: NavSection[] = [
   {
-    label: "Quick Access",
+    label: "Main",
     items: [
-      { title: "Tasks", url: "/tasks", icon: Icons.TaskIcon },
-      { title: "Solution Range", url: "/solution-range", icon: Icons.FourCircle },
-      { title: "Member Profile", url: "/business-info", icon: Icons.User },
-      { title: "Invoice & Data Lodgement", url: "/document-lodgement", icon: Icons.Table },
-      { title: "Base 1 Hub", url: "/base-1", icon: Icons.Table },
-      { title: "Resources", url: "/resources", icon: Icons.Table },
-    ],
-  },
-  {
-    label: "Workflows",
-    items: [
-      { title: "Workflows", url: "/workflows", icon: Icons.FourCircle },
+      { title: "Tasks", url: "/tasks", icon: CheckSquare },
+      { title: "Member Profile", url: "/business-info", icon: Building2 },
+      { title: "Workflows", url: "/workflows", icon: GitBranch },
+      { title: "Solution Range", url: "/solution-range", icon: LayoutGrid },
+      { title: "Invoice & Data Lodgement", url: "/document-lodgement", icon: FileUp },
+      { title: "Base 1 Hub", url: "/base-1", icon: BarChart3 },
     ],
   },
   {
     label: "CRM",
     items: [
-      { title: "CRM Dashboard", url: "/crm", icon: Icons.HomeIcon },
-      { title: "Members", url: "/crm-members", icon: Icons.User },
-      { title: "Base 1 Hub", url: "/base-1", icon: Icons.TaskIcon },
-      { title: "Offers", url: "/offers", icon: Icons.Table },
-      { title: "Activity report", url: "/reports/activities", icon: Icons.Table },
+      { title: "Dashboard", url: "/crm", icon: LayoutDashboard },
+      { title: "Members", url: "/crm-members", icon: Users },
+      { title: "Offers", url: "/offers", icon: HandCoins },
+      { title: "Activity Report", url: "/reports/activities", icon: Activity },
+    ],
+  },
+  {
+    label: "Resources",
+    items: [
+      { title: "Links & Passwords", url: "/resources", icon: KeyRound },
+      { title: "Floating Agent", url: "/resources/floating-agent", icon: Bot },
+      { title: "Dashboard Tips", url: "/resources/dashboard-tips", icon: Lightbulb },
     ],
   },
   {
@@ -39,16 +76,17 @@ export const NAV_DATA = [
     items: [
       {
         title: "Template Pages",
+        icon: Home,
         items: [
-          { title: "Dashboard", url: "/dashboard", icon: Icons.HomeIcon },
-          { title: "Calendar", url: "/calendar", icon: Icons.Calendar },
-          { title: "Tables", url: "/tables", icon: Icons.Table },
-          { title: "Charts", url: "/charts/basic-chart", icon: Icons.PieChart },
+          { title: "Dashboard", url: "/dashboard" },
+          { title: "Calendar", url: "/calendar" },
+          { title: "Tables", url: "/tables" },
+          { title: "Charts", url: "/charts/basic-chart" },
         ],
       },
       {
         title: "Forms",
-        icon: Icons.Alphabet,
+        icon: LayoutGrid,
         items: [
           { title: "Form Elements", url: "/forms/form-elements" },
           { title: "Form Layout", url: "/forms/form-layout" },
@@ -56,13 +94,13 @@ export const NAV_DATA = [
       },
       {
         title: "UI Elements",
-        icon: Icons.FourCircle,
+        icon: LayoutGrid,
         items: [
           { title: "Alerts", url: "/ui-elements/alerts" },
           { title: "Buttons", url: "/ui-elements/buttons" },
         ],
       },
-      { title: "Authentication", url: "/auth/sign-in", icon: Icons.Authentication },
+      { title: "Authentication", url: "/auth/sign-in", icon: Lock },
     ],
   },
 ];

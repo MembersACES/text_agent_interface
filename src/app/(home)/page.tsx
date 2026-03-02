@@ -78,8 +78,8 @@ const navigationCards = [
     color: "from-blue-500 to-indigo-600",
   },
   {
-    title: "Key Resources",
-    description: "Access important links and credentials",
+    title: "Links & Passwords",
+    description: "Central repository for links and credentials",
     href: "/resources",
     icon: Database,
     color: "from-cyan-500 to-blue-600",

@@ -1,41 +1,75 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import Image from "next/image";
+import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { ChevronDown, ChevronLeft } from "lucide-react";
 import { NAV_DATA, ACES_BRAND } from "./data";
-import { ArrowLeftIcon, ChevronUp } from "./icons";
+import type { NavGroupItem, NavLinkItem } from "./data";
 import { MenuItem } from "./menu-item";
 import { useSidebarContext } from "./sidebar-context";
 
+const SECTION_COLLAPSED_KEY_PREFIX = "aces-sidebar-section-";
+
+function isNavGroup(item: NavLinkItem | NavGroupItem): item is NavGroupItem {
+  return "items" in item && Array.isArray((item as NavGroupItem).items);
+}
+
 export function Sidebar() {
   const pathname = usePathname();
-  const { setIsOpen, isOpen, isMobile, toggleSidebar } = useSidebarContext();
-  const [expandedItems, setExpandedItems] = useState<string[]>([]);
+  const { setIsOpen, isOpen, isMobile, toggleSidebar, isCollapsed } = useSidebarContext();
+  const [sectionOpen, setSectionOpen] = useState<Record<string, boolean>>({});
 
-  const toggleExpanded = (title: string) => {
-    setExpandedItems((prev) => 
-      prev.includes(title) 
-        ? prev.filter(item => item !== title)
-        : [...prev, title]
-    );
-  };
+  const setSectionExpanded = useCallback((label: string, open: boolean) => {
+    setSectionOpen((prev) => ({ ...prev, [label]: open }));
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem(SECTION_COLLAPSED_KEY_PREFIX + label, String(open));
+      } catch {
+        // ignore
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const initial: Record<string, boolean> = {};
+    NAV_DATA.forEach((section) => {
+      try {
+        const stored = localStorage.getItem(SECTION_COLLAPSED_KEY_PREFIX + section.label);
+        initial[section.label] = stored !== "false";
+      } catch {
+        initial[section.label] = true;
+      }
+    });
+    setSectionOpen((prev) => ({ ...initial, ...prev }));
+  }, []);
+
+  const isSectionOpen = useCallback((label: string) => sectionOpen[label] !== false, [sectionOpen]);
+  const toggleSection = (label: string) =>
+    setSectionExpanded(label, !isSectionOpen(label));
 
   useEffect(() => {
     NAV_DATA.some((section) =>
-      section.items.some((item) =>
-        item.items && item.items.some((subItem) => {
-          if (subItem.url === pathname) {
-            if (!expandedItems.includes(item.title)) {
-              toggleExpanded(item.title);
-            }
-            return true;
+      section.items.some((item) => {
+        if (isNavGroup(item)) {
+          const hasActive = item.items.some((sub) => sub.url === pathname);
+          if (hasActive && !isSectionOpen(section.label)) {
+            setSectionExpanded(section.label, true);
           }
-          return false;
-        })
-      )
+          return hasActive;
+        }
+        return false;
+      }),
     );
-  }, [pathname, expandedItems]);
+  }, [pathname, isSectionOpen, setSectionExpanded]);
+
+  const sections = NAV_DATA.filter(
+    (section) =>
+      section.label !== "Development" || process.env.NODE_ENV !== "production",
+  );
 
   return (
     <>
@@ -49,130 +83,219 @@ export function Sidebar() {
 
       <aside
         className={cn(
-          "max-w-[290px] overflow-hidden border-r border-gray-200 bg-white transition-[width] duration-300 ease-in-out dark:border-gray-800 dark:bg-gray-dark",
+          "overflow-hidden border-r border-gray-200 bg-white transition-[width] duration-300 ease-in-out dark:border-gray-800 dark:bg-gray-dark",
           isMobile ? "fixed bottom-0 top-0 z-50" : "sticky top-0 h-screen",
-          isOpen ? "w-full" : "w-0"
+          isMobile ? (isOpen ? "w-full max-w-[290px]" : "w-0") : isCollapsed ? "w-[72px]" : "w-[290px]",
         )}
         aria-label="Main navigation"
-        aria-hidden={!isOpen}
-        inert={!isOpen}
+        aria-hidden={isMobile ? !isOpen : false}
+        inert={isMobile && !isOpen ? true : undefined}
       >
-        <div className="flex h-full flex-col py-10 pl-[25px] pr-[7px]">
-          {/* ACES Logo + Name */}
-          <div className="flex flex-col items-center mb-6">
-            <a href="/" onClick={() => isMobile && toggleSidebar()} className="block text-center">
-              <img
-                src={typeof ACES_BRAND.logo === "string" ? ACES_BRAND.logo : ACES_BRAND.logo.src}
-                alt="ACES Logo"
-                className="h-20 w-auto mb-1"
-              />
-              <span className="text-base font-semibold text-gray-900 dark:text-white">
-                ACES Portal
-              </span>
-            </a>
+        <div
+          className={cn(
+            "flex h-full flex-col py-6 pl-3 pr-2 min-[850px]:pl-4",
+            isCollapsed && "items-center",
+          )}
+        >
+          {/* Logo */}
+          <div className={cn("flex flex-col items-center mb-4", isCollapsed ? "w-full" : "")}>
+            <Link
+              href="/"
+              onClick={() => isMobile && toggleSidebar()}
+              className="block text-center"
+              aria-label="ACES Portal home"
+            >
+              {isCollapsed ? (
+                <Image
+                  src="/images/logo/logo-icon.svg"
+                  alt=""
+                  width={36}
+                  height={36}
+                  className="h-9 w-9 object-contain"
+                />
+              ) : (
+                <>
+                  <Image
+                    src={ACES_BRAND.logo}
+                    alt="ACES Logo"
+                    width={120}
+                    height={56}
+                    className="h-14 w-auto mb-1"
+                  />
+                  <span className="text-base font-semibold text-gray-900 dark:text-white">
+                    ACES Portal
+                  </span>
+                </>
+              )}
+            </Link>
           </div>
 
-          {/* Optional mobile close button */}
           {isMobile && (
             <button
               onClick={toggleSidebar}
               className="absolute left-3/4 right-4.5 top-1/2 -translate-y-1/2 text-right"
               aria-label="Close Menu"
             >
-              <ArrowLeftIcon className="ml-auto size-7" />
+              <ChevronLeft className="ml-auto size-7" aria-hidden />
             </button>
           )}
 
-          {/* Navigation */}
-          <div className="custom-scrollbar flex-1 overflow-y-auto pr-3 min-[850px]:mt-6">
-            {NAV_DATA.filter((section) => section.label !== "Development" || process.env.NODE_ENV !== "production").map((section) => (
-              <div key={section.label} className="mb-6">
-                <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-dark-4 dark:text-dark-6 px-3.5">
-                  {section.label}
-                </h2>
-                <div className="mb-4 h-px bg-stroke dark:bg-dark-3"></div>
+          <div className="custom-scrollbar flex-1 overflow-y-auto min-[850px]:mt-2">
+            {sections.map((section) => {
+              const open = isSectionOpen(section.label);
+              return (
+                <div
+                  key={section.label}
+                  className={cn(
+                    "mb-4",
+                    isCollapsed && "flex flex-col items-center",
+                  )}
+                >
+                  {!isCollapsed && (
+                    <button
+                      type="button"
+                      onClick={() => toggleSection(section.label)}
+                      className="flex w-full items-center justify-between gap-2 rounded-lg px-3.5 py-2 text-left text-xs font-semibold uppercase tracking-wider text-dark-4 dark:text-dark-6 hover:bg-gray-100 dark:hover:bg-gray-800/50 transition-colors"
+                      aria-expanded={open}
+                      aria-controls={`sidebar-section-${section.label}`}
+                      id={`sidebar-section-btn-${section.label}`}
+                    >
+                      <span>{section.label}</span>
+                      <ChevronDown
+                        className={cn(
+                          "size-4 shrink-0 transition-transform duration-200",
+                          !open && "-rotate-90",
+                        )}
+                        aria-hidden
+                      />
+                    </button>
+                  )}
 
-                <nav role="navigation" aria-label={section.label}>
-                  <ul className="space-y-2">
-                    {section.items.map((item) => (
-                      <li key={item.title}>
-                        {item.items && item.items.length > 0 ? (
-                          <>
-                            <MenuItem
-                              isActive={item.items.some(({ url }) => url === pathname)}
-                              onClick={() => toggleExpanded(item.title)}
-                              className="flex items-center gap-3 py-3"
-                            >
-                              <div className="flex items-center gap-3">
-                                {"icon" in item && item.icon && (
-                                  <item.icon className="size-6 shrink-0" aria-hidden="true" />
-                                )}
-                                <span>{item.title}</span>
-                              </div>
-                              <ChevronUp
-                                className={cn(
-                                  "ml-auto rotate-180 transition-transform duration-200",
-                                  expandedItems.includes(item.title) ? "rotate-0" : ""
-                                )}
-                                aria-hidden="true"
-                              />
-                            </MenuItem>
+                  <div
+                    id={`sidebar-section-${section.label}`}
+                    role="region"
+                    aria-labelledby={isCollapsed ? undefined : `sidebar-section-btn-${section.label}`}
+                    className="grid transition-[grid-template-rows] duration-200 ease-out"
+                    style={{
+                      gridTemplateRows: open || isCollapsed ? "1fr" : "0fr",
+                    }}
+                  >
+                    <div className="overflow-hidden">
+                      <nav role="navigation" aria-label={section.label}>
+                        <ul className={cn("space-y-0.5", isCollapsed && "flex flex-col items-center")}>
+                          {section.items.map((item) => {
+                            if (isNavGroup(item)) {
+                              const expanded = open;
+                              const hasActive = item.items.some(
+                                (sub) => sub.url === pathname,
+                              );
+                              return (
+                                <li key={item.title} className="w-full">
+                                  <MenuItem
+                                    isActive={hasActive}
+                                    onClick={() => toggleSection(section.label)}
+                                    label={item.title}
+                                    className={cn(
+                                      "flex items-center gap-3",
+                                      isCollapsed && "justify-center",
+                                    )}
+                                  >
+                                    {"icon" in item && item.icon && (
+                                      <span className="group relative flex shrink-0">
+                                        <item.icon
+                                          className="size-5 shrink-0"
+                                          aria-hidden
+                                        />
+                                        {isCollapsed && (
+                                          <span className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white opacity-0 shadow transition-opacity duration-150 group-hover:opacity-100 dark:bg-gray-100 dark:text-gray-900">
+                                            {item.title}
+                                          </span>
+                                        )}
+                                      </span>
+                                    )}
+                                    {!isCollapsed && <span>{item.title}</span>}
+                                  </MenuItem>
+                                  {expanded && !isCollapsed && (
+                                    <ul
+                                      className={cn(
+                                        "space-y-0.5 pb-2 pt-1",
+                                        !isCollapsed && "ml-9",
+                                      )}
+                                      role="menu"
+                                    >
+                                      {item.items
+                                        .filter(
+                                          (sub) =>
+                                            sub?.url &&
+                                            typeof sub.url === "string" &&
+                                            typeof sub.title === "string",
+                                        )
+                                        .map((sub) => (
+                                          <li key={sub.title} role="none" className={cn(isCollapsed && "flex justify-center")}>
+                                            <MenuItem
+                                              as="link"
+                                              href={sub.url!}
+                                              isActive={pathname === sub.url}
+                                              label={sub.title}
+                                              className="block"
+                                            >
+                                              {!isCollapsed && (
+                                                <span>{sub.title}</span>
+                                              )}
+                                            </MenuItem>
+                                          </li>
+                                        ))}
+                                    </ul>
+                                  )}
+                                </li>
+                              );
+                            }
 
-                            {expandedItems.includes(item.title) && (
-                              <ul className="ml-9 space-y-1.5 pb-[15px] pt-2" role="menu">
-                                {item.items
-                                  .filter(
-                                    (subItem) =>
-                                      subItem &&
-                                      typeof subItem.url === "string" &&
-                                      subItem.url.length > 0 &&
-                                      typeof subItem.title === "string"
-                                  )
-                                  .map((subItem) => (
-                                    <li key={subItem.title} role="none">
-                                      <MenuItem
-                                        as="link"
-                                        href={subItem.url!}
-                                        isActive={pathname === subItem.url}
-                                        className="block"
-                                      >
-                                        <span>{subItem.title}</span>
-                                      </MenuItem>
-                                    </li>
-                                  ))}
-                              </ul>
-                            )}
-                          </>
-                        ) : (
-                          (() => {
+                            const linkItem = item as NavLinkItem;
                             const href =
-                              (item as any).url &&
-                              typeof (item as any).url === "string" &&
-                              (item as any).url.length > 0
-                                ? (item as any).url
-                                : "/" + item.title.toLowerCase().replace(/\s+/g, "-");
+                              linkItem.url && linkItem.url.length > 0
+                                ? linkItem.url
+                                : "/" +
+                                  linkItem.title
+                                    .toLowerCase()
+                                    .replace(/\s+/g, "-");
 
                             return (
-                              <MenuItem
-                                className="flex items-center gap-3 py-3"
-                                as="link"
-                                href={href}
-                                isActive={pathname === href}
-                              >
-                                {"icon" in item && item.icon && (
-                                  <item.icon className="size-6 shrink-0" aria-hidden="true" />
-                                )}
-                                <span>{item.title}</span>
-                              </MenuItem>
+                              <li key={linkItem.title} className={cn(isCollapsed && "flex justify-center w-full")}>
+                                <MenuItem
+                                  as="link"
+                                  href={href}
+                                  isActive={pathname === href}
+                                  label={linkItem.title}
+                                  className="flex items-center gap-3"
+                                >
+                                  {linkItem.icon && (
+                                    <span className="group relative flex shrink-0">
+                                      <linkItem.icon
+                                        className="size-5 shrink-0"
+                                        aria-hidden
+                                      />
+                                      {isCollapsed && (
+                                        <span className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white opacity-0 shadow transition-opacity duration-150 group-hover:opacity-100 dark:bg-gray-100 dark:text-gray-900">
+                                          {linkItem.title}
+                                        </span>
+                                      )}
+                                    </span>
+                                  )}
+                                  {!isCollapsed && (
+                                    <span>{linkItem.title}</span>
+                                  )}
+                                </MenuItem>
+                              </li>
                             );
-                          })()
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                </nav>
-              </div>
-            ))}
+                          })}
+                        </ul>
+                      </nav>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       </aside>
