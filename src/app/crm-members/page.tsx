@@ -7,6 +7,8 @@ import Link from "next/link";
 import { getApiBaseUrl } from "@/lib/utils";
 import { PageHeader } from "@/components/Layouts/PageHeader";
 import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { StageBadge } from "@/components/crm-member/shared/StageBadge";
 import {
   CLIENT_STAGES,
   CLIENT_STAGE_LABELS,
@@ -23,54 +25,7 @@ interface Client {
   owner_email?: string | null;
   created_at: string;
   updated_at: string;
-}
-
-function StageBadge({ stage }: { stage: ClientStage }) {
-  const base =
-    "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium";
-  const s = stage.toLowerCase();
-
-  if (s === "won") {
-    return (
-      <span className={`${base} bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300`}>
-        Won
-      </span>
-    );
-  }
-  if (s === "existing_client") {
-    return (
-      <span className={`${base} bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300`}>
-        Existing Client
-      </span>
-    );
-  }
-  if (s === "lost") {
-    return (
-      <span className={`${base} bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300`}>
-        Lost
-      </span>
-    );
-  }
-  if (s === "offer_sent") {
-    return (
-      <span className={`${base} bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300`}>
-        Offer Sent
-      </span>
-    );
-  }
-  if (s === "analysis_in_progress") {
-    return (
-      <span className={`${base} bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300`}>
-        Analysis In Progress
-      </span>
-    );
-  }
-
-  return (
-    <span className={`${base} bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200`}>
-      {CLIENT_STAGE_LABELS[stage] ?? stage}
-    </span>
-  );
+  // TODO: display "Last activity: X ago" when API returns last_activity_at (or equivalent) per client
 }
 
 export default function ClientsPage() {
@@ -103,6 +58,15 @@ export default function ClientsPage() {
   const [bulkOwnerOpen, setBulkOwnerOpen] = useState(false);
   const [bulkOwnerEmail, setBulkOwnerEmail] = useState("");
   const [bulkOwnerSubmitting, setBulkOwnerSubmitting] = useState(false);
+  const [bulkStageOpen, setBulkStageOpen] = useState(false);
+  const [bulkStage, setBulkStage] = useState<ClientStage>("lead");
+  const [bulkStageSubmitting, setBulkStageSubmitting] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [cardStageClientId, setCardStageClientId] = useState<number | null>(null);
+  const [cardStageValue, setCardStageValue] = useState<ClientStage>("lead");
+  const [cardStageSubmitting, setCardStageSubmitting] = useState(false);
 
   const PAGE_SIZE = 20;
 
@@ -181,6 +145,7 @@ export default function ClientsPage() {
         } else {
           setOfferCountByClientId({});
         }
+        // TODO: show task count when /api/reports/clients/task-counts (or similar) exists
       } catch (e: unknown) {
         console.error("Error fetching clients", e);
         setError(e instanceof Error ? e.message : "Failed to load members");
@@ -247,7 +212,7 @@ export default function ClientsPage() {
       setAddClientOpen(false);
       setAddClientForm({ business_name: "", primary_contact_email: "", stage: "lead", owner_email: "" });
       setClients((prev) => [created, ...prev]);
-      window.location.href = `/clients/${created.id}`;
+      window.location.href = `/crm-members/${created.id}`;
     } catch (err: any) {
       setAddClientError(err.message || "Failed to create member");
     } finally {
@@ -273,18 +238,19 @@ export default function ClientsPage() {
     return groups;
   }, [clients]);
 
-  const toggleSelectClient = (id: number) => {
+  const toggleSelectClient = (id: number | string) => {
+    const numericId = Number(id);
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(numericId)) next.delete(numericId);
+      else next.add(numericId);
       return next;
     });
   };
 
   const toggleSelectAll = () => {
     if (selectedIds.size === clients.length) setSelectedIds(new Set());
-    else setSelectedIds(new Set(clients.map((c) => c.id)));
+    else setSelectedIds(new Set(clients.map((c) => Number(c.id))));
   };
 
   const handleBulkAssignOwner = async (e: React.FormEvent) => {
@@ -294,7 +260,7 @@ export default function ClientsPage() {
     if (!email) return;
     setBulkOwnerSubmitting(true);
     try {
-      const res = await fetch(`${getApiBaseUrl()}/api/clients/bulk`, {
+      const res = await fetch(`${getApiBaseUrl()}/api/client-bulk-update`, {
         method: "PATCH",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -322,6 +288,167 @@ export default function ClientsPage() {
     } finally {
       setBulkOwnerSubmitting(false);
     }
+  };
+
+  const handleBulkUpdateStage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!token || selectedIds.size === 0) return;
+    const stage = bulkStage;
+    if (!stage) return;
+    const clientIds = Array.from(selectedIds).map((id) => Number(id));
+    console.log("[CRM] Bulk stage update → request", {
+      clientIds,
+      stage,
+      tokenPresent: !!token,
+    });
+    setBulkStageSubmitting(true);
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/client-bulk-update`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          client_ids: clientIds,
+          stage,
+        }),
+      });
+      if (!res.ok) {
+        let message = "Failed to update status";
+        try {
+          const text = await res.text();
+          let parsed: any = null;
+          try {
+            parsed = text ? JSON.parse(text) : null;
+          } catch {
+            // ignore JSON parse errors; we'll log raw text below
+          }
+
+          console.error("[CRM] Bulk stage update → non-OK response", {
+            url: `${getApiBaseUrl()}/api/client-bulk-update`,
+            status: res.status,
+            statusText: res.statusText,
+            rawBody: text,
+            parsedBody: parsed,
+          });
+
+          if (parsed) {
+            if (typeof parsed.detail === "string") {
+              message = parsed.detail;
+            } else if (Array.isArray(parsed.detail) && parsed.detail.length) {
+              const msgs = parsed.detail
+                .map((d: any) => d?.msg || d?.detail)
+                .filter(Boolean);
+              if (msgs.length) {
+                message = msgs.join("; ");
+              }
+            } else if (typeof parsed.message === "string") {
+              message = parsed.message;
+            }
+          } else if (res.status === 401) {
+            message = "Authentication required. Please log in again.";
+          }
+        } catch (parseErr) {
+          console.error("Error reading bulk status update error response", parseErr);
+        }
+        throw new Error(message);
+      }
+      const updated: Client[] = await res.json();
+      setClients((prev) =>
+        prev.map((c) => {
+          const u = updated.find((x) => x.id === c.id);
+          return u ? { ...c, stage: u.stage } : c;
+        }),
+      );
+      setBulkStageOpen(false);
+      setSelectedIds(new Set());
+    } catch (err) {
+      console.error(err);
+      setError(err instanceof Error ? err.message : "Failed to update status");
+    } finally {
+      setBulkStageSubmitting(false);
+    }
+  };
+
+  const handleDeleteSelectedClients = async () => {
+    if (!token || selectedIds.size === 0) return;
+    setDeleteSubmitting(true);
+    setDeleteError(null);
+    const ids = Array.from(selectedIds);
+    try {
+      await Promise.all(
+        ids.map(async (id) => {
+          const res = await fetch(`${getApiBaseUrl()}/api/clients/${id}`, {
+            method: "DELETE",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+          });
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(
+              typeof data.detail === "string"
+                ? data.detail
+                : `Failed to delete member ${id}`,
+            );
+          }
+        }),
+      );
+      setClients((prev) => prev.filter((c) => !selectedIds.has(c.id)));
+      setTotalClients((prev) =>
+        Math.max(0, prev - selectedIds.size),
+      );
+      setSelectedIds(new Set());
+      setDeleteConfirmOpen(false);
+    } catch (err: unknown) {
+      setDeleteError(
+        err instanceof Error ? err.message : "Failed to delete selected members",
+      );
+    } finally {
+      setDeleteSubmitting(false);
+    }
+  };
+
+  const handleCardStageChange = async (clientId: number, newStage: ClientStage) => {
+    if (!token) return;
+    setCardStageSubmitting(true);
+    setCardStageClientId(clientId);
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/clients/${clientId}`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ stage: newStage }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as { detail?: string }).detail || "Failed to update stage");
+      }
+      const updated: Client = await res.json();
+      setClients((prev) =>
+        prev.map((c) => (c.id === clientId ? { ...c, stage: updated.stage } : c)),
+      );
+      setCardStageClientId(null);
+    } catch (e) {
+      console.error(e);
+      setError(e instanceof Error ? e.message : "Failed to update stage");
+      setCardStageClientId(null);
+    } finally {
+      setCardStageSubmitting(false);
+    }
+  };
+
+  const clearFilters = () => {
+    setSearch("");
+    setSearchDebounced("");
+    setFilterStage("");
+    setFilterCreatedAfter("");
+    setFilterCreatedBefore("");
+    setFilterMine(false);
   };
 
   return (
@@ -514,6 +641,26 @@ export default function ClientsPage() {
             </button>
             <button
               type="button"
+              onClick={() => {
+                setBulkStage("lead");
+                setBulkStageOpen(true);
+              }}
+              className="px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
+            >
+              Change status
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setDeleteError(null);
+                setDeleteConfirmOpen(true);
+              }}
+              className="px-3 py-1.5 rounded-md border border-red-300 text-sm font-medium text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20"
+            >
+              Delete
+            </button>
+            <button
+              type="button"
               onClick={() => setSelectedIds(new Set())}
               className="px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
             >
@@ -559,13 +706,154 @@ export default function ClientsPage() {
           </div>
         )}
 
+        {bulkStageOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" role="dialog" aria-modal="true">
+            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 shadow-lg max-w-md w-full mx-2">
+              <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-3">
+                Change status for {selectedIds.size} member{selectedIds.size === 1 ? "" : "s"}
+              </h3>
+              <form onSubmit={handleBulkUpdateStage} className="space-y-3">
+                <label className="block">
+                  <span className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Select status</span>
+                  <select
+                    value={bulkStage}
+                    onChange={(e) => setBulkStage(e.target.value as ClientStage)}
+                    className="w-full px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100"
+                  >
+                    {/* Limit bulk status changes to early lifecycle stages; post-offer
+                       lifecycle (won/existing/lost) should primarily be driven by offers. */}
+                    {(["lead", "qualified"] as ClientStage[]).map((s) => (
+                      <option key={s} value={s}>
+                        {CLIENT_STAGE_LABELS[s]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => { setBulkStageOpen(false); }}
+                    className="px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-sm font-medium"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={bulkStageSubmitting}
+                    className="px-3 py-1.5 rounded-md bg-primary text-white text-sm font-medium disabled:opacity-50"
+                  >
+                    {bulkStageSubmitting ? "Saving…" : "Update status"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {deleteConfirmOpen && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 shadow-lg max-w-md w-full mx-2">
+              <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-2">
+                Delete {selectedIds.size} member
+                {selectedIds.size === 1 ? "" : "s"}?
+              </h3>
+              <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
+                This will remove the selected member records from the CRM,
+                including their offers, tasks, and status notes. This action
+                cannot be undone.
+              </p>
+              {deleteError && (
+                <p className="mb-2 text-xs text-red-600 dark:text-red-400">
+                  {deleteError}
+                </p>
+              )}
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (deleteSubmitting) return;
+                    setDeleteConfirmOpen(false);
+                    setDeleteError(null);
+                  }}
+                  className="px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"
+                  disabled={deleteSubmitting}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteSelectedClients}
+                  disabled={deleteSubmitting}
+                  className="px-3 py-1.5 rounded-md bg-red-600 text-white text-xs font-medium hover:bg-red-700 disabled:opacity-50"
+                >
+                  {deleteSubmitting ? "Deleting…" : "Delete"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {loading ? (
-          <div className="py-10 text-center text-gray-500 dark:text-gray-400">
-            Loading clients...
+          <div className="space-y-6">
+            {CLIENT_STAGES.map((stage) => (
+              <section key={stage}>
+                <div className="flex items-center justify-between mb-3">
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-5 w-8 rounded-full" />
+                </div>
+                <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+                  {[1, 2, 3].map((i) => (
+                    <Card key={`${stage}-${i}`} className="border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+                      <CardContent className="p-4 space-y-2">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            <Skeleton className="h-4 w-3/4 mb-2" />
+                            <Skeleton className="h-3 w-1/2" />
+                            <Skeleton className="h-3 w-1/3 mt-2" />
+                          </div>
+                          <Skeleton className="h-6 w-16 rounded-full shrink-0" />
+                        </div>
+                        <Skeleton className="h-3 w-20 mt-1" />
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </section>
+            ))}
           </div>
         ) : clients.length === 0 ? (
-          <div className="py-10 text-center text-gray-500 dark:text-gray-400">
-            No clients found. Try widening your filters or add a new client using the button above.
+          <div className="py-10 text-center">
+            <p className="text-gray-500 dark:text-gray-400 mb-4">
+              No members match your filters.
+            </p>
+            <div className="flex flex-wrap justify-center gap-3">
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
+              >
+                Clear filters
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAddClientOpen(true);
+                  setAddClientForm({
+                    business_name: "",
+                    primary_contact_email: "",
+                    stage: "lead",
+                    owner_email: (session as any)?.user?.email ?? "",
+                  });
+                }}
+                className="px-4 py-2 rounded-md bg-primary text-white text-sm font-medium hover:opacity-90"
+              >
+                Add a client
+              </button>
+            </div>
           </div>
         ) : (
           <div className="space-y-6">
@@ -589,58 +877,85 @@ export default function ClientsPage() {
                         <div key={client.id} className="flex items-start gap-2">
                           <input
                             type="checkbox"
-                            checked={selectedIds.has(client.id)}
+                            checked={selectedIds.has(Number(client.id))}
                             onChange={() => toggleSelectClient(client.id)}
                             onClick={(e) => e.stopPropagation()}
                             className="mt-4 shrink-0 rounded border-gray-300 dark:border-gray-600 text-primary focus:ring-primary"
                             aria-label={`Select ${client.business_name}`}
                           />
-                          <Link
-                            href={`/clients/${client.id}`}
-                            className="block group flex-1 min-w-0"
-                          >
-                          <Card className="h-full border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 transition-all duration-200 group-hover:shadow-lg group-hover:-translate-y-0.5">
-                            <CardContent className="p-4 space-y-2">
-                              <div className="flex items-start justify-between gap-3">
-                                <div className="min-w-0">
-                                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white truncate">
-                                    {client.business_name}
-                                  </h3>
-                                  {client.primary_contact_email && (
-                                    <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                                      {client.primary_contact_email}
-                                    </p>
-                                  )}
-                                  {client.owner_email && (
-                                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                                      Owner:{" "}
-                                      <span className="font-medium">
-                                        {client.owner_email.split("@")[0]}
-                                      </span>
-                                    </p>
-                                  )}
-                                  {(offerCountByClientId[String(client.id)] ?? 0) > 0 && (
-                                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                                      {offerCountByClientId[String(client.id)]} offer{offerCountByClientId[String(client.id)] !== 1 ? "s" : ""}
-                                    </p>
+                          <div className="flex-1 min-w-0">
+                            <Card className="h-full border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5">
+                              <CardContent className="p-4 space-y-2">
+                                <Link
+                                  href={`/crm-members/${client.id}`}
+                                  className="block group"
+                                >
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                      <h3 className="text-sm font-semibold text-gray-900 dark:text-white truncate group-hover:underline">
+                                        {client.business_name}
+                                      </h3>
+                                      {client.primary_contact_email && (
+                                        <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                                          {client.primary_contact_email}
+                                        </p>
+                                      )}
+                                      {client.owner_email && (
+                                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                                          Owner:{" "}
+                                          <span className="font-medium">
+                                            {client.owner_email.split("@")[0]}
+                                          </span>
+                                        </p>
+                                      )}
+                                      {(offerCountByClientId[String(client.id)] ?? 0) > 0 && (
+                                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                          {offerCountByClientId[String(client.id)]} offer{offerCountByClientId[String(client.id)] !== 1 ? "s" : ""}
+                                        </p>
+                                      )}
+                                    </div>
+                                    <StageBadge stage={client.stage} />
+                                  </div>
+                                </Link>
+                                {client.gdrive_folder_url && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      window.open(client.gdrive_folder_url!, "_blank", "noreferrer");
+                                    }}
+                                    className="inline-flex items-center text-xs text-primary hover:underline mt-1"
+                                  >
+                                    Open Drive
+                                  </button>
+                                )}
+                                <div
+                                  className="pt-2 border-t border-gray-100 dark:border-gray-800"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <label className="text-xs text-gray-500 dark:text-gray-400 mr-2">Change stage:</label>
+                                  <select
+                                    value={client.stage}
+                                    onChange={(e) => {
+                                      const v = e.target.value as ClientStage;
+                                      handleCardStageChange(client.id, v);
+                                    }}
+                                    disabled={cardStageSubmitting && cardStageClientId === client.id}
+                                    className="mt-1 text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                                  >
+                                    {CLIENT_STAGES.map((s) => (
+                                      <option key={s} value={s}>
+                                        {CLIENT_STAGE_LABELS[s]}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  {cardStageSubmitting && cardStageClientId === client.id && (
+                                    <span className="ml-2 text-xs text-gray-500">Saving…</span>
                                   )}
                                 </div>
-                                <StageBadge stage={client.stage} />
-                              </div>
-                              {client.gdrive_folder_url && (
-                                <a
-                                  href={client.gdrive_folder_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="inline-flex items-center text-xs text-primary hover:underline mt-1"
-                                >
-                                  Open Drive
-                                </a>
-                              )}
-                            </CardContent>
-                          </Card>
-                          </Link>
+                              </CardContent>
+                            </Card>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -665,4 +980,3 @@ export default function ClientsPage() {
     </>
   );
 }
-

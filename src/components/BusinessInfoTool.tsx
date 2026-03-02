@@ -156,9 +156,9 @@ export default function BusinessInfoTool({
       {error && <div style={{ color: "red", marginTop: 10 }}>{error}</div>}
       {businessInfo && typeof businessInfo === "object" && businessInfo !== null && (businessInfo as any).client_id != null && (
         <div style={{ marginTop: 10, fontSize: 14, color: "var(--color-fg-muted, #57606a)" }}>
-          Member saved.{" "}
-          <Link href={`/members/${(businessInfo as any).client_id}`} className="text-blue-600 hover:underline">
-            View member
+          CRM Member Saved -{" "}
+          <Link href={`/crm-members/${(businessInfo as any).client_id}`} className="text-blue-600 hover:underline">
+          Click to view in CRM
           </Link>
         </div>
       )}

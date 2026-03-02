@@ -64,7 +64,6 @@ interface ActivitiesSummary {
 
 const crmSectionCards = [
   { title: "Members", description: "Browse and manage member records", href: "/clients", icon: Users, color: "from-blue-500 to-indigo-600" },
-  { title: "Pipeline", description: "View pipeline by stage and move members", href: "/pipeline", icon: LayoutDashboard, color: "from-violet-500 to-purple-600" },
   { title: "Offers", description: "Manage offers and quote requests", href: "/offers", icon: ListTodo, color: "from-emerald-500 to-teal-600" },
   { title: "Activity report", description: "Recent offer activities and documents", href: "/reports/activities", icon: FileText, color: "from-amber-500 to-orange-600" },
 ];
@@ -404,34 +403,12 @@ export default function Home() {
         )}
 
         {/* CRM Snapshot */}
-        {!loading && (pipelineSummary || tasksSummary || offersSummary || activitiesSummary) && (
+        {!loading && (tasksSummary || offersSummary || activitiesSummary) && (
           <div className="mb-10">
             <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
               CRM Snapshot
             </h2>
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-              {pipelineSummary && (
-                <Link href="/pipeline">
-                  <Card className="bg-white dark:bg-dark-2 border border-gray-200 dark:border-dark-3 hover:border-primary/30 transition-colors">
-                    <CardContent className="p-4 space-y-2">
-                      <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-                        Pipeline
-                      </p>
-                      <p className="text-2xl font-bold text-dark dark:text-white">
-                        {pipelineSummary.total_clients}
-                        <span className="text-sm font-normal text-gray-500 dark:text-gray-400 ml-1">
-                          members
-                        </span>
-                      </p>
-                      <div className="flex items-center gap-4 text-xs text-gray-600 dark:text-gray-400">
-                        <span>Won: <span className="font-semibold text-emerald-600 dark:text-emerald-400">{pipelineSummary.won_count}</span></span>
-                        <span>Lost: <span className="font-semibold text-red-600 dark:text-red-400">{pipelineSummary.lost_count}</span></span>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </Link>
-              )}
-
               {tasksSummary && (
                 <Link href="/tasks">
                   <Card className="bg-white dark:bg-dark-2 border border-gray-200 dark:border-dark-3 hover:border-primary/30 transition-colors">
@@ -553,7 +530,7 @@ export default function Home() {
             CRM
           </h2>
           <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-            Members, pipeline, offers, and activity report in one place.
+            Members, offers, and activity report in one place.
           </p>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {crmSectionCards.map((card) => {

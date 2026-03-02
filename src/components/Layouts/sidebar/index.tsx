@@ -101,7 +101,7 @@ export function Sidebar() {
                             <MenuItem
                               isActive={item.items.some(({ url }) => url === pathname)}
                               onClick={() => toggleExpanded(item.title)}
-                              className="flex items-center justify-between"
+                              className="flex items-center gap-3 py-3"
                             >
                               <div className="flex items-center gap-3">
                                 {"icon" in item && item.icon && (

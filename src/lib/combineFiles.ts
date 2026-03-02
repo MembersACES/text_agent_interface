@@ -12,5 +12,7 @@ export async function combineFilesIntoPdf(files: File[]): Promise<File> {
   }
 
   const mergedBytes = await mergedPdf.save();
-  return new File([mergedBytes], "combined.pdf", { type: "application/pdf" });
+  return new File([mergedBytes as BlobPart], "combined.pdf", {
+    type: "application/pdf",
+  });
 }

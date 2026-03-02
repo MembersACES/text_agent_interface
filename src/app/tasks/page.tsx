@@ -4,6 +4,7 @@ import { useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
 import { getApiBaseUrl } from "@/lib/utils";
 import Breadcrumb from "@/components/Breadcrumbs/Breadcrumb";
+import { TaskModal } from "@/components/tasks/TaskModal";
 
 interface Task {
   id: number;
@@ -16,6 +17,7 @@ interface Task {
   business_id?: number;
   created_at: string;
   updated_at: string;
+  client_id?: number | null;
 }
 
 interface User {
@@ -72,8 +74,6 @@ export default function TasksPage() {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [deletingTask, setDeletingTask] = useState<Task | null>(null);
   const [historyTaskId, setHistoryTaskId] = useState<number | null>(null);
-  const [creating, setCreating] = useState(false);
-  const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   
   // Sorting state
@@ -87,7 +87,6 @@ export default function TasksPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [usersError, setUsersError] = useState<string | null>(null);
-  const [assignedToError, setAssignedToError] = useState<string | null>(null);
   
   // History state
   const [history, setHistory] = useState<TaskHistory[]>([]);
@@ -107,15 +106,6 @@ export default function TasksPage() {
     has_prev: boolean;
   } | null>(null);
   
-  // Form state for creating/editing tasks
-  const [formData, setFormData] = useState({
-    title: "",
-    description: "",
-    due_date: "",
-    assigned_to: "",
-    business_id: "",
-  });
-
   // Fetch tasks based on filter
   const fetchTasks = async () => {
     if (!token) {
@@ -359,13 +349,6 @@ export default function TasksPage() {
 
   const openEditModal = (task: Task) => {
     setEditingTask(task);
-    setFormData({
-      title: task.title,
-      description: task.description || "",
-      due_date: task.due_date ? task.due_date.split('T')[0] : "",
-      assigned_to: task.assigned_to,
-      business_id: task.business_id ? task.business_id.toString() : "",
-    });
     setShowEditModal(true);
   };
 
@@ -568,163 +551,10 @@ export default function TasksPage() {
     setShowDeleteConfirm(true);
   };
 
-  const handleCreateTask = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!token) {
-      setError("Authentication required. Please log in.");
-      return;
-    }
-
-    setAssignedToError(null);
-    if (!formData.title.trim()) {
-      setError("Title is required");
-      return;
-    }
-
-    if (!formData.assigned_to.trim()) {
-      setAssignedToError("Assigned To is required");
-      setError("Assigned To is required");
-      return;
-    }
-
-    try {
-      setCreating(true);
-      setError(null);
-
-      const payload: any = {
-        title: formData.title,
-        description: formData.description || "",
-        due_date: formData.due_date || null,
-        assigned_to: formData.assigned_to || null,
-      };
-
-      if (formData.business_id && formData.business_id.trim()) {
-        payload.business_id = parseInt(formData.business_id);
-      }
-
-      const response = await fetch(`${getApiBaseUrl()}/api/tasks`, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (response.status === 401) {
-        setError("Session expired. Please log in again.");
-        setCreating(false);
-        return;
-      }
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || errorData.message || "Failed to create task");
-      }
-
-      setFormData({
-        title: "",
-        description: "",
-        due_date: "",
-        assigned_to: "",
-        business_id: "",
-      });
-      setAssignedToError(null);
-      setShowCreateModal(false);
-      
-      await fetchTasks();
-    } catch (err: any) {
-      console.error("Error creating task:", err);
-      setError(err.message || "Failed to create task");
-    } finally {
-      setCreating(false);
-    }
-  };
-
-  const handleEditTask = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!token || !editingTask) {
-      setError("Authentication required or task not selected.");
-      return;
-    }
-
-    setAssignedToError(null);
-    if (!formData.title.trim()) {
-      setError("Title is required");
-      return;
-    }
-
-    if (!formData.assigned_to.trim()) {
-      setAssignedToError("Assigned To is required");
-      setError("Assigned To is required");
-      return;
-    }
-
-    try {
-      setEditing(true);
-      setError(null);
-
-      const payload: any = {
-        title: formData.title,
-        description: formData.description || "",
-        due_date: formData.due_date || null,
-        assigned_to: formData.assigned_to,
-      };
-
-      if (formData.business_id && formData.business_id.trim()) {
-        payload.business_id = parseInt(formData.business_id);
-      } else {
-        payload.business_id = null;
-      }
-
-      const response = await fetch(`${getApiBaseUrl()}/api/tasks/${editingTask.id}`, {
-        method: "PATCH",
-        headers: {
-          "Authorization": `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (response.status === 401) {
-        setError("Session expired. Please log in again.");
-        setEditing(false);
-        return;
-      }
-
-      if (response.status === 403) {
-        setError("You don't have permission to edit this task.");
-        setEditing(false);
-        return;
-      }
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || errorData.message || "Failed to update task");
-      }
-
-      setFormData({
-        title: "",
-        description: "",
-        due_date: "",
-        assigned_to: "",
-        business_id: "",
-      });
-      setAssignedToError(null);
-      setEditingTask(null);
-      setShowEditModal(false);
-      
-      await fetchTasks();
-      if (historyTaskId === editingTask.id) {
-        await fetchHistory(editingTask.id, historyPage, historyPageSize, historyFilter);
-      }
-    } catch (err: any) {
-      console.error("Error updating task:", err);
-      setError(err.message || "Failed to update task");
-    } finally {
-      setEditing(false);
+  const handleTaskSaved = async (savedTaskId: number) => {
+    await fetchTasks();
+    if (savedTaskId && historyTaskId === savedTaskId) {
+      await fetchHistory(savedTaskId, historyPage, historyPageSize, historyFilter);
     }
   };
 
@@ -1242,395 +1072,53 @@ export default function TasksPage() {
           </>
         )}
 
-        {/* Create Task Modal */}
-        {showCreateModal && (
-          <div
-            className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4"
-            onClick={(e) => {
-              if (e.target === e.currentTarget) {
-                setShowCreateModal(false);
-                setAssignedToError(null);
-              }
+        {/* Shared Task Modal instances */}
+        <TaskModal
+          mode="create"
+          isOpen={showCreateModal}
+          onClose={() => {
+            setShowCreateModal(false);
+          }}
+          onSaved={handleTaskSaved}
+          initialValues={{
+            title: "",
+            description: "",
+            due_date: "",
+            assigned_to: "",
+            business_id: "",
+            client_id: "",
+          }}
+          lockClient={false}
+          clientLabel="Linked member (optional)"
+        />
+
+        {editingTask && (
+          <TaskModal
+            mode="edit"
+            taskId={editingTask.id}
+            isOpen={showEditModal}
+            onClose={() => {
+              setShowEditModal(false);
+              setEditingTask(null);
             }}
-          >
-            <div
-              className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="p-6">
-                <div className="flex justify-between items-center mb-6">
-                  <h2 className="text-2xl font-semibold text-gray-900 dark:text-white">
-                    Create New Task
-                  </h2>
-                  <button
-                    onClick={() => {
-                      setShowCreateModal(false);
-                      setAssignedToError(null);
-                    }}
-                    className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-2xl leading-none"
-                  >
-                    ×
-                  </button>
-                </div>
-
-                <form onSubmit={handleCreateTask}>
-                  <div className="space-y-4">
-                    {/* Title */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        Title <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.title}
-                        onChange={(e) =>
-                          setFormData({ ...formData, title: e.target.value })
-                        }
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary dark:bg-gray-700 dark:text-white"
-                        required
-                      />
-                    </div>
-
-                    {/* Description */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        Description
-                      </label>
-                      <textarea
-                        value={formData.description}
-                        onChange={(e) =>
-                          setFormData({ ...formData, description: e.target.value })
-                        }
-                        rows={4}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary dark:bg-gray-700 dark:text-white"
-                      />
-                    </div>
-
-                    {/* Due Date */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        Due Date
-                      </label>
-                      <input
-                        type="date"
-                        value={formData.due_date}
-                        onChange={(e) =>
-                          setFormData({ ...formData, due_date: e.target.value })
-                        }
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary dark:bg-gray-700 dark:text-white"
-                      />
-                    </div>
-
-                    {/* Assigned To */}
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                          Assigned To <span className="text-red-500">*</span>
-                        </label>
-                        {session?.user?.email && !loadingUsers && !usersError && users.length > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const currentUser = users.find(u => u.email === session.user?.email);
-                              if (currentUser) {
-                                setFormData({ ...formData, assigned_to: currentUser.email });
-                                setAssignedToError(null);
-                              }
-                            }}
-                            className="text-xs text-primary hover:text-primary/80 transition-colors"
-                          >
-                            Assign to me
-                          </button>
-                        )}
-                      </div>
-                      {loadingUsers ? (
-                        <div className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-gray-50 dark:bg-gray-700 flex items-center">
-                          <span className="text-sm text-gray-500 dark:text-gray-400">Loading users...</span>
-                        </div>
-                      ) : usersError ? (
-                        <div className="w-full px-3 py-2 border border-red-300 dark:border-red-600 rounded-md bg-red-50 dark:bg-red-900/20">
-                          <span className="text-sm text-red-600 dark:text-red-400">
-                            {usersError}. You can still enter an email manually.
-                          </span>
-                          <input
-                            type="text"
-                            value={formData.assigned_to}
-                            onChange={(e) => {
-                              setFormData({ ...formData, assigned_to: e.target.value });
-                              setAssignedToError(null);
-                            }}
-                            placeholder="Enter user email"
-                            className="w-full mt-2 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary dark:bg-gray-700 dark:text-white"
-                          />
-                        </div>
-                      ) : (
-                        <>
-                          <select
-                            value={formData.assigned_to}
-                            onChange={(e) => {
-                              setFormData({ ...formData, assigned_to: e.target.value });
-                              setAssignedToError(null);
-                            }}
-                            className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary dark:bg-gray-700 dark:text-white ${
-                              assignedToError
-                                ? "border-red-300 dark:border-red-600"
-                                : "border-gray-300 dark:border-gray-600"
-                            }`}
-                            required
-                          >
-                            <option value="">Select a user...</option>
-                            {users.map((user) => (
-                              <option key={user.id} value={user.email}>
-                                {user.name || user.full_name || user.email}
-                              </option>
-                            ))}
-                          </select>
-                          {assignedToError && (
-                            <p className="mt-1 text-sm text-red-600 dark:text-red-400">
-                              {assignedToError}
-                            </p>
-                          )}
-                        </>
-                      )}
-                    </div>
-
-                    {/* Business ID */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        Business ID (Optional)
-                      </label>
-                      <input
-                        type="number"
-                        value={formData.business_id}
-                        onChange={(e) =>
-                          setFormData({ ...formData, business_id: e.target.value })
-                        }
-                        placeholder="Business ID"
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary dark:bg-gray-700 dark:text-white"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex justify-end gap-3 mt-6">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowCreateModal(false);
-                        setAssignedToError(null);
-                      }}
-                      className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={creating}
-                      className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {creating ? "Creating..." : "Create Task"}
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Edit Task Modal */}
-        {showEditModal && editingTask && (
-          <div
-            className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4"
-            onClick={(e) => {
-              if (e.target === e.currentTarget) {
-                setShowEditModal(false);
-                setAssignedToError(null);
-                setEditingTask(null);
-              }
+            onSaved={handleTaskSaved}
+            initialValues={{
+              title: editingTask.title,
+              description: editingTask.description || "",
+              due_date: editingTask.due_date
+                ? editingTask.due_date.split("T")[0]
+                : "",
+              assigned_to: editingTask.assigned_to,
+              business_id: editingTask.business_id
+                ? editingTask.business_id.toString()
+                : "",
+              client_id: editingTask.client_id
+                ? editingTask.client_id.toString()
+                : "",
             }}
-          >
-            <div
-              className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="p-6">
-                <div className="flex justify-between items-center mb-6">
-                  <h2 className="text-2xl font-semibold text-gray-900 dark:text-white">
-                    Edit Task
-                  </h2>
-                  <button
-                    onClick={() => {
-                      setShowEditModal(false);
-                      setAssignedToError(null);
-                      setEditingTask(null);
-                    }}
-                    className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-2xl leading-none"
-                  >
-                    ×
-                  </button>
-                </div>
-
-                <form onSubmit={handleEditTask}>
-                  <div className="space-y-4">
-                    {/* Title */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        Title <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.title}
-                        onChange={(e) =>
-                          setFormData({ ...formData, title: e.target.value })
-                        }
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary dark:bg-gray-700 dark:text-white"
-                        required
-                      />
-                    </div>
-
-                    {/* Description */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        Description
-                      </label>
-                      <textarea
-                        value={formData.description}
-                        onChange={(e) =>
-                          setFormData({ ...formData, description: e.target.value })
-                        }
-                        rows={4}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary dark:bg-gray-700 dark:text-white"
-                      />
-                    </div>
-
-                    {/* Due Date */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        Due Date
-                      </label>
-                      <input
-                        type="date"
-                        value={formData.due_date}
-                        onChange={(e) =>
-                          setFormData({ ...formData, due_date: e.target.value })
-                        }
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary dark:bg-gray-700 dark:text-white"
-                      />
-                    </div>
-
-                    {/* Assigned To */}
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                          Assigned To <span className="text-red-500">*</span>
-                        </label>
-                        {session?.user?.email && !loadingUsers && !usersError && users.length > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const currentUser = users.find(u => u.email === session.user?.email);
-                              if (currentUser) {
-                                setFormData({ ...formData, assigned_to: currentUser.email });
-                                setAssignedToError(null);
-                              }
-                            }}
-                            className="text-xs text-primary hover:text-primary/80 transition-colors"
-                          >
-                            Assign to me
-                          </button>
-                        )}
-                      </div>
-                      {loadingUsers ? (
-                        <div className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-gray-50 dark:bg-gray-700 flex items-center">
-                          <span className="text-sm text-gray-500 dark:text-gray-400">Loading users...</span>
-                        </div>
-                      ) : usersError ? (
-                        <div className="w-full px-3 py-2 border border-red-300 dark:border-red-600 rounded-md bg-red-50 dark:bg-red-900/20">
-                          <span className="text-sm text-red-600 dark:text-red-400">
-                            {usersError}. You can still enter an email manually.
-                          </span>
-                          <input
-                            type="text"
-                            value={formData.assigned_to}
-                            onChange={(e) => {
-                              setFormData({ ...formData, assigned_to: e.target.value });
-                              setAssignedToError(null);
-                            }}
-                            placeholder="Enter user email"
-                            className="w-full mt-2 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary dark:bg-gray-700 dark:text-white"
-                          />
-                        </div>
-                      ) : (
-                        <>
-                          <select
-                            value={formData.assigned_to}
-                            onChange={(e) => {
-                              setFormData({ ...formData, assigned_to: e.target.value });
-                              setAssignedToError(null);
-                            }}
-                            className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary dark:bg-gray-700 dark:text-white ${
-                              assignedToError
-                                ? "border-red-300 dark:border-red-600"
-                                : "border-gray-300 dark:border-gray-600"
-                            }`}
-                            required
-                          >
-                            <option value="">Select a user...</option>
-                            {users.map((user) => (
-                              <option key={user.id} value={user.email}>
-                                {user.name || user.full_name || user.email}
-                              </option>
-                            ))}
-                          </select>
-                          {assignedToError && (
-                            <p className="mt-1 text-sm text-red-600 dark:text-red-400">
-                              {assignedToError}
-                            </p>
-                          )}
-                        </>
-                      )}
-                    </div>
-
-                    {/* Business ID */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        Business ID (Optional)
-                      </label>
-                      <input
-                        type="number"
-                        value={formData.business_id}
-                        onChange={(e) =>
-                          setFormData({ ...formData, business_id: e.target.value })
-                        }
-                        placeholder="Business ID"
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary dark:bg-gray-700 dark:text-white"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex justify-end gap-3 mt-6">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowEditModal(false);
-                        setAssignedToError(null);
-                        setEditingTask(null);
-                      }}
-                      className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={editing}
-                      className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {editing ? "Updating..." : "Update Task"}
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          </div>
+            lockClient={false}
+            clientLabel="Linked member (optional)"
+          />
         )}
 
         {/* History Modal */}

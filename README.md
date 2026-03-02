@@ -131,14 +131,14 @@ The frontend application will now be running at `http://localhost:8080`.
 
 ---
 
-## CRM: Clients, Pipeline & Offers
+## CRM: Members & Offers
 
 The CRM shows **all clients** (not just leads). Clients with offers in flight or signed customers live in stages such as **Offer Sent**, **Won**, or **Lost**.
 
 **How to use it**
 
-- **Clients list** — Primary place to work: search, open a client, edit details, add notes, link tasks and offers.
-- **Pipeline board** — High-level overview of where things sit (one glance). Useful as volume grows or when you want to quickly drag a few records through stages. Not meant to replace the Clients list as your main workspace.
+- **Members list** — Primary place to work: search, open a member, edit details, add notes, link tasks and offers.
+- **Stages & status** — High-level overview of where things sit (one glance). Useful as volume grows or when you want to quickly move a few records between stages. Not meant to replace the Members list as your main workspace.
 - **Offers** — Can act as the “active work” list (deals/quotes in flight) if you prefer to focus there for live opportunities.
 
 **Existing clients**

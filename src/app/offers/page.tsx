@@ -5,7 +5,13 @@ import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { getApiBaseUrl } from "@/lib/utils";
 import { PageHeader } from "@/components/Layouts/PageHeader";
-import { OfferStatus, OFFER_STATUSES, OFFER_STATUS_LABELS } from "@/constants/crm";
+import {
+  OfferStatus,
+  OFFER_STATUSES,
+  OFFER_STATUS_LABELS,
+  OFFER_PIPELINE_STAGE_LABELS,
+  type OfferPipelineStage,
+} from "@/constants/crm";
 
 interface Offer {
   id: number;
@@ -13,8 +19,10 @@ interface Offer {
   business_name?: string | null;
   utility_type?: string | null;
   utility_type_identifier?: string | null;
+  utility_display?: string | null;
   identifier?: string | null;
   status: OfferStatus;
+  pipeline_stage?: OfferPipelineStage | null;
   created_at: string;
   is_existing_client?: boolean;
 }
@@ -48,6 +56,8 @@ export default function OffersPage() {
   const [error, setError] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>("");
   const [filterClientId, setFilterClientId] = useState<string>("");
+  const [filterUtility, setFilterUtility] = useState<string>("");
+  const [filterIdentifier, setFilterIdentifier] = useState<string>("");
   const [filterCreatedAfter, setFilterCreatedAfter] = useState<string>("");
   const [filterCreatedBefore, setFilterCreatedBefore] = useState<string>("");
   const [filterMine, setFilterMine] = useState(false);
@@ -65,6 +75,9 @@ export default function OffersPage() {
   const [totalOffers, setTotalOffers] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
   const PAGE_SIZE = 20;
+  const [deleteOfferId, setDeleteOfferId] = useState<number | null>(null);
+  const [deleteOfferSubmitting, setDeleteOfferSubmitting] = useState(false);
+  const [deleteOfferError, setDeleteOfferError] = useState<string | null>(null);
 
   const handleCreateOffer = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -110,6 +123,41 @@ export default function OffersPage() {
     }
   };
 
+  const handleDeleteOffer = async () => {
+    if (!token || deleteOfferId == null) return;
+    setDeleteOfferSubmitting(true);
+    setDeleteOfferError(null);
+    try {
+      const res = await fetch(
+        `${getApiBaseUrl()}/api/offers/${deleteOfferId}`,
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        },
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(
+          typeof data.detail === "string"
+            ? data.detail
+            : "Failed to delete offer",
+        );
+      }
+      setOffers((prev) => prev.filter((o) => o.id !== deleteOfferId));
+      setTotalOffers((prev) => Math.max(0, prev - 1));
+      setDeleteOfferId(null);
+    } catch (err: unknown) {
+      setDeleteOfferError(
+        err instanceof Error ? err.message : "Failed to delete offer",
+      );
+    } finally {
+      setDeleteOfferSubmitting(false);
+    }
+  };
+
   useEffect(() => {
     if (!token) {
       setLoading(false);
@@ -149,6 +197,8 @@ export default function OffersPage() {
         params.set("offset", "0");
         if (filterStatus) params.set("status", filterStatus);
         if (filterClientId) params.set("client_id", filterClientId);
+        if (filterUtility.trim()) params.set("utility", filterUtility.trim());
+        if (filterIdentifier.trim()) params.set("identifier", filterIdentifier.trim());
         if (filterCreatedAfter) params.set("created_after", filterCreatedAfter);
         if (filterCreatedBefore) params.set("created_before", filterCreatedBefore);
         if (filterMine) params.set("mine", "1");
@@ -183,7 +233,7 @@ export default function OffersPage() {
     };
 
     fetchOffers();
-  }, [token, filterStatus, filterClientId, filterCreatedAfter, filterCreatedBefore, filterMine]);
+  }, [token, filterStatus, filterClientId, filterUtility, filterIdentifier, filterCreatedAfter, filterCreatedBefore, filterMine]);
 
   const loadMoreOffers = async () => {
     if (!token || loadingMore || offers.length >= totalOffers) return;
@@ -194,6 +244,8 @@ export default function OffersPage() {
       params.set("offset", String(offers.length));
       if (filterStatus) params.set("status", filterStatus);
       if (filterClientId) params.set("client_id", filterClientId);
+      if (filterUtility.trim()) params.set("utility", filterUtility.trim());
+      if (filterIdentifier.trim()) params.set("identifier", filterIdentifier.trim());
       if (filterCreatedAfter) params.set("created_after", filterCreatedAfter);
       if (filterCreatedBefore) params.set("created_before", filterCreatedBefore);
       if (filterMine) params.set("mine", "1");
@@ -235,6 +287,8 @@ export default function OffersPage() {
                   const params = new URLSearchParams();
                   if (filterStatus) params.set("status", filterStatus);
                   if (filterClientId) params.set("client_id", filterClientId);
+                  if (filterUtility.trim()) params.set("utility", filterUtility.trim());
+                  if (filterIdentifier.trim()) params.set("identifier", filterIdentifier.trim());
                   if (filterCreatedAfter) params.set("created_after", filterCreatedAfter);
                   if (filterCreatedBefore) params.set("created_before", filterCreatedBefore);
                   if (filterMine) params.set("mine", "1");
@@ -293,6 +347,26 @@ export default function OffersPage() {
               </select>
             </label>
             <label className="flex items-center gap-2">
+              <span className="text-gray-500 dark:text-gray-400">Utility</span>
+              <input
+                type="text"
+                value={filterUtility}
+                onChange={(e) => setFilterUtility(e.target.value)}
+                placeholder="Type or label"
+                className="rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 w-32"
+              />
+            </label>
+            <label className="flex items-center gap-2">
+              <span className="text-gray-500 dark:text-gray-400">Identifier</span>
+              <input
+                type="text"
+                value={filterIdentifier}
+                onChange={(e) => setFilterIdentifier(e.target.value)}
+                placeholder="NMI, MIRN…"
+                className="rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 w-28"
+              />
+            </label>
+            <label className="flex items-center gap-2">
               <span className="text-gray-500 dark:text-gray-400">From</span>
               <input
                 type="date"
@@ -310,12 +384,14 @@ export default function OffersPage() {
                 className="rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1"
               />
             </label>
-            {(filterStatus || filterClientId || filterCreatedAfter || filterCreatedBefore || filterMine) && (
+            {(filterStatus || filterClientId || filterUtility || filterIdentifier || filterCreatedAfter || filterCreatedBefore || filterMine) && (
               <button
                 type="button"
                 onClick={() => {
                   setFilterStatus("");
                   setFilterClientId("");
+                  setFilterUtility("");
+                  setFilterIdentifier("");
                   setFilterCreatedAfter("");
                   setFilterCreatedBefore("");
                   setFilterMine(false);
@@ -361,6 +437,9 @@ export default function OffersPage() {
                       Status
                     </th>
                     <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-gray-300">
+                      Pipeline
+                    </th>
+                    <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-gray-300">
                       Created
                     </th>
                     <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-gray-300">
@@ -385,7 +464,7 @@ export default function OffersPage() {
                       </td>
                       <td className="px-4 py-2 whitespace-nowrap">
                         <div className="text-gray-900 dark:text-gray-100">
-                          {o.utility_type_identifier || o.utility_type || "—"}
+                          {o.utility_display || o.utility_type_identifier || o.utility_type || "—"}
                         </div>
                       </td>
                       <td className="px-4 py-2 whitespace-nowrap text-gray-700 dark:text-gray-300">
@@ -395,20 +474,81 @@ export default function OffersPage() {
                         {OFFER_STATUS_LABELS[o.status] ?? o.status}
                       </td>
                       <td className="px-4 py-2 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                        {o.pipeline_stage
+                          ? OFFER_PIPELINE_STAGE_LABELS[o.pipeline_stage] ?? o.pipeline_stage.replace(/_/g, " ")
+                          : "—"}
+                      </td>
+                      <td className="px-4 py-2 whitespace-nowrap text-gray-700 dark:text-gray-300">
                         {formatDate(o.created_at)}
                       </td>
                       <td className="px-4 py-2 whitespace-nowrap">
-                        <Link
-                          href={`/offers/${o.id}`}
-                          className="text-primary text-xs font-medium hover:underline"
-                        >
-                          View
-                        </Link>
+                        <div className="flex items-center gap-3">
+                          <Link
+                            href={`/offers/${o.id}`}
+                            className="text-primary text-xs font-medium hover:underline"
+                          >
+                            View
+                          </Link>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDeleteOfferError(null);
+                              setDeleteOfferId(o.id);
+                            }}
+                            className="text-xs font-medium text-red-600 hover:underline dark:text-red-400"
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+            </div>
+          </div>
+        )}
+        {deleteOfferId != null && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 shadow-lg max-w-md w-full mx-2">
+              <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-2">
+                Delete offer?
+              </h3>
+              <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
+                This will permanently remove this offer and its activities from
+                the CRM. This action cannot be undone.
+              </p>
+              {deleteOfferError && (
+                <p className="mb-2 text-xs text-red-600 dark:text-red-400">
+                  {deleteOfferError}
+                </p>
+              )}
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (deleteOfferSubmitting) return;
+                    setDeleteOfferId(null);
+                    setDeleteOfferError(null);
+                  }}
+                  className="px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"
+                  disabled={deleteOfferSubmitting}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteOffer}
+                  disabled={deleteOfferSubmitting}
+                  className="px-3 py-1.5 rounded-md bg-red-600 text-white text-xs font-medium hover:bg-red-700 disabled:opacity-50"
+                >
+                  {deleteOfferSubmitting ? "Deleting…" : "Delete"}
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -485,6 +625,7 @@ export default function OffersPage() {
                     placeholder="e.g. electricity_ci, gas"
                     className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 text-sm"
                   />
+                  <span className="block text-xs text-gray-400 dark:text-gray-500 mt-0.5">Recommended — helps filter and track offers</span>
                 </label>
                 <label className="block">
                   <span className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Utility type label (optional)</span>
@@ -497,14 +638,15 @@ export default function OffersPage() {
                   />
                 </label>
                 <label className="block">
-                  <span className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Identifier (NMI, MRIN, etc.)</span>
+                  <span className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Identifier (NMI, MIRN, etc.)</span>
                   <input
                     type="text"
                     value={createOfferForm.identifier}
                     onChange={(e) => setCreateOfferForm((f) => ({ ...f, identifier: e.target.value }))}
-                    placeholder="e.g. NMI or MRIN"
+                    placeholder="e.g. NMI or MIRN"
                     className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 text-sm"
                   />
+                  <span className="block text-xs text-gray-400 dark:text-gray-500 mt-0.5">Recommended for electricity/gas — used in list and filters</span>
                 </label>
                 <label className="block">
                   <span className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Estimated value (optional)</span>

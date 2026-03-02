@@ -10,8 +10,10 @@ import {
   OFFER_STATUSES,
   OFFER_STATUS_LABELS,
   OFFER_ACTIVITY_LABELS,
+  OFFER_PIPELINE_STAGE_LABELS,
   OfferStatus,
   type OfferActivityType,
+  type OfferPipelineStage,
 } from "@/constants/crm";
 
 interface Offer {
@@ -20,8 +22,10 @@ interface Offer {
   business_name?: string | null;
   utility_type?: string | null;
   utility_type_identifier?: string | null;
+  utility_display?: string | null;
   identifier?: string | null;
   status: OfferStatus;
+  pipeline_stage?: OfferPipelineStage | null;
   estimated_value?: number | null;
   document_link?: string | null;
   created_at: string;
@@ -92,11 +96,16 @@ export default function OfferDetailPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [discrepancyModalOpen, setDiscrepancyModalOpen] = useState(false);
-  const [discrepancySummary, setDiscrepancySummary] = useState("");
-  const [loggingDiscrepancy, setLoggingDiscrepancy] = useState(false);
   const [clientsList, setClientsList] = useState<{ id: number; business_name: string }[]>([]);
   const [savingClient, setSavingClient] = useState(false);
+  const [editingDetails, setEditingDetails] = useState(false);
+  const [savingDetails, setSavingDetails] = useState(false);
+  const [editUtilityType, setEditUtilityType] = useState("");
+  const [editUtilityTypeIdentifier, setEditUtilityTypeIdentifier] = useState("");
+  const [editIdentifier, setEditIdentifier] = useState("");
+  const [editDocumentLink, setEditDocumentLink] = useState("");
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
 
   const documents = useMemo(() => {
     const items: {
@@ -234,55 +243,6 @@ export default function OfferDetailPage() {
     fetchAll();
   }, [offerId, token]);
 
-  const handleLogDiscrepancyEmail = async () => {
-    if (!offerId || !token) return;
-    try {
-      setLoggingDiscrepancy(true);
-      setError(null);
-      const res = await fetch(
-        `${getApiBaseUrl()}/api/offers/${offerId}/activities`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            activity_type: "discrepancy_email_sent",
-            metadata: discrepancySummary.trim()
-              ? { summary: discrepancySummary.trim() }
-              : undefined,
-            created_by: (session as any)?.user?.email,
-          }),
-        },
-      );
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.detail || "Failed to log discrepancy email");
-      }
-      setDiscrepancyModalOpen(false);
-      setDiscrepancySummary("");
-      // Refetch activities
-      const listRes = await fetch(
-        `${getApiBaseUrl()}/api/offers/${offerId}/activities`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        },
-      );
-      if (listRes.ok) {
-        const list: OfferActivity[] = await listRes.json();
-        setActivities(list);
-      }
-    } catch (e: any) {
-      setError(e.message || "Failed to log discrepancy email");
-    } finally {
-      setLoggingDiscrepancy(false);
-    }
-  };
-
   const handleClientChange = async (newClientId: number | null) => {
     if (!offerId || !token || !offer) return;
     try {
@@ -347,6 +307,93 @@ export default function OfferDetailPage() {
     }
   };
 
+  // Pipeline stage is derived from activities; we only display it here.
+
+  const startEditingDetails = () => {
+    if (offer) {
+      setEditUtilityType(offer.utility_type ?? "");
+      setEditUtilityTypeIdentifier(offer.utility_type_identifier ?? "");
+      setEditIdentifier(offer.identifier ?? "");
+      setEditDocumentLink(offer.document_link ?? "");
+      setEditingDetails(true);
+    }
+  };
+
+  const cancelEditingDetails = () => {
+    setEditingDetails(false);
+  };
+
+  const handleSaveDetails = async () => {
+    if (!offerId || !token) return;
+    try {
+      setSavingDetails(true);
+      setError(null);
+      const res = await fetch(`${getApiBaseUrl()}/api/offers/${offerId}`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          utility_type: editUtilityType.trim() || null,
+          utility_type_identifier: editUtilityTypeIdentifier.trim() || null,
+          identifier: editIdentifier.trim() || null,
+          document_link: editDocumentLink.trim() || null,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(
+          typeof data.detail === "string"
+            ? data.detail
+            : "Failed to update offer details",
+        );
+      }
+      const updated: Offer = await res.json();
+      setOffer(updated);
+      setEditingDetails(false);
+    } catch (e: unknown) {
+      setError(
+        e instanceof Error
+          ? e.message
+          : "Failed to update offer details",
+      );
+    } finally {
+      setSavingDetails(false);
+    }
+  };
+
+  const handleDeleteOffer = async () => {
+    if (!offerId || !token) return;
+    try {
+      setDeleteSubmitting(true);
+      setError(null);
+      const res = await fetch(`${getApiBaseUrl()}/api/offers/${offerId}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(
+          typeof data.detail === "string"
+            ? data.detail
+            : "Failed to delete offer",
+        );
+      }
+      window.location.href = "/offers";
+    } catch (e: unknown) {
+      setError(
+        e instanceof Error ? e.message : "Failed to delete offer",
+      );
+    } finally {
+      setDeleteSubmitting(false);
+      setDeleteOpen(false);
+    }
+  };
+
   if (!offerId) {
     return (
       <div className="mt-4 text-sm text-red-600 dark:text-red-400">
@@ -356,10 +403,20 @@ export default function OfferDetailPage() {
   }
 
   const offerTitle = offer
-    ? `${offer.utility_type_identifier || offer.utility_type || "Offer"}${offer.identifier ? ` · ${offer.identifier}` : ""}`
+    ? (offer.utility_display
+        ? `${offer.utility_display}${offer.identifier ? ` ${offer.identifier}` : ""}`
+        : `${offer.utility_type_identifier || offer.utility_type || "Offer"}${offer.identifier ? ` · ${offer.identifier}` : ""}`)
     : "Offer";
   const offerDescription = offer
-    ? `${offer.business_name || "Unlinked member"}${client ? ` – ${CLIENT_STAGE_LABELS[client.stage as keyof typeof CLIENT_STAGE_LABELS] ?? client.stage}` : ""}`
+    ? `${offer.business_name || "Unlinked member"}${
+        client
+          ? ` – ${
+              CLIENT_STAGE_LABELS[
+                client.stage as keyof typeof CLIENT_STAGE_LABELS
+              ] ?? client.stage
+            }`
+          : ""
+      }`
     : undefined;
 
   return (
@@ -430,26 +487,34 @@ export default function OfferDetailPage() {
                     ))}
                   </select>
                 </div>
+                <div>
+                  <label className="block text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">
+                    Pipeline
+                  </label>
+                  <div className="inline-flex items-center px-2.5 py-1 rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-xs font-medium text-gray-700 dark:text-gray-200">
+                    {offer.pipeline_stage
+                      ? OFFER_PIPELINE_STAGE_LABELS[
+                          offer.pipeline_stage as keyof typeof OFFER_PIPELINE_STAGE_LABELS
+                        ] ?? offer.pipeline_stage.replace(/_/g, " ")
+                      : "No structured stage"}
+                  </div>
+                </div>
                 {client && (
                   <a
-                    href={`/clients/${client.id}`}
+                    href={`/crm-members/${client.id}`}
                     className="inline-flex items-center px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
                   >
                     View Client
                   </a>
                 )}
-                <a
-                  href={`/base-2?businessName=${encodeURIComponent(offer.business_name || "")}&offerId=${offerId}`}
-                  className="inline-flex items-center px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
-                >
-                  Open in Base 2
-                </a>
                 <button
                   type="button"
-                  onClick={() => setDiscrepancyModalOpen(true)}
-                  className="inline-flex items-center px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
+                  onClick={() => {
+                    setDeleteOpen(true);
+                  }}
+                  className="inline-flex items-center px-3 py-1.5 rounded-md border border-red-300 text-xs font-medium text-red-700 hover:bg-red-50 dark:border-red-600 dark:text-red-300 dark:hover:bg-red-900/20"
                 >
-                  Log discrepancy email
+                  Delete offer
                 </button>
               </div>
             </div>
@@ -457,9 +522,80 @@ export default function OfferDetailPage() {
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-3">
                 <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
-                  <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-3">
-                    Offer Details
+                  <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-3 flex items-center justify-between">
+                    <span>Offer Details</span>
+                    {!editingDetails ? (
+                      <button
+                        type="button"
+                        onClick={startEditingDetails}
+                        className="text-xs font-medium text-primary hover:underline"
+                      >
+                        Edit
+                      </button>
+                    ) : null}
                   </h2>
+                  {editingDetails ? (
+                    <div className="space-y-3 text-sm">
+                      <label className="block">
+                        <span className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Utility type</span>
+                        <input
+                          type="text"
+                          value={editUtilityType}
+                          onChange={(e) => setEditUtilityType(e.target.value)}
+                          placeholder="e.g. electricity_ci, gas"
+                          className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 text-sm"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Utility type label (optional)</span>
+                        <input
+                          type="text"
+                          value={editUtilityTypeIdentifier}
+                          onChange={(e) => setEditUtilityTypeIdentifier(e.target.value)}
+                          placeholder="e.g. C&I Electricity"
+                          className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 text-sm"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Identifier (NMI, MIRN, etc.)</span>
+                        <input
+                          type="text"
+                          value={editIdentifier}
+                          onChange={(e) => setEditIdentifier(e.target.value)}
+                          placeholder="e.g. NMI or MIRN"
+                          className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 text-sm"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Document link (optional)</span>
+                        <input
+                          type="url"
+                          value={editDocumentLink}
+                          onChange={(e) => setEditDocumentLink(e.target.value)}
+                          placeholder="https://..."
+                          className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 text-sm"
+                        />
+                      </label>
+                      <div className="flex gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={handleSaveDetails}
+                          disabled={savingDetails}
+                          className="px-3 py-1.5 rounded-md bg-primary text-white text-xs font-medium hover:opacity-90 disabled:opacity-50"
+                        >
+                          {savingDetails ? "Saving…" : "Save"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={cancelEditingDetails}
+                          disabled={savingDetails}
+                          className="px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
                   <dl className="space-y-2 text-sm">
                     <div className="flex justify-between gap-4">
                       <dt className="text-gray-500 dark:text-gray-400">
@@ -474,7 +610,8 @@ export default function OfferDetailPage() {
                         Utility
                       </dt>
                       <dd className="text-gray-900 dark:text-gray-100 text-right">
-                        {offer.utility_type_identifier ||
+                        {offer.utility_display ||
+                          offer.utility_type_identifier ||
                           offer.utility_type ||
                           "—"}
                       </dd>
@@ -514,6 +651,7 @@ export default function OfferDetailPage() {
                       </div>
                     )}
                   </dl>
+                  )}
                 </div>
               </div>
 
@@ -564,44 +702,6 @@ export default function OfferDetailPage() {
                 </div>
               </div>
             </div>
-
-            {/* Log discrepancy email modal */}
-            {discrepancyModalOpen && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" role="dialog" aria-modal="true">
-                <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 shadow-lg max-w-md w-full mx-2">
-                  <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-2">
-                    Log discrepancy email
-                  </h3>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-                    Record that a discrepancy email was sent for this offer. Add an optional summary below.
-                  </p>
-                  <textarea
-                    value={discrepancySummary}
-                    onChange={(e) => setDiscrepancySummary(e.target.value)}
-                    placeholder="Optional summary (e.g. what was sent or to whom)"
-                    rows={3}
-                    className="w-full text-sm rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 mb-3"
-                  />
-                  <div className="flex justify-end gap-2">
-                    <button
-                      type="button"
-                      onClick={() => { setDiscrepancyModalOpen(false); setDiscrepancySummary(""); }}
-                      className="px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleLogDiscrepancyEmail}
-                      disabled={loggingDiscrepancy}
-                      className="px-3 py-1.5 rounded-md bg-primary text-white text-xs font-medium hover:opacity-90 disabled:opacity-50"
-                    >
-                      {loggingDiscrepancy ? "Logging…" : "Log"}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
 
             {/* Activities timeline */}
             <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
@@ -688,7 +788,45 @@ export default function OfferDetailPage() {
             Offer not found.
           </div>
         )}
-      </div>
+          </div>
+      {deleteOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 shadow-lg max-w-md w-full mx-2">
+            <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-2">
+              Delete offer?
+            </h3>
+            <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
+              This will permanently remove this offer and its activities from
+              the CRM. This action cannot be undone.
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (deleteSubmitting) return;
+                  setDeleteOpen(false);
+                }}
+                className="px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"
+                disabled={deleteSubmitting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteOffer}
+                disabled={deleteSubmitting}
+                className="px-3 py-1.5 rounded-md bg-red-600 text-white text-xs font-medium hover:bg-red-700 disabled:opacity-50"
+              >
+                {deleteSubmitting ? "Deleting…" : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
