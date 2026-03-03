@@ -33,7 +33,9 @@ export async function PATCH(req: NextRequest) {
       );
     }
 
-    const backendUrl = getApiBaseUrl();
+    // Resolve backend from request host so dev frontend → dev backend on Cloud Run
+    const requestHost = req.headers.get("x-forwarded-host") || req.headers.get("host") || "";
+    const backendUrl = getApiBaseUrl(requestHost);
     const token = (session as any)?.id_token || (session as any)?.accessToken;
     const apiKey = process.env.BACKEND_API_KEY || "test-key";
     const authToken =

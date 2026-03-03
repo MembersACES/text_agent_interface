@@ -27,8 +27,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Get backend URL using utility function (handles local dev correctly)
-    const backendUrl = getApiBaseUrl();
+    // Resolve backend from request host so dev frontend → dev backend on Cloud Run
+    const requestHost = req.headers.get("x-forwarded-host") || req.headers.get("host") || "";
+    const backendUrl = getApiBaseUrl(requestHost);
 
     // For Drive API, we need the access token (not ID token)
     // ID token is for authentication, access token is for API calls
