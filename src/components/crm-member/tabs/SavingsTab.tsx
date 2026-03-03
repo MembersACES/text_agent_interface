@@ -3,6 +3,12 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 
+interface LineItem {
+  solution_label?: string;
+  solution_type?: string;
+  savings_amount?: number;
+}
+
 interface SavingsInvoiceSummary {
   invoice_number: string;
   business_name: string;
@@ -10,6 +16,7 @@ interface SavingsInvoiceSummary {
   total_amount: number;
   status: string;
   invoice_file_id?: string;
+  line_items?: LineItem[];
 }
 
 export interface SavingsTabProps {
@@ -197,13 +204,22 @@ export function SavingsTab({ businessInfo }: SavingsTabProps) {
                   <p className="text-xs font-medium text-emerald-800 dark:text-emerald-200">
                     Latest invoice
                   </p>
-                  <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                  <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate" title={
+                    [
+                      latestInvoice.invoice_number,
+                      latestInvoice.due_date ? `Due ${latestInvoice.due_date}` : "Due date not set",
+                      latestInvoice.line_items?.length
+                        ? latestInvoice.line_items.map((item) => item.solution_label || item.solution_type || "Service").filter(Boolean).join(", ")
+                        : "",
+                    ].filter(Boolean).join(" · ")
+                  }>
                     {latestInvoice.invoice_number}
-                  </p>
-                  <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
-                    {latestInvoice.due_date
-                      ? `Due ${latestInvoice.due_date}`
-                      : "Due date not set"}
+                    {latestInvoice.due_date && (
+                      <> · {latestInvoice.due_date}</>
+                    )}
+                    {latestInvoice.line_items && latestInvoice.line_items.length > 0 && (
+                      <> · {latestInvoice.line_items.map((item) => item.solution_label || item.solution_type || "Service").filter(Boolean).join(", ")}</>
+                    )}
                   </p>
                 </div>
                 <div className="text-right">
@@ -223,6 +239,16 @@ export function SavingsTab({ businessInfo }: SavingsTabProps) {
                     <option value="Sent">Sent</option>
                     <option value="Paid">Paid</option>
                   </select>
+                  {latestInvoice.invoice_file_id && (
+                    <a
+                      href={`https://drive.google.com/file/d/${latestInvoice.invoice_file_id}/view`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block text-[11px] font-semibold text-primary hover:underline mt-1"
+                    >
+                      View invoice
+                    </a>
+                  )}
                 </div>
               </div>
             )}
@@ -237,15 +263,24 @@ export function SavingsTab({ businessInfo }: SavingsTabProps) {
                     key={inv.invoice_number}
                     className="border border-gray-200 dark:border-gray-700 rounded-md px-3 py-2 text-sm flex items-center justify-between gap-3"
                   >
-                    <div className="min-w-0">
-                      <p className="font-medium text-gray-800 dark:text-gray-100 truncate">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate" title={
+                        [
+                          inv.invoice_number,
+                          inv.due_date || "Due date not recorded",
+                          inv.line_items?.length
+                            ? inv.line_items.map((item) => item.solution_label || item.solution_type || "Service").filter(Boolean).join(", ")
+                            : "",
+                        ].filter(Boolean).join(" · ")
+                      }>
                         {inv.invoice_number}
-                      </p>
-                      <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
-                        {inv.due_date || "Due date not recorded"}
+                        {inv.due_date && <> · {inv.due_date}</>}
+                        {inv.line_items && inv.line_items.length > 0 && (
+                          <> · {inv.line_items.map((item) => item.solution_label || item.solution_type || "Service").filter(Boolean).join(", ")}</>
+                        )}
                       </p>
                     </div>
-                    <div className="text-right">
+                    <div className="text-right flex flex-col items-end gap-0.5">
                       <p className="text-xs font-semibold text-gray-800 dark:text-gray-100">
                         {new Intl.NumberFormat("en-AU", {
                           style: "currency",
@@ -257,12 +292,22 @@ export function SavingsTab({ businessInfo }: SavingsTabProps) {
                         onChange={(e) =>
                           updateStatus(inv.invoice_number, e.target.value)
                         }
-                        className="text-[11px] border border-gray-300 dark:border-gray-600 rounded px-2 py-0.5 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 mt-0.5"
+                        className="text-[11px] border border-gray-300 dark:border-gray-600 rounded px-2 py-0.5 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200"
                       >
                         <option value="Generated">Generated</option>
                         <option value="Sent">Sent</option>
                         <option value="Paid">Paid</option>
                       </select>
+                      {inv.invoice_file_id && (
+                        <a
+                          href={`https://drive.google.com/file/d/${inv.invoice_file_id}/view`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[11px] font-semibold text-primary hover:underline"
+                        >
+                          View invoice
+                        </a>
+                      )}
                     </div>
                   </div>
                 ))}
