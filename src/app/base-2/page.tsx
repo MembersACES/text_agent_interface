@@ -33,6 +33,11 @@ interface UtilityComparison {
   // Current rates from invoice
   currentMeteringDaily?: number;
   currentMeteringAnnual?: number;
+  // C&I Electricity: separate meter and VAS (current)
+  currentMeterDaily?: number;
+  currentMeterAnnual?: number;
+  currentVasDaily?: number;
+  currentVasAnnual?: number;
   currentPeakRate?: number;
   currentOffPeakRate?: number;
   currentShoulderRate?: number;
@@ -58,6 +63,11 @@ interface UtilityComparison {
   // Comparison rates (editable placeholders)
   comparisonMeteringDaily?: number;
   comparisonMeteringAnnual?: number;
+  // C&I Electricity: separate meter and VAS (comparison, default 600 meter + 300 VAS annual)
+  comparisonMeterDaily?: number;
+  comparisonMeterAnnual?: number;
+  comparisonVasDaily?: number;
+  comparisonVasAnnual?: number;
   comparisonPeakRate?: number;
   comparisonOffPeakRate?: number;
   comparisonShoulderRate?: number;
@@ -233,6 +243,10 @@ export default function Base2Page() {
       if (meterRate > 0 || vasRate > 0) {
         rates.currentMeteringDaily = meterRate + vasRate;
         rates.currentMeteringAnnual = (meterRate + vasRate) * 365;
+        rates.currentMeterDaily = meterRate;
+        rates.currentMeterAnnual = meterRate * 365;
+        rates.currentVasDaily = vasRate;
+        rates.currentVasAnnual = vasRate * 365;
       }
       
       // Extract daily supply and demand charge
@@ -257,9 +271,18 @@ export default function Base2Page() {
       rates.comparisonPeakRate = (rates.currentPeakRate && rates.currentPeakRate > 0) ? parseFloat((rates.currentPeakRate * 0.95).toFixed(2)) : 24.50;
       rates.comparisonOffPeakRate = (rates.currentOffPeakRate && rates.currentOffPeakRate > 0) ? parseFloat((rates.currentOffPeakRate * 0.95).toFixed(2)) : 18.00;
       rates.comparisonShoulderRate = (rates.currentShoulderRate && rates.currentShoulderRate > 0) ? parseFloat((rates.currentShoulderRate * 0.95).toFixed(2)) : 20.00;
-      // Always use $700/year as comparison metering price
-      rates.comparisonMeteringAnnual = 700.00;
-      rates.comparisonMeteringDaily = parseFloat((700.00 / 365).toFixed(2)); // 1.92/day
+      // Comparison metering: C&I = 600 meter + 300 VAS (annual), editable; SME = 700 combined
+      if (utilityType === 'C&I Electricity') {
+        rates.comparisonMeterAnnual = 600;
+        rates.comparisonVasAnnual = 300;
+        rates.comparisonMeteringAnnual = 900;
+        rates.comparisonMeteringDaily = parseFloat((900 / 365).toFixed(4));
+        rates.comparisonMeterDaily = parseFloat((600 / 365).toFixed(4));
+        rates.comparisonVasDaily = parseFloat((300 / 365).toFixed(4));
+      } else {
+        rates.comparisonMeteringAnnual = 700.00;
+        rates.comparisonMeteringDaily = parseFloat((700.00 / 365).toFixed(2));
+      }
       rates.comparisonDailySupply = rates.currentDailySupply > 0 ? parseFloat((rates.currentDailySupply * 0.95).toFixed(2)) : 1.50;
       rates.comparisonDemandCharge = (rates.currentDemandCharge && rates.currentDemandCharge > 0) ? parseFloat((rates.currentDemandCharge * 0.95).toFixed(2)) : 12.00;
     } else if (utilityType.includes('Gas')) {
@@ -782,10 +805,21 @@ export default function Base2Page() {
   const updateComparisonRate = (utilityType: string, identifier: string, field: keyof UtilityComparison, value: string) => {
     setUtilityComparisons(prev => {
       return prev.map(u => {
-        if (u.utilityType === utilityType && u.identifier === identifier) {
-          return { ...u, [field]: parseFloat(value) || 0 };
+        if (u.utilityType !== utilityType || u.identifier !== identifier) return u;
+        const num = parseFloat(value) || 0;
+        const next = { ...u, [field]: num };
+        // Recalc derived comparison metering when meter or VAS annual changes (C&I Electricity)
+        if (field === 'comparisonMeterAnnual' || field === 'comparisonVasAnnual') {
+          const meterAnnual = field === 'comparisonMeterAnnual' ? num : (u.comparisonMeterAnnual ?? 600);
+          const vasAnnual = field === 'comparisonVasAnnual' ? num : (u.comparisonVasAnnual ?? 300);
+          next.comparisonMeterAnnual = meterAnnual;
+          next.comparisonVasAnnual = vasAnnual;
+          next.comparisonMeteringAnnual = meterAnnual + vasAnnual;
+          next.comparisonMeteringDaily = parseFloat(((meterAnnual + vasAnnual) / 365).toFixed(4));
+          next.comparisonMeterDaily = parseFloat((meterAnnual / 365).toFixed(4));
+          next.comparisonVasDaily = parseFloat((vasAnnual / 365).toFixed(4));
         }
-        return u;
+        return next;
       });
     });
   };
@@ -793,11 +827,30 @@ export default function Base2Page() {
   const updateCurrentRate = (utilityType: string, identifier: string, field: keyof UtilityComparison, value: string) => {
     setUtilityComparisons(prev => {
       return prev.map(u => {
-        if (u.utilityType === utilityType && u.identifier === identifier) {
-          const parsedValue = value === '' ? undefined : (parseFloat(value) || 0);
-          return { ...u, [field]: parsedValue };
+        if (u.utilityType !== utilityType || u.identifier !== identifier) return u;
+        const parsedValue = value === '' ? undefined : (parseFloat(value) || 0);
+        const next = { ...u, [field]: parsedValue };
+        // Recalc combined current metering when meter or VAS changes (C&I Electricity)
+        if (field === 'currentMeterDaily' || field === 'currentMeterAnnual' || field === 'currentVasDaily' || field === 'currentVasAnnual') {
+          const meterDaily = field === 'currentMeterDaily' ? (parsedValue ?? 0) : (u.currentMeterDaily ?? 0);
+          const vasDaily = field === 'currentVasDaily' ? (parsedValue ?? 0) : (u.currentVasDaily ?? 0);
+          const meterAnnual = field === 'currentMeterAnnual' ? (parsedValue ?? 0) : (u.currentMeterAnnual ?? 0);
+          const vasAnnual = field === 'currentVasAnnual' ? (parsedValue ?? 0) : (u.currentVasAnnual ?? 0);
+          if (field === 'currentMeterDaily' || field === 'currentVasDaily') {
+            next.currentMeterAnnual = meterDaily * 365;
+            next.currentVasAnnual = vasDaily * 365;
+            next.currentMeteringDaily = meterDaily + vasDaily;
+            next.currentMeteringAnnual = next.currentMeterAnnual + next.currentVasAnnual;
+          } else {
+            next.currentMeterAnnual = meterAnnual;
+            next.currentVasAnnual = vasAnnual;
+            next.currentMeteringAnnual = meterAnnual + vasAnnual;
+            next.currentMeteringDaily = (meterAnnual + vasAnnual) / 365;
+            next.currentMeterDaily = meterAnnual / 365;
+            next.currentVasDaily = vasAnnual / 365;
+          }
         }
-        return u;
+        return next;
       });
     });
   };
@@ -864,9 +917,9 @@ export default function Base2Page() {
       savings.usageSavings = currentMonthlyUsageCost - comparisonMonthlyUsageCost;
       savings.usageSavingsPercent = currentMonthlyUsageCost > 0 ? ((savings.usageSavings / currentMonthlyUsageCost) * 100) : 0;
       
-      // Metering savings (annual)
+      // Metering savings (annual) — C&I Electricity only; SME has no metering
       savings.meteringSavings = 0;
-      if (comparison.currentMeteringAnnual && comparison.comparisonMeteringAnnual) {
+      if (comparison.utilityType === 'C&I Electricity' && comparison.currentMeteringAnnual != null && comparison.comparisonMeteringAnnual != null) {
         savings.meteringSavings = comparison.currentMeteringAnnual - comparison.comparisonMeteringAnnual;
       }
       
@@ -884,16 +937,18 @@ export default function Base2Page() {
         savings.demandSavings = currentDemandAnnual - comparisonDemandAnnual;
       }
       
-      // Total annual savings = usage + metering + supply + demand
+      // Total annual savings = usage + metering (C&I only) + supply + demand
+      const currentMetering = comparison.utilityType === 'C&I Electricity' ? (comparison.currentMeteringAnnual || 0) : 0;
+      const comparisonMetering = comparison.utilityType === 'C&I Electricity' ? (comparison.comparisonMeteringAnnual || 0) : 0;
       const totalCurrentAnnual = 
         (currentMonthlyUsageCost * 12) +
-        (comparison.currentMeteringAnnual || 0) +
+        currentMetering +
         ((comparison.currentDailySupply || 0) * 365) +
         (comparison.currentDemandCharge && comparison.demandQuantity ? (comparison.currentDemandCharge * comparison.demandQuantity * 12) : 0);
       
       const totalComparisonAnnual = 
         (comparisonMonthlyUsageCost * 12) +
-        (comparison.comparisonMeteringAnnual || 0) +
+        comparisonMetering +
         ((comparison.comparisonDailySupply || 0) * 365) +
         (comparison.comparisonDemandCharge && comparison.demandQuantity ? (comparison.comparisonDemandCharge * comparison.demandQuantity * 12) : 0);
       
@@ -1096,17 +1151,23 @@ export default function Base2Page() {
           payload.invoice_number = fullData['Invoice Number'] || details?.invoice_number || '';
           payload.invoice_link = fullData['Invoice Link'] || details?.invoice_link || '';
           
-          // Current metering rates
-          payload.metering_rate = util.currentMeteringDaily?.toFixed(2) || '0';
-          payload.metering_rate_annual = util.currentMeteringAnnual?.toFixed(2) || '0';
+          // Current metering: meter + VAS (daily and annual)
+          payload.metering_rate = (util.currentMeterDaily ?? util.currentMeteringDaily ?? 0).toFixed(2);
+          payload.metering_rate_annual = (util.currentMeterAnnual ?? util.currentMeteringAnnual ?? 0).toFixed(2);
+          payload.vas_rate = (util.currentVasDaily ?? 0).toFixed(2);
+          payload.vas_rate_annual = (util.currentVasAnnual ?? 0).toFixed(2);
+          payload.combined_annual_cost = (util.currentMeteringAnnual ?? 0).toFixed(2);
           
-          // New/proposed metering rates (from comparison rates)
-          payload.dma_price = util.comparisonMeteringDaily?.toFixed(2) || '0';
-          payload.vas_price = '0'; // VAS rate if applicable
-          payload.proposed_annual_cost = util.comparisonMeteringAnnual?.toFixed(2) || '700.00';
+          // Comparison: 600 meter + 300 VAS (editable)
+          payload.comparison_meter_annual = (util.comparisonMeterAnnual ?? 600).toFixed(2);
+          payload.comparison_vas_annual = (util.comparisonVasAnnual ?? 300).toFixed(2);
+          payload.comparison_meter_daily = (util.comparisonMeterDaily ?? 600 / 365).toFixed(4);
+          payload.comparison_vas_daily = (util.comparisonVasDaily ?? 300 / 365).toFixed(4);
+          payload.dma_price = (util.comparisonMeterAnnual ?? 600).toFixed(2);
+          payload.vas_price = (util.comparisonVasAnnual ?? 300).toFixed(2);
+          payload.proposed_annual_cost = (util.comparisonMeteringAnnual ?? 900).toFixed(2);
           
-          // Calculate savings
-          if (util.currentMeteringAnnual && util.comparisonMeteringAnnual) {
+          if (util.currentMeteringAnnual != null && util.comparisonMeteringAnnual != null) {
             payload.annual_savings = (util.currentMeteringAnnual - util.comparisonMeteringAnnual).toFixed(2);
           }
         } else if (util.utilityType === 'C&I Electricity') {
@@ -1387,70 +1448,120 @@ export default function Base2Page() {
 
   const renderTableRows = (comparison: UtilityComparison, savings: any, isElectricity: boolean, isGas: boolean) => {
     const rows: React.ReactElement[] = [];
+    // Red when more expensive (negative savings), green when saving
+    const savingsCellClass = (value: number | undefined) =>
+      value != null && value < 0 ? 'text-red-600' : 'text-green-600';
     
-    // Metering Price (Electricity only) - Always show for electricity
-    if (isElectricity) {
-      rows.push(
-        <tr key="metering">
-          <td className="border border-gray-300 px-1 py-0.5 font-semibold text-xs">Metering Price</td>
-          <td className="border border-gray-300 px-1 py-0.5">
-            <div className="space-y-1">
-              <input
-                type="number"
-                step="0.01"
-                value={comparison.currentMeteringDaily || ''}
-                onChange={(e) => {
-                  const daily = parseFloat(e.target.value) || 0;
-                  updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentMeteringDaily', e.target.value);
-                  if (daily > 0) {
-                    updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentMeteringAnnual', (daily * 365).toFixed(2));
-                  } else {
-                    updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentMeteringAnnual', '');
-                  }
-                }}
-                className="w-full px-1 py-0.5 border border-gray-300 rounded text-right text-xs"
-                placeholder="Daily rate"
-              />
-              <div className="text-xs text-gray-500 text-right">
-                {comparison.currentMeteringAnnual 
-                  ? `$${comparison.currentMeteringAnnual.toFixed(2)}/yr` 
-                  : ''}
+    // Metering (C&I Electricity only; SME has no metering)
+    if (isElectricity && comparison.utilityType === 'C&I Electricity') {
+        const curMeterAnnual = comparison.currentMeterAnnual ?? comparison.currentMeteringAnnual ?? 0;
+        const curVasAnnual = comparison.currentVasAnnual ?? 0;
+        const compMeterAnnual = comparison.comparisonMeterAnnual ?? 600;
+        const compVasAnnual = comparison.comparisonVasAnnual ?? 300;
+        const compTotalAnnual = comparison.comparisonMeteringAnnual ?? 900;
+        rows.push(
+          <tr key="meter">
+            <td className="border border-gray-300 px-1 py-0.5 font-semibold text-xs">Meter</td>
+            <td className="border border-gray-300 px-1 py-0.5">
+              <div className="space-y-1">
+                <input
+                  type="number"
+                  step="0.01"
+                  value={comparison.currentMeterDaily ?? comparison.currentMeteringDaily ?? ''}
+                  onChange={(e) => {
+                    const daily = parseFloat(e.target.value) || 0;
+                    updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentMeterDaily', e.target.value);
+                    if (daily > 0) updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentMeterAnnual', (daily * 365).toFixed(2));
+                    else updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentMeterAnnual', '');
+                  }}
+                  className="w-full px-1 py-0.5 border border-gray-300 rounded text-right text-xs"
+                  placeholder="Daily"
+                />
+                <div className="text-xs text-gray-500 text-right">{curMeterAnnual ? `$${curMeterAnnual.toFixed(2)}/yr` : ''}</div>
               </div>
-            </div>
-          </td>
-          <td className="border border-gray-300 px-1 py-0.5 text-right text-xs">-</td>
-          <td className="border border-gray-300 px-1 py-0.5">
-            <div className="space-y-1">
-              <input
-                type="number"
-                step="0.01"
-                value={comparison.comparisonMeteringDaily || 1.92}
-                onChange={(e) => {
-                  const daily = parseFloat(e.target.value) || 1.92;
-                  updateComparisonRate(comparison.utilityType, comparison.identifier, 'comparisonMeteringDaily', e.target.value);
-                  // Always keep annual at 700
-                  updateComparisonRate(comparison.utilityType, comparison.identifier, 'comparisonMeteringAnnual', '700.00');
-                }}
-                className="w-full px-1 py-0.5 border border-gray-300 rounded text-right text-xs"
-                placeholder="1.92"
-              />
-              <div className="text-xs text-gray-500 text-right">
-                $700.00/yr
+            </td>
+            <td className="border border-gray-300 px-1 py-0.5 text-right text-xs">-</td>
+            <td className="border border-gray-300 px-1 py-0.5">
+              <div className="space-y-1">
+                <input
+                  type="number"
+                  step="0.01"
+                  value={compMeterAnnual}
+                  onChange={(e) => updateComparisonRate(comparison.utilityType, comparison.identifier, 'comparisonMeterAnnual', e.target.value)}
+                  className="w-full px-1 py-0.5 border border-gray-300 rounded text-right text-xs"
+                  placeholder="600"
+                />
+                <div className="text-xs text-gray-500 text-right">$/yr</div>
               </div>
-            </div>
-          </td>
-          <td className="border border-gray-300 px-1 py-0.5 text-right text-xs text-green-600 font-semibold">
-            {comparison.currentMeteringAnnual && comparison.comparisonMeteringAnnual
-              ? `$${(comparison.currentMeteringAnnual - comparison.comparisonMeteringAnnual).toFixed(2)}/yr`
-              : '-'}
-          </td>
-          <td className="border border-gray-300 px-1 py-0.5 text-right text-xs text-green-600 font-semibold">
-            {comparison.currentMeteringAnnual && comparison.comparisonMeteringAnnual
-              ? `${(((comparison.currentMeteringAnnual - comparison.comparisonMeteringAnnual) / comparison.currentMeteringAnnual) * 100).toFixed(1)}%`
-              : '-'}
-          </td>
-        </tr>
-      );
+            </td>
+            <td className={`border border-gray-300 px-1 py-0.5 text-right text-xs font-semibold ${savingsCellClass(curMeterAnnual != null && compMeterAnnual != null ? curMeterAnnual - compMeterAnnual : undefined)}`}>
+              {curMeterAnnual && compMeterAnnual ? `$${(curMeterAnnual - compMeterAnnual).toFixed(2)}/yr` : '-'}
+            </td>
+            <td className={`border border-gray-300 px-1 py-0.5 text-right text-xs font-semibold ${savingsCellClass(curMeterAnnual && compMeterAnnual && curMeterAnnual > 0 ? ((curMeterAnnual - compMeterAnnual) / curMeterAnnual) * 100 : undefined)}`}>
+              {curMeterAnnual && compMeterAnnual && curMeterAnnual > 0 ? `${(((curMeterAnnual - compMeterAnnual) / curMeterAnnual) * 100).toFixed(1)}%` : '-'}
+            </td>
+          </tr>
+        );
+        rows.push(
+          <tr key="vas">
+            <td className="border border-gray-300 px-1 py-0.5 font-semibold text-xs">VAS</td>
+            <td className="border border-gray-300 px-1 py-0.5">
+              <div className="space-y-1">
+                <input
+                  type="number"
+                  step="0.01"
+                  value={comparison.currentVasDaily ?? ''}
+                  onChange={(e) => {
+                    const daily = parseFloat(e.target.value) || 0;
+                    updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentVasDaily', e.target.value);
+                    if (daily > 0) updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentVasAnnual', (daily * 365).toFixed(2));
+                    else updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentVasAnnual', '');
+                  }}
+                  className="w-full px-1 py-0.5 border border-gray-300 rounded text-right text-xs"
+                  placeholder="Daily"
+                />
+                <div className="text-xs text-gray-500 text-right">{curVasAnnual ? `$${curVasAnnual.toFixed(2)}/yr` : ''}</div>
+              </div>
+            </td>
+            <td className="border border-gray-300 px-1 py-0.5 text-right text-xs">-</td>
+            <td className="border border-gray-300 px-1 py-0.5">
+              <div className="space-y-1">
+                <input
+                  type="number"
+                  step="0.01"
+                  value={compVasAnnual}
+                  onChange={(e) => updateComparisonRate(comparison.utilityType, comparison.identifier, 'comparisonVasAnnual', e.target.value)}
+                  className="w-full px-1 py-0.5 border border-gray-300 rounded text-right text-xs"
+                  placeholder="300"
+                />
+                <div className="text-xs text-gray-500 text-right">$/yr</div>
+              </div>
+            </td>
+            <td className={`border border-gray-300 px-1 py-0.5 text-right text-xs font-semibold ${savingsCellClass(curVasAnnual != null && compVasAnnual ? curVasAnnual - compVasAnnual : undefined)}`}>
+              {curVasAnnual && compVasAnnual ? `$${(curVasAnnual - compVasAnnual).toFixed(2)}/yr` : '-'}
+            </td>
+            <td className={`border border-gray-300 px-1 py-0.5 text-right text-xs font-semibold ${savingsCellClass(curVasAnnual && compVasAnnual && curVasAnnual > 0 ? ((curVasAnnual - compVasAnnual) / curVasAnnual) * 100 : undefined)}`}>
+              {curVasAnnual && compVasAnnual && curVasAnnual > 0 ? `${(((curVasAnnual - compVasAnnual) / curVasAnnual) * 100).toFixed(1)}%` : '-'}
+            </td>
+          </tr>
+        );
+        rows.push(
+          <tr key="metering-total">
+            <td className="border border-gray-300 px-1 py-0.5 font-semibold text-xs">Metering (total)</td>
+            <td className="border border-gray-300 px-1 py-0.5 text-right text-xs">
+              {comparison.currentMeteringAnnual ? `$${comparison.currentMeteringAnnual.toFixed(2)}/yr` : '-'}
+            </td>
+            <td className="border border-gray-300 px-1 py-0.5 text-right text-xs">-</td>
+            <td className="border border-gray-300 px-1 py-0.5 text-right text-xs">${compTotalAnnual.toFixed(2)}/yr</td>
+            <td className={`border border-gray-300 px-1 py-0.5 text-right text-xs font-semibold ${savingsCellClass(comparison.currentMeteringAnnual != null && compTotalAnnual != null ? comparison.currentMeteringAnnual - compTotalAnnual : undefined)}`}>
+              {comparison.currentMeteringAnnual && compTotalAnnual ? `$${(comparison.currentMeteringAnnual - compTotalAnnual).toFixed(2)}/yr` : '-'}
+            </td>
+            <td className={`border border-gray-300 px-1 py-0.5 text-right text-xs font-semibold ${savingsCellClass(comparison.currentMeteringAnnual && compTotalAnnual && comparison.currentMeteringAnnual > 0 ? ((comparison.currentMeteringAnnual - compTotalAnnual) / comparison.currentMeteringAnnual) * 100 : undefined)}`}>
+              {comparison.currentMeteringAnnual && compTotalAnnual && comparison.currentMeteringAnnual > 0
+                ? `${(((comparison.currentMeteringAnnual - compTotalAnnual) / comparison.currentMeteringAnnual) * 100).toFixed(1)}%` : '-'}
+            </td>
+          </tr>
+        );
     }
 
     // Electricity Rates
@@ -1488,10 +1599,10 @@ export default function Base2Page() {
               placeholder="24.50"
             />
           </td>
-          <td className="border border-gray-300 px-1 py-0.5 text-right text-xs text-green-600 font-semibold">
+          <td className={`border border-gray-300 px-1 py-0.5 text-right text-xs font-semibold ${savingsCellClass(savings?.peakAnnualSavings)}`}>
             {savings?.peakAnnualSavings !== undefined ? `$${savings.peakAnnualSavings.toFixed(2)}/yr` : '-'}
           </td>
-          <td className="border border-gray-300 px-1 py-0.5 text-right text-xs text-green-600 font-semibold">
+          <td className={`border border-gray-300 px-1 py-0.5 text-right text-xs font-semibold ${savingsCellClass(savings?.peakSavingsPercent)}`}>
             {savings?.peakSavingsPercent !== undefined ? `${savings.peakSavingsPercent.toFixed(1)}%` : '-'}
           </td>
         </tr>
@@ -1530,10 +1641,10 @@ export default function Base2Page() {
               placeholder="18.00"
             />
           </td>
-          <td className="border border-gray-300 px-1 py-0.5 text-right text-xs text-green-600 font-semibold">
+          <td className={`border border-gray-300 px-1 py-0.5 text-right text-xs font-semibold ${savingsCellClass(savings?.offPeakAnnualSavings)}`}>
             {savings?.offPeakAnnualSavings !== undefined ? `$${savings.offPeakAnnualSavings.toFixed(2)}/yr` : '-'}
           </td>
-          <td className="border border-gray-300 px-1 py-0.5 text-right text-xs text-green-600 font-semibold">
+          <td className={`border border-gray-300 px-1 py-0.5 text-right text-xs font-semibold ${savingsCellClass(savings?.offPeakSavingsPercent)}`}>
             {savings?.offPeakSavingsPercent !== undefined ? `${savings.offPeakSavingsPercent.toFixed(1)}%` : '-'}
           </td>
         </tr>
@@ -1596,12 +1707,12 @@ export default function Base2Page() {
                 placeholder="1.50"
               />
             </td>
-            <td className="border border-gray-300 px-1 py-0.5 text-right text-xs text-green-600 font-semibold">
+            <td className={`border border-gray-300 px-1 py-0.5 text-right text-xs font-semibold ${savingsCellClass(comparison.currentDailySupply != null && comparison.comparisonDailySupply != null ? (comparison.currentDailySupply - comparison.comparisonDailySupply) * 365 : undefined)}`}>
               {comparison.currentDailySupply && comparison.comparisonDailySupply
                 ? `$${((comparison.currentDailySupply - comparison.comparisonDailySupply) * 365).toFixed(2)}/yr`
                 : '-'}
             </td>
-            <td className="border border-gray-300 px-1 py-0.5 text-right text-xs text-green-600 font-semibold">
+            <td className={`border border-gray-300 px-1 py-0.5 text-right text-xs font-semibold ${savingsCellClass(comparison.currentDailySupply && comparison.comparisonDailySupply ? ((comparison.currentDailySupply - comparison.comparisonDailySupply) / comparison.currentDailySupply) * 100 : undefined)}`}>
               {comparison.currentDailySupply && comparison.comparisonDailySupply
                 ? `${(((comparison.currentDailySupply - comparison.comparisonDailySupply) / comparison.currentDailySupply) * 100).toFixed(1)}%`
                 : '-'}
@@ -1610,7 +1721,7 @@ export default function Base2Page() {
         );
       }
 
-      // Demand Charge (C&I Electricity only) - Always show for C&I Electricity
+      // Demand Charge (C&I Electricity only)
       if (comparison.utilityType === 'C&I Electricity') {
         // Always show demand charge row for C&I Electricity, even if value is 0
         const demandQty = comparison.demandQuantity || comparison.invoiceData?.electricity_ci_invoice_details?.full_invoice_data?.['DUOS - Network Demand Charge Quantity (KVA)'] || 0;
@@ -1653,12 +1764,12 @@ export default function Base2Page() {
                 placeholder="12.00"
               />
             </td>
-            <td className="border border-gray-300 px-1 py-0.5 text-right text-xs text-green-600 font-semibold">
+            <td className={`border border-gray-300 px-1 py-0.5 text-right text-xs font-semibold ${savingsCellClass(comparison.comparisonDemandCharge && comparison.comparisonDemandCharge > 0 && currentDemand > 0 ? demandSavings : undefined)}`}>
               {comparison.comparisonDemandCharge && comparison.comparisonDemandCharge > 0 && currentDemand > 0
                 ? `$${demandSavings.toFixed(2)}/yr`
                 : '-'}
             </td>
-            <td className="border border-gray-300 px-1 py-0.5 text-right text-xs text-green-600 font-semibold">
+            <td className={`border border-gray-300 px-1 py-0.5 text-right text-xs font-semibold ${savingsCellClass(comparison.comparisonDemandCharge && comparison.comparisonDemandCharge > 0 && currentDemand > 0 && currentDemandAnnual > 0 ? (demandSavings / currentDemandAnnual) * 100 : undefined)}`}>
               {comparison.comparisonDemandCharge && comparison.comparisonDemandCharge > 0 && currentDemand > 0
                 ? `${((demandSavings / currentDemandAnnual) * 100).toFixed(1)}%`
                 : '-'}
@@ -1708,16 +1819,16 @@ export default function Base2Page() {
               placeholder="16.75"
             />
           </td>
-          <td className="border border-gray-300 px-1 py-0.5 text-right text-xs text-green-600 font-semibold">
-            {savings?.usageSavings && savings.usageSavings > 0 ? `$${(savings.usageSavings * 12).toFixed(2)}/yr` : '-'}
+          <td className={`border border-gray-300 px-1 py-0.5 text-right text-xs font-semibold ${savingsCellClass(savings?.usageSavings != null ? savings.usageSavings * 12 : undefined)}`}>
+            {savings?.usageSavings != null ? `$${(savings.usageSavings * 12).toFixed(2)}/yr` : '-'}
           </td>
-          <td className="border border-gray-300 px-1 py-0.5 text-right text-xs text-green-600 font-semibold">
+          <td className={`border border-gray-300 px-1 py-0.5 text-right text-xs font-semibold ${savingsCellClass(savings?.usageSavingsPercent)}`}>
             {savings?.usageSavingsPercent ? `${savings.usageSavingsPercent.toFixed(1)}%` : '-'}
           </td>
         </tr>
       );
 
-      // Daily Supply Charge for SME Gas only (not shown for C&I Gas)
+      // Daily Supply Charge for SME Gas only
       if (comparison.utilityType !== 'C&I Gas') {
         rows.push(
           <tr key="gas-supply">
@@ -1743,12 +1854,12 @@ export default function Base2Page() {
                 placeholder="1.20"
               />
             </td>
-            <td className="border border-gray-300 px-1 py-0.5 text-right text-xs text-green-600 font-semibold">
+            <td className={`border border-gray-300 px-1 py-0.5 text-right text-xs font-semibold ${savingsCellClass(comparison.currentDailySupply != null && comparison.comparisonDailySupply != null ? (comparison.currentDailySupply - comparison.comparisonDailySupply) * 365 : undefined)}`}>
               {comparison.currentDailySupply && comparison.comparisonDailySupply
                 ? `$${((comparison.currentDailySupply - comparison.comparisonDailySupply) * 365).toFixed(2)}/yr`
                 : '-'}
             </td>
-            <td className="border border-gray-300 px-1 py-0.5 text-right text-xs text-green-600 font-semibold">
+            <td className={`border border-gray-300 px-1 py-0.5 text-right text-xs font-semibold ${savingsCellClass(comparison.currentDailySupply && comparison.comparisonDailySupply ? ((comparison.currentDailySupply - comparison.comparisonDailySupply) / comparison.currentDailySupply) * 100 : undefined)}`}>
               {comparison.currentDailySupply && comparison.comparisonDailySupply
                 ? `${(((comparison.currentDailySupply - comparison.comparisonDailySupply) / comparison.currentDailySupply) * 100).toFixed(1)}%`
                 : '-'}
@@ -1793,11 +1904,11 @@ export default function Base2Page() {
               placeholder="2.50"
             />
           </td>
-          <td className="border border-gray-300 px-1 py-0.5 text-right text-xs text-green-600 font-semibold">
-            {savings?.usageSavings && savings.usageSavings > 0 ? `$${(savings.usageSavings * 12).toFixed(2)}/yr` : '-'}
+          <td className={`border border-gray-300 px-1 py-0.5 text-right text-xs font-semibold ${savingsCellClass(savings?.usageSavings != null ? savings.usageSavings * 12 : undefined)}`}>
+            {savings?.usageSavings != null ? `$${(savings.usageSavings * 12).toFixed(2)}/yr` : '-'}
           </td>
-          <td className="border border-gray-300 px-1 py-0.5 text-right text-xs text-green-600 font-semibold">
-            {savings?.usageSavingsPercent ? `${savings.usageSavingsPercent.toFixed(1)}%` : '-'}
+          <td className={`border border-gray-300 px-1 py-0.5 text-right text-xs font-semibold ${savingsCellClass(savings?.usageSavingsPercent)}`}>
+            {savings?.usageSavingsPercent != null ? `${savings.usageSavingsPercent.toFixed(1)}%` : '-'}
           </td>
         </tr>
       );
@@ -1838,11 +1949,11 @@ export default function Base2Page() {
               placeholder="50.00"
             />
           </td>
-          <td className="border border-gray-300 px-1 py-0.5 text-right text-xs text-green-600 font-semibold">
-            {savings?.usageSavings && savings.usageSavings > 0 ? `$${(savings.usageSavings * 12).toFixed(2)}/yr` : '-'}
+          <td className={`border border-gray-300 px-1 py-0.5 text-right text-xs font-semibold ${savingsCellClass(savings?.usageSavings != null ? savings.usageSavings * 12 : undefined)}`}>
+            {savings?.usageSavings != null ? `$${(savings.usageSavings * 12).toFixed(2)}/yr` : '-'}
           </td>
-          <td className="border border-gray-300 px-1 py-0.5 text-right text-xs text-green-600 font-semibold">
-            {savings?.usageSavingsPercent ? `${savings.usageSavingsPercent.toFixed(1)}%` : '-'}
+          <td className={`border border-gray-300 px-1 py-0.5 text-right text-xs font-semibold ${savingsCellClass(savings?.usageSavingsPercent)}`}>
+            {savings?.usageSavingsPercent != null ? `${savings.usageSavingsPercent.toFixed(1)}%` : '-'}
           </td>
         </tr>
       );
@@ -1883,11 +1994,11 @@ export default function Base2Page() {
               placeholder="100.00"
             />
           </td>
-          <td className="border border-gray-300 px-1 py-0.5 text-right text-xs text-green-600 font-semibold">
-            {savings?.usageSavings && savings.usageSavings > 0 ? `$${(savings.usageSavings * 12).toFixed(2)}/yr` : '-'}
+          <td className={`border border-gray-300 px-1 py-0.5 text-right text-xs font-semibold ${savingsCellClass(savings?.usageSavings != null ? savings.usageSavings * 12 : undefined)}`}>
+            {savings?.usageSavings != null ? `$${(savings.usageSavings * 12).toFixed(2)}/yr` : '-'}
           </td>
-          <td className="border border-gray-300 px-1 py-0.5 text-right text-xs text-green-600 font-semibold">
-            {savings?.usageSavingsPercent ? `${savings.usageSavingsPercent.toFixed(1)}%` : '-'}
+          <td className={`border border-gray-300 px-1 py-0.5 text-right text-xs font-semibold ${savingsCellClass(savings?.usageSavingsPercent)}`}>
+            {savings?.usageSavingsPercent != null ? `${savings.usageSavingsPercent.toFixed(1)}%` : '-'}
           </td>
         </tr>
       );
@@ -1895,15 +2006,16 @@ export default function Base2Page() {
 
     // Total Savings Summary
     if (savings && savings.totalAnnualSavings !== undefined) {
+      const isNegativeSavings = savings.totalAnnualSavings < 0;
       rows.push(
-        <tr key="savings" className="bg-green-50 font-bold">
+        <tr key="savings" className={`font-bold ${isNegativeSavings ? 'bg-red-50' : 'bg-green-50'}`}>
           <td className="border border-gray-300 px-1 py-0.5 text-xs" colSpan={4}>
             Estimated Annual Savings
           </td>
-          <td className="border border-gray-300 px-1 py-0.5 text-right text-xs text-green-600 font-semibold">
+          <td className={`border border-gray-300 px-1 py-0.5 text-right text-xs font-semibold ${savingsCellClass(savings.totalAnnualSavings)}`}>
             ${savings.totalAnnualSavings.toFixed(2)}
           </td>
-          <td className="border border-gray-300 px-1 py-0.5 text-right text-xs text-green-600 font-semibold">
+          <td className={`border border-gray-300 px-1 py-0.5 text-right text-xs font-semibold ${savingsCellClass(savings.totalAnnualSavingsPercent)}`}>
             {savings.totalAnnualSavingsPercent !== undefined 
               ? `${savings.totalAnnualSavingsPercent.toFixed(1)}%`
               : '-'}

@@ -18,6 +18,7 @@ import { MemberLoadingSkeleton } from "@/components/crm-member/MemberLoadingSkel
 import { SlideOverPanel } from "@/components/crm-member/shared/SlideOverPanel";
 
 import { OverviewTab } from "@/components/crm-member/tabs/OverviewTab";
+import { SavingsTab } from "@/components/crm-member/tabs/SavingsTab";
 import { DocumentsTab, getDocumentsCountFromBusinessInfo } from "@/components/crm-member/tabs/DocumentsTab";
 import { UtilitiesTab, getUtilitiesCountFromBusinessInfo } from "@/components/crm-member/tabs/UtilitiesTab";
 import { OffersTab } from "@/components/crm-member/tabs/OffersTab";
@@ -199,6 +200,7 @@ export default function ClientDetailPage() {
         count: businessInfo ? getUtilitiesCountFromBusinessInfo(businessInfo) : null,
       },
       { key: "offers" as const, label: "Offers", count: offers.length },
+      { key: "savings" as const, label: "1st Month Savings", count: null },
       { key: "activity" as const, label: "Activity", count: activities.length },
       { key: "notes" as const, label: "Notes", count: notes.length },
       { key: "tools" as const, label: "Tools", count: null },
@@ -314,6 +316,10 @@ export default function ClientDetailPage() {
                       setError(null);
                     }}
                   />
+                )}
+
+                {tab === "savings" && (
+                  <SavingsTab businessInfo={businessInfo} />
                 )}
 
                 {tab === "activity" && (

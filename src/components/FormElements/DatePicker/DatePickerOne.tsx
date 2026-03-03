@@ -1,6 +1,6 @@
 "use client";
 
-import { Calendar } from "@/components/Layouts/sidebar/icons";
+import { Calendar } from "lucide-react";
 import flatpickr from "flatpickr";
 import { useEffect } from "react";
 

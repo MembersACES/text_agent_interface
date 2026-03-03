@@ -14,18 +14,32 @@ import { Search } from "lucide-react";
 
 export function Header() {
   const pathname = usePathname();
-  const { toggleSidebar, isMobile } = useSidebarContext();
+  const { toggleSidebar, toggleCollapse, isMobile, isCollapsed } = useSidebarContext();
   const pageTitle = getTitleForPath(pathname ?? "/");
   const palette = useCommandPalette();
+
+  const handleSidebarToggle = () => {
+    if (isMobile) {
+      toggleSidebar();
+    } else {
+      toggleCollapse();
+    }
+  };
+
+  const sidebarToggleLabel = isMobile
+    ? "Toggle sidebar"
+    : isCollapsed
+      ? "Expand sidebar"
+      : "Collapse sidebar";
 
   return (
     <header className="sticky top-0 z-30 flex items-center justify-between border-b border-stroke bg-white px-4 py-5 shadow-1 dark:border-stroke-dark dark:bg-gray-dark md:px-5 2xl:px-10">
       <button
-        onClick={toggleSidebar}
+        onClick={handleSidebarToggle}
         className="rounded-lg border px-1.5 py-1 dark:border-stroke-dark dark:bg-gray-dark hover:dark:bg-[#FFFFFF1A] transition-all duration-200 active:scale-95"
+        aria-label={sidebarToggleLabel}
       >
         <MenuIcon />
-        <span className="sr-only">Toggle Sidebar</span>
       </button>
 
       {isMobile && (

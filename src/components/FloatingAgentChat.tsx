@@ -1,17 +1,22 @@
 "use client";
 import React, { useState, useRef, useEffect } from "react";
-import { MessageSquare, X, Send, ArrowRight } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { MessageSquare, X, Send, ArrowRight, ExternalLink } from "lucide-react";
+import { useRouter, usePathname } from "next/navigation";
 import { linkifyPages } from "@/lib/floatingagent/utils/linkifyPages";
+
+const WELCOME_MESSAGE =
+  "Hi! I can search clients, show your tasks, summarize the CRM pipeline, and point you to the right pages. Try \"My tasks\", \"Find client Acme\", \"CRM summary\", or \"How do I generate an EOI?\"";
 
 interface ChatMessage {
   role: "user" | "assistant";
   text: string;
   suggestedPage?: string | null;
+  suggestedLinks?: { label: string; href: string }[] | null;
 }
 
 export default function FloatingAgentChat() {
   const router = useRouter();
+  const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -50,11 +55,20 @@ export default function FloatingAgentChat() {
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
 
+    const history = messages.slice(-5).map((m) => ({
+      role: m.role,
+      content: m.text,
+    }));
+
     try {
       const res = await fetch("/api/floatingagent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: input }),
+        body: JSON.stringify({
+          message: userMsg.text,
+          currentPath: pathname ?? undefined,
+          history,
+        }),
       });
       const data = await res.json();
       setMessages((prev) => [...prev, data]);
@@ -93,6 +107,11 @@ export default function FloatingAgentChat() {
 
           {/* Chat Messages */}
           <div className="flex-1 p-5 overflow-y-auto space-y-4 text-[15px] leading-relaxed">
+            {messages.length === 0 && (
+              <div className="bg-gray-100 text-gray-800 p-4 rounded-2xl max-w-[90%] whitespace-pre-line">
+                {WELCOME_MESSAGE}
+              </div>
+            )}
             {messages.map((msg, i) => (
               <div key={i}>
                 <div
@@ -108,14 +127,27 @@ export default function FloatingAgentChat() {
                         : msg.text,
                   }}
                 />
-                {msg.suggestedPage && (
+                {msg.suggestedLinks && msg.suggestedLinks.length > 0 ? (
+                  <div className="ml-3 mt-2 flex flex-wrap gap-2">
+                    {msg.suggestedLinks.map((link, j) => (
+                      <button
+                        key={j}
+                        onClick={() => router.push(link.href)}
+                        className="text-sm text-emerald-700 font-medium inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-emerald-200 hover:bg-emerald-50 transition"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        {link.label}
+                      </button>
+                    ))}
+                  </div>
+                ) : msg.suggestedPage ? (
                   <button
                     onClick={() => router.push(msg.suggestedPage!)}
                     className="ml-3 mt-2 text-sm text-emerald-700 font-medium flex items-center hover:underline"
                   >
                     <ArrowRight className="w-4 h-4 mr-1" /> Go to page
                   </button>
-                )}
+                ) : null}
               </div>
             ))}
             <div ref={chatEndRef} />

@@ -7,6 +7,18 @@
     "path": "/tasks",
     "description": "View and manage your assigned tasks"
   },
+  "CRM Dashboard": {
+    "path": "/crm",
+    "description": "CRM pipeline overview and client stages"
+  },
+  "Members": {
+    "path": "/crm-members",
+    "description": "CRM members list and client search"
+  },
+  "Tasks": {
+    "path": "/tasks",
+    "description": "View and manage tasks (my tasks, by client, or all)"
+  },
   "Data & Information": {
     "path": "/data-info",
     "pages": {
@@ -99,6 +111,23 @@
       "Airtable Integration": {
         "path": "/airtable-integration",
         "description": "Connect and sync client data with Airtable workspace"
+      }
+    }
+  },
+  "Resources": {
+    "path": "/resources",
+    "pages": {
+      "Links & Passwords": {
+        "path": "/resources",
+        "description": "Central repository for resource links and credentials"
+      },
+      "Floating Agent": {
+        "path": "/resources/floating-agent",
+        "description": "Guide to using the Floating Agent for clients, tasks, and navigation"
+      },
+      "Dashboard Tips": {
+        "path": "/resources/dashboard-tips",
+        "description": "How to use the dashboard and key tools"
       }
     }
   }

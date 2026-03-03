@@ -77,6 +77,7 @@ export type MemberTab =
   | "documents"
   | "utilities"
   | "offers"
+  | "savings"
   | "activity"
   | "notes"
   | "tools"

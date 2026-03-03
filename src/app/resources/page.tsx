@@ -255,9 +255,9 @@ export default function ResourcesPage() {
 
       {/* Header */}
       <div>
-        <h1 className="text-heading-3 font-bold text-dark dark:text-white mb-2">Resources</h1>
+        <h1 className="text-heading-3 font-bold text-dark dark:text-white mb-2">Links & Passwords</h1>
         <p className="text-body-sm text-gray-600 dark:text-gray-400">
-          Central repository for all resource links and credentials
+          Central repository for resource links and credentials
         </p>
       </div>
 

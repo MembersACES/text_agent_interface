@@ -1,4 +1,5 @@
 import pageMap from "../pageMap.json";
+import type { ToolResponse } from "./types";
 
 interface PageEntry {
   path: string;
@@ -19,7 +20,7 @@ interface PageMap {
  * Context-aware ACES help tool
  * Directs users to correct navigation paths with Business Info as central hub
  */
-export async function runHelpTool(message: string) {
+export async function runHelpTool(message: string): Promise<ToolResponse> {
   const lower = message.toLowerCase();
 
   const flatPages: { name: string; path: string; description: string }[] = [];

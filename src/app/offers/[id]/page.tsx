@@ -107,6 +107,16 @@ export default function OfferDetailPage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
 
+  const [addDocumentOpen, setAddDocumentOpen] = useState(false);
+  const [addDocumentUrl, setAddDocumentUrl] = useState("");
+  const [addDocumentLabel, setAddDocumentLabel] = useState("");
+  const [addDocumentSaving, setAddDocumentSaving] = useState(false);
+
+  const [addActivityOpen, setAddActivityOpen] = useState(false);
+  const [addActivityNote, setAddActivityNote] = useState("");
+  const [addActivityLink, setAddActivityLink] = useState("");
+  const [addActivitySaving, setAddActivitySaving] = useState(false);
+
   const documents = useMemo(() => {
     const items: {
       href: string;
@@ -157,7 +167,9 @@ export default function OfferDetailPage() {
         OFFER_ACTIVITY_LABELS[a.activity_type as OfferActivityType] ??
         a.activity_type.replace(/_/g, " ");
 
-      if (a.activity_type === "comparison") {
+      if (a.activity_type === "manual_document" && typeof meta.label === "string" && meta.label.trim()) {
+        baseLabel = meta.label.trim();
+      } else if (a.activity_type === "comparison") {
         const comparisonType = meta.comparison_type ? String(meta.comparison_type) : undefined;
         if (comparisonType) {
           baseLabel = `Comparison (${comparisonType.replace(/_/g, " ")})`;
@@ -391,6 +403,76 @@ export default function OfferDetailPage() {
     } finally {
       setDeleteSubmitting(false);
       setDeleteOpen(false);
+    }
+  };
+
+  const handleAddDocument = async () => {
+    const url = addDocumentUrl.trim();
+    if (!url || !offerId || !token) return;
+    try {
+      setAddDocumentSaving(true);
+      setError(null);
+      const res = await fetch(`${getApiBaseUrl()}/api/offers/${offerId}/activities`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          activity_type: "manual_document",
+          document_link: url,
+          metadata: addDocumentLabel.trim() ? { label: addDocumentLabel.trim() } : undefined,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(typeof data.detail === "string" ? data.detail : "Failed to add document");
+      }
+      const created: OfferActivity = await res.json();
+      setActivities((prev) => [created, ...prev]);
+      setAddDocumentOpen(false);
+      setAddDocumentUrl("");
+      setAddDocumentLabel("");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to add document");
+    } finally {
+      setAddDocumentSaving(false);
+    }
+  };
+
+  const handleAddActivity = async () => {
+    if (!offerId || !token) return;
+    const note = addActivityNote.trim();
+    const link = addActivityLink.trim();
+    if (!note && !link) return;
+    try {
+      setAddActivitySaving(true);
+      setError(null);
+      const res = await fetch(`${getApiBaseUrl()}/api/offers/${offerId}/activities`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          activity_type: "manual_activity",
+          document_link: link || undefined,
+          metadata: note ? { note } : undefined,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(typeof data.detail === "string" ? data.detail : "Failed to add activity");
+      }
+      const created: OfferActivity = await res.json();
+      setActivities((prev) => [created, ...prev]);
+      setAddActivityOpen(false);
+      setAddActivityNote("");
+      setAddActivityLink("");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to add activity");
+    } finally {
+      setAddActivitySaving(false);
     }
   };
 
@@ -657,8 +739,15 @@ export default function OfferDetailPage() {
 
               <div className="space-y-3">
                 <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
-                  <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-3">
-                    Documents & Links
+                  <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-3 flex items-center justify-between">
+                    <span>Documents & Links</span>
+                    <button
+                      type="button"
+                      onClick={() => setAddDocumentOpen(true)}
+                      className="text-xs font-medium text-primary hover:underline"
+                    >
+                      Add document or link
+                    </button>
                   </h2>
                   {documents.length === 0 ? (
                     <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -705,8 +794,15 @@ export default function OfferDetailPage() {
 
             {/* Activities timeline */}
             <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
-              <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-3">
-                Activity
+              <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-3 flex items-center justify-between">
+                <span>Activity</span>
+                <button
+                  type="button"
+                  onClick={() => setAddActivityOpen(true)}
+                  className="text-xs font-medium text-primary hover:underline"
+                >
+                  Add activity
+                </button>
               </h2>
               {activities.length === 0 ? (
                 <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -747,7 +843,12 @@ export default function OfferDetailPage() {
                       baseLabel = "DMA email sent";
                     }
 
-                    const title = utility ? `${utility} – ${baseLabel}` : baseLabel;
+                    const title = (() => {
+                      if (a.activity_type === "manual_activity" && meta.note != null) {
+                        return String(meta.note);
+                      }
+                      return utility ? `${utility} – ${baseLabel}` : baseLabel;
+                    })();
 
                     return (
                       <li
@@ -822,6 +923,126 @@ export default function OfferDetailPage() {
                 className="px-3 py-1.5 rounded-md bg-red-600 text-white text-xs font-medium hover:bg-red-700 disabled:opacity-50"
               >
                 {deleteSubmitting ? "Deleting…" : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {addDocumentOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="add-document-title"
+        >
+          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 shadow-lg max-w-md w-full mx-2">
+            <h3 id="add-document-title" className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-3">
+              Add document or link
+            </h3>
+            <div className="space-y-3 text-sm">
+              <label className="block">
+                <span className="block text-xs text-gray-500 dark:text-gray-400 mb-1">URL</span>
+                <input
+                  type="url"
+                  value={addDocumentUrl}
+                  onChange={(e) => setAddDocumentUrl(e.target.value)}
+                  placeholder="https://..."
+                  className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 text-sm"
+                />
+              </label>
+              <label className="block">
+                <span className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Label (optional)</span>
+                <input
+                  type="text"
+                  value={addDocumentLabel}
+                  onChange={(e) => setAddDocumentLabel(e.target.value)}
+                  placeholder="e.g. Quote PDF"
+                  className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 text-sm"
+                />
+              </label>
+            </div>
+            <div className="flex justify-end gap-2 pt-3 mt-3 border-t border-gray-100 dark:border-gray-800">
+              <button
+                type="button"
+                onClick={() => {
+                  if (!addDocumentSaving) {
+                    setAddDocumentOpen(false);
+                    setAddDocumentUrl("");
+                    setAddDocumentLabel("");
+                  }
+                }}
+                disabled={addDocumentSaving}
+                className="px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleAddDocument}
+                disabled={addDocumentSaving || !addDocumentUrl.trim()}
+                className="px-3 py-1.5 rounded-md bg-primary text-white text-xs font-medium hover:opacity-90 disabled:opacity-50"
+              >
+                {addDocumentSaving ? "Adding…" : "Add"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {addActivityOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="add-activity-title"
+        >
+          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 shadow-lg max-w-md w-full mx-2">
+            <h3 id="add-activity-title" className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-3">
+              Add activity
+            </h3>
+            <div className="space-y-3 text-sm">
+              <label className="block">
+                <span className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Note or description</span>
+                <input
+                  type="text"
+                  value={addActivityNote}
+                  onChange={(e) => setAddActivityNote(e.target.value)}
+                  placeholder="e.g. Called client to discuss terms"
+                  className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 text-sm"
+                />
+              </label>
+              <label className="block">
+                <span className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Link (optional)</span>
+                <input
+                  type="url"
+                  value={addActivityLink}
+                  onChange={(e) => setAddActivityLink(e.target.value)}
+                  placeholder="https://..."
+                  className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 text-sm"
+                />
+              </label>
+            </div>
+            <div className="flex justify-end gap-2 pt-3 mt-3 border-t border-gray-100 dark:border-gray-800">
+              <button
+                type="button"
+                onClick={() => {
+                  if (!addActivitySaving) {
+                    setAddActivityOpen(false);
+                    setAddActivityNote("");
+                    setAddActivityLink("");
+                  }
+                }}
+                disabled={addActivitySaving}
+                className="px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleAddActivity}
+                disabled={addActivitySaving || (!addActivityNote.trim() && !addActivityLink.trim())}
+                className="px-3 py-1.5 rounded-md bg-primary text-white text-xs font-medium hover:opacity-90 disabled:opacity-50"
+              >
+                {addActivitySaving ? "Adding…" : "Add"}
               </button>
             </div>
           </div>
