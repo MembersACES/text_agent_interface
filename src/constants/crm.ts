@@ -57,6 +57,7 @@ export const OFFER_PIPELINE_STAGE_LABELS: Record<OfferPipelineStage, string> = {
 /** Offer activity types (must match backend OfferActivityType enum) */
 export const OFFER_ACTIVITY_TYPES = [
   "quote_request",
+  "data_request",
   "base2_review",
   "comparison",
   "ghg_offer",
@@ -75,12 +76,14 @@ export const OFFER_ACTIVITY_TYPES = [
   "solution_presentation",
   "manual_document",
   "manual_activity",
+  "one_month_savings_invoice",
 ] as const;
 
 export type OfferActivityType = (typeof OFFER_ACTIVITY_TYPES)[number];
 
 export const OFFER_ACTIVITY_LABELS: Record<OfferActivityType, string> = {
   quote_request: "Quote request sent",
+  data_request: "Data request sent",
   base2_review: "Base 2 review run",
   comparison: "Comparison",
   ghg_offer: "GHG offer",
@@ -99,5 +102,6 @@ export const OFFER_ACTIVITY_LABELS: Record<OfferActivityType, string> = {
   solution_presentation: "Solution presentation generated",
   manual_document: "Document / link added",
   manual_activity: "Activity note",
+   one_month_savings_invoice: "1st Month Savings Invoice generated",
 };
 

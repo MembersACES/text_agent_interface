@@ -945,17 +945,40 @@ export default function OneMonthSavingsPage() {
                                 : invoice.total_amount || 0
                             )}
                           </p>
-                          <span
-                            className={`text-xs px-2 py-0.5 rounded-full ${
-                              invoice.status === "Paid"
-                                ? "bg-green-100 text-green-700"
-                                : invoice.status === "Sent"
-                                ? "bg-blue-100 text-blue-700"
-                                : "bg-gray-100 text-gray-700"
-                            }`}
+                          <select
+                            value={invoice.status || "Generated"}
+                            onChange={async (e) => {
+                              const newStatus = e.target.value as "Generated" | "Sent" | "Paid";
+                              if (!businessInfo?.business_name || newStatus === (invoice.status || "Generated")) return;
+                              try {
+                                const res = await fetch("/api/one-month-savings/status", {
+                                  method: "PATCH",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({
+                                    business_name: businessInfo.business_name,
+                                    invoice_number: invoice.invoice_number,
+                                    status: newStatus,
+                                  }),
+                                });
+                                if (res.ok) {
+                                  setInvoiceHistory((prev) =>
+                                    prev.map((inv) =>
+                                      inv.invoice_number === invoice.invoice_number
+                                        ? { ...inv, status: newStatus }
+                                        : inv
+                                    )
+                                  );
+                                }
+                              } catch (err) {
+                                console.error("Failed to update status", err);
+                              }
+                            }}
+                            className="text-xs border border-gray-300 rounded-full px-2 py-0.5 bg-white text-gray-800 mt-1"
                           >
-                            {invoice.status}
-                          </span>
+                            <option value="Generated">Generated</option>
+                            <option value="Sent">Sent</option>
+                            <option value="Paid">Paid</option>
+                          </select>
                         </div>
                       </div>
                       <div className="mt-2 text-xs text-gray-600">
