@@ -62,16 +62,20 @@ export function OffersTab({
                       <> · Updated {formatDate(o.updated_at)}</>
                     )}
                   </p>
-                  {(o.pipeline_stage != null || o.estimated_value != null) && (
+                  {(o.pipeline_stage != null || o.estimated_value != null || o.annual_savings != null) && (
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                       {o.pipeline_stage != null && (
                         <span>
                           {OFFER_PIPELINE_STAGE_LABELS[o.pipeline_stage as OfferPipelineStage] ?? o.pipeline_stage}
                         </span>
                       )}
-                      {o.pipeline_stage != null && o.estimated_value != null && " · "}
+                      {o.pipeline_stage != null && (o.estimated_value != null || o.annual_savings != null) && " · "}
                       {o.estimated_value != null && (
                         <span>Est. value: ${o.estimated_value.toLocaleString()}</span>
+                      )}
+                      {o.estimated_value != null && o.annual_savings != null && " · "}
+                      {o.annual_savings != null && (
+                        <span>Annual savings: ${Number(o.annual_savings).toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                       )}
                     </p>
                   )}

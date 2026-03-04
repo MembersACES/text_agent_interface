@@ -101,6 +101,19 @@ function normalizeDocumentLink(link: string | undefined): string | undefined {
   return (s.startsWith("http://") || s.startsWith("https://")) ? s : undefined;
 }
 
+// Normalize currency-like strings (e.g. "$5,111.38") into numbers so backend can parse them.
+function normalizeMoneyToNumber(value: unknown): number | undefined {
+  if (value == null || value === "") return undefined;
+  if (typeof value === "number") return value;
+  if (typeof value === "string") {
+    const cleaned = value.replace(/[^0-9.\-]/g, "");
+    if (!cleaned) return undefined;
+    const num = Number(cleaned);
+    return Number.isFinite(num) ? num : undefined;
+  }
+  return undefined;
+}
+
 /** Modal: choose generate for this site only vs all sites of same type */
 interface GenerateChoiceModalState {
   open: boolean;
@@ -1250,8 +1263,42 @@ export default function Base2Page() {
           body: JSON.stringify(payload)
         });
 
+        // Log webhook response for debugging (status, shape, and key fields)
+        const responseText = await response.text();
+        console.log('[Base2 webhook]', {
+          url: webhookUrl,
+          status: response.status,
+          ok: response.ok,
+          identifier: util.identifier,
+          action,
+          responsePreview: responseText.slice(0, 500),
+        });
+        let result: Record<string, unknown>;
+        try {
+          result = JSON.parse(responseText) as Record<string, unknown>;
+        } catch (parseErr) {
+          console.error('[Base2 webhook] Response is not JSON:', parseErr);
+          errors.push(`${util.identifier}: Webhook response was not valid JSON`);
+          setSending(null);
+          continue;
+        }
+        // n8n "Respond to Webhook" often returns an array of items; use first element if so
+        if (Array.isArray(result) && result.length > 0 && typeof result[0] === 'object' && result[0] !== null) {
+          result = result[0] as Record<string, unknown>;
+          console.log('[Base2 webhook] Unwrapped array response to first item');
+        }
+        // Log key fields we use for links and savings
+        console.log('[Base2 webhook] Parsed result keys and link/savings fields:', {
+          keys: Object.keys(result),
+          pdf_document_link: result.pdf_document_link,
+          pdf_DMA_link: result.pdf_DMA_link,
+          spreadsheet_document_link: result.spreadsheet_document_link,
+          annual_savings: result.annual_savings,
+          current_cost: result.current_cost,
+          new_cost: result.new_cost,
+        });
+
         if (response.ok) {
-          const result = await response.json();
           const actionName = action === 'dma' ? 'DMA Review' : 'Comparison';
           let message = `${util.utilityType} ${actionName} generated successfully for ${util.identifier}`;
           if (result.pdf_document_link) message += `\nPDF: ${result.pdf_document_link}`;
@@ -1259,8 +1306,8 @@ export default function Base2Page() {
           results.push(message);
           successResults.push({ util, result });
         } else {
-          const errorText = await response.text();
-          errors.push(`${util.identifier}: ${errorText}`);
+          console.error('[Base2 webhook] Non-OK response body:', responseText.slice(0, 800));
+          errors.push(`${util.identifier}: ${responseText.slice(0, 200)}`);
         }
       } catch (err: any) {
         console.error(`Error generating ${action === 'dma' ? 'DMA review' : 'comparison'} for ${util.identifier}:`, err);
@@ -1276,7 +1323,7 @@ export default function Base2Page() {
       const resultItems: GenerateResultItem[] = successResults.map(({ util, result }) => ({
         identifier: util.identifier,
         utilityType: util.utilityType,
-        pdfUrl: result.pdf_document_link || undefined,
+        pdfUrl: (result.pdf_document_link ?? result.pdf_DMA_link) || undefined,
         spreadsheetUrl: result.spreadsheet_document_link || undefined,
       }));
       setGenerateResultModal({
@@ -1380,7 +1427,7 @@ export default function Base2Page() {
             for (const { util, result } of successResults) {
               const slug = comparisonTypeSlug(util, action === 'dma');
               if (slug) {
-                const comparisonDocLink = result.pdf_document_link || result.spreadsheet_document_link || undefined;
+                const comparisonDocLink = (result.pdf_document_link ?? result.pdf_DMA_link ?? result.spreadsheet_document_link) || undefined;
                 const utilityType = simpleUtilityType(util);
                 const identifierKey =
                   util.utilityType.includes('Electricity') ? 'nmi' :
@@ -1394,16 +1441,44 @@ export default function Base2Page() {
                   comparison_type: slug,
                   source: 'base2_page',
                 };
-                await fetch(`${baseUrl}/api/offers/${offerIdToUse}/activities`, {
+                // Include webhook response savings/costs so backend can store on offer & Strategy WIP
+                const normAnnual = normalizeMoneyToNumber((result as any).annual_savings);
+                if (normAnnual != null) {
+                  metadata.annual_savings = normAnnual;
+                }
+                const normCurrent = normalizeMoneyToNumber((result as any).current_cost);
+                if (normCurrent != null) {
+                  metadata.current_cost = normCurrent;
+                }
+                const normNew = normalizeMoneyToNumber((result as any).new_cost);
+                if (normNew != null) {
+                  metadata.new_cost = normNew;
+                }
+                const activityPayload = {
+                  activity_type: action === 'dma' ? 'dma_review_generated' : 'comparison',
+                  document_link: normalizeDocumentLink(comparisonDocLink) ?? undefined,
+                  metadata,
+                  created_by: session?.user?.email || undefined,
+                };
+                console.log('[Base2 offer activity] POST to backend', {
+                  offerId: offerIdToUse,
+                  identifier: util.identifier,
+                  activity_type: activityPayload.activity_type,
+                  document_link: activityPayload.document_link,
+                  metadata_keys: Object.keys(metadata),
+                  annual_savings: metadata.annual_savings,
+                  current_cost: metadata.current_cost,
+                  new_cost: metadata.new_cost,
+                });
+                const activityRes = await fetch(`${baseUrl}/api/offers/${offerIdToUse}/activities`, {
                   method: 'POST',
                   headers,
-                  body: JSON.stringify({
-                    activity_type: action === 'dma' ? 'dma_review_generated' : 'comparison',
-                    document_link: normalizeDocumentLink(comparisonDocLink) ?? undefined,
-                    metadata,
-                    created_by: session?.user?.email || undefined,
-                  }),
+                  body: JSON.stringify(activityPayload),
                 });
+                if (!activityRes.ok) {
+                  const errBody = await activityRes.text();
+                  console.warn('[Base2 offer activity] Backend responded with error', activityRes.status, errBody);
+                }
               }
             }
           } catch (err) {

@@ -26,6 +26,7 @@ import { ActivityTab } from "@/components/crm-member/tabs/ActivityTab";
 import { NotesTab } from "@/components/crm-member/tabs/NotesTab";
 import { ToolsTab } from "@/components/crm-member/tabs/ToolsTab";
 import { SolutionsTab } from "@/components/crm-member/tabs/SolutionsTab";
+import { StrategyTab } from "@/components/crm-member/tabs/StrategyTab";
 
 import type { MemberTab } from "@/components/crm-member/types";
 import type { ClientStage } from "@/constants/crm";
@@ -205,6 +206,7 @@ export default function ClientDetailPage() {
       { key: "notes" as const, label: "Notes", count: notes.length },
       { key: "tools" as const, label: "Tools", count: null },
       { key: "solutions" as const, label: "Solutions", count: null },
+      { key: "strategy" as const, label: "Strategy & WIP", count: null },
     ],
     [businessInfo, offers.length, activities.length, notes.length]
   );
@@ -360,6 +362,10 @@ export default function ClientDetailPage() {
                     businessInfo={businessInfo}
                     setBusinessInfo={setBusinessInfo}
                   />
+                )}
+
+                {tab === "strategy" && clientId != null && (
+                  <StrategyTab clientId={clientId} />
                 )}
               </main>
 

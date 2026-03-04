@@ -45,6 +45,9 @@ export interface Offer {
   status: string;
   pipeline_stage?: string | null;
   estimated_value?: number | null;
+  annual_savings?: number | null;
+  current_cost?: number | null;
+  new_cost?: number | null;
   created_at: string;
   updated_at?: string | null;
 }
@@ -72,6 +75,56 @@ export interface TimelineEvent {
   created_by?: string | null;
 }
 
+export type StrategySection =
+  | "past_achievements_annual"
+  | "in_progress"
+  | "objective"
+  | "advocate"
+  | "summary";
+
+export interface StrategyItem {
+  id: number;
+  client_id: number;
+  year: number;
+  section: StrategySection | string;
+  row_index: number;
+
+  member_level_solutions?: string | null;
+  details?: string | null;
+  solution_type?: string | null;
+  sdg?: string | null;
+  key_results?: string | null;
+
+  solution_details_1?: string | null;
+  solution_details_2?: string | null;
+  solution_details_3?: string | null;
+
+  engagement_form?: string | null;
+  contract_signed?: string | null;
+
+  saving_achieved?: number | null;
+  new_revenue_achieved?: number | null;
+  est_saving_pa?: number | null;
+  est_revenue_pa?: number | null;
+  est_sav_rev_over_duration?: number | null;
+
+  saving_start_date?: string | null;
+  new_revenue_start_date?: string | null;
+  est_start_date?: string | null;
+
+  est_sav_kpi_achieved?: string | null;
+
+  priority?: string | null;
+  status?: string | null;
+
+  offer_id?: number | null;
+  activity_type?: string | null;
+  excluded_from_wip?: boolean;
+
+  created_at: string;
+  updated_at: string;
+}
+
 export type MemberTab =
   | "overview"
   | "documents"
@@ -81,4 +134,5 @@ export type MemberTab =
   | "activity"
   | "notes"
   | "tools"
-  | "solutions";
+  | "solutions"
+  | "strategy";
