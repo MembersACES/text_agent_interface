@@ -3,7 +3,10 @@
 import React, { useState, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 
-const WEBHOOK_URL = "https://membersaces.app.n8n.cloud/webhook/interface_form_base1";
+const WEBHOOK_URL = "/api/base1-submit";
+
+/** Time to wait for proxy → n8n (server has 25 min; client waits slightly longer). */
+const SUBMISSION_TIMEOUT_MS = 26 * 60 * 1000; // 26 minutes
 
 /** Response from n8n Respond to Webhook when Base 1 review is ready */
 interface WebhookSuccessResponse {
@@ -37,6 +40,7 @@ export default function UtilityBillReviewForm() {
   const [success, setSuccess] = useState(false);
   const [webhookResponse, setWebhookResponse] = useState<WebhookSuccessResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [errorDetail, setErrorDetail] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const addFiles = (newFiles: FileList | null) => {
@@ -71,6 +75,7 @@ export default function UtilityBillReviewForm() {
     }
     setError(null);
     setSubmitting(true);
+    setErrorDetail(null);
     const formData = new FormData();
     formData.append("fullName", fullName);
     formData.append("companyName", companyName);
@@ -80,8 +85,19 @@ export default function UtilityBillReviewForm() {
     formData.append("additionalInfo", additionalInfo);
     formData.append("timestamp", new Date().toISOString());
     files.forEach((file, i) => formData.append("file_" + i, file));
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), SUBMISSION_TIMEOUT_MS);
+    const startTime = Date.now();
     try {
-      const res = await fetch(WEBHOOK_URL, { method: "POST", body: formData });
+      console.log("[Base1] Submitting to webhook...", { url: WEBHOOK_URL, fileCount: files.length });
+      const res = await fetch(WEBHOOK_URL, {
+        method: "POST",
+        body: formData,
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      console.log("[Base1] Response received", { status: res.status, statusText: res.statusText, elapsedSeconds: elapsed });
       if (res.ok) {
         try {
           const data = (await res.json()) as WebhookSuccessResponse;
@@ -93,10 +109,39 @@ export default function UtilityBillReviewForm() {
         }
         setSuccess(true);
       } else {
+        const bodyText = await res.text();
+        const detail = `HTTP ${res.status} ${res.statusText}${bodyText ? ` — ${bodyText.slice(0, 200)}` : ""}`;
+        console.error("[Base1] Non-OK response", { status: res.status, statusText: res.statusText, body: bodyText });
+        setErrorDetail(detail);
+        // 524/504 = proxy or upstream timeout; n8n workflow often still completes and emails the result
+        const isUpstreamTimeout = res.status === 524 || res.status === 504;
+        if (isUpstreamTimeout) {
+          setError(
+            "The request timed out before we could show the result here. Your submission was received—check the Lead Pipeline (Base 1) below and your email; the review will appear once processing finishes. Contact business@acesolutions.com.au only if it doesn’t."
+          );
+        } else {
+          setError("Submission failed. Please try again or contact business@acesolutions.com.au");
+        }
+      }
+    } catch (err) {
+      clearTimeout(timeoutId);
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      const isTimeout = err instanceof Error && err.name === "AbortError";
+      const detail = isTimeout
+        ? `Request aborted after ${elapsed}s (client timeout)`
+        : err instanceof Error
+          ? `${err.name}: ${err.message} (after ${elapsed}s)`
+          : String(err);
+      console.error("[Base1] Request failed", { err, isTimeout, elapsedSeconds: elapsed });
+      if (isTimeout) {
+        setErrorDetail(detail);
+        setError(
+          "The request timed out before we could show the result. Your submission was received—check the Lead Pipeline (Base 1) below; your review should appear there once processing finishes. Contact business@acesolutions.com.au only if it doesn’t appear."
+        );
+      } else {
+        setErrorDetail(detail);
         setError("Submission failed. Please try again or contact business@acesolutions.com.au");
       }
-    } catch {
-      setError("Submission failed. Please try again or contact business@acesolutions.com.au");
     } finally {
       setSubmitting(false);
     }
@@ -352,6 +397,11 @@ export default function UtilityBillReviewForm() {
             <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-800 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-200">
               <strong>Submission Error</strong>
               <p className="mt-1 text-sm">{error}</p>
+              {errorDetail && (
+                <p className="mt-2 font-mono text-xs opacity-90" title="Use this when reporting the issue">
+                  {errorDetail}
+                </p>
+              )}
             </div>
           )}
           <button
@@ -370,7 +420,7 @@ export default function UtilityBillReviewForm() {
               <div className="h-14 w-14 animate-spin rounded-full border-4 border-gray-200 border-t-[#2d6b5a] dark:border-dark-3" />
               <div className="space-y-1">
                 <p className="font-semibold text-dark dark:text-white">Processing your submission</p>
-                <p className="text-sm text-gray-500">We&apos;re analysing your utility invoices. This may take a minute.</p>
+                <p className="text-sm text-gray-500">We&apos;re analysing your utility invoices. This can take up to 25 minutes—please keep this tab open.</p>
               </div>
               <div className="flex gap-1.5">
                 <span className="h-2 w-2 animate-bounce rounded-full bg-[#2d6b5a] [animation-delay:0ms]" />
@@ -384,3 +434,4 @@ export default function UtilityBillReviewForm() {
     </Card>
   );
 }
+
