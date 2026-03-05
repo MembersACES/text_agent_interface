@@ -388,7 +388,7 @@ export default function DocumentGenerationPage() {
       const data = await response.json();
 
       if (response.ok && data.status === "success") {
-        setResult(`✅ ${data.message}\n\n📄 **Document Link:** ${data.document_link}\n📁 **Client Folder:** ${data.client_folder_url}`);
+        setResult(`✅ ${data.message}\n\n📄 **Document Link:** ${data.document_link}\n📁 **Member Folder:** ${data.client_folder_url}`);
         
         // Reset selections but keep business info
         setSelectedEoiType("");

@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { StageBadge } from "./shared/StageBadge";
@@ -16,6 +15,8 @@ export interface MemberProfileHeaderProps {
   onEditProfile: () => void;
   firstOfferId?: number | null;
   businessInfo?: Record<string, unknown> | null;
+  /** When provided, called to load business info if missing when opening Base 2 (so Base 2 gets full URL like business-info). */
+  fetchBusinessInfo?: () => Promise<Record<string, unknown> | null>;
 }
 
 function getAbn(info: Record<string, unknown> | null | undefined): string | null {
@@ -68,11 +69,70 @@ export function MemberProfileHeader({
   onEditProfile,
   firstOfferId,
   businessInfo,
+  fetchBusinessInfo,
 }: MemberProfileHeaderProps) {
   const abn = getAbn(businessInfo);
   const [actionsOpen, setActionsOpen] = useState(false);
+  const [base2Opening, setBase2Opening] = useState(false);
 
   const businessName = client.business_name ? encodeURIComponent(client.business_name) : "";
+
+  /** Build the same businessInfo payload that business-info passes to Base 2 (from raw API shape). */
+  function buildBase2Params(info: Record<string, unknown>): URLSearchParams {
+    const params = new URLSearchParams();
+    const business = (info.business_details as Record<string, unknown>) ?? {};
+    const contact = (info.contact_information as Record<string, unknown>) ?? {};
+    const rep = (info.representative_details as Record<string, unknown>) ?? {};
+    const linkedDetails = (info.Linked_Details ?? info.linked_details) as Record<string, unknown> | undefined;
+    const linked = (linkedDetails?.linked_utilities as Record<string, unknown>) ?? {};
+    const retailers = (linkedDetails?.utility_retailers as Record<string, unknown>) ?? {};
+    const gdrive = info.gdrive as Record<string, unknown> | undefined;
+    const driveUrl = gdrive?.folder_url;
+    const processedFileIds = info._processed_file_ids as Record<string, unknown> | undefined;
+    const businessInfoToPass = {
+      name: business.name,
+      abn: business.abn,
+      trading_name: business.trading_name,
+      postal_address: contact.postal_address,
+      site_address: contact.site_address,
+      telephone: contact.telephone,
+      email: contact.email,
+      contact_name: rep.contact_name,
+      position: rep.position,
+      industry: business.industry,
+      website: business.website,
+      googleDriveLink: driveUrl,
+      utilities: linked,
+      retailers,
+      floorPlan: processedFileIds?.business_site_map_upload ?? processedFileIds?.["Floor Plan"],
+      cleaningInvoice: processedFileIds?.invoice_Cleaning ?? processedFileIds?.["Cleaning Invoice"],
+    };
+    if (business.name) params.set("businessName", String(business.name));
+    params.set("businessInfo", encodeURIComponent(JSON.stringify(businessInfoToPass)));
+    return params;
+  }
+
+  /** Open Base 2 the same way as business-info: URL with businessInfo JSON, new tab, no CRM clientId. */
+  const handleOpenBase2 = async () => {
+    const params = new URLSearchParams();
+    let info = businessInfo && typeof businessInfo === "object" ? businessInfo : null;
+    if (!info && fetchBusinessInfo && client.business_name) {
+      setBase2Opening(true);
+      try {
+        info = await fetchBusinessInfo();
+      } finally {
+        setBase2Opening(false);
+      }
+    }
+    if (info && typeof info === "object") {
+      const base2Params = buildBase2Params(info);
+      base2Params.forEach((value, key) => params.set(key, value));
+    } else if (client.business_name) {
+      params.set("businessName", client.business_name);
+    }
+    const url = `/base-2?${params.toString()}`;
+    window.open(url, "_blank");
+  };
 
   const actionLinks = [
     {
@@ -164,15 +224,17 @@ export function MemberProfileHeader({
                 </a>
               )}
 
-              {/* Base 2 — subtle icon+label */}
-              <Link
-                href={`/base-2?businessName=${encodeURIComponent(client.business_name)}&clientId=${client.id}${firstOfferId ? `&offerId=${firstOfferId}` : ""}`}
+              {/* Base 2 — same as business-info: open with businessInfo in URL, no clientId */}
+              <button
+                type="button"
+                onClick={() => handleOpenBase2()}
+                disabled={base2Opening}
                 title="Open Base 2 analysis"
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
               >
                 <IconBase />
-                Base 2
-              </Link>
+                {base2Opening ? "Opening…" : "Base 2"}
+              </button>
 
               {/* Edit profile — solid outlined primary button */}
               <button

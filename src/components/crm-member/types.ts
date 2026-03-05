@@ -131,6 +131,7 @@ export type MemberTab =
   | "utilities"
   | "offers"
   | "savings"
+  | "testimonials"
   | "activity"
   | "notes"
   | "tools"

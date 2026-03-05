@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useEffect, type FormEvent } from "react";
+import { useMemo, useState, useEffect, useCallback, type FormEvent } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 
@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 
 import { useMemberData } from "@/components/crm-member/hooks/use-member-data";
 import { useMemberActions } from "@/components/crm-member/hooks/use-member-actions";
+import { getApiBaseUrl } from "@/lib/utils";
 
 import { MemberProfileHeader } from "@/components/crm-member/MemberProfileHeader";
 import { MemberTabs } from "@/components/crm-member/MemberTabs";
@@ -19,6 +20,7 @@ import { SlideOverPanel } from "@/components/crm-member/shared/SlideOverPanel";
 
 import { OverviewTab } from "@/components/crm-member/tabs/OverviewTab";
 import { SavingsTab } from "@/components/crm-member/tabs/SavingsTab";
+import { TestimonialsTab } from "@/components/crm-member/tabs/TestimonialsTab";
 import { DocumentsTab, getDocumentsCountFromBusinessInfo } from "@/components/crm-member/tabs/DocumentsTab";
 import { UtilitiesTab, getUtilitiesCountFromBusinessInfo } from "@/components/crm-member/tabs/UtilitiesTab";
 import { OffersTab } from "@/components/crm-member/tabs/OffersTab";
@@ -80,6 +82,45 @@ export default function ClientDetailPage() {
     setError,
     refetchTasks,
   });
+
+  const token =
+    (session as { id_token?: string; accessToken?: string })?.id_token ??
+    (session as { id_token?: string; accessToken?: string })?.accessToken ?? "";
+
+  const handleLinkUtility = () => {
+    const params = new URLSearchParams();
+    const businessName =
+      (businessInfo as Record<string, unknown>)?.business_details &&
+      typeof (businessInfo as Record<string, unknown>).business_details === "object"
+        ? ((businessInfo as Record<string, unknown>).business_details as Record<string, unknown>).name
+        : client?.business_name;
+    params.set("businessName", String(businessName ?? ""));
+    if (token) params.set("token", token);
+    const url = `/utility-linking?${params.toString()}`;
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
+  /** Fetch business info for Base 2 when not already loaded (so Base 2 opens with full URL like business-info). */
+  const fetchBusinessInfoForBase2 = useCallback(async (): Promise<Record<string, unknown> | null> => {
+    if (businessInfo && typeof businessInfo === "object") return businessInfo;
+    if (!client?.business_name || !token) return null;
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/get-business-info`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ business_name: client.business_name }),
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      setBusinessInfo(data);
+      return data;
+    } catch {
+      return null;
+    }
+  }, [businessInfo, client?.business_name, token]);
 
   const [businessInfoOpen, setBusinessInfoOpen] = useState(true);
   const [createOfferOpen, setCreateOfferOpen] = useState(false);
@@ -201,7 +242,16 @@ export default function ClientDetailPage() {
         count: businessInfo ? getUtilitiesCountFromBusinessInfo(businessInfo) : null,
       },
       { key: "offers" as const, label: "Offers", count: offers.length },
-      { key: "savings" as const, label: "1st Month Savings", count: null },
+      {
+        key: "savings" as const,
+        label: "1st Month Savings",
+        count: null,
+      },
+      {
+        key: "testimonials" as const,
+        label: "Testimonials",
+        count: null,
+      },
       { key: "activity" as const, label: "Activity", count: activities.length },
       { key: "notes" as const, label: "Notes", count: notes.length },
       { key: "tools" as const, label: "Tools", count: null },
@@ -267,6 +317,7 @@ export default function ClientDetailPage() {
                   }}
                   firstOfferId={offers[0]?.id ?? null}
                   businessInfo={businessInfo}
+                  fetchBusinessInfo={fetchBusinessInfoForBase2}
                 />
               </div>
 
@@ -307,6 +358,7 @@ export default function ClientDetailPage() {
                   <UtilitiesTab
                     businessInfo={businessInfo}
                     setBusinessInfo={setBusinessInfo}
+                    onLinkUtility={handleLinkUtility}
                   />
                 )}
 
@@ -322,6 +374,10 @@ export default function ClientDetailPage() {
 
                 {tab === "savings" && (
                   <SavingsTab businessInfo={businessInfo} />
+                )}
+
+                {tab === "testimonials" && (
+                  <TestimonialsTab businessInfo={businessInfo} />
                 )}
 
                 {tab === "activity" && (

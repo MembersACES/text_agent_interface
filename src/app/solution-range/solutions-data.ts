@@ -451,7 +451,7 @@ export const solutionOptions: SolutionOption[] = [
     "Automated document categorization and tagging",
     "Smart search and retrieval capabilities",
     "Version control and document tracking",
-    "Google Drive client folder creation from templates",
+    "Google Drive Member folder creation from templates",
     "Linked record file movement & updating",
     "Supplier folder updating with new agreements",
     "Automatic client invoice filing into supplier folders",
