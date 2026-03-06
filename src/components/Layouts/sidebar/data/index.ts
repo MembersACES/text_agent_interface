@@ -4,6 +4,7 @@ import {
   Bot,
   Building2,
   CheckSquare,
+  FileText,
   FileUp,
   GitBranch,
   HandCoins,
@@ -69,6 +70,7 @@ export const NAV_DATA: NavSection[] = [
       { title: "Links & Passwords", url: "/resources", icon: KeyRound },
       { title: "Floating Agent", url: "/resources/floating-agent", icon: Bot },
       { title: "Dashboard Tips", url: "/resources/dashboard-tips", icon: Lightbulb },
+      { title: "Testimonial content", url: "/resources/testimonial-content", icon: FileText },
     ],
   },
   {

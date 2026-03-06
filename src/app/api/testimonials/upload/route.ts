@@ -20,6 +20,9 @@ export async function POST(req: NextRequest) {
     const invoice_number = (formData.get("invoice_number") as string | null) || undefined;
     const status = (formData.get("status") as string | null) || "Draft";
     const gdrive_folder_url = (formData.get("gdrive_folder_url") as string | null) || undefined;
+    const testimonial_solution_type_id = (formData.get("testimonial_solution_type_id") as string | null) || undefined;
+    const testimonial_type = (formData.get("testimonial_type") as string | null) || undefined;
+    const testimonial_savings = (formData.get("testimonial_savings") as string | null) || undefined;
 
     if (!file || !business_name) {
       return NextResponse.json(
@@ -40,6 +43,9 @@ export async function POST(req: NextRequest) {
     if (invoice_number) body.append("invoice_number", invoice_number);
     body.append("status", status);
     if (gdrive_folder_url) body.append("gdrive_folder_url", gdrive_folder_url);
+    if (testimonial_solution_type_id) body.append("testimonial_solution_type_id", testimonial_solution_type_id);
+    if (testimonial_type) body.append("testimonial_type", testimonial_type);
+    if (testimonial_savings) body.append("testimonial_savings", testimonial_savings);
 
     const backendResponse = await fetch(`${backendUrl}/api/testimonials/upload`, {
       method: "POST",
