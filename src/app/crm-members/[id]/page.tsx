@@ -295,7 +295,7 @@ export default function ClientDetailPage() {
           />
         ) : (
           <>
-                        <div className="rounded-xl border border-gray-200/80 dark:border-dark-3 bg-white dark:bg-dark-2 shadow-sm">
+                        <div className="rounded-xl border border-gray-200/80 dark:border-dark-3 bg-white dark:bg-dark-2 shadow-sm ring-1 ring-gray-200/60 dark:ring-gray-700/50 overflow-hidden">
               <div className="px-4 py-3 lg:px-5 lg:py-4">
                 <MemberProfileHeader
                   client={client}
@@ -304,16 +304,6 @@ export default function ClientDetailPage() {
                   onStageChange={(value) => {
                     setStageValue(value);
                     actions.handleStageChange(value);
-                  }}
-                  onEditProfile={() => {
-                    setEditProfileForm({
-                      business_name: client.business_name ?? "",
-                      primary_contact_email: client.primary_contact_email ?? "",
-                      gdrive_folder_url: client.gdrive_folder_url ?? "",
-                      owner_email: client.owner_email ?? "",
-                    });
-                    setEditProfileOpen(true);
-                    setError(null);
                   }}
                   firstOfferId={offers[0]?.id ?? null}
                   businessInfo={businessInfo}

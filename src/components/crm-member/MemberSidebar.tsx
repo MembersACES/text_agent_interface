@@ -29,8 +29,8 @@ export function MemberSidebar({
 
   return (
     <div className="space-y-4">
-      {/* ── Contact ── single source of truth for contact details */}
-      <Card className="border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+      {/* ── Contact ── */}
+      <Card className="rounded-xl border border-gray-200/80 dark:border-dark-3 bg-white dark:bg-dark-2 shadow-sm ring-1 ring-gray-200/60 dark:ring-gray-700/50 overflow-hidden">
         <CardContent className="p-4">
           <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-3">
             Contact
@@ -68,7 +68,7 @@ export function MemberSidebar({
       </Card>
 
       {/* ── Tasks ── */}
-      <Card className="border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+      <Card className="rounded-xl border border-gray-200/80 dark:border-dark-3 bg-white dark:bg-dark-2 shadow-sm ring-1 ring-gray-200/60 dark:ring-gray-700/50 overflow-hidden">
         <CardContent className="p-4">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-100">
@@ -128,7 +128,7 @@ export function MemberSidebar({
       </Card>
 
       {/* ── Recent Activity ── */}
-      <Card className="border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+      <Card className="rounded-xl border border-gray-200/80 dark:border-dark-3 bg-white dark:bg-dark-2 shadow-sm ring-1 ring-gray-200/60 dark:ring-gray-700/50 overflow-hidden">
         <CardContent className="p-4">
           <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-1">
             Recent activity

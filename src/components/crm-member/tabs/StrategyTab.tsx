@@ -823,9 +823,19 @@ export function StrategyTab({ clientId, client, onSaveAdvocateMeeting, savingAdv
                             className="flex flex-wrap items-end gap-3 rounded-lg border border-gray-100 dark:border-gray-800 p-3 bg-gray-50/50 dark:bg-gray-800/30"
                           >
                             <div className="flex-1 min-w-[140px]">
-                              <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">
-                                Member
-                              </label>
+                              <div className="flex items-center justify-between gap-2 mb-1">
+                                <label className="text-xs font-medium text-gray-600 dark:text-gray-300">
+                                  Member
+                                </label>
+                                {v.advocate_client_id !== "" && ref.advocate_display_name && (
+                                  <Link
+                                    href={`/crm-members/${v.advocate_client_id}`}
+                                    className="text-xs text-primary hover:underline shrink-0"
+                                  >
+                                    View member →
+                                  </Link>
+                                )}
+                              </div>
                               <select
                                 value={v.advocate_client_id === "" ? "" : String(v.advocate_client_id)}
                                 onChange={(e) =>
@@ -843,16 +853,6 @@ export function StrategyTab({ clientId, client, onSaveAdvocateMeeting, savingAdv
                                   </option>
                                 ))}
                               </select>
-                              {v.advocate_client_id !== "" && ref.advocate_display_name && (
-                                <p className="mt-1 text-xs">
-                                  <Link
-                                    href={`/crm-members/${v.advocate_client_id}`}
-                                    className="text-primary hover:underline"
-                                  >
-                                    View member →
-                                  </Link>
-                                </p>
-                              )}
                             </div>
                             <div className="flex-1 min-w-[140px]">
                               <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">
