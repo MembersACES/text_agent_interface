@@ -10,6 +10,13 @@ import type { StrategyItem, StrategySection, Client, ClientReferral } from "../t
 
 export interface StrategyTabProps {
   clientId: number;
+  client: Client | null;
+  onSaveAdvocateMeeting: (params: {
+    advocacy_meeting_date: string;
+    advocacy_meeting_time: string;
+    advocacy_meeting_completed: boolean;
+  }) => Promise<void>;
+  savingAdvocateMeeting?: boolean;
 }
 
 interface EditableItem {
@@ -59,7 +66,7 @@ const SECTIONS: { key: StrategySection; label: string; description: string }[] =
   },
 ];
 
-export function StrategyTab({ clientId }: StrategyTabProps) {
+export function StrategyTab({ clientId, client, onSaveAdvocateMeeting, savingAdvocateMeeting = false }: StrategyTabProps) {
   const { data: session } = useSession();
   const token =
     (session as { id_token?: string; accessToken?: string })?.id_token ??
@@ -91,6 +98,17 @@ export function StrategyTab({ clientId }: StrategyTabProps) {
   const [referralDrafts, setReferralDrafts] = useState<
     Record<number, { advocate_client_id: number | ""; advocate_business_name: string; active: boolean }>
   >({});
+
+  // Advocacy meeting details (above linked businesses)
+  const [meetingDate, setMeetingDate] = useState("");
+  const [meetingTime, setMeetingTime] = useState("");
+  const [meetingCompleted, setMeetingCompleted] = useState(false);
+  useEffect(() => {
+    if (!client) return;
+    setMeetingDate(client.advocacy_meeting_date ?? "");
+    setMeetingTime(client.advocacy_meeting_time ?? "");
+    setMeetingCompleted(client.advocacy_meeting_completed === true);
+  }, [client?.id, client?.advocacy_meeting_date, client?.advocacy_meeting_time, client?.advocacy_meeting_completed]);
 
   const hasToken = !!token;
   const baseUrl = useMemo(() => getApiBaseUrl(), []);
@@ -722,6 +740,77 @@ export function StrategyTab({ clientId }: StrategyTabProps) {
                       {section.description}
                     </p>
                   </div>
+
+                  {/* Advocacy Meeting Details - above linked businesses */}
+                  <div className="rounded-lg border border-gray-100 dark:border-gray-800 p-4 bg-gray-50/50 dark:bg-gray-800/30 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                      </span>
+                      <h4 className="text-sm font-semibold text-gray-800 dark:text-gray-100">
+                        Advocacy Meeting Details
+                      </h4>
+                    </div>
+                    <p className="text-xs text-gray-600 dark:text-gray-400">
+                      To qualify for advocacy referral benefits, an advocacy meeting must be organized and completed.
+                    </p>
+                    <div className="flex flex-wrap items-end gap-4">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">
+                          Meeting Date
+                        </label>
+                        <input
+                          type="date"
+                          value={meetingDate}
+                          onChange={(e) => setMeetingDate(e.target.value)}
+                          className="rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm px-3 py-2"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">
+                          Meeting Time
+                        </label>
+                        <input
+                          type="time"
+                          value={meetingTime}
+                          onChange={(e) => setMeetingTime(e.target.value)}
+                          className="rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm px-3 py-2"
+                        />
+                      </div>
+                      <label className="flex items-center gap-2 cursor-pointer pb-2">
+                        <input
+                          type="checkbox"
+                          checked={meetingCompleted}
+                          onChange={(e) => setMeetingCompleted(e.target.checked)}
+                          className="rounded border-gray-300 dark:border-gray-600 text-primary focus:ring-primary"
+                        />
+                        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                          Meeting Completed
+                        </span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onSaveAdvocateMeeting({
+                            advocacy_meeting_date: meetingDate,
+                            advocacy_meeting_time: meetingTime,
+                            advocacy_meeting_completed: meetingCompleted,
+                          })
+                        }
+                        disabled={savingAdvocateMeeting}
+                        className="ml-auto px-4 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:opacity-90 disabled:opacity-50"
+                      >
+                        {savingAdvocateMeeting ? "Saving…" : "Save Meeting Details"}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h4 className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-2">
+                      Linked advocate / referral businesses
+                    </h4>
                   {referralsLoading ? (
                     <p className="text-sm text-gray-500 dark:text-gray-400">Loading referrals…</p>
                   ) : (
@@ -821,6 +910,7 @@ export function StrategyTab({ clientId }: StrategyTabProps) {
                       </button>
                     </div>
                   )}
+                  </div>
                 </CardContent>
               </Card>
             );

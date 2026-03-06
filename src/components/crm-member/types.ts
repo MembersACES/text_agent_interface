@@ -12,6 +12,9 @@ export interface Client {
   referred_by_business_name?: string | null;
   referred_by_active?: boolean;
   referred_by_advocate_name?: string | null;
+  advocacy_meeting_date?: string | null;
+  advocacy_meeting_time?: string | null;
+  advocacy_meeting_completed?: boolean;
 }
 
 export interface Note {

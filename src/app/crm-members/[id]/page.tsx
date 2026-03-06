@@ -421,7 +421,12 @@ export default function ClientDetailPage() {
                 )}
 
                 {tab === "strategy" && clientId != null && (
-                  <StrategyTab clientId={clientId!} />
+                  <StrategyTab
+                    clientId={clientId!}
+                    client={client}
+                    onSaveAdvocateMeeting={actions.handleSaveAdvocateMeeting}
+                    savingAdvocateMeeting={actions.savingAdvocateMeeting}
+                  />
                 )}
               </main>
 
