@@ -8,6 +8,10 @@ export interface Client {
   gdrive_folder_url?: string | null;
   stage: ClientStage;
   owner_email?: string | null;
+  referred_by_client_id?: number | null;
+  referred_by_business_name?: string | null;
+  referred_by_active?: boolean;
+  referred_by_advocate_name?: string | null;
 }
 
 export interface Note {
@@ -137,3 +141,14 @@ export type MemberTab =
   | "tools"
   | "solutions"
   | "strategy";
+
+export interface ClientReferral {
+  id: number;
+  client_id: number;
+  advocate_client_id?: number | null;
+  advocate_business_name?: string | null;
+  active: boolean;
+  advocate_display_name?: string | null;
+  created_at: string;
+  updated_at: string;
+}

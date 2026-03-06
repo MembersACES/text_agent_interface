@@ -6,7 +6,7 @@ import { useSession } from "next-auth/react";
 import { getApiBaseUrl } from "@/lib/utils";
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toast";
-import type { StrategyItem, StrategySection } from "../types";
+import type { StrategyItem, StrategySection, Client, ClientReferral } from "../types";
 
 export interface StrategyTabProps {
   clientId: number;
@@ -50,7 +50,7 @@ const SECTIONS: { key: StrategySection; label: string; description: string }[] =
   {
     key: "advocate",
     label: "Advocate",
-    description: "Advocacy items and member advocacy status.",
+    description: "Link this member to the member who provided the lead, or track a business name if the lead hasn’t eventuated yet.",
   },
   {
     key: "summary",
@@ -81,8 +81,56 @@ export function StrategyTab({ clientId }: StrategyTabProps) {
   const [activeSection, setActiveSection] = useState<StrategySection>("in_progress");
   const [form, setForm] = useState<EditableItem | null>(null);
 
+  // Advocate / referrals (multiple per client)
+  const [referrals, setReferrals] = useState<ClientReferral[]>([]);
+  const [referralsLoading, setReferralsLoading] = useState(false);
+  const [clientList, setClientList] = useState<Client[]>([]);
+  const [clientListLoading, setClientListLoading] = useState(false);
+  const [savingReferralId, setSavingReferralId] = useState<number | null>(null);
+  const [addingReferral, setAddingReferral] = useState(false);
+  const [referralDrafts, setReferralDrafts] = useState<
+    Record<number, { advocate_client_id: number | ""; advocate_business_name: string; active: boolean }>
+  >({});
+
   const hasToken = !!token;
   const baseUrl = useMemo(() => getApiBaseUrl(), []);
+
+  const fetchReferrals = useCallback(async () => {
+    if (!clientId || !token) return;
+    setReferralsLoading(true);
+    try {
+      const res = await fetch(`${baseUrl}/api/clients/${clientId}/referrals`, {
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      });
+      if (!res.ok) throw new Error("Failed to load referrals");
+      const data: ClientReferral[] = await res.json();
+      setReferrals(Array.isArray(data) ? data : []);
+    } catch {
+      setReferrals([]);
+    } finally {
+      setReferralsLoading(false);
+    }
+  }, [clientId, token, baseUrl]);
+
+  useEffect(() => {
+    if (!clientId || !token) return;
+    fetchReferrals();
+  }, [clientId, token, fetchReferrals]);
+
+  useEffect(() => {
+    if (!token || !clientId) return;
+    setClientListLoading(true);
+    fetch(`${baseUrl}/api/clients?limit=500`, {
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => {
+        const list = Array.isArray(data) ? data : (data?.items ?? []);
+        setClientList(Array.isArray(list) ? list.filter((c: Client) => c.id !== clientId) : []);
+      })
+      .catch(() => setClientList([]))
+      .finally(() => setClientListLoading(false));
+  }, [token, clientId, baseUrl]);
 
   const fetchItems = useCallback(async () => {
     if (!clientId || !token) return;
@@ -463,6 +511,96 @@ export function StrategyTab({ clientId }: StrategyTabProps) {
     [token, baseUrl, fetchItems, showToast]
   );
 
+  const handleAddReferral = useCallback(async () => {
+    if (!clientId || !token) return;
+    setAddingReferral(true);
+    setError(null);
+    try {
+      const res = await fetch(`${baseUrl}/api/clients/${clientId}/referrals`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ advocate_client_id: null, advocate_business_name: "", active: true }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as { detail?: string }).detail || "Failed to add referral");
+      }
+      const created: ClientReferral = await res.json();
+      setReferrals((prev) => [...prev, created]);
+      showToast("Referral added", "success");
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Failed to add referral";
+      showToast(msg, "error");
+    } finally {
+      setAddingReferral(false);
+    }
+  }, [clientId, token, baseUrl, showToast]);
+
+  const handleSaveReferral = useCallback(
+    async (ref: ClientReferral, advocateClientId: number | "", advocateBusinessName: string, active: boolean) => {
+      if (!token) return;
+      setSavingReferralId(ref.id);
+      setError(null);
+      try {
+        const res = await fetch(`${baseUrl}/api/client-referrals/${ref.id}`, {
+          method: "PATCH",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            advocate_client_id: advocateClientId === "" ? null : advocateClientId,
+            advocate_business_name: advocateBusinessName,
+            active,
+          }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error((data as { detail?: string }).detail || "Failed to update referral");
+        }
+        const updated: ClientReferral = await res.json();
+        setReferrals((prev) => prev.map((r) => (r.id === ref.id ? updated : r)));
+        setReferralDrafts((prev) => {
+          const next = { ...prev };
+          delete next[ref.id];
+          return next;
+        });
+        showToast("Referral updated", "success");
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : "Failed to update referral";
+        showToast(msg, "error");
+      } finally {
+        setSavingReferralId(null);
+      }
+    },
+    [token, baseUrl, showToast]
+  );
+
+  const handleDeleteReferral = useCallback(
+    async (ref: ClientReferral) => {
+      if (!token) return;
+      if (typeof window !== "undefined" && !window.confirm("Remove this advocate/referral entry?")) return;
+      setSavingReferralId(ref.id);
+      setError(null);
+      try {
+        const res = await fetch(`${baseUrl}/api/client-referrals/${ref.id}`, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        });
+        if (!res.ok) throw new Error("Failed to delete referral");
+        setReferrals((prev) => prev.filter((r) => r.id !== ref.id));
+        setReferralDrafts((prev) => {
+          const next = { ...prev };
+          delete next[ref.id];
+          return next;
+        });
+        showToast("Referral removed", "success");
+      } catch (e: unknown) {
+        showToast(e instanceof Error ? e.message : "Failed to delete", "error");
+      } finally {
+        setSavingReferralId(null);
+      }
+    },
+    [token, baseUrl, showToast]
+  );
+
   const totalsBySection: Record<string, { saving: number; revenue: number }> = useMemo(() => {
     const totals: Record<string, { saving: number; revenue: number }> = {};
     for (const s of SECTIONS) {
@@ -550,6 +688,143 @@ export function StrategyTab({ clientId }: StrategyTabProps) {
           const rows = sectionItems[section.key] ?? [];
           const totals = totalsBySection[section.key] ?? { saving: 0, revenue: 0 };
           const isActive = form?.section === section.key || activeSection === section.key;
+          const isAdvocateSection = section.key === "advocate";
+
+          // Advocate section: show referral linkage UI instead of strategy rows
+          // Advocate section: multiple referral entries (dropdown + business name + active per row)
+          if (isAdvocateSection) {
+            const getRefValues = (ref: ClientReferral) =>
+              referralDrafts[ref.id] ?? {
+                advocate_client_id: ref.advocate_client_id ?? "",
+                advocate_business_name: ref.advocate_business_name ?? "",
+                active: ref.active !== false,
+              };
+            const setRefDraft = (
+              ref: ClientReferral,
+              update: Partial<{ advocate_client_id: number | ""; advocate_business_name: string; active: boolean }>
+            ) => {
+              setReferralDrafts((prev) => ({
+                ...prev,
+                [ref.id]: { ...getRefValues(ref), ...update },
+              }));
+            };
+            return (
+              <Card
+                key={section.key}
+                className="border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
+              >
+                <CardContent className="p-4 space-y-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100">
+                      {section.label}
+                    </h3>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                      {section.description}
+                    </p>
+                  </div>
+                  {referralsLoading ? (
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Loading referrals…</p>
+                  ) : (
+                    <div className="space-y-4">
+                      {referrals.map((ref) => {
+                        const v = getRefValues(ref);
+                        return (
+                          <div
+                            key={ref.id}
+                            className="flex flex-wrap items-end gap-3 rounded-lg border border-gray-100 dark:border-gray-800 p-3 bg-gray-50/50 dark:bg-gray-800/30"
+                          >
+                            <div className="flex-1 min-w-[140px]">
+                              <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">
+                                Member
+                              </label>
+                              <select
+                                value={v.advocate_client_id === "" ? "" : String(v.advocate_client_id)}
+                                onChange={(e) =>
+                                  setRefDraft(ref, {
+                                    advocate_client_id: e.target.value === "" ? "" : Number(e.target.value),
+                                  })
+                                }
+                                className="w-full rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm px-3 py-2"
+                                disabled={clientListLoading}
+                              >
+                                <option value="">— None / use business name —</option>
+                                {clientList.map((c) => (
+                                  <option key={c.id} value={c.id}>
+                                    {c.business_name}
+                                  </option>
+                                ))}
+                              </select>
+                              {v.advocate_client_id !== "" && ref.advocate_display_name && (
+                                <p className="mt-1 text-xs">
+                                  <Link
+                                    href={`/crm-members/${v.advocate_client_id}`}
+                                    className="text-primary hover:underline"
+                                  >
+                                    View member →
+                                  </Link>
+                                </p>
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-[140px]">
+                              <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">
+                                Business name (if lead not in CRM)
+                              </label>
+                              <input
+                                type="text"
+                                value={v.advocate_business_name}
+                                onChange={(e) =>
+                                  setRefDraft(ref, { advocate_business_name: e.target.value })
+                                }
+                                placeholder="e.g. business name"
+                                className="w-full rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm px-3 py-2"
+                              />
+                            </div>
+                            <label className="flex items-center gap-2 shrink-0 pb-2">
+                              <input
+                                type="checkbox"
+                                checked={v.active}
+                                onChange={(e) => setRefDraft(ref, { active: e.target.checked })}
+                                className="rounded border-gray-300 dark:border-gray-600 text-primary"
+                              />
+                              <span className="text-xs font-medium text-gray-700 dark:text-gray-300">Active</span>
+                            </label>
+                            <div className="flex gap-2 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleSaveReferral(ref, v.advocate_client_id, v.advocate_business_name, v.active)
+                                }
+                                disabled={savingReferralId === ref.id}
+                                className="px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-medium hover:opacity-90 disabled:opacity-50"
+                              >
+                                {savingReferralId === ref.id ? "Saving…" : "Save"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteReferral(ref)}
+                                disabled={savingReferralId !== null}
+                                className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-600 text-xs font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      <button
+                        type="button"
+                        onClick={handleAddReferral}
+                        disabled={addingReferral}
+                        className="px-4 py-2 rounded-lg border border-dashed border-gray-300 dark:border-gray-600 text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
+                      >
+                        {addingReferral ? "Adding…" : "Add advocate / referral"}
+                      </button>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          }
 
           return (
             <Card

@@ -421,7 +421,7 @@ export default function ClientDetailPage() {
                 )}
 
                 {tab === "strategy" && clientId != null && (
-                  <StrategyTab clientId={clientId} />
+                  <StrategyTab clientId={clientId!} />
                 )}
               </main>
 
