@@ -1,7 +1,13 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
+import { useToast } from "@/components/ui/toast";
+import {
+  CalculateOneMonthSavingsModal,
+  type CalculateResult,
+} from "@/components/crm-member/CalculateOneMonthSavingsModal";
 
 interface LineItem {
   solution_label?: string;
@@ -23,10 +29,41 @@ export interface SavingsTabProps {
   businessInfo: Record<string, unknown> | null;
 }
 
+/** Utility type as in Member ACES Data sheet / backend */
+const UTILITY_SHEET_MAP: Record<string, string> = {
+  "C&I Electricity": "C&I Electricity",
+  "SME Electricity": "SME Electricity",
+  "C&I Gas": "C&I Gas",
+  "SME Gas": "SME Gas",
+  "Small Gas": "SME Gas",
+  Waste: "Waste",
+  Oil: "Oil",
+};
+
+/** Map to solution_type id used on one-month-savings page */
+const UTILITY_TO_SOLUTION_TYPE: Record<string, string> = {
+  "C&I Electricity": "ci_electricity",
+  "SME Electricity": "sme_electricity",
+  "C&I Gas": "ci_gas",
+  "SME Gas": "sme_gas",
+  Waste: "waste",
+  Oil: "resource_recovery",
+};
+
+const SHEET_CONFIG_KEYS = ["C&I Electricity", "SME Electricity", "C&I Gas", "SME Gas", "Waste", "Oil"];
+
 function IconPlus() {
   return (
     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24" aria-hidden>
       <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
+function IconCalculator() {
+  return (
+    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
     </svg>
   );
 }
@@ -46,6 +83,24 @@ export function SavingsTab({ businessInfo }: SavingsTabProps) {
   const [savingsError, setSavingsError] = useState<string | null>(null);
   const [savingsCount, setSavingsCount] = useState<number | null>(null);
   const [invoices, setInvoices] = useState<SavingsInvoiceSummary[]>([]);
+
+  const [calculateModalOpen, setCalculateModalOpen] = useState(false);
+
+  const linkedUtilityOptions = useMemo(() => {
+    const linked = (businessInfo as any)?.Linked_Details?.linked_utilities as Record<string, string | string[]> | undefined;
+    if (!linked) return [];
+    const options: { value: string; utilityType: string; identifier: string; label: string }[] = [];
+    for (const [key, val] of Object.entries(linked)) {
+      const sheetType = UTILITY_SHEET_MAP[key] || key;
+      if (!SHEET_CONFIG_KEYS.includes(sheetType)) continue;
+      const ids = typeof val === "string" ? val.split(",").map((s) => s.trim()).filter(Boolean) : Array.isArray(val) ? val : [];
+      ids.forEach((id) => {
+        const value = `${sheetType}::${String(id).trim()}`;
+        options.push({ value, utilityType: sheetType, identifier: String(id).trim(), label: `${key} – ${id}` });
+      });
+    }
+    return options;
+  }, [businessInfo]);
 
   const latestInvoice = useMemo(
     () => (invoices.length > 0 ? invoices[invoices.length - 1] : null),
@@ -151,6 +206,69 @@ export function SavingsTab({ businessInfo }: SavingsTabProps) {
     }
   };
 
+  const openOneMonthSavingsWithCalculatedLine = (result: CalculateResult, optionValue: string) => {
+    if (!businessName || !result?.success || result.savings_amount == null) return;
+    const opt = linkedUtilityOptions.find((o) => o.value === optionValue);
+    if (!opt) return;
+    const params = new URLSearchParams();
+    params.set("businessName", businessName);
+    if (biz.abn) params.set("abn", biz.abn);
+    if (tradingName) params.set("tradingAs", tradingName);
+    if (contact.email) params.set("email", contact.email);
+    if (contact.telephone) params.set("phone", contact.telephone);
+    if (postalAddress) params.set("address", postalAddress);
+    if (siteAddress) params.set("siteAddress", siteAddress);
+    if (rep.contact_name) params.set("contactName", rep.contact_name);
+    if (rep.position) params.set("position", rep.position);
+    if (driveUrl) params.set("clientFolderUrl", driveUrl);
+    params.set("savingsAmount", String(result.savings_amount));
+    params.set("solutionType", UTILITY_TO_SOLUTION_TYPE[opt.utilityType] || opt.utilityType.replace(/\s+/g, "_").toLowerCase());
+    params.set("solutionLabel", opt.utilityType + " Reviews");
+    window.open(`/one-month-savings?${params.toString()}`, "_blank");
+    setCalculateModalOpen(false);
+  };
+
+  const pathname = usePathname();
+  const router = useRouter();
+  const { showToast } = useToast();
+
+  const handleGenerateTestimonial = async (result: CalculateResult, optionValue: string) => {
+    const opt = linkedUtilityOptions.find((o) => o.value === optionValue);
+    if (!opt || !result?.success || result.savings_amount == null) return;
+    const solutionTypeId = UTILITY_TO_SOLUTION_TYPE[opt.utilityType] ?? opt.utilityType.replace(/\s+/g, "_").toLowerCase();
+    try {
+      const res = await fetch("/api/testimonials/generate-document", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          business_name: businessName,
+          trading_as: tradingName || undefined,
+          contact_name: rep.contact_name || undefined,
+          position: rep.position || undefined,
+          email: contact.email || undefined,
+          telephone: contact.telephone || undefined,
+          client_folder_url: driveUrl || undefined,
+          solution_type: solutionTypeId,
+          savings_amount: result.savings_amount,
+          abn: biz.abn || undefined,
+          postal_address: postalAddress || undefined,
+          site_address: siteAddress || undefined,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(data.error || "Failed to generate testimonial", "error");
+        return;
+      }
+      if (data.document_link) window.open(data.document_link, "_blank");
+      showToast(data.message || "Testimonial generated.", "success");
+      setCalculateModalOpen(false);
+      if (pathname) router.push(`${pathname}?tab=testimonials`);
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : "Failed to generate testimonial", "error");
+    }
+  };
+
   return (
     <Card className="border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
       <CardContent className="p-4 space-y-4">
@@ -163,14 +281,28 @@ export function SavingsTab({ businessInfo }: SavingsTabProps) {
               View and generate 1st Month Savings invoices for this member.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={handleOpenOneMonthSavings}
-            className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
-          >
-            <IconPlus />
-            Generate invoice
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setCalculateModalOpen(true);
+              }}
+              disabled={linkedUtilityOptions.length === 0}
+              className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+              title={linkedUtilityOptions.length === 0 ? "Link utilities in Business Info first" : "Calculate from Member ACES Data sheet"}
+            >
+              <IconCalculator />
+              Calculate 1 month savings
+            </button>
+            <button
+              type="button"
+              onClick={handleOpenOneMonthSavings}
+              className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
+            >
+              <IconPlus />
+              Generate invoice
+            </button>
+          </div>
         </div>
 
         {!businessName ? (
@@ -315,6 +447,16 @@ export function SavingsTab({ businessInfo }: SavingsTabProps) {
             </div>
           </div>
         )}
+
+        <CalculateOneMonthSavingsModal
+          businessInfo={businessInfo}
+          isOpen={calculateModalOpen}
+          onClose={() => setCalculateModalOpen(false)}
+          onGenerateTestimonial={handleGenerateTestimonial}
+          onOpenInvoiceWithResult={openOneMonthSavingsWithCalculatedLine}
+          initialOption={linkedUtilityOptions[0]?.value ?? ""}
+          initialAgreementMonth=""
+        />
       </CardContent>
     </Card>
   );

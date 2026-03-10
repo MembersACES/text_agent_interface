@@ -226,7 +226,7 @@ export default function LoaUploadPage() {
         return;
       }
       
-      setFolderResult('✅ Client folder creation details have been sent and processed! Google Drive folder creation has been triggered successfully!');
+      setFolderResult('✅ Member folder creation details have been sent and processed! Google Drive folder creation has been triggered successfully!');
       
       // After successful folder creation, show utility prompt after a brief delay
       setTimeout(() => {
@@ -512,13 +512,23 @@ export default function LoaUploadPage() {
           >
             {loading ? 'Uploading...' : `Lodge ${utilityType.replace(/_/g, " ")}`}
           </button>
+          <button
+            type="button"
+            onClick={() => {
+              setUploadResult(null);
+              setShowFolderPrompt(true);
+            }}
+            className="ml-3 px-4 py-2 rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          >
+            LOA already uploaded
+          </button>
         </form>
         
         {uploadResult && <div className="mt-4 text-center font-medium whitespace-pre-wrap">{uploadResult}</div>}
         
         {showFolderPrompt && (
           <div className="mt-6 p-4 bg-gray-100 rounded">
-            <p className="mb-2">Would you like to create a Google Drive client folder for this client?</p>
+            <p className="mb-2">Would you like to create a Google Drive member folder for this client?</p>
             <button className="bg-green-600 text-white px-3 py-1 rounded mr-2" onClick={() => handleFolderPrompt(true)}>Yes</button>
             <button className="bg-gray-400 text-white px-3 py-1 rounded" onClick={() => handleFolderPrompt(false)}>No</button>
           </div>

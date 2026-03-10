@@ -12,6 +12,7 @@ const ROUTE_TITLES: Record<string, string> = {
   "/resources": "Links & Passwords",
   "/resources/floating-agent": "Floating Agent",
   "/resources/dashboard-tips": "Dashboard Tips",
+  "/resources/testimonial-content": "Testimonial content",
   "/workflows": "Workflows",
   "/crm": "CRM Dashboard",
   "/crm-members": "Members",

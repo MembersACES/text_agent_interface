@@ -27,6 +27,9 @@ interface Offer {
   status: OfferStatus;
   pipeline_stage?: OfferPipelineStage | null;
   estimated_value?: number | null;
+  annual_savings?: number | null;
+  current_cost?: number | null;
+  new_cost?: number | null;
   document_link?: string | null;
   created_at: string;
   updated_at: string;
@@ -104,6 +107,9 @@ export default function OfferDetailPage() {
   const [editUtilityTypeIdentifier, setEditUtilityTypeIdentifier] = useState("");
   const [editIdentifier, setEditIdentifier] = useState("");
   const [editDocumentLink, setEditDocumentLink] = useState("");
+  const [editAnnualSavings, setEditAnnualSavings] = useState("");
+  const [editCurrentCost, setEditCurrentCost] = useState("");
+  const [editNewCost, setEditNewCost] = useState("");
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
 
@@ -327,6 +333,9 @@ export default function OfferDetailPage() {
       setEditUtilityTypeIdentifier(offer.utility_type_identifier ?? "");
       setEditIdentifier(offer.identifier ?? "");
       setEditDocumentLink(offer.document_link ?? "");
+      setEditAnnualSavings(offer.annual_savings != null ? String(offer.annual_savings) : "");
+      setEditCurrentCost(offer.current_cost != null ? String(offer.current_cost) : "");
+      setEditNewCost(offer.new_cost != null ? String(offer.new_cost) : "");
       setEditingDetails(true);
     }
   };
@@ -351,6 +360,9 @@ export default function OfferDetailPage() {
           utility_type_identifier: editUtilityTypeIdentifier.trim() || null,
           identifier: editIdentifier.trim() || null,
           document_link: editDocumentLink.trim() || null,
+          annual_savings: editAnnualSavings.trim() ? parseFloat(editAnnualSavings) : null,
+          current_cost: editCurrentCost.trim() ? parseFloat(editCurrentCost) : null,
+          new_cost: editNewCost.trim() ? parseFloat(editNewCost) : null,
         }),
       });
       if (!res.ok) {
@@ -649,6 +661,39 @@ export default function OfferDetailPage() {
                         />
                       </label>
                       <label className="block">
+                        <span className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Annual savings (optional)</span>
+                        <input
+                          type="number"
+                          step="any"
+                          value={editAnnualSavings}
+                          onChange={(e) => setEditAnnualSavings(e.target.value)}
+                          placeholder="e.g. 5000"
+                          className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 text-sm"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Current cost (optional)</span>
+                        <input
+                          type="number"
+                          step="any"
+                          value={editCurrentCost}
+                          onChange={(e) => setEditCurrentCost(e.target.value)}
+                          placeholder="e.g. 700"
+                          className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 text-sm"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="block text-xs text-gray-500 dark:text-gray-400 mb-1">New cost (optional)</span>
+                        <input
+                          type="number"
+                          step="any"
+                          value={editNewCost}
+                          onChange={(e) => setEditNewCost(e.target.value)}
+                          placeholder="e.g. 500"
+                          className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 text-sm"
+                        />
+                      </label>
+                      <label className="block">
                         <span className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Document link (optional)</span>
                         <input
                           type="url"
@@ -731,6 +776,36 @@ export default function OfferDetailPage() {
                           {offer.estimated_value.toLocaleString("en-AU")}
                         </dd>
                       </div>
+                    )}
+                    {offer.annual_savings != null && (
+                      <div className="flex justify-between gap-4">
+                        <dt className="text-gray-500 dark:text-gray-400">
+                          Annual Savings
+                        </dt>
+                        <dd className="text-gray-900 dark:text-gray-100 text-right">
+                          ${Number(offer.annual_savings).toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </dd>
+                      </div>
+                    )}
+                    {(offer.current_cost != null || offer.new_cost != null) && (
+                      <>
+                        {offer.current_cost != null && (
+                          <div className="flex justify-between gap-4">
+                            <dt className="text-gray-500 dark:text-gray-400">Current Cost</dt>
+                            <dd className="text-gray-900 dark:text-gray-100 text-right">
+                              ${Number(offer.current_cost).toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </dd>
+                          </div>
+                        )}
+                        {offer.new_cost != null && (
+                          <div className="flex justify-between gap-4">
+                            <dt className="text-gray-500 dark:text-gray-400">New Cost</dt>
+                            <dd className="text-gray-900 dark:text-gray-100 text-right">
+                              ${Number(offer.new_cost).toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </dd>
+                          </div>
+                        )}
+                      </>
                     )}
                   </dl>
                   )}

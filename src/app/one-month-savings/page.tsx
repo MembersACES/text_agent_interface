@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
@@ -102,6 +102,12 @@ export default function OneMonthSavingsPage() {
   const [generating, setGenerating] = useState(false);
   const [result, setResult] = useState("");
 
+  // Testimonial soft guard: warn if no approved testimonial before 1st Month Savings invoice
+  const [testimonialCheck, setTestimonialCheck] = useState<{ has_approved: boolean; count: number } | null>(null);
+  const [testimonialCheckLoading, setTestimonialCheckLoading] = useState(false);
+  const [testimonialWarningDismissed, setTestimonialWarningDismissed] = useState(false);
+  const prefillFromUrlDone = useRef(false);
+
   // Load business info from URL params
   useEffect(() => {
     const businessName = searchParams.get("businessName");
@@ -122,6 +128,27 @@ export default function OneMonthSavingsPage() {
       setBusinessInfo(businessFromUrl);
       setResult(`Business loaded: ${businessName}`);
     }
+  }, [searchParams]);
+
+  // Prefill a single line from "Calculate 1 month savings" (CRM) URL params
+  useEffect(() => {
+    if (prefillFromUrlDone.current) return;
+    const amount = searchParams.get("savingsAmount");
+    const solutionType = searchParams.get("solutionType");
+    const solutionLabel = searchParams.get("solutionLabel");
+    if (!amount || (!solutionType && !solutionLabel)) return;
+    const num = parseFloat(amount);
+    if (!Number.isFinite(num) || num <= 0) return;
+    prefillFromUrlDone.current = true;
+    const label = solutionLabel || solutionType || "Savings";
+    const type = solutionType || "other";
+    const id = `prefill-${Date.now()}`;
+    const gst = (num * 0.1) / 1.1;
+    const total = num + gst;
+    setLineItems((prev) => [
+      ...prev,
+      { id, solution_type: type, solution_label: label, savings_amount: num, gst, total },
+    ]);
   }, [searchParams]);
 
   // Load invoice history for this business
@@ -165,6 +192,32 @@ export default function OneMonthSavingsPage() {
       fetchInvoiceHistory();
     }
   }, [businessInfo?.business_name, fetchInvoiceHistory]);
+
+  // Check for approved testimonial (soft guard before 1st Month Savings invoice)
+  useEffect(() => {
+    if (!businessInfo?.business_name) {
+      setTestimonialCheck(null);
+      setTestimonialWarningDismissed(false);
+      return;
+    }
+    let cancelled = false;
+    setTestimonialCheckLoading(true);
+    setTestimonialCheck(null);
+    fetch(`/api/testimonials/check-approved?business_name=${encodeURIComponent(businessInfo.business_name)}`)
+      .then((res) => (res.ok ? res.json() : { has_approved: false, count: 0 }))
+      .then((data) => {
+        if (!cancelled) setTestimonialCheck({ has_approved: !!data.has_approved, count: data.count ?? 0 });
+      })
+      .catch(() => {
+        if (!cancelled) setTestimonialCheck({ has_approved: false, count: 0 });
+      })
+      .finally(() => {
+        if (!cancelled) setTestimonialCheckLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [businessInfo?.business_name]);
 
   // Search for business
   const searchBusiness = async () => {
@@ -683,6 +736,8 @@ export default function OneMonthSavingsPage() {
     setLineItems([]);
     setInvoiceHistory([]);
     setResult("");
+    setTestimonialCheck(null);
+    setTestimonialWarningDismissed(false);
   };
 
   return (
@@ -697,6 +752,22 @@ export default function OneMonthSavingsPage() {
             Generate invoices for first month savings achieved through ACES solutions and services.
           </p>
         </div>
+
+        {/* Soft guard: warn if no approved testimonial */}
+        {businessInfo && testimonialCheck && !testimonialCheckLoading && !testimonialCheck.has_approved && !testimonialWarningDismissed && (
+          <div className="mb-6 p-4 rounded-xl border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20 flex items-start justify-between gap-4">
+            <p className="text-sm text-amber-800 dark:text-amber-200">
+              <strong>No approved testimonial on file.</strong> Before any one-month savings invoice, prepare the testimonial showing the savings and get the member&apos;s approval (e.g. by receiving it back from them). You can add and approve testimonials in the member&apos;s <strong>Testimonials</strong> tab in CRM Members.
+            </p>
+            <button
+              type="button"
+              onClick={() => setTestimonialWarningDismissed(true)}
+              className="shrink-0 px-3 py-1.5 text-xs font-medium rounded-md border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/40"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left Column - Business & Line Items */}
@@ -750,7 +821,7 @@ export default function OneMonthSavingsPage() {
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 mt-3 text-sm text-emerald-600 hover:underline"
                     >
-                      Open Client Folder
+                      Open Member Folder
                     </a>
                   )}
                 </div>

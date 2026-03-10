@@ -4,7 +4,7 @@ import type { ClientStage } from "@/constants/crm";
 import { CLIENT_STAGE_LABELS } from "@/constants/crm";
 
 const base =
-  "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium";
+  "inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold";
 
 export function StageBadge({ stage }: { stage: ClientStage }) {
   const s = stage.toLowerCase();

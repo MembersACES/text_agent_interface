@@ -36,6 +36,7 @@ export interface UseMemberActionsResult {
   creatingNote: boolean;
   createOfferSubmitting: boolean;
   editProfileSubmitting: boolean;
+  savingAdvocate: boolean;
   handleStageChange: (value: ClientStage) => Promise<void>;
   handleCreateNote: (params: {
     note: string;
@@ -56,6 +57,17 @@ export interface UseMemberActionsResult {
     params: { note: string; note_type?: string }
   ) => Promise<void>;
   handleDeleteNote: (noteId: number) => Promise<void>;
+  handleSaveAdvocate: (params: {
+    referred_by_client_id: number | null;
+    referred_by_business_name: string;
+    referred_by_active: boolean;
+  }) => Promise<void>;
+  handleSaveAdvocateMeeting: (params: {
+    advocacy_meeting_date: string;
+    advocacy_meeting_time: string;
+    advocacy_meeting_completed: boolean;
+  }) => Promise<void>;
+  savingAdvocateMeeting: boolean;
 }
 
 export function useMemberActions({
@@ -75,6 +87,8 @@ export function useMemberActions({
   const [creatingNote, setCreatingNote] = useState(false);
   const [createOfferSubmitting, setCreateOfferSubmitting] = useState(false);
   const [editProfileSubmitting, setEditProfileSubmitting] = useState(false);
+  const [savingAdvocate, setSavingAdvocate] = useState(false);
+  const [savingAdvocateMeeting, setSavingAdvocateMeeting] = useState(false);
 
   const handleStageChange = useCallback(
     async (value: ClientStage) => {
@@ -299,6 +313,86 @@ export function useMemberActions({
     [token, setNotes, setError, showToast]
   );
 
+  const handleSaveAdvocate = useCallback(
+    async (params: {
+      referred_by_client_id: number | null;
+      referred_by_business_name: string;
+      referred_by_active: boolean;
+    }) => {
+      if (!clientId || !token) return;
+      setSavingAdvocate(true);
+      setError(null);
+      try {
+        const res = await fetch(`${getApiBaseUrl()}/api/clients/${clientId}`, {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            referred_by_client_id: params.referred_by_client_id,
+            referred_by_business_name: params.referred_by_business_name.trim() || null,
+            referred_by_active: params.referred_by_active,
+          }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error((data as { detail?: string }).detail || "Failed to update advocate");
+        }
+        const updated: Client = await res.json();
+        setClient(updated);
+        showToast("Advocate / referral updated", "success");
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : "Failed to update advocate";
+        setError(msg);
+        showToast(msg, "error");
+      } finally {
+        setSavingAdvocate(false);
+      }
+    },
+    [clientId, token, setClient, setError, showToast]
+  );
+
+  const handleSaveAdvocateMeeting = useCallback(
+    async (params: {
+      advocacy_meeting_date: string;
+      advocacy_meeting_time: string;
+      advocacy_meeting_completed: boolean;
+    }) => {
+      if (!clientId || !token) return;
+      setSavingAdvocateMeeting(true);
+      setError(null);
+      try {
+        const res = await fetch(`${getApiBaseUrl()}/api/clients/${clientId}`, {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            advocacy_meeting_date: params.advocacy_meeting_date.trim() || null,
+            advocacy_meeting_time: params.advocacy_meeting_time.trim() || null,
+            advocacy_meeting_completed: params.advocacy_meeting_completed,
+          }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error((data as { detail?: string }).detail || "Failed to save meeting details");
+        }
+        const updated: Client = await res.json();
+        setClient(updated);
+        showToast("Meeting details saved", "success");
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : "Failed to save meeting details";
+        setError(msg);
+        showToast(msg, "error");
+      } finally {
+        setSavingAdvocateMeeting(false);
+      }
+    },
+    [clientId, token, setClient, setError, showToast]
+  );
+
   return {
     savingStage,
     creatingNote,
@@ -310,5 +404,9 @@ export function useMemberActions({
     handleCreateOffer,
     handleUpdateNote,
     handleDeleteNote,
+    handleSaveAdvocate,
+    handleSaveAdvocateMeeting,
+    savingAdvocateMeeting,
+    savingAdvocate,
   };
 }

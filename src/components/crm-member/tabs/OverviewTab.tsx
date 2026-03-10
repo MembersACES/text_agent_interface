@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { OfferStatusBadge } from "../shared/OfferStatusBadge";
 import { formatDate } from "../shared/formatDate";
@@ -92,7 +93,7 @@ function IconActivity() {
 
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={`bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden ${className}`}>
+    <div className={cn("bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm ring-1 ring-gray-200/60 dark:ring-gray-700/50 overflow-hidden", className)}>
       {children}
     </div>
   );
@@ -129,11 +130,16 @@ function Divider() {
   return <div className="border-t border-gray-50 dark:border-gray-800/60" />;
 }
 
-function InfoRow({ label, children }: { label: string; children: React.ReactNode }) {
+function InfoRow({ label, children, even }: { label: string; children: React.ReactNode; even?: boolean }) {
   return (
-    <div className="grid grid-cols-[130px_1fr] gap-4 items-start py-3">
+    <div
+      className={cn(
+        "grid grid-cols-[130px_1fr] gap-4 items-start py-4 px-4",
+        even && "bg-gray-50/50 dark:bg-gray-800/30"
+      )}
+    >
       <span className="text-xs font-medium text-gray-400 dark:text-gray-500 pt-0.5">{label}</span>
-      <span className="text-sm text-gray-800 dark:text-gray-200">{children}</span>
+      <span className="text-sm text-gray-900 dark:text-gray-100">{children}</span>
     </div>
   );
 }
@@ -223,32 +229,35 @@ export function OverviewTab({
                   <div className="grid gap-6 md:grid-cols-2">
                     {/* Left: core business details */}
                     <div>
-                      <div className="divide-y divide-gray-50 dark:divide-gray-800/40">
-                        <InfoRow label="Business name">
+                      <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">
+                        Business details
+                      </h3>
+                      <div className="rounded-lg border border-gray-100 dark:border-gray-800/60 overflow-hidden">
+                        <InfoRow label="Business name" even>
                           {businessName || "—"}
                         </InfoRow>
                         <InfoRow label="Trading name">
                           {tradingName || (
-                            <span className="text-xs text-gray-400">
+                            <span className="text-gray-400 dark:text-gray-500">
                               Not available
                             </span>
                           )}
                         </InfoRow>
-                        <InfoRow label="Postal address">
+                        <InfoRow label="Postal address" even>
                           {postalAddress || (
-                            <span className="text-xs text-gray-400">
+                            <span className="text-gray-400 dark:text-gray-500">
                               Not available
                             </span>
                           )}
                         </InfoRow>
                         <InfoRow label="Site address">
                           {siteAddress || (
-                            <span className="text-xs text-gray-400">
+                            <span className="text-gray-400 dark:text-gray-500">
                               Not available
                             </span>
                           )}
                         </InfoRow>
-                        <InfoRow label="Drive folder">
+                        <InfoRow label="Drive folder" even>
                           {driveUrl ? (
                             <a
                               href={driveUrl}
@@ -260,11 +269,11 @@ export function OverviewTab({
                               Open Drive folder
                             </a>
                           ) : (
-                            <span className="text-gray-400">Not linked</span>
+                            <span className="text-gray-400 dark:text-gray-500">Not linked</span>
                           )}
                         </InfoRow>
                       </div>
-                      <div className="pt-4 mt-2 border-t border-gray-50 dark:border-gray-800/40">
+                      <div className="pt-4 mt-3">
                         <Link
                           href={
                             businessName
@@ -282,32 +291,26 @@ export function OverviewTab({
                     </div>
 
                     {/* Right: documents & contracts quick view */}
-                    <div className="flex flex-col gap-3 md:border-l md:border-gray-50 md:dark:border-gray-800/40 md:pl-6">
+                    <div className="flex flex-col gap-3 md:border-l md:border-gray-100 md:dark:border-gray-800/60 md:pl-6">
+                      <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                        Documents & contracts
+                      </h3>
                       <div className="flex items-center justify-between gap-2">
-                        <div className="flex flex-col gap-1">
-                          <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">
-                            Documents & contracts
+                        <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-300">
+                          <span>
+                            <span className="text-gray-400 dark:text-gray-500 mr-1.5">Signed</span>
+                            <span className="font-semibold text-gray-900 dark:text-gray-100">
+                              {hasContracts
+                                ? contracts.filter((c) => c.url).length
+                                : 0}
+                            </span>
                           </span>
-                          <div className="flex items-center gap-4 text-xs text-gray-600 dark:text-gray-300">
-                            <span>
-                              <span className="text-[11px] uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500 mr-1.5">
-                                Signed
-                              </span>
-                              <span className="font-semibold text-gray-900 dark:text-gray-100">
-                                {hasContracts
-                                  ? contracts.filter((c) => c.url).length
-                                  : 0}
-                              </span>
+                          <span>
+                            <span className="text-gray-400 dark:text-gray-500 mr-1.5">Docs</span>
+                            <span className="font-semibold text-gray-900 dark:text-gray-100">
+                              {documentsCount}
                             </span>
-                            <span>
-                              <span className="text-[11px] uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500 mr-1.5">
-                                Docs
-                              </span>
-                              <span className="font-semibold text-gray-900 dark:text-gray-100">
-                                {documentsCount}
-                              </span>
-                            </span>
-                          </div>
+                          </span>
                         </div>
                         <Link
                           href="?tab=documents"

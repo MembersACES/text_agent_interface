@@ -287,14 +287,14 @@ export function UtilitiesTab({ businessInfo, onLinkUtility }: UtilitiesTabProps)
             <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-100">
               Linked utilities & retailers
             </h2>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 items-center">
               {onLinkUtility && (
                 <button
                   type="button"
                   onClick={onLinkUtility}
-                  className="text-xs px-2.5 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
+                  className="text-xs px-2.5 py-1.5 rounded-md border border-gray-400 dark:border-gray-500 bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-100 hover:bg-gray-200 dark:hover:bg-gray-600"
                 >
-                  Link utility
+                  Link Utility Invoice
                 </button>
               )}
               <button

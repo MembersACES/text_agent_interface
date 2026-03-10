@@ -128,6 +128,10 @@
       "Dashboard Tips": {
         "path": "/resources/dashboard-tips",
         "description": "How to use the dashboard and key tools"
+      },
+      "Testimonial content": {
+        "path": "/resources/testimonial-content",
+        "description": "Edit testimonial document template copy per solution type (defaults + overrides)"
       }
     }
   }
