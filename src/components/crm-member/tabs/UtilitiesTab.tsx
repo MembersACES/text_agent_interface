@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState, useCallback } from "react";
+import { useMemo, useState, useCallback, useEffect } from "react";
 import { useSession } from "next-auth/react";
+import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Modal } from "@/components/ui/modal";
 import { mapUtilityKey } from "../shared/mapUtilityKey";
@@ -144,10 +145,29 @@ interface DataRequestSummary {
   details: string;
 }
 
+type DiscrepancyRow = {
+  discrepancy_type: string;
+  utility_identifier: string;
+  linked_business_name: string;
+  invoice_period: string;
+  invoice_rate: string;
+  contract_period: string;
+  contract_rate: string;
+  rate_difference: string;
+  pct_difference: string;
+  annual_quantity_gj: string;
+  annual_potential_overcharge: string;
+  take_or_pay_invoice: string;
+};
+
 export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility }: UtilitiesTabProps) {
   const { data: session } = useSession();
   const token = (session as { id_token?: string; accessToken?: string })?.id_token
     ?? (session as { id_token?: string; accessToken?: string })?.accessToken;
+
+  const [discrepancyRows, setDiscrepancyRows] = useState<DiscrepancyRow[]>([]);
+  const [discrepancyLoading, setDiscrepancyLoading] = useState(false);
+  const [expandedDiscrepancyId, setExpandedDiscrepancyId] = useState<string | null>(null);
 
   const [dataRequestSummary, setDataRequestSummary] = useState<DataRequestSummary | null>(null);
   const [dataRequestLoading, setDataRequestLoading] = useState(false);
@@ -216,6 +236,42 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility }: U
   const processedFileIds = infoWithFiles?._processed_file_ids as Record<string, unknown> | undefined;
   const loaLink = processedFileIds?.business_LOA as string | undefined;
   const driveUrl = (infoWithFiles?.gdrive as Record<string, unknown>)?.folder_url as string | undefined;
+
+  useEffect(() => {
+    if (!token || !businessName.trim()) {
+      setDiscrepancyRows([]);
+      return;
+    }
+    let cancelled = false;
+    setDiscrepancyLoading(true);
+    const params = new URLSearchParams({ business_name: businessName.trim() });
+    fetch(`${getApiBaseUrl()}/api/resources/discrepancy-check?${params.toString()}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error("Failed to load discrepancy data"))))
+      .then((data: { rows?: DiscrepancyRow[] }) => {
+        if (!cancelled) setDiscrepancyRows(data.rows ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setDiscrepancyRows([]);
+      })
+      .finally(() => {
+        if (!cancelled) setDiscrepancyLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [token, businessName]);
+
+  const discrepancyByIdentifier = useMemo(() => {
+    const map = new Map<string, DiscrepancyRow[]>();
+    for (const r of discrepancyRows) {
+      const id = (r.utility_identifier ?? "").trim();
+      if (!id) continue;
+      const list = map.get(id) ?? [];
+      list.push(r);
+      map.set(id, list);
+    }
+    return map;
+  }, [discrepancyRows]);
 
   function buildAccountInfoUrl(
     tool: string,
@@ -454,9 +510,53 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility }: U
                         key={`${row.displayKey}-${idx}-${identifier}`}
                         className="border-l-2 border-blue-200 dark:border-blue-800 pl-3"
                       >
-                        <div className="text-sm font-medium text-gray-800 dark:text-gray-100">
+                        <div className="text-sm font-medium text-gray-800 dark:text-gray-100 flex flex-wrap items-center gap-2">
                           {row.config.label}: {identifier}
+                          {row.displayKey === "C&I Gas" && (discrepancyByIdentifier.get(identifier)?.length ?? 0) > 0 && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200 border border-amber-300 dark:border-amber-700">
+                              Discrepancy
+                            </span>
+                          )}
                         </div>
+                        {row.displayKey === "C&I Gas" && (discrepancyByIdentifier.get(identifier)?.length ?? 0) > 0 && (
+                          <div className="mt-2 rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50/80 dark:bg-amber-900/20">
+                            <button
+                              type="button"
+                              onClick={() => setExpandedDiscrepancyId((prev) => (prev === `${row.displayKey}-${identifier}` ? null : `${row.displayKey}-${identifier}`))}
+                              className="w-full px-2 py-1.5 text-left text-xs font-medium text-amber-800 dark:text-amber-200 flex items-center justify-between"
+                            >
+                              {expandedDiscrepancyId === `${row.displayKey}-${identifier}` ? "Hide" : "Show"} discrepancy details
+                              <span className="text-amber-600 dark:text-amber-400">{expandedDiscrepancyId === `${row.displayKey}-${identifier}` ? "▼" : "▶"}</span>
+                            </button>
+                            {expandedDiscrepancyId === `${row.displayKey}-${identifier}` && (
+                              <div className="px-2 pb-2 pt-0 space-y-1 text-xs text-gray-700 dark:text-gray-300">
+                                {discrepancyByIdentifier.get(identifier)?.map((d, i) => (
+                                  <div key={i}>
+                                    {d.rate_difference && <div>Rate difference: {d.rate_difference}</div>}
+                                    {d.pct_difference && <div>% difference: {d.pct_difference}</div>}
+                                    {d.annual_potential_overcharge && <div>Annual potential overcharge: {d.annual_potential_overcharge}</div>}
+                                    {d.take_or_pay_invoice && <div className="truncate max-w-full" title={d.take_or_pay_invoice}>Take or Pay: {d.take_or_pay_invoice.slice(0, 80)}{d.take_or_pay_invoice.length > 80 ? "…" : ""}</div>}
+                                  </div>
+                                ))}
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    window.open(
+                                      `/resources/discrepancy-check?business_name=${encodeURIComponent(
+                                        businessName
+                                      )}&identifier=${encodeURIComponent(identifier)}`,
+                                      "_blank",
+                                      "noopener,noreferrer"
+                                    )
+                                  }
+                                  className="inline-block mt-1 text-primary font-semibold hover:underline"
+                                >
+                                  View full discrepancy check →
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
                         {retailerVal && (
                           <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">
                             Retailer: {retailerVal}

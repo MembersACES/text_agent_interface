@@ -16,6 +16,7 @@ import {
   Lightbulb,
   Lock,
   Users,
+  AlertTriangle,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import ACESLogo from "@/../public/images/logo/CARBON ZERO Logo.png";
@@ -73,6 +74,7 @@ export const NAV_DATA: NavSection[] = [
       { title: "Dashboard Tips", url: "/resources/dashboard-tips", icon: Lightbulb },
       { title: "Testimonial content", url: "/resources/testimonial-content", icon: FileText },
       { title: "Contract Ending / Expiring", url: "/resources/contract-ending", icon: CalendarClock },
+      { title: "C&I Gas Discrepancy Check", url: "/resources/discrepancy-check", icon: AlertTriangle },
     ],
   },
   {

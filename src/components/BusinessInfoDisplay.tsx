@@ -143,6 +143,21 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
   const retailers = info.Linked_Details?.utility_retailers || {};
   const linkedUtilityExtra = (info.Linked_Details as Record<string, unknown>)?.linked_utility_extra as Record<string, Array<{ contract_end_date?: string; data_requested?: string; data_recieved?: string | boolean }>> | undefined;
 
+  type DiscrepancyRow = {
+    discrepancy_type: string;
+    utility_identifier: string;
+    linked_business_name: string;
+    invoice_period: string;
+    invoice_rate: string;
+    contract_period: string;
+    contract_rate: string;
+    rate_difference: string;
+    pct_difference: string;
+    annual_quantity_gj: string;
+    annual_potential_overcharge: string;
+    take_or_pay_invoice: string;
+  };
+
   /** Normalize linked_utilities to rows with identifier + optional retailer + extra. Handles n8n format (array of objects) and legacy (array of strings). */
   type UtilityRow = { identifier: string; retailer?: string; extra?: { contract_end_date?: string; data_requested?: string; data_recieved?: string | boolean } };
   const toSafeIdentifier = (v: unknown): string => {
@@ -179,7 +194,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
       }
       return value.map((id: string | unknown, idx: number) => ({
         identifier: toSafeIdentifier(id) || "—",
-        retailer: Array.isArray(retailerList) ? retailerList[idx] : undefined,
+        retailer: Array.isArray(retailerList) ? retailerList[idx] : typeof retailerList === "string" ? retailerList : undefined,
         extra: Array.isArray(extraList) ? extraList[idx] : undefined,
       }));
     }
@@ -200,6 +215,8 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
   const [driveModalResult, setDriveModalResult] = useState<string | null>(null);
   const [discrepancyLoading, setDiscrepancyLoading] = useState(false);
   const [discrepancyData, setDiscrepancyData] = useState<any>(null);
+  const [gasDiscrepancyRows, setGasDiscrepancyRows] = useState<DiscrepancyRow[]>([]);
+  const [expandedGasDiscrepancyId, setExpandedGasDiscrepancyId] = useState<string | null>(null);
   const [advocacyLoading, setAdvocacyLoading] = useState(false);
   const [advocacyData, setAdvocacyData] = useState<any>(null);
   const [advocacyMeetingDate, setAdvocacyMeetingDate] = useState<string>('');
@@ -266,6 +283,28 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
   const [additionalDocResult, setAdditionalDocResult] = useState<string | null>(null);
   const [additionalDocsRefreshing, setAdditionalDocsRefreshing] = useState(false);
   const [additionalDocs, setAdditionalDocs] = useState<Array<{ fileName: string; id: string }>>([]);
+
+  useEffect(() => {
+    if (!token || !businessName.trim()) {
+      setGasDiscrepancyRows([]);
+      return;
+    }
+    let cancelled = false;
+    const params = new URLSearchParams({ business_name: businessName.trim() });
+    fetch(`${getApiBaseUrl()}/api/resources/discrepancy-check?${params.toString()}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error("Failed to load discrepancy data"))))
+      .then((data: { rows?: DiscrepancyRow[] }) => {
+        if (!cancelled) setGasDiscrepancyRows(data.rows ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setGasDiscrepancyRows([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token, businessName]);
   // Signed Engagement Forms state
   const [showEngagementFormModal, setShowEngagementFormModal] = useState(false);
   const [engagementFormFile, setEngagementFormFile] = useState<File | null>(null);
@@ -2297,9 +2336,82 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                         const invoiceBusinessName = isOil ? identifier : businessName;
                         const displayValue = identifier;
                         
+                        const gasRowsForIdentifier =
+                          key === "C&I Gas"
+                            ? gasDiscrepancyRows.filter(
+                                (d) =>
+                                  String(d.utility_identifier || "").trim() ===
+                                  String(identifier).trim()
+                              )
+                            : [];
+                        const hasDiscrepancy = gasRowsForIdentifier.length > 0;
+
                         return (
                           <div key={`${realKey}-${idx}`} className="border-l-2 border-blue-200 pl-3">
-                            <div className="text-sm font-medium">{label}: {displayValue}</div>
+                            <div className="text-sm font-medium flex flex-wrap items-center gap-2">
+                              {label}: {displayValue}
+                              {hasDiscrepancy && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-300">
+                                  Discrepancy
+                                </span>
+                              )}
+                            </div>
+                            {hasDiscrepancy && (
+                              <div className="mt-1 rounded-md border border-amber-200 bg-amber-50/80 text-xs text-gray-700">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setExpandedGasDiscrepancyId((prev) =>
+                                      prev === `${realKey}-${identifier}` ? null : `${realKey}-${identifier}`
+                                    )
+                                  }
+                                  className="w-full px-2 py-1.5 text-left font-medium text-amber-800 flex items-center justify-between"
+                                >
+                                  {expandedGasDiscrepancyId === `${realKey}-${identifier}` ? "Hide" : "Show"} discrepancy details
+                                  <span className="text-amber-600">
+                                    {expandedGasDiscrepancyId === `${realKey}-${identifier}` ? "▼" : "▶"}
+                                  </span>
+                                </button>
+                                {expandedGasDiscrepancyId === `${realKey}-${identifier}` && (
+                                  <div className="px-2 pb-2 pt-0 space-y-1">
+                                    {gasRowsForIdentifier.map((d, i) => (
+                                      <div key={i}>
+                                        {d.rate_difference && <div>Rate difference: {d.rate_difference}</div>}
+                                        {d.pct_difference && <div>% difference: {d.pct_difference}</div>}
+                                        {d.annual_potential_overcharge && (
+                                          <div>Annual potential overcharge: {d.annual_potential_overcharge}</div>
+                                        )}
+                                        {d.take_or_pay_invoice && (
+                                          <div
+                                            className="truncate max-w-full"
+                                            title={d.take_or_pay_invoice}
+                                          >
+                                            Take or Pay:{" "}
+                                            {d.take_or_pay_invoice.slice(0, 80)}
+                                            {d.take_or_pay_invoice.length > 80 ? "…" : ""}
+                                          </div>
+                                        )}
+                                      </div>
+                                    ))}
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        window.open(
+                                          `/resources/discrepancy-check?business_name=${encodeURIComponent(
+                                            businessName
+                                          )}&identifier=${encodeURIComponent(identifier)}`,
+                                          "_blank",
+                                          "noopener,noreferrer"
+                                        )
+                                      }
+                                      className="inline-block mt-1 text-primary font-semibold hover:underline"
+                                    >
+                                      View full discrepancy check →
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            )}
                             {retailer && (
                               <div className="text-xs text-gray-500 mb-2">Retailer: {retailer}</div>
                             )}

@@ -91,6 +91,14 @@ const RESOURCES: Resource[] = [
     env: "production",
     category: "Resources",
   },
+  {
+    name: "C&I Gas Discrepancy Check",
+    link: "/resources/discrepancy-check",
+    password: "N/A",
+    notes: "View C&I Gas rate/contract discrepancies from Google Sheet; filter by business or identifier.",
+    env: "production",
+    category: "Resources",
+  },
 ];
 
 
