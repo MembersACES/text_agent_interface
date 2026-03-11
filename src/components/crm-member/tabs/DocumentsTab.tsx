@@ -10,6 +10,7 @@ import {
   getBusinessDocumentFileUrl,
   getBusinessDocumentsForOverview,
   getContractsFromProcessed,
+  displayDocName,
   getDocumentsCountFromBusinessInfo,
   getKeyDocumentsFromProcessed,
   KEY_DOC_LABELS,
@@ -622,7 +623,7 @@ export function DocumentsTab({ businessInfo, setBusinessInfo, businessName }: Do
                       >
                         <div className="min-w-0 pr-2">
                           <div className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">
-                            {doc}
+                            {displayDocName(doc)}
                           </div>
                           <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                             {isAmort ? (

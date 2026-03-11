@@ -40,3 +40,20 @@ export function getCanvaApiBaseUrl() {
     ? "http://localhost:3000"
     : "";
 }
+
+/** Format as Australian date dd/mm/yyyy. Accepts yyyy-mm-dd or ISO. */
+export function formatDateAustralian(dateString?: string | null): string {
+  if (!dateString || typeof dateString !== "string") return "";
+  const s = dateString.trim();
+  if (!s) return "";
+  try {
+    const d = new Date(s);
+    if (Number.isNaN(d.getTime())) return s;
+    const day = d.getDate();
+    const month = d.getMonth() + 1;
+    const year = d.getFullYear();
+    return `${day.toString().padStart(2, "0")}/${month.toString().padStart(2, "0")}/${year}`;
+  } catch {
+    return s;
+  }
+}
