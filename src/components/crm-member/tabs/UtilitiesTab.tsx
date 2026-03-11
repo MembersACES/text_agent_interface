@@ -5,7 +5,7 @@ import { useSession } from "next-auth/react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Modal } from "@/components/ui/modal";
 import { mapUtilityKey } from "../shared/mapUtilityKey";
-import { getApiBaseUrl, formatDateAustralian } from "@/lib/utils";
+import { getApiBaseUrl, formatDateAustralian, formatDateDDMMYYYY, parseDateDDMMYYYYToISO } from "@/lib/utils";
 
 export interface UtilitiesTabProps {
   businessInfo: Record<string, unknown> | null;
@@ -336,6 +336,13 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility }: U
     if (!utilityEdit || !token || !setBusinessInfo) return;
     setUtilityEditError(null);
     setUtilityEditLoading(true);
+    const contractEndIso = parseDateDDMMYYYYToISO(utilityEdit.contract_end_date);
+    const dataRequestedIso = parseDateDDMMYYYYToISO(utilityEdit.data_requested);
+    if ((utilityEdit.contract_end_date && !contractEndIso) || (utilityEdit.data_requested && !dataRequestedIso)) {
+      setUtilityEditError("Invalid date format. Use dd-mm-yyyy (e.g. 31-12-2027).");
+      setUtilityEditLoading(false);
+      return;
+    }
     try {
       const res = await fetch(`${getApiBaseUrl()}/api/utility-record`, {
         method: "PATCH",
@@ -347,9 +354,9 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility }: U
           business_name: businessName,
           utility_type: utilityEdit.displayKey,
           identifier: utilityEdit.identifier,
-          data_requested: utilityEdit.data_requested || undefined,
+          data_requested: dataRequestedIso || undefined,
           data_recieved: utilityEdit.data_recieved,
-          contract_end_date: utilityEdit.contract_end_date || undefined,
+          contract_end_date: contractEndIso || undefined,
         }),
       });
       if (!res.ok) {
@@ -369,8 +376,8 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility }: U
           while (arr.length <= idxInRow) arr.push({});
           arr[idxInRow] = {
             ...(arr[idxInRow] as Record<string, unknown>),
-            contract_end_date: utilityEdit.contract_end_date || undefined,
-            data_requested: utilityEdit.data_requested || undefined,
+            contract_end_date: contractEndIso || undefined,
+            data_requested: dataRequestedIso || undefined,
             data_recieved: utilityEdit.data_recieved,
           };
           updatedExtra = { ...extra, [utilityEdit.displayKey]: arr };
@@ -470,8 +477,8 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility }: U
                                 onClick={() => setUtilityEdit({
                                   displayKey: row.displayKey,
                                   identifier,
-                                  contract_end_date: typeof extra.contract_end_date === "string" ? extra.contract_end_date : "",
-                                  data_requested: typeof extra.data_requested === "string" ? extra.data_requested : "",
+                                  contract_end_date: formatDateDDMMYYYY(extra.contract_end_date),
+                                  data_requested: formatDateDDMMYYYY(extra.data_requested),
                                   data_recieved: extra.data_recieved === true || extra.data_recieved === "Yes" || (typeof extra.data_recieved === "string" && extra.data_recieved.length > 0),
                                 })}
                                 className="text-xs mt-1 text-blue-600 dark:text-blue-400 hover:underline"
@@ -812,21 +819,23 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility }: U
               </div>
             )}
             <div>
-              <label className="block font-medium text-gray-700 dark:text-gray-300 mb-1">Contract end date</label>
+              <label className="block font-medium text-gray-700 dark:text-gray-300 mb-1">Contract end date (dd-mm-yyyy)</label>
               <input
-                type="date"
+                type="text"
                 value={utilityEdit.contract_end_date}
                 onChange={(e) => setUtilityEdit((p) => p ? { ...p, contract_end_date: e.target.value } : null)}
                 className="w-full px-2 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                placeholder="e.g. 31-12-2027"
               />
             </div>
             <div>
-              <label className="block font-medium text-gray-700 dark:text-gray-300 mb-1">Data requested</label>
+              <label className="block font-medium text-gray-700 dark:text-gray-300 mb-1">Data requested (dd-mm-yyyy)</label>
               <input
-                type="date"
+                type="text"
                 value={utilityEdit.data_requested}
                 onChange={(e) => setUtilityEdit((p) => p ? { ...p, data_requested: e.target.value } : null)}
                 className="w-full px-2 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                placeholder="e.g. 11-03-2026"
               />
             </div>
             <div className="flex items-center gap-2">

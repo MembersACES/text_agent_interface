@@ -3,6 +3,7 @@ import {
   BarChart3,
   Bot,
   Building2,
+  CalendarClock,
   CheckSquare,
   FileText,
   FileUp,
@@ -71,6 +72,7 @@ export const NAV_DATA: NavSection[] = [
       { title: "Floating Agent", url: "/resources/floating-agent", icon: Bot },
       { title: "Dashboard Tips", url: "/resources/dashboard-tips", icon: Lightbulb },
       { title: "Testimonial content", url: "/resources/testimonial-content", icon: FileText },
+      { title: "Contract Ending / Expiring", url: "/resources/contract-ending", icon: CalendarClock },
     ],
   },
   {

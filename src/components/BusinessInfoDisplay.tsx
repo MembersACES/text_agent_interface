@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from "react";
-import { getApiBaseUrl, formatDateAustralian } from "@/lib/utils";
+import { getApiBaseUrl, formatDateAustralian, formatDateDDMMYYYY, parseDateDDMMYYYYToISO } from "@/lib/utils";
 import { displayDocName } from "@/components/crm-member/tabs/documentHelpers";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
@@ -684,6 +684,13 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
     if (!utilityEdit || !token) return;
     setUtilityEditError(null);
     setUtilityEditLoading(true);
+    const contractEndIso = parseDateDDMMYYYYToISO(utilityEdit.contract_end_date);
+    const dataRequestedIso = parseDateDDMMYYYYToISO(utilityEdit.data_requested);
+    if ((utilityEdit.contract_end_date && !contractEndIso) || (utilityEdit.data_requested && !dataRequestedIso)) {
+      setUtilityEditError("Invalid date format. Use dd-mm-yyyy (e.g. 31-12-2027).");
+      setUtilityEditLoading(false);
+      return;
+    }
     try {
       const res = await fetch(`${getApiBaseUrl()}/api/utility-record`, {
         method: "PATCH",
@@ -695,9 +702,9 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
           business_name: businessName,
           utility_type: utilityEdit.displayKey,
           identifier: utilityEdit.identifier,
-          data_requested: utilityEdit.data_requested || undefined,
+          data_requested: dataRequestedIso || undefined,
           data_recieved: utilityEdit.data_recieved,
-          contract_end_date: utilityEdit.contract_end_date || undefined,
+          contract_end_date: contractEndIso || undefined,
         }),
       });
       if (!res.ok) {
@@ -722,8 +729,8 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
             if (cur != null && typeof cur === "object" && "identifier" in cur) {
               next[idx] = {
                 ...(cur as Record<string, unknown>),
-                ced: utilityEdit.contract_end_date || undefined,
-                data_requested: utilityEdit.data_requested || undefined,
+                ced: contractEndIso || undefined,
+                data_requested: dataRequestedIso || undefined,
                 data_received: utilityEdit.data_recieved,
               };
             }
@@ -2311,8 +2318,8 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                                       onClick={() => setUtilityEdit({
                                         displayKey: realKey,
                                         identifier,
-                                        contract_end_date: typeof extra?.contract_end_date === "string" ? extra.contract_end_date : "",
-                                        data_requested: typeof extra?.data_requested === "string" ? extra.data_requested : "",
+                                        contract_end_date: formatDateDDMMYYYY(extra?.contract_end_date),
+                                        data_requested: formatDateDDMMYYYY(extra?.data_requested),
                                         data_recieved: dataReceivedLabel === "Received",
                                       })}
                                       className="text-xs mt-1 text-blue-600 hover:underline"
@@ -3416,23 +3423,23 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
           <div className="space-y-3 text-sm">
             {utilityEditError && <p className="text-red-600 text-xs">{utilityEditError}</p>}
             <div>
-              <label className="font-medium text-gray-700 block mb-1">Contract end date (YYYY-MM-DD)</label>
+              <label className="font-medium text-gray-700 block mb-1">Contract end date (dd-mm-yyyy)</label>
               <input
                 type="text"
                 value={utilityEdit.contract_end_date}
                 onChange={(e) => setUtilityEdit((p) => (p ? { ...p, contract_end_date: e.target.value } : null))}
                 className="w-full px-2 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-                placeholder="e.g. 2027-12-31"
+                placeholder="e.g. 31-12-2027"
               />
             </div>
             <div>
-              <label className="font-medium text-gray-700 block mb-1">Data requested (YYYY-MM-DD)</label>
+              <label className="font-medium text-gray-700 block mb-1">Data requested (dd-mm-yyyy)</label>
               <input
                 type="text"
                 value={utilityEdit.data_requested}
                 onChange={(e) => setUtilityEdit((p) => (p ? { ...p, data_requested: e.target.value } : null))}
                 className="w-full px-2 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-                placeholder="e.g. 2026-03-11"
+                placeholder="e.g. 11-03-2026"
               />
             </div>
             <div className="flex items-center gap-2">
