@@ -103,6 +103,23 @@ export default function DiscrepancyCheckPage() {
     return list;
   }, [rows, filterIdentifier]);
 
+  /** Parse "DD/MM/YYYY" or "DD/MM/YYYY-DD/MM/YYYY" to get end date for sorting (most recent first). */
+  const sortedRows = useMemo(() => {
+    const parseEndDate = (period: string): number => {
+      if (!period || !period.trim()) return 0;
+      const part = period.includes("-") ? period.split("-")[1]?.trim() : period.trim();
+      const [d, m, y] = (part ?? "").split("/").map(Number);
+      if (!y || !m || !d) return 0;
+      const date = new Date(y, m - 1, d);
+      return date.getTime();
+    };
+    return [...filteredRows].sort((a, b) => {
+      const timeA = parseEndDate(a.invoice_period ?? "");
+      const timeB = parseEndDate(b.invoice_period ?? "");
+      return timeB - timeA;
+    });
+  }, [filteredRows]);
+
   return (
     <div className="space-y-4 max-w-6xl">
       <Breadcrumb />
@@ -172,19 +189,22 @@ export default function DiscrepancyCheckPage() {
                 {filterBusinessName.trim()
                   ? "Business filter applied on server. "
                   : ""}
-                {filteredRows.length} row(s) after identifier filter.
+                {sortedRows.length} row(s) after identifier filter. Sorted by most recent invoice period first.
               </span>
             )}
           </div>
 
           {loading ? (
             <p className="text-sm text-gray-500 py-4">Loading…</p>
-          ) : filteredRows.length === 0 ? (
+          ) : sortedRows.length === 0 ? (
             <p className="text-sm text-gray-500 italic py-4">
               No discrepancy rows match the filters. Try clearing filters or check the sheet.
             </p>
           ) : (
             <div className="overflow-x-auto -mx-2">
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                Sorted by most recent invoice period at top.
+              </p>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -203,7 +223,7 @@ export default function DiscrepancyCheckPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredRows.map((r, i) => (
+                  {sortedRows.map((r, i) => (
                     <TableRow key={`${r.utility_identifier}-${i}`}>
                       <TableCell className="text-sm">{r.discrepancy_type || "—"}</TableCell>
                       <TableCell className="font-mono text-sm">{r.utility_identifier || "—"}</TableCell>

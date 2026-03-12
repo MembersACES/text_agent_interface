@@ -15,7 +15,7 @@ import {
 import { getApiBaseUrl, formatDateAustralian, formatDateDDMMYYYY, parseDateDDMMYYYYToISO } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 import { Modal } from "@/components/ui/modal";
-import { RefreshCw, AlertCircle, FileQuestion, CheckCircle2, CalendarClock, CalendarCheck, HelpCircle, Pencil, AlertTriangle } from "lucide-react";
+import { RefreshCw, AlertCircle, FileQuestion, CheckCircle2, CalendarClock, CalendarCheck, HelpCircle, Pencil, AlertTriangle, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type ContractItem = {
@@ -42,6 +42,7 @@ type ApiResponse = {
     updated_gas: number;
     errors: string[];
     updates?: SyncUpdate[];
+    identifiers_not_in_airtable?: { electricity: string[]; gas: string[] };
   } | null;
 };
 
@@ -68,6 +69,7 @@ export default function ContractEndingPage() {
   const [filterYear, setFilterYear] = useState<string>("");
   const [filterUtilityType, setFilterUtilityType] = useState<string>("");
   const [lastSync, setLastSync] = useState<ApiResponse["sync"] | null>(null);
+  const [showNotInAirtableList, setShowNotInAirtableList] = useState(false);
   const [activeTab, setActiveTab] = useState<"ending" | "ended" | "undefined">("ending");
   const [editingItem, setEditingItem] = useState<ContractItem | null>(null);
   const [editDateValue, setEditDateValue] = useState("");
@@ -158,12 +160,32 @@ export default function ContractEndingPage() {
   }, [contractsWithEndDate, filterMonth, filterYear, filterUtilityType]);
 
   const contractsEnding = useMemo(() => {
-    return filteredWithEndDate.filter((c) => c.contract_end_date && c.contract_end_date >= today);
+    const list = filteredWithEndDate.filter((c) => c.contract_end_date && c.contract_end_date >= today);
+    return [...list].sort((a, b) => (a.contract_end_date ?? "").localeCompare(b.contract_end_date ?? ""));
   }, [filteredWithEndDate, today]);
 
   const contractsEnded = useMemo(() => {
-    return filteredWithEndDate.filter((c) => c.contract_end_date && c.contract_end_date < today);
+    const list = filteredWithEndDate.filter((c) => c.contract_end_date && c.contract_end_date < today);
+    return [...list].sort((a, b) => (b.contract_end_date ?? "").localeCompare(a.contract_end_date ?? ""));
   }, [filteredWithEndDate, today]);
+
+  /** Summary: contracts ending per month (year-month -> count), sorted by date ascending (closest first). */
+  const endingByMonth = useMemo(() => {
+    const map = new Map<string, number>();
+    contractsEnding.forEach((c) => {
+      if (!c.contract_end_date) return;
+      const [y, m] = c.contract_end_date.split("-").map(Number);
+      const key = `${y}-${String(m).padStart(2, "0")}`;
+      map.set(key, (map.get(key) ?? 0) + 1);
+    });
+    return Array.from(map.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, count]) => {
+        const [y, m] = key.split("-").map(Number);
+        const label = new Date(y, m - 1, 1).toLocaleString("en-AU", { month: "long", year: "numeric" });
+        return { key, label, count, year: y, month: m };
+      });
+  }, [contractsEnding]);
 
   const currentMonth = useMemo(() => {
     const d = new Date();
@@ -316,6 +338,71 @@ export default function ContractEndingPage() {
         </div>
       )}
 
+      {lastSync?.identifiers_not_in_airtable && (lastSync.identifiers_not_in_airtable.electricity?.length > 0 || lastSync.identifiers_not_in_airtable.gas?.length > 0) && (
+        <div
+          role="alert"
+          className="rounded-lg border border-amber-300 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/20 overflow-hidden"
+        >
+          <button
+            type="button"
+            onClick={() => setShowNotInAirtableList((v) => !v)}
+            className="w-full px-4 py-3 flex items-start gap-3 text-left hover:bg-amber-100/50 dark:hover:bg-amber-900/30 transition-colors"
+          >
+            <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                Some contracts in the sheet have no matching account in Airtable
+              </p>
+              <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
+                {lastSync.identifiers_not_in_airtable.electricity?.length
+                  ? `${lastSync.identifiers_not_in_airtable.electricity.length} NMI(s) (C&I Electricity)`
+                  : ""}
+                {lastSync.identifiers_not_in_airtable.electricity?.length && lastSync.identifiers_not_in_airtable.gas?.length ? " · " : ""}
+                {lastSync.identifiers_not_in_airtable.gas?.length
+                  ? `${lastSync.identifiers_not_in_airtable.gas.length} MRIN(s) (C&I Gas)`
+                  : ""}
+                {" "}in the Member ACES Data sheet could not be matched to an Airtable utility record. Add these accounts in Airtable or remove them from the sheet.
+              </p>
+              <p className="text-xs font-medium text-amber-700 dark:text-amber-300 mt-1.5">
+                {showNotInAirtableList ? "Click to collapse list" : "Click to show unmatched NMIs and MRINs"}
+              </p>
+            </div>
+            <ChevronDown
+              className={cn(
+                "h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400 transition-transform",
+                showNotInAirtableList && "rotate-180"
+              )}
+            />
+          </button>
+          {showNotInAirtableList && (
+            <div className="border-t border-amber-200 dark:border-amber-700 px-4 py-3 bg-amber-100/40 dark:bg-amber-900/40">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                {lastSync.identifiers_not_in_airtable.electricity?.length > 0 && (
+                  <div>
+                    <p className="font-sans font-semibold text-amber-800 dark:text-amber-200 mb-1.5">
+                      NMI (C&I Electricity) — {lastSync.identifiers_not_in_airtable.electricity.length} unmatched
+                    </p>
+                    <div className="font-mono text-amber-800 dark:text-amber-200 bg-white/60 dark:bg-black/20 rounded p-2 max-h-48 overflow-y-auto break-all">
+                      {lastSync.identifiers_not_in_airtable.electricity.join(", ")}
+                    </div>
+                  </div>
+                )}
+                {lastSync.identifiers_not_in_airtable.gas?.length > 0 && (
+                  <div>
+                    <p className="font-sans font-semibold text-amber-800 dark:text-amber-200 mb-1.5">
+                      MRIN (C&I Gas) — {lastSync.identifiers_not_in_airtable.gas.length} unmatched
+                    </p>
+                    <div className="font-mono text-amber-800 dark:text-amber-200 bg-white/60 dark:bg-black/20 rounded p-2 max-h-48 overflow-y-auto break-all">
+                      {lastSync.identifiers_not_in_airtable.gas.join(", ")}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {lastSync && (
         <div className="rounded-lg border border-stroke dark:border-dark-3 bg-slate-50/50 dark:bg-dark-2/50 px-3 py-2 text-xs text-gray-600 dark:text-gray-400 flex flex-wrap items-center gap-x-4 gap-y-1">
           <span className="flex items-center gap-1.5 font-medium text-dark dark:text-white">
@@ -427,8 +514,42 @@ export default function ContractEndingPage() {
             ) : activeTab === "ending" ? (
               <>
                 <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
-                  Contracts with end date on or after today (filter by month/year to see ending in a specific period).
+                  Contracts with end date on or after today, ordered by <strong>closest end date first</strong>. Filter by month/year to narrow down.
                 </p>
+                {endingByMonth.length > 0 && (
+                  <div className="mb-4 p-3 rounded-lg bg-slate-50 dark:bg-slate-900/40 border border-stroke dark:border-dark-3">
+                    <p className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">Accounts ending by month</p>
+                    <div className="flex flex-wrap gap-2">
+                      {endingByMonth.map(({ key, label, count, year, month }) => (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => {
+                            setFilterMonth(String(month));
+                            setFilterYear(String(year));
+                          }}
+                          className={cn(
+                            "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+                            filterMonth === String(month) && filterYear === String(year)
+                              ? "bg-primary text-white"
+                              : "bg-white dark:bg-gray-dark border border-stroke dark:border-dark-3 text-dark dark:text-white hover:bg-gray-100 dark:hover:bg-dark-2"
+                          )}
+                        >
+                          {label}: {count}
+                        </button>
+                      ))}
+                    </div>
+                    {(filterMonth || filterYear) && (
+                      <button
+                        type="button"
+                        onClick={() => { setFilterMonth(""); setFilterYear(""); }}
+                        className="text-xs text-primary hover:underline mt-2"
+                      >
+                        Clear month/year filter
+                      </button>
+                    )}
+                  </div>
+                )}
                 {contractsEnding.length === 0 ? (
                   <p className="text-sm text-gray-500 italic">No contracts ending in the future match the filters.</p>
                 ) : (
@@ -440,7 +561,7 @@ export default function ContractEndingPage() {
             ) : activeTab === "ended" ? (
               <>
                 <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
-                  Contracts whose end date has already passed (filter by month/year to see ended in a specific period).
+                  Contracts whose end date has already passed, ordered by <strong>most recently ended first</strong>. Filter by month/year to narrow down.
                 </p>
                 {contractsEnded.length === 0 ? (
                   <p className="text-sm text-gray-500 italic">No past contracts match the filters.</p>
