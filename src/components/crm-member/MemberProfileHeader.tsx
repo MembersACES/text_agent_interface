@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { StageBadge } from "./shared/StageBadge";
 import { CLIENT_STAGES, CLIENT_STAGE_LABELS } from "@/constants/crm";
@@ -120,6 +120,124 @@ export function MemberProfileHeader({
     window.open(url, "_blank");
   };
 
+  const [showGenerateDocumentsMenu, setShowGenerateDocumentsMenu] = useState(false);
+  const generateDocumentsMenuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!showGenerateDocumentsMenu) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (generateDocumentsMenuRef.current && !generateDocumentsMenuRef.current.contains(e.target as Node)) {
+        setShowGenerateDocumentsMenu(false);
+      }
+    };
+    document.addEventListener("click", onDocClick);
+    return () => document.removeEventListener("click", onDocClick);
+  }, [showGenerateDocumentsMenu]);
+
+  /** Build document-generation URL params from business info (same shape as BusinessInfoDisplay). */
+  function buildDocumentGenerationParams(info: Record<string, unknown>, categoryFilter?: "business-documents" | "eoi-ef"): URLSearchParams {
+    const params = new URLSearchParams();
+    const business = (info.business_details as Record<string, unknown>) ?? {};
+    const contact = (info.contact_information as Record<string, unknown>) ?? {};
+    const rep = (info.representative_details as Record<string, unknown>) ?? {};
+    const linkedDetails = (info.Linked_Details ?? info.linked_details) as Record<string, unknown> | undefined;
+    const linked = (linkedDetails?.linked_utilities as Record<string, unknown>) ?? {};
+    const gdrive = info.gdrive as Record<string, unknown> | undefined;
+    const driveUrl = gdrive?.folder_url as string | undefined;
+    if (business.name) params.set("businessName", String(business.name));
+    if (business.abn) params.set("abn", String(business.abn));
+    if (business.trading_name) params.set("tradingAs", String(business.trading_name));
+    if (contact.email) params.set("email", String(contact.email));
+    if (contact.telephone) params.set("phone", String(contact.telephone));
+    if (contact.postal_address) params.set("address", String(contact.postal_address));
+    if (contact.site_address) params.set("siteAddress", String(contact.site_address));
+    if (rep.contact_name) params.set("contactName", String(rep.contact_name));
+    if (rep.position) params.set("position", String(rep.position));
+    if (driveUrl) params.set("clientFolderUrl", driveUrl);
+    if (categoryFilter) params.set("categoryFilter", categoryFilter);
+    const linkedUtilities: string[] = [];
+    if (linked["C&I Electricity"]) linkedUtilities.push("ELECTRICITY_CI");
+    if (linked["SME Electricity"]) linkedUtilities.push("ELECTRICITY_SME");
+    if (linked["C&I Gas"]) linkedUtilities.push("GAS_CI");
+    if (linked["SME Gas"] || linked["Small Gas"]) linkedUtilities.push("GAS_SME");
+    if (linked["Waste"]) linkedUtilities.push("WASTE");
+    if (linked["Oil"]) linkedUtilities.push("COOKING_OIL");
+    if (linked["Cleaning"]) linkedUtilities.push("CLEANING");
+    if (linkedUtilities.length > 0) params.set("utilities", linkedUtilities.join(","));
+    return params;
+  }
+
+  /** Build solutions-strategy-generator businessInfo JSON (same as BusinessInfoDisplay). */
+  function buildSolutionsStrategyBusinessInfo(info: Record<string, unknown>): Record<string, unknown> {
+    const business = (info.business_details as Record<string, unknown>) ?? {};
+    const contact = (info.contact_information as Record<string, unknown>) ?? {};
+    const rep = (info.representative_details as Record<string, unknown>) ?? {};
+    const linkedDetails = (info.Linked_Details ?? info.linked_details) as Record<string, unknown> | undefined;
+    const linked = (linkedDetails?.linked_utilities as Record<string, unknown>) ?? {};
+    const retailers = (linkedDetails?.utility_retailers as Record<string, unknown>) ?? {};
+    const gdrive = info.gdrive as Record<string, unknown> | undefined;
+    const driveUrl = gdrive?.folder_url;
+    const utilities: string[] = [];
+    if (linked["C&I Electricity"]) utilities.push("ELECTRICITY_CI");
+    if (linked["SME Electricity"]) utilities.push("ELECTRICITY_SME");
+    if (linked["C&I Gas"]) utilities.push("GAS_CI");
+    if (linked["SME Gas"] || linked["Small Gas"]) utilities.push("GAS_SME");
+    if (linked["Waste"]) utilities.push("WASTE");
+    if (linked["Oil"]) utilities.push("COOKING_OIL");
+    if (linked["Cleaning"]) utilities.push("CLEANING");
+    return {
+      name: business.name,
+      abn: business.abn,
+      trading_name: business.trading_name,
+      email: contact.email,
+      telephone: contact.telephone,
+      postal_address: contact.postal_address,
+      site_address: contact.site_address,
+      contact_name: rep.contact_name,
+      position: rep.position,
+      industry: business.industry,
+      website: business.website,
+      googleDriveLink: driveUrl,
+      retailers,
+      utilities,
+    };
+  }
+
+  const handleOpenDocumentGeneration = async (categoryFilter: "business-documents" | "eoi-ef") => {
+    setShowGenerateDocumentsMenu(false);
+    let info = businessInfo && typeof businessInfo === "object" ? businessInfo : null;
+    if (!info && fetchBusinessInfo && client.business_name) {
+      info = await fetchBusinessInfo();
+    }
+    const params = info && typeof info === "object"
+      ? buildDocumentGenerationParams(info, categoryFilter)
+      : new URLSearchParams();
+    if (!info && client.business_name) params.set("businessName", client.business_name);
+    if (!info && client.primary_contact_email) params.set("email", client.primary_contact_email);
+    if (!info && client.gdrive_folder_url) params.set("clientFolderUrl", client.gdrive_folder_url);
+    window.open(`/document-generation?${params.toString()}`, "_blank");
+  };
+
+  const openSolutionsStrategyGenerator = async () => {
+    setShowGenerateDocumentsMenu(false);
+    let info = businessInfo && typeof businessInfo === "object" ? businessInfo : null;
+    if (!info && fetchBusinessInfo && client.business_name) {
+      info = await fetchBusinessInfo();
+    }
+    const params = new URLSearchParams();
+    if (info && typeof info === "object") {
+      params.set("businessInfo", JSON.stringify(buildSolutionsStrategyBusinessInfo(info)));
+    } else {
+      const fallback = {
+        name: client.business_name,
+        email: client.primary_contact_email ?? "",
+        googleDriveLink: client.gdrive_folder_url ?? "",
+        utilities: [] as string[],
+      };
+      params.set("businessInfo", JSON.stringify(fallback));
+    }
+    window.open(`/solutions-strategy-generator?${params.toString()}`, "_blank");
+  };
+
   return (
     <Card className="border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm ring-1 ring-gray-200/60 dark:ring-gray-700/50 border-l-4 border-l-primary">
       <CardContent className="p-4">
@@ -177,20 +295,41 @@ export function MemberProfileHeader({
               </div>
             </div>
 
-            {/* Owner — styled when empty */}
-            <div>
-              <label className="block text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-1">
-                Owner
-              </label>
-              <p className="text-sm text-gray-900 dark:text-gray-100">
-                {client.owner_email ? (
-                  <span title={client.owner_email} className="font-medium">
-                    {client.owner_email.split("@")[0]}
-                  </span>
-                ) : (
-                  <span className="text-gray-400 dark:text-gray-500 italic">Unassigned</span>
-                )}
-              </p>
+            {/* Generate Documents dropdown — CRM button style */}
+            <div className="relative" ref={generateDocumentsMenuRef}>
+              <button
+                type="button"
+                onClick={() => setShowGenerateDocumentsMenu((v) => !v)}
+                title="Generate documents"
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-600 transition-colors"
+              >
+                Generate Documents {showGenerateDocumentsMenu ? "▲" : "▼"}
+              </button>
+              {showGenerateDocumentsMenu && (
+                <div className="absolute left-0 top-full mt-1 z-50 min-w-[220px] rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 py-1 shadow-lg">
+                  <button
+                    type="button"
+                    onClick={() => handleOpenDocumentGeneration("business-documents")}
+                    className="w-full px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+                  >
+                    Generate LOA and SFA
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenDocumentGeneration("eoi-ef")}
+                    className="w-full px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+                  >
+                    Generate EOI or EF
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openSolutionsStrategyGenerator()}
+                    className="w-full px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+                  >
+                    Generate Solution Documents
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Divider */}
