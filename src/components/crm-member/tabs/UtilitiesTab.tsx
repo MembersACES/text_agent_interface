@@ -160,12 +160,43 @@ type DiscrepancyRow = {
   take_or_pay_invoice: string;
 };
 
+/** C&I Electricity contract (invoice vs contract) discrepancy row */
+type ElectricityContractDiscrepancyRow = Record<string, string> & {
+  utility_identifier: string;
+  discrepancy_type?: string;
+  linked_business_name?: string;
+  invoice_period?: string;
+  contract_period?: string;
+  discrepancy_detected?: string;
+  notes?: string;
+  peak_rate_difference?: string;
+  peak_pct_difference?: string;
+  off_peak_rate_difference?: string;
+  off_peak_pct_difference?: string;
+  service_charge_difference?: string;
+  service_charge_pct_difference?: string;
+};
+
+/** DMA discrepancy row */
+type DmaDiscrepancyRow = Record<string, string> & {
+  utility_identifier: string;
+  discrepancy_type?: string;
+  linked_business_name?: string;
+  invoice_period?: string;
+  expected_charge?: string;
+  actual_invoice_charge?: string;
+  difference?: string;
+  status?: string;
+};
+
 export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility }: UtilitiesTabProps) {
   const { data: session } = useSession();
   const token = (session as { id_token?: string; accessToken?: string })?.id_token
     ?? (session as { id_token?: string; accessToken?: string })?.accessToken;
 
   const [discrepancyRows, setDiscrepancyRows] = useState<DiscrepancyRow[]>([]);
+  const [electricityContractRows, setElectricityContractRows] = useState<ElectricityContractDiscrepancyRow[]>([]);
+  const [electricityDmaRows, setElectricityDmaRows] = useState<DmaDiscrepancyRow[]>([]);
   const [discrepancyLoading, setDiscrepancyLoading] = useState(false);
   const [expandedDiscrepancyId, setExpandedDiscrepancyId] = useState<string | null>(null);
 
@@ -249,8 +280,17 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility }: U
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((res) => (res.ok ? res.json() : Promise.reject(new Error("Failed to load discrepancy data"))))
-      .then((data: { rows?: DiscrepancyRow[] }) => {
-        if (!cancelled) setDiscrepancyRows(data.rows ?? []);
+      .then((data: {
+        rows?: DiscrepancyRow[];
+        gas?: DiscrepancyRow[];
+        electricity_contract?: ElectricityContractDiscrepancyRow[];
+        electricity_dma?: DmaDiscrepancyRow[];
+      }) => {
+        if (!cancelled) {
+          setDiscrepancyRows(data.rows ?? data.gas ?? []);
+          setElectricityContractRows(data.electricity_contract ?? []);
+          setElectricityDmaRows(data.electricity_dma ?? []);
+        }
       })
       .catch(() => {
         if (!cancelled) setDiscrepancyRows([]);
@@ -272,6 +312,36 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility }: U
     }
     return map;
   }, [discrepancyRows]);
+
+  const electricityContractByIdentifier = useMemo(() => {
+    const map = new Map<string, ElectricityContractDiscrepancyRow[]>();
+    for (const r of electricityContractRows) {
+      const id = (r.utility_identifier ?? "").trim();
+      if (!id) continue;
+      const list = map.get(id) ?? [];
+      list.push(r);
+      map.set(id, list);
+    }
+    return map;
+  }, [electricityContractRows]);
+
+  const electricityDmaByIdentifier = useMemo(() => {
+    const map = new Map<string, DmaDiscrepancyRow[]>();
+    for (const r of electricityDmaRows) {
+      const id = (r.utility_identifier ?? "").trim();
+      if (!id) continue;
+      const list = map.get(id) ?? [];
+      list.push(r);
+      map.set(id, list);
+    }
+    return map;
+  }, [electricityDmaRows]);
+
+  const hasElectricityDiscrepancy = useCallback((identifier: string) => {
+    const contractCount = electricityContractByIdentifier.get(identifier)?.length ?? 0;
+    const dmaCount = electricityDmaByIdentifier.get(identifier)?.length ?? 0;
+    return contractCount > 0 || dmaCount > 0;
+  }, [electricityContractByIdentifier, electricityDmaByIdentifier]);
 
   function buildAccountInfoUrl(
     tool: string,
@@ -517,6 +587,11 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility }: U
                               Discrepancy
                             </span>
                           )}
+                          {row.displayKey === "C&I Electricity" && hasElectricityDiscrepancy(identifier) && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200 border border-amber-300 dark:border-amber-700">
+                              Discrepancy
+                            </span>
+                          )}
                         </div>
                         {row.displayKey === "C&I Gas" && (discrepancyByIdentifier.get(identifier)?.length ?? 0) > 0 && (
                           <div className="mt-2 rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50/80 dark:bg-amber-900/20">
@@ -544,7 +619,65 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility }: U
                                     window.open(
                                       `/resources/discrepancy-check?business_name=${encodeURIComponent(
                                         businessName
-                                      )}&identifier=${encodeURIComponent(identifier)}`,
+                                      )}&identifier=${encodeURIComponent(identifier)}&type=gas`,
+                                      "_blank",
+                                      "noopener,noreferrer"
+                                    )
+                                  }
+                                  className="inline-block mt-1 text-primary font-semibold hover:underline"
+                                >
+                                  View full discrepancy check →
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {row.displayKey === "C&I Electricity" && hasElectricityDiscrepancy(identifier) && (
+                          <div className="mt-2 rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50/80 dark:bg-amber-900/20">
+                            <button
+                              type="button"
+                              onClick={() => setExpandedDiscrepancyId((prev) => (prev === `${row.displayKey}-${identifier}` ? null : `${row.displayKey}-${identifier}`))}
+                              className="w-full px-2 py-1.5 text-left text-xs font-medium text-amber-800 dark:text-amber-200 flex items-center justify-between"
+                            >
+                              {expandedDiscrepancyId === `${row.displayKey}-${identifier}` ? "Hide" : "Show"} discrepancy details (Contract / DMA)
+                              <span className="text-amber-600 dark:text-amber-400">{expandedDiscrepancyId === `${row.displayKey}-${identifier}` ? "▼" : "▶"}</span>
+                            </button>
+                            {expandedDiscrepancyId === `${row.displayKey}-${identifier}` && (
+                              <div className="px-2 pb-2 pt-0 space-y-2 text-xs text-gray-700 dark:text-gray-300">
+                                {((electricityContractByIdentifier.get(identifier)?.length ?? 0) > 0) && (
+                                  <div>
+                                    <div className="font-semibold text-amber-800 dark:text-amber-200">C&I Contract</div>
+                                    {electricityContractByIdentifier.get(identifier)?.map((d, i) => (
+                                      <div key={i} className="pl-1">
+                                        {d.discrepancy_detected != null && d.discrepancy_detected !== "" && <div>Detected: {d.discrepancy_detected}</div>}
+                                        {d.peak_rate_difference && <div>Peak rate diff: {d.peak_rate_difference}</div>}
+                                        {d.off_peak_rate_difference && <div>Off-peak rate diff: {d.off_peak_rate_difference}</div>}
+                                        {d.service_charge_difference && <div>Service charge diff: {d.service_charge_difference}</div>}
+                                        {d.notes && <div className="truncate max-w-full" title={d.notes}>{d.notes.slice(0, 80)}{d.notes.length > 80 ? "…" : ""}</div>}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                                {((electricityDmaByIdentifier.get(identifier)?.length ?? 0) > 0) && (
+                                  <div>
+                                    <div className="font-semibold text-amber-800 dark:text-amber-200">DMA</div>
+                                    {electricityDmaByIdentifier.get(identifier)?.map((d, i) => (
+                                      <div key={i} className="pl-1">
+                                        {d.expected_charge && <div>Expected: {d.expected_charge}</div>}
+                                        {d.actual_invoice_charge && <div>Actual: {d.actual_invoice_charge}</div>}
+                                        {d.difference && <div>Difference: {d.difference}</div>}
+                                        {d.status && <div>{d.status}</div>}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    window.open(
+                                      `/resources/discrepancy-check?business_name=${encodeURIComponent(
+                                        businessName
+                                      )}&identifier=${encodeURIComponent(identifier)}&type=electricity`,
                                       "_blank",
                                       "noopener,noreferrer"
                                     )

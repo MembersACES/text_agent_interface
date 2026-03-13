@@ -48,12 +48,17 @@ For **Data Request** tests, always select **Request type: Other** so requests ar
 
 ## 4. Documents & uploads
 
-| # | Step | Result | Notes |
-|---|------|--------|--------|
-| 4.1 | On a member profile, open the **Documents** tab. Confirm sub-tabs: Contracts & signed agreements, Business docs, Signed EOIs, Signed engagement forms, Additional documents. | ☐ Pass ☐ Fail | |
-| 4.2 | Open **Additional documents**. Click upload or **Upload Additional Document**. | ☐ Pass ☐ Fail | |
-| 4.3 | Select a small test file (for example, PDF or image). Add description if required. Submit. Confirm success message and document appears in the list (or after refresh). | ☐ Pass ☐ Fail | |
-| 4.4 | From member **Overview** (Business Info), use **Upload Additional Document** if visible. Repeat upload and confirm it appears in Documents → Additional documents. | ☐ Pass ☐ Fail | |
+| # | Step | Expected result | Result | Notes |
+|---|------|-----------------|--------|--------|
+| 4.1 | On a member profile, open the **Documents** tab. | Sub-tabs visible: Contracts & signed agreements, Business docs, Signed EOIs, Signed engagement forms, Additional documents. | ☐ Pass ☐ Fail | |
+| 4.2 | Open **Additional documents**. Click upload or **Upload Additional Document**. | Upload form or modal opens. | ☐ Pass ☐ Fail | |
+| 4.3 | Select a small test file (e.g. PDF or image). Add description if required. Submit. | Success message appears and document appears in the list (or after refresh). | ☐ Pass ☐ Fail | |
+| 4.4 | On Frankston’s CRM page, find the button **Generate Documents ▼**. | The button is on the profile header row (same row as Stage, Drive, Base 2). | ☐ Pass ☐ Fail | |
+| 4.5 | Click **Generate Documents** and select **Generate LOA and SFA**. Confirm a new tab opens to the document-generation page with the member’s business info pre-filled. | A new tab opens to the document-generation page with the member’s business name and details pre-filled, and the LOA/SFA (business documents) flow is available. | ☐ Pass ☐ Fail | |
+| 4.6 | Generate a new LOA and SFA. | Document is generated and the link is returned to you. | ☐ Pass ☐ Fail | |
+| 4.7 | From the same profile, click **Generate Documents** and select **Generate EOI or EF**. Confirm a new tab opens to document-generation with the correct document type/category. | A new tab opens to the document-generation page with the member’s info pre-filled and the EOI/EF category selected. | ☐ Pass ☐ Fail | |
+| 4.8 | Generate a new Engagement Form (EF), any type, and a new Expression of Interest (EOI), any type. | Each document is generated and the link is returned to you. | ☐ Pass ☐ Fail | |
+| 4.9 | From the same profile, click **Generate Documents** and select **Generate Solution Documents**. Confirm a new tab opens to the solutions-strategy-generator; complete generating one solution strategy (e.g. one solution strategy email/document). | A new tab opens to the solutions-strategy-generator with the member’s business info pre-filled, and one solution strategy email/document is generated successfully. | ☐ Pass ☐ Fail | |
 
 ---
 

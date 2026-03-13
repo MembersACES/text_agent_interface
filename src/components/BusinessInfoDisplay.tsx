@@ -216,7 +216,10 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
   const [discrepancyLoading, setDiscrepancyLoading] = useState(false);
   const [discrepancyData, setDiscrepancyData] = useState<any>(null);
   const [gasDiscrepancyRows, setGasDiscrepancyRows] = useState<DiscrepancyRow[]>([]);
+  const [electricityContractRows, setElectricityContractRows] = useState<Array<Record<string, string>>>([]);
+  const [electricityDmaRows, setElectricityDmaRows] = useState<Array<Record<string, string>>>([]);
   const [expandedGasDiscrepancyId, setExpandedGasDiscrepancyId] = useState<string | null>(null);
+  const [expandedElectricityDiscrepancyId, setExpandedElectricityDiscrepancyId] = useState<string | null>(null);
   const [advocacyLoading, setAdvocacyLoading] = useState(false);
   const [advocacyData, setAdvocacyData] = useState<any>(null);
   const [advocacyMeetingDate, setAdvocacyMeetingDate] = useState<string>('');
@@ -287,6 +290,8 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
   useEffect(() => {
     if (!token || !businessName.trim()) {
       setGasDiscrepancyRows([]);
+      setElectricityContractRows([]);
+      setElectricityDmaRows([]);
       return;
     }
     let cancelled = false;
@@ -295,11 +300,24 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((res) => (res.ok ? res.json() : Promise.reject(new Error("Failed to load discrepancy data"))))
-      .then((data: { rows?: DiscrepancyRow[] }) => {
-        if (!cancelled) setGasDiscrepancyRows(data.rows ?? []);
+      .then((data: {
+        rows?: DiscrepancyRow[];
+        gas?: DiscrepancyRow[];
+        electricity_contract?: Array<Record<string, string>>;
+        electricity_dma?: Array<Record<string, string>>;
+      }) => {
+        if (!cancelled) {
+          setGasDiscrepancyRows(data.rows ?? data.gas ?? []);
+          setElectricityContractRows(data.electricity_contract ?? []);
+          setElectricityDmaRows(data.electricity_dma ?? []);
+        }
       })
       .catch(() => {
-        if (!cancelled) setGasDiscrepancyRows([]);
+        if (!cancelled) {
+          setGasDiscrepancyRows([]);
+          setElectricityContractRows([]);
+          setElectricityDmaRows([]);
+        }
       });
     return () => {
       cancelled = true;
@@ -2344,7 +2362,28 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                                   String(identifier).trim()
                               )
                             : [];
-                        const hasDiscrepancy = gasRowsForIdentifier.length > 0;
+                        const electricityContractForId =
+                          key === "C&I Electricity"
+                            ? electricityContractRows.filter(
+                                (d) =>
+                                  String(d.utility_identifier || "").trim() ===
+                                  String(identifier).trim()
+                              )
+                            : [];
+                        const electricityDmaForId =
+                          key === "C&I Electricity"
+                            ? electricityDmaRows.filter(
+                                (d) =>
+                                  String(d.utility_identifier || "").trim() ===
+                                  String(identifier).trim()
+                              )
+                            : [];
+                        const hasGasDiscrepancy = gasRowsForIdentifier.length > 0;
+                        const hasElectricityDiscrepancy =
+                          electricityContractForId.length > 0 || electricityDmaForId.length > 0;
+                        const hasDiscrepancy =
+                          (key === "C&I Gas" && hasGasDiscrepancy) ||
+                          (key === "C&I Electricity" && hasElectricityDiscrepancy);
 
                         return (
                           <div key={`${realKey}-${idx}`} className="border-l-2 border-blue-200 pl-3">
@@ -2356,7 +2395,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                                 </span>
                               )}
                             </div>
-                            {hasDiscrepancy && (
+                            {key === "C&I Gas" && hasGasDiscrepancy && (
                               <div className="mt-1 rounded-md border border-amber-200 bg-amber-50/80 text-xs text-gray-700">
                                 <button
                                   type="button"
@@ -2399,7 +2438,78 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                                         window.open(
                                           `/resources/discrepancy-check?business_name=${encodeURIComponent(
                                             businessName
-                                          )}&identifier=${encodeURIComponent(identifier)}`,
+                                          )}&identifier=${encodeURIComponent(identifier)}&type=gas`,
+                                          "_blank",
+                                          "noopener,noreferrer"
+                                        )
+                                      }
+                                      className="inline-block mt-1 text-primary font-semibold hover:underline"
+                                    >
+                                      View full discrepancy check →
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                            {key === "C&I Electricity" && hasElectricityDiscrepancy && (
+                              <div className="mt-1 rounded-md border border-amber-200 bg-amber-50/80 text-xs text-gray-700">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setExpandedElectricityDiscrepancyId((prev) =>
+                                      prev === `${realKey}-${identifier}` ? null : `${realKey}-${identifier}`
+                                    )
+                                  }
+                                  className="w-full px-2 py-1.5 text-left font-medium text-amber-800 flex items-center justify-between"
+                                >
+                                  {expandedElectricityDiscrepancyId === `${realKey}-${identifier}` ? "Hide" : "Show"} discrepancy details (Contract / DMA)
+                                  <span className="text-amber-600">
+                                    {expandedElectricityDiscrepancyId === `${realKey}-${identifier}` ? "▼" : "▶"}
+                                  </span>
+                                </button>
+                                {expandedElectricityDiscrepancyId === `${realKey}-${identifier}` && (
+                                  <div className="px-2 pb-2 pt-0 space-y-2">
+                                    {electricityContractForId.length > 0 && (
+                                      <div>
+                                        <div className="font-semibold text-amber-800">C&I Contract</div>
+                                        {electricityContractForId.map((d, i) => (
+                                          <div key={i} className="pl-1">
+                                            {d.discrepancy_detected != null && d.discrepancy_detected !== "" && (
+                                              <div>Detected: {d.discrepancy_detected}</div>
+                                            )}
+                                            {d.peak_rate_difference && <div>Peak rate diff: {d.peak_rate_difference}</div>}
+                                            {d.off_peak_rate_difference && <div>Off-peak rate diff: {d.off_peak_rate_difference}</div>}
+                                            {d.service_charge_difference && <div>Service charge diff: {d.service_charge_difference}</div>}
+                                            {d.notes && (
+                                              <div className="truncate max-w-full" title={d.notes}>
+                                                {d.notes.slice(0, 80)}
+                                                {d.notes.length > 80 ? "…" : ""}
+                                              </div>
+                                            )}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                    {electricityDmaForId.length > 0 && (
+                                      <div>
+                                        <div className="font-semibold text-amber-800">DMA</div>
+                                        {electricityDmaForId.map((d, i) => (
+                                          <div key={i} className="pl-1">
+                                            {d.expected_charge && <div>Expected: {d.expected_charge}</div>}
+                                            {d.actual_invoice_charge && <div>Actual: {d.actual_invoice_charge}</div>}
+                                            {d.difference && <div>Difference: {d.difference}</div>}
+                                            {d.status && <div>{d.status}</div>}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        window.open(
+                                          `/resources/discrepancy-check?business_name=${encodeURIComponent(
+                                            businessName
+                                          )}&identifier=${encodeURIComponent(identifier)}&type=electricity`,
                                           "_blank",
                                           "noopener,noreferrer"
                                         )
