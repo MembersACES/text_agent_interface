@@ -74,7 +74,7 @@ export const NAV_DATA: NavSection[] = [
       { title: "Dashboard Tips", url: "/resources/dashboard-tips", icon: Lightbulb },
       { title: "Testimonial content", url: "/resources/testimonial-content", icon: FileText },
       { title: "Contract Ending / Expiring", url: "/resources/contract-ending", icon: CalendarClock },
-      { title: "C&I Gas Discrepancy Check", url: "/resources/discrepancy-check", icon: AlertTriangle },
+      { title: "Discrepancy Check", url: "/resources/discrepancy-check", icon: AlertTriangle },
     ],
   },
   {

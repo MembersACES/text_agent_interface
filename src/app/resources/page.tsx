@@ -92,7 +92,7 @@ const RESOURCES: Resource[] = [
     category: "Resources",
   },
   {
-    name: "C&I Gas Discrepancy Check",
+    name: "Discrepancy Check",
     link: "/resources/discrepancy-check",
     password: "N/A",
     notes: "View C&I Gas rate/contract discrepancies from Google Sheet; filter by business or identifier.",
