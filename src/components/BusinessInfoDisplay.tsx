@@ -1774,7 +1774,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                 <div key={note.id} className="bg-white p-4 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors shadow-sm">
                   <div className="flex items-start justify-between gap-3">
                     <div 
-                      className="flex-1 cursor-pointer" 
+                      className="flex-1 min-w-0 cursor-pointer" 
                       onClick={() => {
                         setExpandedNotes(prev => {
                           const newSet = new Set(prev);
@@ -1787,8 +1787,8 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                         });
                       }}
                     >
-                      {/* Note content */}
-                      <p className="text-base text-gray-900 mb-2 whitespace-pre-wrap">
+                      {/* Note content - break long words so text stays in container */}
+                      <p className="text-base text-gray-900 mb-2 whitespace-pre-wrap break-words">
                         {isExpanded 
                           ? note.note 
                           : (firstLine.length > 80 ? firstLine.substring(0, 80) + '...' : firstLine)
@@ -4329,7 +4329,9 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
               placeholder="Enter your note here..."
               className="w-full h-32 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
-            
+            {!currentNote.trim() && (
+              <p className="text-sm text-gray-500 mt-1">Enter note text to save.</p>
+            )}
             <div className="flex justify-end gap-2 mt-4">
               <button
                 onClick={() => {

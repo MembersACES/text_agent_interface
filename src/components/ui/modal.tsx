@@ -34,6 +34,8 @@ export function Modal({
   const overlayRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const previousActive = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!open) return;
@@ -42,18 +44,18 @@ export function Modal({
     const overlay = overlayRef.current;
 
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") onCloseRef.current();
     };
 
     const handleBackdrop = (e: MouseEvent) => {
-      if (e.target === overlay) onClose();
+      if (e.target === overlay) onCloseRef.current();
     };
 
     document.addEventListener("keydown", handleEscape);
     overlay?.addEventListener("click", handleBackdrop);
     document.body.style.overflow = "hidden";
 
-    // Focus trap: focus first focusable in panel
+    // Focus trap: only when modal opens, so typing in form fields doesn't steal focus
     const focusables = panelRef.current?.querySelectorAll<HTMLElement>(
       'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
     );
@@ -67,7 +69,7 @@ export function Modal({
       document.body.style.removeProperty("overflow");
       previousActive.current?.focus();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 
