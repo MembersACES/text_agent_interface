@@ -590,12 +590,30 @@ export default function Base2Page() {
       return;
     }
     
-    // Helper to get identifiers from utility data
+    // Helper to get identifiers from utility data. Handles: string (comma-sep), array of strings, or array of objects (e.g. n8n format {identifier, retailer, data_requested, data_received, ced}).
     const getIdentifiers = (utilityData: any): string[] => {
       if (typeof utilityData === 'string') {
         return utilityData.split(',').map((id: string) => id.trim()).filter(Boolean);
-      } else if (Array.isArray(utilityData)) {
-        return utilityData;
+      }
+      if (Array.isArray(utilityData) && utilityData.length > 0) {
+        const first = utilityData[0];
+        if (first != null && typeof first === 'object' && 'identifier' in first) {
+          return utilityData.map((o: { identifier?: unknown }) =>
+            o.identifier != null && typeof o.identifier === 'string'
+              ? o.identifier
+              : String(o.identifier ?? '')
+          ).filter(Boolean);
+        }
+        if (first != null && typeof first === 'object' && 'value' in first) {
+          return utilityData.map((o: { value?: unknown }) =>
+            o.value != null && typeof o.value === 'string'
+              ? o.value
+              : String(o.value ?? '')
+          ).filter(Boolean);
+        }
+        return utilityData.map((v: unknown) =>
+          typeof v === 'string' || typeof v === 'number' ? String(v) : ''
+        ).filter(Boolean);
       }
       return [];
     };
@@ -1184,7 +1202,7 @@ export default function Base2Page() {
             payload.annual_savings = (util.currentMeteringAnnual - util.comparisonMeteringAnnual).toFixed(2);
           }
         } else if (util.utilityType === 'C&I Electricity') {
-          webhookUrl = 'https://membersaces.app.n8n.cloud/webhook/generate-electricity-ci-comparaison';
+          webhookUrl = 'https://membersaces.app.n8n.cloud/webhook/generate-electricity-ci-comparaison-b2';
           // Add electricity-specific fields
           const details = util.invoiceData?.electricity_ci_invoice_details || {};
           const fullData = details?.full_invoice_data || {};
