@@ -5,6 +5,7 @@ import React, { useState, useMemo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Breadcrumb } from "@/components/ui/breadcrumb";
 import { useToast } from "@/components/ui/toast";
+import Link from "next/link";
 import { Search, Copy, Eye, EyeOff, ExternalLink, Zap, Code2, Globe, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -82,6 +83,22 @@ const RESOURCES: Resource[] = [
     env: "production",
     category: "Integration",
   },
+  {
+    name: "Contract Ending / Expiring",
+    link: "/resources/contract-ending",
+    password: "N/A",
+    notes: "View C&I Electricity and C&I Gas contract end dates; sync from Google Sheet to Airtable.",
+    env: "production",
+    category: "Resources",
+  },
+  {
+    name: "Discrepancy Check",
+    link: "/resources/discrepancy-check",
+    password: "N/A",
+    notes: "View C&I Gas rate/contract discrepancies from Google Sheet; filter by business or identifier.",
+    env: "production",
+    category: "Resources",
+  },
 ];
 
 
@@ -91,6 +108,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   Pudu: "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
   Integration: "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
   Interface: "bg-slate-50 text-slate-700 dark:bg-slate-900/30 dark:text-slate-300",
+  Resources: "bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300",
 };
 
 function ResourceCard({
@@ -110,7 +128,9 @@ function ResourceCard({
   const isPasswordNA = resource.password === "N/A";
   const hasPassword = resource.password !== "" && resource.password !== "N/A";
 
+  const isInternalLink = resource.link.startsWith("/");
   const isValidUrl = (url: string) => {
+    if (url.startsWith("/")) return true;
     try { new URL(url); return true; } catch { return false; }
   };
 
@@ -148,7 +168,15 @@ function ResourceCard({
         <div className="flex items-center gap-2">
           <Globe className="h-3.5 w-3.5 text-gray-400 shrink-0" />
           <div className="flex-1 min-w-0 flex items-center gap-1.5">
-            {isValidUrl(resource.link) ? (
+            {isInternalLink ? (
+              <Link
+                href={resource.link}
+                className="text-primary hover:underline text-xs truncate flex items-center gap-1"
+                title={resource.link}
+              >
+                <span className="truncate">{resource.link}</span>
+              </Link>
+            ) : isValidUrl(resource.link) ? (
               <a
                 href={resource.link}
                 target="_blank"

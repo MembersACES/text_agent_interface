@@ -35,6 +35,14 @@ interface ActivityItem {
   offer_display?: string | null;
 }
 
+/** Label for activity type (including notes and tasks when merged) */
+function activityTypeLabel(type: string): string {
+  if (type === "note_added") return "Note added";
+  if (type === "task_created") return "Task created";
+  if (type === "task_updated") return "Task updated";
+  return OFFER_ACTIVITY_LABELS[type as OfferActivityType] ?? type;
+}
+
 interface ClientOption {
   id: number;
   business_name: string;
@@ -153,7 +161,9 @@ export default function ActivityReportPage() {
         const params = new URLSearchParams();
         params.set("limit", String(MAX_ACTIVITIES));
         if (filterClientId) params.set("client_id", filterClientId);
-        if (filterActivityType) params.set("activity_type", filterActivityType);
+        if (filterActivityType && filterActivityType !== "note_added" && filterActivityType !== "task_created") {
+          params.set("activity_type", filterActivityType);
+        }
         params.set("created_after", effectiveAfter);
         params.set("created_before", effectiveBefore);
         const res = await fetch(
@@ -165,7 +175,81 @@ export default function ActivityReportPage() {
           throw new Error(data.detail || "Failed to load activities");
         }
         const data = await res.json();
-        setActivities(Array.isArray(data) ? data : []);
+        let list: ActivityItem[] = Array.isArray(data) ? data : [];
+
+        const clientIdNum = filterClientId ? parseInt(filterClientId, 10) : 0;
+        let clientName: string | null = clientIdNum ? clients.find((c) => c.id === clientIdNum)?.business_name ?? null : null;
+        if (clientIdNum && !clientName) {
+          try {
+            const cr = await fetch(`${getApiBaseUrl()}/api/clients/${clientIdNum}`, {
+              headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+            });
+            if (cr.ok) {
+              const client = await cr.json();
+              clientName = client?.business_name ?? "—";
+            }
+          } catch {
+            clientName = "—";
+          }
+        }
+
+        if (clientIdNum && clientName) {
+          const [notesRes, tasksRes] = await Promise.all([
+            fetch(`${getApiBaseUrl()}/api/clients/${clientIdNum}/notes`, {
+              headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+            }),
+            fetch(`${getApiBaseUrl()}/api/clients/${clientIdNum}/tasks`, {
+              headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+            }),
+          ]);
+          const afterDate = new Date(effectiveAfter);
+          const beforeEnd = new Date(effectiveBefore);
+          beforeEnd.setDate(beforeEnd.getDate() + 1);
+
+          if (notesRes.ok) {
+            const notes: Array<{ id: number; note: string; user_email: string; created_at: string }> = await notesRes.json();
+            (Array.isArray(notes) ? notes : []).forEach((n) => {
+              const created = new Date(n.created_at);
+              if (created >= afterDate && created < beforeEnd && (!filterActivityType || filterActivityType === "note_added")) {
+                list.push({
+                  id: -n.id,
+                  offer_id: 0,
+                  client_id: clientIdNum,
+                  business_name: clientName,
+                  activity_type: "note_added",
+                  document_link: null,
+                  created_at: n.created_at,
+                  created_by: n.user_email ?? null,
+                  offer_display: n.note?.split("\n")[0]?.slice(0, 50) ?? "Note",
+                });
+              }
+            });
+          }
+          if (tasksRes.ok) {
+            const tasks: Array<{ id: number; title: string; created_at?: string; assigned_by?: string }> = await tasksRes.json();
+            (Array.isArray(tasks) ? tasks : []).forEach((t) => {
+              const created = t.created_at ? new Date(t.created_at) : null;
+              if (created && created >= afterDate && created < beforeEnd && (!filterActivityType || filterActivityType === "task_created")) {
+                list.push({
+                  id: 2000000 + t.id,
+                  offer_id: 0,
+                  client_id: clientIdNum,
+                  business_name: clientName,
+                  activity_type: "task_created",
+                  document_link: null,
+                  created_at: t.created_at!,
+                  created_by: t.assigned_by ?? null,
+                  offer_display: t.title ?? "Task",
+                });
+              }
+            });
+          }
+          list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+          if (filterActivityType === "note_added") list = list.filter((a) => a.activity_type === "note_added");
+          else if (filterActivityType === "task_created") list = list.filter((a) => a.activity_type === "task_created");
+        }
+
+        setActivities(list);
       } catch (e: any) {
         setError(e.message || "Failed to load activities");
         setActivities([]);
@@ -198,6 +282,12 @@ export default function ActivityReportPage() {
               className="px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm"
             >
               <option value="">All types</option>
+              {filterClientId && (
+                <>
+                  <option value="note_added">Note added</option>
+                  <option value="task_created">Task created</option>
+                </>
+              )}
               {OFFER_ACTIVITY_TYPES.map((t) => (
                 <option key={t} value={t}>{OFFER_ACTIVITY_LABELS[t as OfferActivityType] ?? t}</option>
               ))}
@@ -268,7 +358,7 @@ export default function ActivityReportPage() {
                         {formatDate(a.created_at)}
                       </td>
                       <td className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300">
-                        {OFFER_ACTIVITY_LABELS[a.activity_type as OfferActivityType] ?? a.activity_type.replace(/_/g, " ")}
+                        {activityTypeLabel(a.activity_type)}
                       </td>
                       <td className="px-4 py-2 text-sm">
                         {a.client_id ? (

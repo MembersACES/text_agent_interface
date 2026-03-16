@@ -532,11 +532,15 @@ export default function TasksPage() {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || errorData.message || "Failed to delete task");
+        const message = errorData.detail ?? errorData.message ?? (response.status === 500 ? "Server error while deleting. Please try again." : "Failed to delete task");
+        setError(message);
+        setDeleting(false);
+        return;
       }
 
       setShowDeleteConfirm(false);
       setDeletingTask(null);
+      setError(null);
       await fetchTasks();
     } catch (err: any) {
       console.error("Error deleting task:", err);
@@ -982,16 +986,16 @@ export default function TasksPage() {
                               task.status.toLowerCase() === 'completed' ? 'opacity-60' : ''
                             } ${isOverdue ? 'bg-red-50 dark:bg-red-900/10' : ''}`}
                           >
-                            <td className="px-4 py-3">
-                              <div className={`text-sm font-medium text-gray-900 dark:text-white truncate ${
+                            <td className="px-4 py-3 max-w-[200px] min-w-0">
+                              <div className={`text-sm font-medium text-gray-900 dark:text-white truncate min-w-0 ${
                                 task.status.toLowerCase() === 'completed' ? 'line-through' : ''
                               }`} title={task.title}>
                                 {isOverdue && <span className="text-red-600 mr-1">⚠️</span>}
                                 {task.title}
                               </div>
                             </td>
-                            <td className="px-4 py-3">
-                              <div className="text-sm text-gray-500 dark:text-gray-400 truncate" title={task.description || "No description"}>
+                            <td className="px-4 py-3 max-w-[220px] min-w-0">
+                              <div className="text-sm text-gray-500 dark:text-gray-400 truncate min-w-0" title={task.description || "No description"}>
                                 {task.description || "No description"}
                               </div>
                             </td>
@@ -1121,10 +1125,10 @@ export default function TasksPage() {
           />
         )}
 
-        {/* History Modal */}
+        {/* History Modal - high z-index so it sits above task list and error banners */}
         {showHistoryModal && historyTaskId && (
           <div
-            className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4"
+            className="fixed inset-0 bg-black bg-opacity-50 z-[100] flex items-center justify-center p-4"
             onClick={(e) => {
               if (e.target === e.currentTarget) {
                 setShowHistoryModal(false);
@@ -1521,7 +1525,7 @@ export default function TasksPage() {
         {/* Delete Confirmation Modal */}
         {showDeleteConfirm && deletingTask && (
           <div
-            className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4"
+            className="fixed inset-0 bg-black bg-opacity-50 z-[100] flex items-center justify-center p-4"
             onClick={(e) => {
               if (e.target === e.currentTarget) {
                 setShowDeleteConfirm(false);
@@ -1554,12 +1558,12 @@ export default function TasksPage() {
                   <p className="text-gray-700 dark:text-gray-300 mb-2">
                     Are you sure you want to delete this task?
                   </p>
-                  <div className="bg-gray-50 dark:bg-gray-900 p-3 rounded border border-gray-200 dark:border-gray-700">
-                    <p className="font-medium text-gray-900 dark:text-white">
+                  <div className="bg-gray-50 dark:bg-gray-900 p-3 rounded border border-gray-200 dark:border-gray-700 min-w-0 max-h-32 overflow-y-auto">
+                    <p className="font-medium text-gray-900 dark:text-white break-words break-all">
                       {deletingTask.title}
                     </p>
                     {deletingTask.description && (
-                      <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mt-1 break-words break-all">
                         {deletingTask.description}
                       </p>
                     )}

@@ -8,6 +8,11 @@ export const KEY_DOC_LABELS = {
   amortisation: "Amortisation / Asset List",
 } as const;
 
+/** Display label for business doc keys (e.g. correct "Site Profiling" when key is "Site Profling") */
+export function displayDocName(name: string): string {
+  return name === "Site Profling" ? "Site Profiling" : name;
+}
+
 export function getProcessedAndDocs(
   businessInfo: Record<string, unknown> | null
 ): { processed: ProcessedFileMap; docs: BusinessDocsMap } {
@@ -36,6 +41,7 @@ export function getBusinessDocumentFileUrl(
 ): string | undefined {
   const specialKeyMap: Record<string, string> = {
     "Floor Plan (Exit Map)": "business_site_map_upload",
+    "Site Profling": "business_Site Profiling",
   };
 
   const docKey = `business_${doc}`;
@@ -168,7 +174,7 @@ export function getBusinessDocumentsForOverview(
   return Object.keys(docs)
     .filter((name) => !excluded.has(name))
     .map((name) => ({
-      name,
+      name: displayDocName(name),
       url: getBusinessDocumentFileUrl(name, processed),
     }))
     .filter((item): item is { name: string; url: string } => !!item.url);

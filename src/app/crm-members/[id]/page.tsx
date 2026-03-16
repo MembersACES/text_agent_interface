@@ -16,7 +16,7 @@ import { MemberProfileHeader } from "@/components/crm-member/MemberProfileHeader
 import { MemberTabs } from "@/components/crm-member/MemberTabs";
 import { MemberSidebar } from "@/components/crm-member/MemberSidebar";
 import { MemberLoadingSkeleton } from "@/components/crm-member/MemberLoadingSkeleton";
-import { SlideOverPanel } from "@/components/crm-member/shared/SlideOverPanel";
+import { Modal } from "@/components/ui/modal";
 
 import { OverviewTab } from "@/components/crm-member/tabs/OverviewTab";
 import { SavingsTab } from "@/components/crm-member/tabs/SavingsTab";
@@ -434,27 +434,28 @@ export default function ClientDetailPage() {
               </aside>
             </div>
 
-            <SlideOverPanel
+            <Modal
               open={editProfileOpen}
               onClose={() => setEditProfileOpen(false)}
               title="Edit client profile"
+              size="default"
               footer={
                 <div className="flex justify-end gap-2">
-                            <button
-            type="button"
-            onClick={() => setEditProfileOpen(false)}
-            className="px-3.5 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-xs font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            form="edit-profile-form"
-            disabled={actions.editProfileSubmitting}
-            className="px-3.5 py-1.5 rounded-md bg-primary text-white text-xs font-medium shadow-sm hover:bg-primary/90 disabled:opacity-50"
-          >
-            {actions.editProfileSubmitting ? "Saving..." : "Save"}
-          </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditProfileOpen(false)}
+                    className="px-3.5 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-xs font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    form="edit-profile-form"
+                    disabled={actions.editProfileSubmitting}
+                    className="px-3.5 py-1.5 rounded-md bg-primary text-white text-xs font-medium shadow-sm hover:bg-primary/90 disabled:opacity-50"
+                  >
+                    {actions.editProfileSubmitting ? "Saving..." : "Save"}
+                  </button>
                 </div>
               }
             >
@@ -533,9 +534,9 @@ export default function ClientDetailPage() {
                   />
                 </label>
               </form>
-            </SlideOverPanel>
+            </Modal>
 
-            <SlideOverPanel
+            <Modal
               open={createOfferOpen}
               onClose={() => {
                 setCreateOfferOpen(false);
@@ -547,7 +548,7 @@ export default function ClientDetailPage() {
                 });
               }}
               title="Create offer"
-              description={client ? `Client: ${client.business_name}` : undefined}
+              size="default"
               footer={
                 <div className="flex justify-end gap-2">
                   <button
@@ -574,8 +575,13 @@ export default function ClientDetailPage() {
                     {actions.createOfferSubmitting ? "Creating..." : "Create"}
                   </button>
                 </div>
-              }              
+              }
             >
+              {client && (
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                  Client: {client.business_name}
+                </p>
+              )}
               <form
                 id="create-offer-form"
                 onSubmit={handleCreateOffer}
@@ -653,15 +659,16 @@ export default function ClientDetailPage() {
                   />
                 </label>
               </form>
-            </SlideOverPanel>
+            </Modal>
 
-            <SlideOverPanel
+            <Modal
               open={editNoteOpen}
               onClose={() => {
                 setEditNoteOpen(false);
                 setEditNoteForm({ noteId: 0, note: "", note_type: "general" });
               }}
               title="Edit note"
+              size="default"
               footer={
                 <div className="flex justify-end gap-2">
                   <button
@@ -682,7 +689,7 @@ export default function ClientDetailPage() {
                     Save
                   </button>
                 </div>
-              }              
+              }
             >
               <form
                 id="edit-note-form"
@@ -721,7 +728,7 @@ export default function ClientDetailPage() {
                   />
                 </label>
               </form>
-            </SlideOverPanel>
+            </Modal>
 
             {addTaskOpen && client && (
               <TaskModal

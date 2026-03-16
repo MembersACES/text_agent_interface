@@ -138,6 +138,7 @@ export function useMemberData(clientId: number | null): UseMemberDataResult {
             });
             if (biRes.ok) {
               const biData = await biRes.json();
+              // get-business-info now returns all utility end-date/data fields directly via n8n
               setBusinessInfo(biData);
             }
           } finally {

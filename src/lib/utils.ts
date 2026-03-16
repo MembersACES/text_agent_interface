@@ -40,3 +40,59 @@ export function getCanvaApiBaseUrl() {
     ? "http://localhost:3000"
     : "";
 }
+
+/** Format as Australian date dd/mm/yyyy. Accepts yyyy-mm-dd or ISO. */
+export function formatDateAustralian(dateString?: string | null): string {
+  if (!dateString || typeof dateString !== "string") return "";
+  const s = dateString.trim();
+  if (!s) return "";
+  try {
+    const d = new Date(s);
+    if (Number.isNaN(d.getTime())) return s;
+    const day = d.getDate();
+    const month = d.getMonth() + 1;
+    const year = d.getFullYear();
+    return `${day.toString().padStart(2, "0")}/${month.toString().padStart(2, "0")}/${year}`;
+  } catch {
+    return s;
+  }
+}
+
+/** Format for display/input as dd-mm-yyyy. Accepts YYYY-MM-DD or ISO. */
+export function formatDateDDMMYYYY(dateString?: string | null): string {
+  if (!dateString || typeof dateString !== "string") return "";
+  const s = dateString.trim();
+  if (!s) return "";
+  try {
+    const d = new Date(s);
+    if (Number.isNaN(d.getTime())) return s;
+    const day = d.getDate();
+    const month = d.getMonth() + 1;
+    const year = d.getFullYear();
+    return `${day.toString().padStart(2, "0")}-${month.toString().padStart(2, "0")}-${year}`;
+  } catch {
+    return s;
+  }
+}
+
+/** Parse user input dd-mm-yyyy or d-m-yyyy (or dd/mm/yyyy) to YYYY-MM-DD for API. Returns "" if invalid. */
+export function parseDateDDMMYYYYToISO(input: string | undefined | null): string {
+  if (input == null || typeof input !== "string") return "";
+  const s = input.trim();
+  if (!s) return "";
+  const parts = s.split(/[-/]/);
+  if (parts.length !== 3) return "";
+  const d = parseInt(parts[0], 10);
+  const m = parseInt(parts[1], 10);
+  let y = parseInt(parts[2], 10);
+  if (Number.isNaN(d) || Number.isNaN(m) || Number.isNaN(y)) return "";
+  if (y < 100) y += 2000;
+  if (m < 1 || m > 12 || d < 1 || d > 31) return "";
+  const month = m.toString().padStart(2, "0");
+  const day = d.toString().padStart(2, "0");
+  const year = y.toString();
+  const iso = `${year}-${month}-${day}`;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime()) || date.getUTCDate() !== d || date.getUTCMonth() + 1 !== m) return "";
+  return iso;
+}

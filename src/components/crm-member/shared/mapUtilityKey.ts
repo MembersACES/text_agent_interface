@@ -15,6 +15,7 @@ export function mapUtilityKey(key: string): string {
       return "oil";
     case "cleaning":
       return "cleaning";
+    case "cleaning robot":
     case "robot":
       return "robot_data";
     default:

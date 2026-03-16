@@ -200,7 +200,8 @@ export default function LoaUploadPage() {
     
     const n8nPayload = {
       'Business Name': businessDetails?.['Business Name'] || '',
-      'Trading As': businessDetails?.['Trading As'] || '',
+      // Ensure Trading As is never empty – use "N/A" fallback
+      'Trading As': businessDetails?.['Trading As']?.trim() || 'N/A',
       'Industry Classification Folder': industry,
       'Industry Classification SubFolder': value,
     };

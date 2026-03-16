@@ -1,9 +1,11 @@
 import React, { useState, useCallback, useRef, useEffect } from "react";
-import { getApiBaseUrl } from "@/lib/utils";
+import { getApiBaseUrl, formatDateAustralian, formatDateDDMMYYYY, parseDateDDMMYYYYToISO } from "@/lib/utils";
+import { displayDocName } from "@/components/crm-member/tabs/documentHelpers";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { combineFilesIntoPdf } from "@/lib/combineFiles";
 import { PrimaryButton, SecondaryButton, LinkButton } from "@/components/BusinessInfoButtons";
+import { Modal } from "@/components/ui/modal";
 
 
 function InfoRow({
@@ -48,6 +50,9 @@ function mapUtilityKey(key: string): string {
       return "oil";
     case "cleaning":
       return "cleaning";
+    case "cleaning robot":
+    case "robot":
+      return "robot";
     default:
       throw new Error(`Unknown utility key: ${key}`);
   }
@@ -136,6 +141,65 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
   // Linked Utilities
   const linked = info.Linked_Details?.linked_utilities || {};
   const retailers = info.Linked_Details?.utility_retailers || {};
+  const linkedUtilityExtra = (info.Linked_Details as Record<string, unknown>)?.linked_utility_extra as Record<string, Array<{ contract_end_date?: string; data_requested?: string; data_recieved?: string | boolean }>> | undefined;
+
+  type DiscrepancyRow = {
+    discrepancy_type: string;
+    utility_identifier: string;
+    linked_business_name: string;
+    invoice_period: string;
+    invoice_rate: string;
+    contract_period: string;
+    contract_rate: string;
+    rate_difference: string;
+    pct_difference: string;
+    annual_quantity_gj: string;
+    annual_potential_overcharge: string;
+    take_or_pay_invoice: string;
+  };
+
+  /** Normalize linked_utilities to rows with identifier + optional retailer + extra. Handles n8n format (array of objects) and legacy (array of strings). */
+  type UtilityRow = { identifier: string; retailer?: string; extra?: { contract_end_date?: string; data_requested?: string; data_recieved?: string | boolean } };
+  const toSafeIdentifier = (v: unknown): string => {
+    if (v == null) return "";
+    if (typeof v === "string") return v === "[object Object]" ? "" : v;
+    if (typeof v === "object" && v !== null && "identifier" in v) return toSafeIdentifier((v as { identifier: unknown }).identifier);
+    const s = String(v);
+    return s === "[object Object]" ? "" : s;
+  };
+  const getUtilityRows = (realKey: string): UtilityRow[] => {
+    const value = linked[realKey];
+    const retailerList = retailers[realKey];
+    const extraList = linkedUtilityExtra?.[realKey];
+    if (typeof value === "string") {
+      const ids = value.split(",").map((v: string) => v.trim()).filter(Boolean);
+      return ids.map((identifier, idx) => ({
+        identifier,
+        retailer: Array.isArray(retailerList) ? retailerList[idx] : typeof retailerList === "string" ? retailerList : undefined,
+        extra: Array.isArray(extraList) ? extraList[idx] : undefined,
+      }));
+    }
+    if (Array.isArray(value) && value.length > 0) {
+      const first = value[0];
+      if (first != null && typeof first === "object" && "identifier" in first) {
+        return value.map((o: Record<string, unknown>) => ({
+          identifier: toSafeIdentifier(o.identifier) || "—",
+          retailer: o.retailer != null ? String(o.retailer) : undefined,
+          extra: {
+            contract_end_date: (o.ced as string) ?? undefined,
+            data_requested: (o.data_requested as string) ?? undefined,
+            data_recieved: (o.data_received as string | boolean) ?? (o.data_recieved as string | boolean) ?? undefined,
+          },
+        }));
+      }
+      return value.map((id: string | unknown, idx: number) => ({
+        identifier: toSafeIdentifier(id) || "—",
+        retailer: Array.isArray(retailerList) ? retailerList[idx] : typeof retailerList === "string" ? retailerList : undefined,
+        extra: Array.isArray(extraList) ? extraList[idx] : undefined,
+      }));
+    }
+    return [];
+  };
 
   const router = useRouter();
   const businessName = business.name || "";
@@ -151,6 +215,11 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
   const [driveModalResult, setDriveModalResult] = useState<string | null>(null);
   const [discrepancyLoading, setDiscrepancyLoading] = useState(false);
   const [discrepancyData, setDiscrepancyData] = useState<any>(null);
+  const [gasDiscrepancyRows, setGasDiscrepancyRows] = useState<DiscrepancyRow[]>([]);
+  const [electricityContractRows, setElectricityContractRows] = useState<Array<Record<string, string>>>([]);
+  const [electricityDmaRows, setElectricityDmaRows] = useState<Array<Record<string, string>>>([]);
+  const [expandedGasDiscrepancyId, setExpandedGasDiscrepancyId] = useState<string | null>(null);
+  const [expandedElectricityDiscrepancyId, setExpandedElectricityDiscrepancyId] = useState<string | null>(null);
   const [advocacyLoading, setAdvocacyLoading] = useState(false);
   const [advocacyData, setAdvocacyData] = useState<any>(null);
   const [advocacyMeetingDate, setAdvocacyMeetingDate] = useState<string>('');
@@ -175,6 +244,16 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
   const [dataRequestResult, setDataRequestResult] = useState<string | null>(null);
   const [showDataRequestResultModal, setShowDataRequestResultModal] = useState(false);
 
+  const [utilityEdit, setUtilityEdit] = useState<{
+    displayKey: string;
+    identifier: string;
+    contract_end_date: string;
+    data_requested: string;
+    data_recieved: boolean;
+  } | null>(null);
+  const [utilityEditLoading, setUtilityEditLoading] = useState(false);
+  const [utilityEditError, setUtilityEditError] = useState<string | null>(null);
+
   const { data: session } = useSession();
   const token = (session as any)?.id_token;
 
@@ -184,7 +263,9 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
   if (typeof ciElectricity === "string") {
     nmis = ciElectricity.split(",").map(n => n.trim()).filter(Boolean);
   } else if (Array.isArray(ciElectricity)) {
-    nmis = ciElectricity;
+    nmis = ciElectricity.map((x: unknown) =>
+      typeof x === "object" && x != null && "identifier" in x ? String((x as { identifier: unknown }).identifier) : String(x)
+    );
   }
 
   const [clientNotes, setClientNotes] = useState<any[]>([]);
@@ -205,6 +286,43 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
   const [additionalDocResult, setAdditionalDocResult] = useState<string | null>(null);
   const [additionalDocsRefreshing, setAdditionalDocsRefreshing] = useState(false);
   const [additionalDocs, setAdditionalDocs] = useState<Array<{ fileName: string; id: string }>>([]);
+
+  useEffect(() => {
+    if (!token || !businessName.trim()) {
+      setGasDiscrepancyRows([]);
+      setElectricityContractRows([]);
+      setElectricityDmaRows([]);
+      return;
+    }
+    let cancelled = false;
+    const params = new URLSearchParams({ business_name: businessName.trim() });
+    fetch(`${getApiBaseUrl()}/api/resources/discrepancy-check?${params.toString()}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error("Failed to load discrepancy data"))))
+      .then((data: {
+        rows?: DiscrepancyRow[];
+        gas?: DiscrepancyRow[];
+        electricity_contract?: Array<Record<string, string>>;
+        electricity_dma?: Array<Record<string, string>>;
+      }) => {
+        if (!cancelled) {
+          setGasDiscrepancyRows(data.rows ?? data.gas ?? []);
+          setElectricityContractRows(data.electricity_contract ?? []);
+          setElectricityDmaRows(data.electricity_dma ?? []);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setGasDiscrepancyRows([]);
+          setElectricityContractRows([]);
+          setElectricityDmaRows([]);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token, businessName]);
   // Signed Engagement Forms state
   const [showEngagementFormModal, setShowEngagementFormModal] = useState(false);
   const [engagementFormFile, setEngagementFormFile] = useState<File | null>(null);
@@ -618,6 +736,71 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
   }, [eoiResult]);
   // Load EOI data on mount - Dynamic version
   const [eoiRefreshing, setEoiRefreshing] = React.useState(false);
+
+  async function saveUtilityRecordEdit() {
+    if (!utilityEdit || !token) return;
+    setUtilityEditError(null);
+    setUtilityEditLoading(true);
+    const contractEndIso = parseDateDDMMYYYYToISO(utilityEdit.contract_end_date);
+    const dataRequestedIso = parseDateDDMMYYYYToISO(utilityEdit.data_requested);
+    if ((utilityEdit.contract_end_date && !contractEndIso) || (utilityEdit.data_requested && !dataRequestedIso)) {
+      setUtilityEditError("Invalid date format. Use dd-mm-yyyy (e.g. 31-12-2027).");
+      setUtilityEditLoading(false);
+      return;
+    }
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/utility-record`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          business_name: businessName,
+          utility_type: utilityEdit.displayKey,
+          identifier: utilityEdit.identifier,
+          data_requested: dataRequestedIso || undefined,
+          data_recieved: utilityEdit.data_recieved,
+          contract_end_date: contractEndIso || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as { detail?: string }).detail ?? "Update failed");
+      }
+      setUtilityEdit(null);
+      if (typeof setInfo === "function" && info) {
+        const ld = (info as Record<string, unknown>).Linked_Details as Record<string, unknown> | undefined ?? {};
+        const lu = (ld.linked_utilities as Record<string, unknown[]>) ?? {};
+        const key = utilityEdit.displayKey;
+        const arr = lu[key];
+        if (Array.isArray(arr)) {
+          const idx = arr.findIndex(
+            (item: unknown) =>
+              (typeof item === "object" && item != null && (item as Record<string, unknown>).identifier === utilityEdit.identifier) ||
+              item === utilityEdit.identifier
+          );
+          if (idx >= 0) {
+            const next = [...arr];
+            const cur = next[idx];
+            if (cur != null && typeof cur === "object" && "identifier" in cur) {
+              next[idx] = {
+                ...(cur as Record<string, unknown>),
+                ced: contractEndIso || undefined,
+                data_requested: dataRequestedIso || undefined,
+                data_received: utilityEdit.data_recieved,
+              };
+            }
+            setInfo({ ...info, Linked_Details: { ...ld, linked_utilities: { ...lu, [key]: next } } });
+          }
+        }
+      }
+    } catch (e) {
+      setUtilityEditError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setUtilityEditLoading(false);
+    }
+  }
 
   const fetchEOIData = async () => {
     if (!(business.name && typeof setInfo === "function")) return;
@@ -1291,13 +1474,20 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
   const getIdentifierForContract = (contractKey: string): { type: 'nmi' | 'mirn' | null; value: string } => {
     const linked = info.Linked_Details?.linked_utilities || {};
     
+    const firstIdentifier = (arr: unknown): string => {
+      if (!Array.isArray(arr) || arr.length === 0) return '';
+      const first = arr[0];
+      if (typeof first === 'object' && first != null && 'identifier' in first) return String((first as { identifier: unknown }).identifier);
+      return typeof first === 'string' ? first : String(first ?? '');
+    };
+
     if (requiresNMI(contractKey)) {
       const nmis = linked[contractKey];
       if (typeof nmis === "string") {
         const nmiList = nmis.split(",").map(n => n.trim()).filter(Boolean);
         return { type: 'nmi', value: nmiList[0] || '' };
       } else if (Array.isArray(nmis)) {
-        return { type: 'nmi', value: nmis[0] || '' };
+        return { type: 'nmi', value: firstIdentifier(nmis) };
       }
     } else if (requiresMIRN(contractKey)) {
       const mirns = linked[contractKey];
@@ -1305,7 +1495,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
         const mirnList = mirns.split(",").map(m => m.trim()).filter(Boolean);
         return { type: 'mirn', value: mirnList[0] || '' };
       } else if (Array.isArray(mirns)) {
-        return { type: 'mirn', value: mirns[0] || '' };
+        return { type: 'mirn', value: firstIdentifier(mirns) };
       }
     }
     return { type: null, value: '' };
@@ -1314,7 +1504,8 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
   // Helper function to check if a document has a file
   const getDocumentFileUrl = (doc: string) => {
     const specialKeyMap: { [key: string]: string } = {
-      'Floor Plan (Exit Map)': 'business_site_map_upload'
+      'Floor Plan (Exit Map)': 'business_site_map_upload',
+      'Site Profling': 'business_Site Profiling',
     };
     const docKey = `business_${doc}`;
     const normalizedDocKey = `business_${doc.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`;
@@ -1583,7 +1774,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                 <div key={note.id} className="bg-white p-4 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors shadow-sm">
                   <div className="flex items-start justify-between gap-3">
                     <div 
-                      className="flex-1 cursor-pointer" 
+                      className="flex-1 min-w-0 cursor-pointer" 
                       onClick={() => {
                         setExpandedNotes(prev => {
                           const newSet = new Set(prev);
@@ -1596,8 +1787,8 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                         });
                       }}
                     >
-                      {/* Note content */}
-                      <p className="text-base text-gray-900 mb-2 whitespace-pre-wrap">
+                      {/* Note content - break long words so text stays in container */}
+                      <p className="text-base text-gray-900 mb-2 whitespace-pre-wrap break-words">
                         {isExpanded 
                           ? note.note 
                           : (firstLine.length > 80 ? firstLine.substring(0, 80) + '...' : firstLine)
@@ -1749,7 +1940,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                     return (
                       <div key={doc} className={`flex items-center justify-between p-2 rounded border transition-all ${fileUrl ? 'bg-green-50 border-green-200 hover:bg-green-100' : 'bg-slate-50 border-slate-200'}`}>
                         <div className="flex-1">
-                          <div className="text-sm font-medium">{doc}</div>
+                          <div className="text-sm font-medium">{displayDocName(doc)}</div>
                           <div className="text-xs text-gray-500">
                             {isAmortisationAssetList ? (
                               <>
@@ -1812,7 +2003,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                               </SecondaryButton>
                             </>
                           )}
-                          {doc === "Site Profling" && (
+                          {(doc === "Site Profling" || doc === "Site Profiling") && (
                             <SecondaryButton size="sm" onClick={handleOpenSiteProfiling}>
                               New
                             </SecondaryButton>
@@ -2135,7 +2326,11 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
               { key: "Waste", label: "Account Number", tool: "waste", param: "account_number", requestType: "waste" },
               { key: "Oil", label: "Account Name", tool: "oil", param: "business_name", requestType: "oil" },
               { key: "Cleaning", label: "Member Name", tool: "cleaning", param: "client_name", requestType: "cleaning" },
-              { key: "Robot", label: "Robot Number", tool: "robot", param: "robot_number", requestType: "robot_data" },
+              ...(linked["Cleaning Robot"]
+                ? [{ key: "Cleaning Robot", label: "Robot Number", tool: "robot", param: "robot_number", requestType: "robot_data" as const }]
+                : linked["Robot"]
+                  ? [{ key: "Robot", label: "Robot Number", tool: "robot", param: "robot_number", requestType: "robot_data" as const, sourceKey: "Robot" as const }]
+                  : []),
             ]
             .filter(Boolean)
             .map((item) => {
@@ -2143,37 +2338,236 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                 const { key, label, tool, param, requestType } = item;
                 const value = linked[realKey];
 
-                const identifiers = typeof value === "string"
-                  ? value.split(",").map((v: string) => v.trim()).filter(Boolean)
-                  : Array.isArray(value) ? value : [];
+                const rows = getUtilityRows(realKey);
 
-                const filteredIdentifiers = identifiers;
-                let retailerList = retailers[realKey];
-
-                return identifiers.length > 0 ? (
+                return rows.length > 0 ? (
                   <div key={key} className="border rounded-lg p-3 bg-gray-50">
                     <div className="font-semibold text-gray-800 mb-3">{key}</div>
                     <div className="space-y-2">
-                      {identifiers.map((identifier: string, idx: number) => {
-                        let retailer = '';
-                        if (Array.isArray(retailerList)) {
-                          retailer = retailerList[idx] || '';
-                        } else if (typeof retailerList === 'string') {
-                          retailer = retailerList;
-                        }
+                      {rows.map((row, idx) => {
+                        const identifier = row.identifier;
+                        const retailer = row.retailer ?? '';
+                        const extra = row.extra;
                         
                         const isOil = key === "Oil";
                         const isCleaning = key === "Cleaning";
                         const invoiceBusinessName = isOil ? identifier : businessName;
-                        // For Cleaning, use the identifier from linked_utilities array (e.g., "Moama RSL")
                         const displayValue = identifier;
                         
+                        const gasRowsForIdentifier =
+                          key === "C&I Gas"
+                            ? gasDiscrepancyRows.filter(
+                                (d) =>
+                                  String(d.utility_identifier || "").trim() ===
+                                  String(identifier).trim()
+                              )
+                            : [];
+                        const electricityContractForId =
+                          key === "C&I Electricity"
+                            ? electricityContractRows.filter(
+                                (d) =>
+                                  String(d.utility_identifier || "").trim() ===
+                                  String(identifier).trim()
+                              )
+                            : [];
+                        const electricityDmaForId =
+                          key === "C&I Electricity"
+                            ? electricityDmaRows.filter(
+                                (d) =>
+                                  String(d.utility_identifier || "").trim() ===
+                                  String(identifier).trim()
+                              )
+                            : [];
+                        const hasGasDiscrepancy = gasRowsForIdentifier.length > 0;
+                        const hasElectricityDiscrepancy =
+                          electricityContractForId.length > 0 || electricityDmaForId.length > 0;
+                        const hasDiscrepancy =
+                          (key === "C&I Gas" && hasGasDiscrepancy) ||
+                          (key === "C&I Electricity" && hasElectricityDiscrepancy);
+
                         return (
-                          <div key={identifier} className="border-l-2 border-blue-200 pl-3">
-                            <div className="text-sm font-medium">{label}: {displayValue}</div>
+                          <div key={`${realKey}-${idx}`} className="border-l-2 border-blue-200 pl-3">
+                            <div className="text-sm font-medium flex flex-wrap items-center gap-2">
+                              {label}: {displayValue}
+                              {hasDiscrepancy && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-300">
+                                  Discrepancy
+                                </span>
+                              )}
+                            </div>
+                            {key === "C&I Gas" && hasGasDiscrepancy && (
+                              <div className="mt-1 rounded-md border border-amber-200 bg-amber-50/80 text-xs text-gray-700">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setExpandedGasDiscrepancyId((prev) =>
+                                      prev === `${realKey}-${identifier}` ? null : `${realKey}-${identifier}`
+                                    )
+                                  }
+                                  className="w-full px-2 py-1.5 text-left font-medium text-amber-800 flex items-center justify-between"
+                                >
+                                  {expandedGasDiscrepancyId === `${realKey}-${identifier}` ? "Hide" : "Show"} discrepancy details
+                                  <span className="text-amber-600">
+                                    {expandedGasDiscrepancyId === `${realKey}-${identifier}` ? "▼" : "▶"}
+                                  </span>
+                                </button>
+                                {expandedGasDiscrepancyId === `${realKey}-${identifier}` && (
+                                  <div className="px-2 pb-2 pt-0 space-y-1">
+                                    {gasRowsForIdentifier.map((d, i) => (
+                                      <div key={i}>
+                                        {d.rate_difference && <div>Rate difference: {d.rate_difference}</div>}
+                                        {d.pct_difference && <div>% difference: {d.pct_difference}</div>}
+                                        {d.annual_potential_overcharge && (
+                                          <div>Annual potential overcharge: {d.annual_potential_overcharge}</div>
+                                        )}
+                                        {d.take_or_pay_invoice && (
+                                          <div
+                                            className="truncate max-w-full"
+                                            title={d.take_or_pay_invoice}
+                                          >
+                                            Take or Pay:{" "}
+                                            {d.take_or_pay_invoice.slice(0, 80)}
+                                            {d.take_or_pay_invoice.length > 80 ? "…" : ""}
+                                          </div>
+                                        )}
+                                      </div>
+                                    ))}
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        window.open(
+                                          `/resources/discrepancy-check?business_name=${encodeURIComponent(
+                                            businessName
+                                          )}&identifier=${encodeURIComponent(identifier)}&type=gas`,
+                                          "_blank",
+                                          "noopener,noreferrer"
+                                        )
+                                      }
+                                      className="inline-block mt-1 text-primary font-semibold hover:underline"
+                                    >
+                                      View full discrepancy check →
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                            {key === "C&I Electricity" && hasElectricityDiscrepancy && (
+                              <div className="mt-1 rounded-md border border-amber-200 bg-amber-50/80 text-xs text-gray-700">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setExpandedElectricityDiscrepancyId((prev) =>
+                                      prev === `${realKey}-${identifier}` ? null : `${realKey}-${identifier}`
+                                    )
+                                  }
+                                  className="w-full px-2 py-1.5 text-left font-medium text-amber-800 flex items-center justify-between"
+                                >
+                                  {expandedElectricityDiscrepancyId === `${realKey}-${identifier}` ? "Hide" : "Show"} discrepancy details (Contract / DMA)
+                                  <span className="text-amber-600">
+                                    {expandedElectricityDiscrepancyId === `${realKey}-${identifier}` ? "▼" : "▶"}
+                                  </span>
+                                </button>
+                                {expandedElectricityDiscrepancyId === `${realKey}-${identifier}` && (
+                                  <div className="px-2 pb-2 pt-0 space-y-2">
+                                    {electricityContractForId.length > 0 && (
+                                      <div>
+                                        <div className="font-semibold text-amber-800">C&I Contract</div>
+                                        {electricityContractForId.map((d, i) => (
+                                          <div key={i} className="pl-1">
+                                            {d.discrepancy_detected != null && d.discrepancy_detected !== "" && (
+                                              <div>Detected: {d.discrepancy_detected}</div>
+                                            )}
+                                            {d.peak_rate_difference && <div>Peak rate diff: {d.peak_rate_difference}</div>}
+                                            {d.off_peak_rate_difference && <div>Off-peak rate diff: {d.off_peak_rate_difference}</div>}
+                                            {d.service_charge_difference && <div>Service charge diff: {d.service_charge_difference}</div>}
+                                            {d.notes && (
+                                              <div className="truncate max-w-full" title={d.notes}>
+                                                {d.notes.slice(0, 80)}
+                                                {d.notes.length > 80 ? "…" : ""}
+                                              </div>
+                                            )}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                    {electricityDmaForId.length > 0 && (
+                                      <div>
+                                        <div className="font-semibold text-amber-800">DMA</div>
+                                        {electricityDmaForId.map((d, i) => (
+                                          <div key={i} className="pl-1">
+                                            {d.expected_charge && <div>Expected: {d.expected_charge}</div>}
+                                            {d.actual_invoice_charge && <div>Actual: {d.actual_invoice_charge}</div>}
+                                            {d.difference && <div>Difference: {d.difference}</div>}
+                                            {d.status && <div>{d.status}</div>}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        window.open(
+                                          `/resources/discrepancy-check?business_name=${encodeURIComponent(
+                                            businessName
+                                          )}&identifier=${encodeURIComponent(identifier)}&type=electricity`,
+                                          "_blank",
+                                          "noopener,noreferrer"
+                                        )
+                                      }
+                                      className="inline-block mt-1 text-primary font-semibold hover:underline"
+                                    >
+                                      View full discrepancy check →
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            )}
                             {retailer && (
                               <div className="text-xs text-gray-500 mb-2">Retailer: {retailer}</div>
                             )}
+                            {(() => {
+                              const hasDates = extra && (extra.contract_end_date != null || extra.data_requested != null || extra.data_recieved != null);
+                              const dataReceivedLabel = extra?.data_recieved === true || extra?.data_recieved === "Yes" || (typeof extra?.data_recieved === "string" && (extra.data_recieved as string).length > 0) ? "Received" : "Not received";
+                              const canEditDates = realKey === "C&I Electricity" || realKey === "C&I Gas";
+                              return hasDates ? (
+                                <div className="text-xs text-gray-600 mb-2 space-y-0.5">
+                                  {extra?.contract_end_date != null && extra.contract_end_date !== "" && <div>Contract end: {formatDateAustralian(extra.contract_end_date)}</div>}
+                                  {extra?.data_requested != null && extra.data_requested !== "" && <div>Data requested: {formatDateAustralian(extra.data_requested)}</div>}
+                                  <div>Data received: {dataReceivedLabel}</div>
+                                  {canEditDates && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setUtilityEdit({
+                                        displayKey: realKey,
+                                        identifier,
+                                        contract_end_date: formatDateDDMMYYYY(extra?.contract_end_date),
+                                        data_requested: formatDateDDMMYYYY(extra?.data_requested),
+                                        data_recieved: dataReceivedLabel === "Received",
+                                      })}
+                                      className="text-xs mt-1 text-blue-600 hover:underline"
+                                    >
+                                      Edit dates
+                                    </button>
+                                  )}
+                                </div>
+                              ) : canEditDates ? (
+                                <div className="text-xs mb-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => setUtilityEdit({
+                                      displayKey: realKey,
+                                      identifier,
+                                      contract_end_date: "",
+                                      data_requested: "",
+                                      data_recieved: false,
+                                    })}
+                                    className="text-xs text-blue-600 hover:underline"
+                                  >
+                                    Add contract end / data dates
+                                  </button>
+                                </div>
+                              ) : null;
+                            })()}
                             <div className="flex flex-wrap gap-1 mt-2">
                               <SecondaryButton
                                 size="sm"
@@ -3232,6 +3626,60 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
       </div>
       </div>
       </div>
+      {/* Utility edit modal */}
+      <Modal
+        open={!!utilityEdit}
+        onClose={() => { setUtilityEdit(null); setUtilityEditError(null); }}
+        title={utilityEdit ? `Edit utility – ${utilityEdit.displayKey} (${utilityEdit.identifier})` : "Edit utility"}
+        size="default"
+        footer={
+          <div className="flex justify-end gap-2">
+            <SecondaryButton onClick={() => { setUtilityEdit(null); setUtilityEditError(null); }}>Cancel</SecondaryButton>
+            <PrimaryButton onClick={saveUtilityRecordEdit} disabled={utilityEditLoading}>
+              {utilityEditLoading ? "Saving…" : "Save"}
+            </PrimaryButton>
+          </div>
+        }
+      >
+        {utilityEdit && (
+          <div className="space-y-3 text-sm">
+            {utilityEditError && <p className="text-red-600 text-xs">{utilityEditError}</p>}
+            <div>
+              <label className="font-medium text-gray-700 block mb-1">Contract end date (dd-mm-yyyy)</label>
+              <input
+                type="text"
+                value={utilityEdit.contract_end_date}
+                onChange={(e) => setUtilityEdit((p) => (p ? { ...p, contract_end_date: e.target.value } : null))}
+                className="w-full px-2 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                placeholder="e.g. 31-12-2027"
+              />
+            </div>
+            <div>
+              <label className="font-medium text-gray-700 block mb-1">Data requested (dd-mm-yyyy)</label>
+              <input
+                type="text"
+                value={utilityEdit.data_requested}
+                onChange={(e) => setUtilityEdit((p) => (p ? { ...p, data_requested: e.target.value } : null))}
+                className="w-full px-2 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                placeholder="e.g. 11-03-2026"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="utility-edit-data-received-bi"
+                checked={utilityEdit.data_recieved}
+                onChange={(e) => setUtilityEdit((p) => (p ? { ...p, data_recieved: e.target.checked } : null))}
+                className="rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500"
+              />
+              <label htmlFor="utility-edit-data-received-bi" className="font-medium text-gray-700 dark:text-gray-300">
+                Data received
+              </label>
+            </div>
+          </div>
+        )}
+      </Modal>
+
       {/* Drive Filing Modal */}
           {showDriveModal && (
             <div className="fixed inset-0 bg-black bg-opacity-25 z-50 flex items-center justify-center">
@@ -3881,7 +4329,9 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
               placeholder="Enter your note here..."
               className="w-full h-32 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
-            
+            {!currentNote.trim() && (
+              <p className="text-sm text-gray-500 mt-1">Enter note text to save.</p>
+            )}
             <div className="flex justify-end gap-2 mt-4">
               <button
                 onClick={() => {

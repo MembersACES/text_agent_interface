@@ -80,7 +80,7 @@ export default function ReportsPage() {
       <PageHeader
         pageName="Reports"
         title="Pipeline reports"
-        description="Won/lost by period and conversion by stage."
+        description="Won/lost by period and conversion by stage. Stage counts show current client numbers; won/lost by period appears when data exists."
       />
       <div className="mt-4 space-y-6">
         {error && (
@@ -93,7 +93,10 @@ export default function ReportsPage() {
           <div className="py-10 text-center text-gray-500 dark:text-gray-400">Loading reports…</div>
         ) : (
           <>
-            <Card className="bg-white dark:bg-dark-2 border border-gray-200 dark:border-dark-3">
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+              Pipeline reports: client counts per stage (below) and won/lost by month when available. For detailed activity (e.g. data requests, document generation), use the Activity report.
+            </p>
+            <Card className="bg-white dark:bg-dark-2 border border-gray-200 dark:border-gray-200 dark:border-dark-3">
               <CardContent className="p-4">
                 <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">
                   Won / lost by period (monthly)

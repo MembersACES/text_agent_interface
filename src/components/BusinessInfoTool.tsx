@@ -88,6 +88,7 @@ export default function BusinessInfoTool({
       }
       
       const data = await res.json();
+      // All utility and end-date info is now returned directly by n8n in get-business-info.
       setBusinessInfo(data);
     } catch (err: any) {
       console.log("🔍 Error caught:", err);
