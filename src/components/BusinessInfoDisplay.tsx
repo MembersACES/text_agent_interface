@@ -281,7 +281,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
   const [eoiResult, setEOIResult] = useState<string | null>(null);
   // Additional Documents state
   const [showAdditionalDocModal, setShowAdditionalDocModal] = useState(false);
-  const [additionalDocFile, setAdditionalDocFile] = useState<File | null>(null);
+  const [additionalDocFiles, setAdditionalDocFiles] = useState<File[]>([]);
   const [additionalDocType, setAdditionalDocType] = useState<string>('');
   const [additionalDocLoading, setAdditionalDocLoading] = useState(false);
   const [additionalDocResult, setAdditionalDocResult] = useState<string | null>(null);
@@ -1099,12 +1099,13 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
 
   // Additional Documents handlers
   const handleAdditionalDocFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setAdditionalDocFile(e.target.files?.[0] || null);
+    const files = e.target.files ? Array.from(e.target.files) : [];
+    setAdditionalDocFiles(files);
   };
 
   const resetAdditionalDocModal = () => {
     setShowAdditionalDocModal(false);
-    setAdditionalDocFile(null);
+    setAdditionalDocFiles([]);
     setAdditionalDocType('');
     setAdditionalDocResult(null);
   };
@@ -1124,7 +1125,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
 
   // Handle additional document upload
   const handleAdditionalDocSubmit = async () => {
-    if (!additionalDocFile) {
+    if (!additionalDocFiles.length) {
       setAdditionalDocResult("No file selected.");
       return;
     }
@@ -1134,28 +1135,71 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
       return;
     }
 
-    // Validate file type
-    const fileName = additionalDocFile.name.toLowerCase();
-    const allowedExtensions = ['.pdf', '.xlsx', '.xls', '.docx', '.doc'];
-    const hasValidExtension = allowedExtensions.some(ext => fileName.endsWith(ext));
-    
-    if (!hasValidExtension) {
-      setAdditionalDocResult("Please upload a PDF, Excel (.xlsx, .xls), or Word (.docx, .doc) file.");
-      return;
-    }
-
     setAdditionalDocLoading(true);
     setAdditionalDocResult("");
 
     try {
+      const files = additionalDocFiles;
+      const lowerNames = files.map((f) => f.name.toLowerCase());
+      const isPdf = (name: string) => name.endsWith(".pdf");
+      const isImage = (name: string) =>
+        name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg");
+      const isOffice = (name: string) =>
+        [".xlsx", ".xls", ".docx", ".doc"].some((ext) => name.endsWith(ext));
+
+      // Validate file types
+      if (
+        !files.every((f, idx) => {
+          const n = lowerNames[idx];
+          return isPdf(n) || isImage(n) || isOffice(n);
+        })
+      ) {
+        setAdditionalDocResult(
+          "Please upload only PDF, image (PNG/JPG), Excel (.xlsx, .xls), or Word (.docx, .doc) files.",
+        );
+        return;
+      }
+
+      // When multiple files are selected they must all be PDFs or images
+      if (files.length > 1) {
+        const allPdfOrImage = files.every((_, idx) => {
+          const n = lowerNames[idx];
+          return isPdf(n) || isImage(n);
+        });
+        if (!allPdfOrImage) {
+          setAdditionalDocResult(
+            "When uploading multiple files, only PDF and image (PNG/JPG) files are supported.",
+          );
+          return;
+        }
+      }
+
+      let uploadFile: File;
+      let ext = ".pdf";
+
+      if (files.length === 1) {
+        const n = lowerNames[0];
+        const single = files[0];
+        if (isImage(n) || isPdf(n)) {
+          uploadFile = await combineFilesIntoPdf([single]);
+          ext = ".pdf";
+        } else {
+          // Single office document — send as-is
+          uploadFile = single;
+          ext = n.slice(n.lastIndexOf("."));
+        }
+      } else {
+        // Multiple PDF/images → merge into single PDF
+        uploadFile = await combineFilesIntoPdf(files);
+        ext = ".pdf";
+      }
+
       // Call n8n directly with the file and required parameters
       const timestamp = new Date().toISOString();
-      // Preserve the original file extension
-      const fileExtension = fileName.substring(fileName.lastIndexOf('.'));
-      const newFilename = `${business.name} - ${additionalDocType}${fileExtension}`;
+      const newFilename = `${business.name} - ${additionalDocType}${ext}`;
 
       const formData = new FormData();
-      formData.append("file", additionalDocFile);
+      formData.append("file", uploadFile);
       formData.append('business_name', business.name || "");
       formData.append("gdrive_url", driveUrl || "");
       formData.append('timestamp', timestamp);
@@ -1183,7 +1227,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
       if (webhookRes.ok) {
         setAdditionalDocResult("✅ Document uploaded successfully!");
         // Silent C&I contract API call for discrepancy automation (fire-and-forget)
-        if (fileName.endsWith(".pdf")) {
+        if (uploadFile.name.toLowerCase().endsWith(".pdf")) {
           const docTypeNorm = additionalDocType.trim().toLowerCase();
           const ciElectricityUrl = "https://aces-invoice-api-672026052958.australia-southeast2.run.app/v1/ci-electricity-contract/process-contract";
           const ciGasUrl = "https://aces-invoice-api-672026052958.australia-southeast2.run.app/v1/ci-gas-contract/process-contract";
@@ -1195,12 +1239,12 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
             }).catch((err) => console.error("[C&I Contract API] Parse error", label, err));
           };
           if (docTypeNorm === "c&i electricity" || docTypeNorm === "ci electricity") {
-            console.log("[C&I Contract API] Calling C&I Electricity file:", additionalDocFile.name, "url:", ciElectricityUrl);
-            const fd = new FormData(); fd.append("file", additionalDocFile);
+            console.log("[C&I Contract API] Calling C&I Electricity file:", uploadFile.name, "url:", ciElectricityUrl);
+            const fd = new FormData(); fd.append("file", uploadFile);
             fetch(ciElectricityUrl, { method: "POST", body: fd }).then(logContractResponse("C&I Electricity", ciElectricityUrl)).catch((err) => console.error("[C&I Contract API] Error C&I Electricity", err));
           } else if (docTypeNorm === "c&i gas" || docTypeNorm === "ci gas") {
-            console.log("[C&I Contract API] Calling C&I Gas file:", additionalDocFile.name, "url:", ciGasUrl);
-            const fd = new FormData(); fd.append("file", additionalDocFile);
+            console.log("[C&I Contract API] Calling C&I Gas file:", uploadFile.name, "url:", ciGasUrl);
+            const fd = new FormData(); fd.append("file", uploadFile);
             fetch(ciGasUrl, { method: "POST", body: fd }).then(logContractResponse("C&I Gas", ciGasUrl)).catch((err) => console.error("[C&I Contract API] Error C&I Gas", err));
           } else {
             console.log("[C&I Contract API] Skipped (document type not C&I Electricity/Gas):", additionalDocType);
@@ -4254,16 +4298,26 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
             </div>
 
             <div className="mb-6">
-              <label className="font-semibold block mb-2">Document File:</label>
+              <label className="font-semibold block mb-2">Document Files:</label>
               <input
                 type="file"
-                accept=".pdf,.xlsx,.xls,.docx,.doc,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword"
+                accept=".pdf,.xlsx,.xls,.docx,.doc,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword,image/png,image/jpeg,image/jpg,.png,.jpg,.jpeg"
+                multiple
                 onChange={handleAdditionalDocFileChange}
                 className="w-full"
               />
-              <p className="text-xs text-gray-500 mt-1">Accepted: PDF, Excel (.xlsx, .xls), and Word (.docx, .doc) files</p>
-              {additionalDocFile && (
-                <div className="mt-2 text-sm text-gray-600">Selected file: {additionalDocFile?.name}</div>
+              <p className="text-xs text-gray-500 mt-1">
+                Accepted: PDF, images (PNG, JPG), Excel (.xlsx, .xls), and Word (.docx, .doc) files.
+                Multiple PDFs/images will be combined into a single PDF.
+              </p>
+              {additionalDocFiles.length > 0 && (
+                <ul className="mt-2 text-sm text-gray-600 space-y-0.5 max-h-32 overflow-auto">
+                  {additionalDocFiles.map((file) => (
+                    <li key={file.name} className="truncate">
+                      {file.name}
+                    </li>
+                  ))}
+                </ul>
               )}
             </div>
 
@@ -4290,7 +4344,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
               <button
                 className="px-4 py-2 rounded bg-blue-600 text-white font-semibold hover:bg-blue-700 focus:outline-none"
                 onClick={handleAdditionalDocSubmit}
-                disabled={!additionalDocFile || !additionalDocType.trim() || additionalDocLoading}
+              disabled={!additionalDocFiles.length || !additionalDocType.trim() || additionalDocLoading}
               >
                 {additionalDocLoading ? "Uploading..." : "Upload Document"}
               </button>
