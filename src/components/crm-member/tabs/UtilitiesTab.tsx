@@ -197,6 +197,7 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility }: U
   const [discrepancyRows, setDiscrepancyRows] = useState<DiscrepancyRow[]>([]);
   const [electricityContractRows, setElectricityContractRows] = useState<ElectricityContractDiscrepancyRow[]>([]);
   const [electricityDmaRows, setElectricityDmaRows] = useState<DmaDiscrepancyRow[]>([]);
+  const [electricityDemandReviewFlags, setElectricityDemandReviewFlags] = useState<Record<string, boolean>>({});
   const [discrepancyLoading, setDiscrepancyLoading] = useState(false);
   const [expandedDiscrepancyId, setExpandedDiscrepancyId] = useState<string | null>(null);
 
@@ -271,6 +272,9 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility }: U
   useEffect(() => {
     if (!token || !businessName.trim()) {
       setDiscrepancyRows([]);
+      setElectricityContractRows([]);
+      setElectricityDmaRows([]);
+      setElectricityDemandReviewFlags({});
       return;
     }
     let cancelled = false;
@@ -285,15 +289,22 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility }: U
         gas?: DiscrepancyRow[];
         electricity_contract?: ElectricityContractDiscrepancyRow[];
         electricity_dma?: DmaDiscrepancyRow[];
+        electricity_demand_review_flags?: Record<string, boolean>;
       }) => {
         if (!cancelled) {
           setDiscrepancyRows(data.rows ?? data.gas ?? []);
           setElectricityContractRows(data.electricity_contract ?? []);
           setElectricityDmaRows(data.electricity_dma ?? []);
+          setElectricityDemandReviewFlags(data.electricity_demand_review_flags ?? {});
         }
       })
       .catch(() => {
-        if (!cancelled) setDiscrepancyRows([]);
+        if (!cancelled) {
+          setDiscrepancyRows([]);
+          setElectricityContractRows([]);
+          setElectricityDmaRows([]);
+          setElectricityDemandReviewFlags({});
+        }
       })
       .finally(() => {
         if (!cancelled) setDiscrepancyLoading(false);
@@ -342,6 +353,11 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility }: U
     const dmaCount = electricityDmaByIdentifier.get(identifier)?.length ?? 0;
     return contractCount > 0 || dmaCount > 0;
   }, [electricityContractByIdentifier, electricityDmaByIdentifier]);
+
+  const hasElectricityDemandReview = useCallback((identifier: string) => {
+    const normalized = (identifier ?? "").trim();
+    return !!electricityDemandReviewFlags[normalized];
+  }, [electricityDemandReviewFlags]);
 
   function buildAccountInfoUrl(
     tool: string,
@@ -590,6 +606,11 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility }: U
                           {row.displayKey === "C&I Electricity" && hasElectricityDiscrepancy(identifier) && (
                             <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200 border border-amber-300 dark:border-amber-700">
                               Discrepancy
+                            </span>
+                          )}
+                          {row.displayKey === "C&I Electricity" && hasElectricityDemandReview(identifier) && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-semibold bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-100 border border-blue-300 dark:border-blue-700">
+                              Interval Data Included — Press “Account Info” for demand review vs invoice
                             </span>
                           )}
                         </div>

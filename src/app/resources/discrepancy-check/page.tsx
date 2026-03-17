@@ -63,6 +63,7 @@ type ApiResponse = {
   gas?: DiscrepancyRow[];
   electricity_contract?: ElectricityContractRow[];
   electricity_dma?: DmaRow[];
+  electricity_demand_check?: any[];
 };
 
 export default function DiscrepancyCheckPage() {
@@ -75,14 +76,15 @@ export default function DiscrepancyCheckPage() {
   const [rows, setRows] = useState<DiscrepancyRow[]>([]);
   const [electricityContractRows, setElectricityContractRows] = useState<ElectricityContractRow[]>([]);
   const [electricityDmaRows, setElectricityDmaRows] = useState<DmaRow[]>([]);
+  const [electricityDemandCheckRows, setElectricityDemandCheckRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const initialBusinessName = searchParams.get("business_name") ?? searchParams.get("businessName") ?? "";
   const initialIdentifier = searchParams.get("identifier") ?? searchParams.get("utility_identifier") ?? "";
-  const initialType = (searchParams.get("type") ?? "gas") as "gas" | "electricity";
+  const initialType = (searchParams.get("type") ?? "gas") as "gas" | "electricity" | "demand";
   const [filterBusinessName, setFilterBusinessName] = useState(initialBusinessName);
   const [filterIdentifier, setFilterIdentifier] = useState(initialIdentifier);
-  const [viewType, setViewType] = useState<"gas" | "electricity">(initialType);
+  const [viewType, setViewType] = useState<"gas" | "electricity" | "demand">(initialType);
 
   const fetchData = useCallback(async () => {
     if (!token) {
@@ -105,10 +107,11 @@ export default function DiscrepancyCheckPage() {
         const data = await res.json().catch(() => ({}));
         throw new Error((data as { detail?: string }).detail || `Request failed: ${res.status}`);
       }
-      const data: ApiResponse = await res.json();
+      const data: ApiResponse & { electricity_demand_check?: any[] } = await res.json();
       setRows(data.rows ?? data.gas ?? []);
       setElectricityContractRows(data.electricity_contract ?? []);
       setElectricityDmaRows(data.electricity_dma ?? []);
+      setElectricityDemandCheckRows(data.electricity_demand_check ?? []);
     } catch (e) {
       const message = e instanceof Error ? e.message : "Failed to load discrepancy data.";
       setError(message);
@@ -140,6 +143,10 @@ export default function DiscrepancyCheckPage() {
   const filteredElectricityDma = useMemo(() => {
     return idFilter ? electricityDmaRows.filter(filterById) : electricityDmaRows;
   }, [electricityDmaRows, filterById, idFilter]);
+
+  const filteredDemandCheck = useMemo(() => {
+    return idFilter ? electricityDemandCheckRows.filter(filterById) : electricityDemandCheckRows;
+  }, [electricityDemandCheckRows, filterById, idFilter]);
 
   /** Parse "DD/MM/YYYY" or "DD/MM/YYYY-DD/MM/YYYY" to get end date for sorting (most recent first). */
   const parseEndDate = useCallback((period: string): number => {
@@ -178,6 +185,7 @@ export default function DiscrepancyCheckPage() {
   const rowCountGas = sortedRows.length;
   const rowCountContract = sortedElectricityContract.length;
   const rowCountDma = sortedElectricityDma.length;
+  const rowCountDemand = filteredDemandCheck.length;
 
   return (
     <div className="space-y-4 max-w-6xl">
@@ -227,11 +235,12 @@ export default function DiscrepancyCheckPage() {
               Type
               <select
                 value={viewType}
-                onChange={(e) => setViewType(e.target.value as "gas" | "electricity")}
+                onChange={(e) => setViewType(e.target.value as "gas" | "electricity" | "demand")}
                 className="border border-stroke dark:border-dark-3 rounded-md px-2 py-1.5 bg-white dark:bg-gray-dark text-dark dark:text-white text-sm"
               >
                 <option value="gas">C&I Gas</option>
                 <option value="electricity">C&I Electricity (Contract & DMA)</option>
+                <option value="demand">Demand Check (Interval demand vs invoice)</option>
               </select>
             </label>
             <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
@@ -261,7 +270,9 @@ export default function DiscrepancyCheckPage() {
                   : ""}
                 {viewType === "gas"
                   ? `${rowCountGas} row(s)`
-                  : `Contract: ${rowCountContract}, DMA: ${rowCountDma}`}
+                  : viewType === "electricity"
+                  ? `Contract: ${rowCountContract}, DMA: ${rowCountDma}`
+                  : `Demand rows: ${rowCountDemand}`}
                 . Sorted by most recent invoice period first.
               </span>
             )}
@@ -313,6 +324,58 @@ export default function DiscrepancyCheckPage() {
                         <TableCell className="text-sm max-w-[120px] truncate" title={r.take_or_pay_invoice || ""}>
                           {r.take_or_pay_invoice || "—"}
                         </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )
+          ) : viewType === "demand" ? (
+            rowCountDemand === 0 ? (
+              <p className="text-sm text-gray-500 italic py-4">
+                No Demand Check rows match the filters. Try clearing filters or check the sheet.
+              </p>
+            ) : (
+              <div className="overflow-x-auto -mx-2">
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                  Interval demand vs invoice checks from the Demand Check sheet. One row per NMI / review.
+                </p>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Review type</TableHead>
+                      <TableHead>Risk / Opportunity</TableHead>
+                      <TableHead>Utility ID (NMI)</TableHead>
+                      <TableHead>Linked business</TableHead>
+                      <TableHead>Site address</TableHead>
+                      <TableHead>Network</TableHead>
+                      <TableHead>Demand type</TableHead>
+                      <TableHead>Highest invoice demand</TableHead>
+                      <TableHead>Actual interval demand</TableHead>
+                      <TableHead>Demand difference</TableHead>
+                      <TableHead>Actual invoice charge</TableHead>
+                      <TableHead>Expected charge</TableHead>
+                      <TableHead>Difference</TableHead>
+                      <TableHead>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredDemandCheck.map((r, i) => (
+                      <TableRow key={`${r.utility_identifier}-${i}`}>
+                        <TableCell className="text-sm">{r.review_type || "—"}</TableCell>
+                        <TableCell className="text-sm">{r.risk_or_opportunity || "—"}</TableCell>
+                        <TableCell className="font-mono text-sm">{r.utility_identifier || "—"}</TableCell>
+                        <TableCell className="text-sm">{r.linked_business_name || "—"}</TableCell>
+                        <TableCell className="text-sm">{r.site_address || "—"}</TableCell>
+                        <TableCell className="text-sm">{r.network_provider || "—"}</TableCell>
+                        <TableCell className="text-sm">{r.demand_type || "—"}</TableCell>
+                        <TableCell className="text-sm">{r.highest_invoice_demand || "—"}</TableCell>
+                        <TableCell className="text-sm">{r.actual_interval_demand || "—"}</TableCell>
+                        <TableCell className="text-sm">{r.demand_difference || "—"}</TableCell>
+                        <TableCell className="text-sm">{r.actual_invoice_charge || "—"}</TableCell>
+                        <TableCell className="text-sm">{r.expected_charge || "—"}</TableCell>
+                        <TableCell className="text-sm">{r.difference || "—"}</TableCell>
+                        <TableCell className="text-sm">{r.status || "—"}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
