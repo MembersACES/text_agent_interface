@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { getApiBaseUrl } from "@/lib/utils";
 import { Card, CardContent } from "@/components/ui/card";
+import { Dropdown, DropdownContent, DropdownTrigger } from "@/components/ui/dropdown";
 import { useToast } from "@/components/ui/toast";
 import type { StrategyItem, StrategySection, Client, ClientReferral } from "../types";
 
@@ -95,6 +96,9 @@ export function StrategyTab({ clientId, client, onSaveAdvocateMeeting, savingAdv
   const [clientListLoading, setClientListLoading] = useState(false);
   const [savingReferralId, setSavingReferralId] = useState<number | null>(null);
   const [addingReferral, setAddingReferral] = useState(false);
+  const [openAdvocateDropdownRefId, setOpenAdvocateDropdownRefId] = useState<number | null>(null);
+  const [referralAdvocateSearch, setReferralAdvocateSearch] = useState<Record<number, string>>({});
+  const advocateSearchInputRef = useRef<HTMLInputElement>(null);
   const [referralDrafts, setReferralDrafts] = useState<
     Record<number, { advocate_client_id: number | ""; advocate_business_name: string; active: boolean }>
   >({});
@@ -134,6 +138,14 @@ export function StrategyTab({ clientId, client, onSaveAdvocateMeeting, savingAdv
     if (!clientId || !token) return;
     fetchReferrals();
   }, [clientId, token, fetchReferrals]);
+
+  // Focus search input when advocate dropdown opens
+  useEffect(() => {
+    if (openAdvocateDropdownRefId !== null) {
+      const t = setTimeout(() => advocateSearchInputRef.current?.focus(), 0);
+      return () => clearTimeout(t);
+    }
+  }, [openAdvocateDropdownRefId]);
 
   useEffect(() => {
     if (!token || !clientId) return;
@@ -809,7 +821,7 @@ export function StrategyTab({ clientId, client, onSaveAdvocateMeeting, savingAdv
 
                   <div>
                     <h4 className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-2">
-                      Linked advocate / referral businesses
+                      Linked Advocate / Referral Businesses
                     </h4>
                   {referralsLoading ? (
                     <p className="text-sm text-gray-500 dark:text-gray-400">Loading referrals…</p>
@@ -822,7 +834,7 @@ export function StrategyTab({ clientId, client, onSaveAdvocateMeeting, savingAdv
                             key={ref.id}
                             className="flex flex-wrap items-end gap-3 rounded-lg border border-gray-100 dark:border-gray-800 p-3 bg-gray-50/50 dark:bg-gray-800/30"
                           >
-                            <div className="flex-1 min-w-[140px]">
+                            <div className="flex-1 min-w-[200px]">
                               <div className="flex items-center justify-between gap-2 mb-1">
                                 <label className="text-xs font-medium text-gray-600 dark:text-gray-300">
                                   Member
@@ -836,23 +848,96 @@ export function StrategyTab({ clientId, client, onSaveAdvocateMeeting, savingAdv
                                   </Link>
                                 )}
                               </div>
-                              <select
-                                value={v.advocate_client_id === "" ? "" : String(v.advocate_client_id)}
-                                onChange={(e) =>
-                                  setRefDraft(ref, {
-                                    advocate_client_id: e.target.value === "" ? "" : Number(e.target.value),
-                                  })
+                              <Dropdown
+                                isOpen={openAdvocateDropdownRefId === ref.id}
+                                setIsOpen={(open) =>
+                                  setOpenAdvocateDropdownRefId(open ? ref.id : null)
                                 }
-                                className="w-full rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm px-3 py-2"
-                                disabled={clientListLoading}
                               >
-                                <option value="">— None / use business name —</option>
-                                {clientList.map((c) => (
-                                  <option key={c.id} value={c.id}>
-                                    {c.business_name}
-                                  </option>
-                                ))}
-                              </select>
+                                <DropdownTrigger
+                                  className="w-full rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm px-3 py-2 text-left flex items-center justify-between gap-2"
+                                >
+                                  <span className="truncate">
+                                    {v.advocate_client_id === ""
+                                      ? "— None / use business name —"
+                                      : clientList.find((c) => c.id === v.advocate_client_id)
+                                          ?.business_name ?? "— None / use business name —"}
+                                  </span>
+                                  <svg
+                                    className="shrink-0 w-4 h-4 text-gray-500"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M19 9l-7 7-7-7"
+                                    />
+                                  </svg>
+                                </DropdownTrigger>
+                                <DropdownContent
+                                  align="start"
+                                  className="min-w-[200px] max-w-[320px] rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 shadow-lg overflow-hidden p-0"
+                                >
+                                  <div className="p-2 border-b border-gray-100 dark:border-gray-700">
+                                    <input
+                                      ref={openAdvocateDropdownRefId === ref.id ? advocateSearchInputRef : undefined}
+                                      type="text"
+                                      placeholder="Search businesses…"
+                                      value={referralAdvocateSearch[ref.id] ?? ""}
+                                      onChange={(e) =>
+                                        setReferralAdvocateSearch((prev) => ({
+                                          ...prev,
+                                          [ref.id]: e.target.value,
+                                        }))
+                                      }
+                                      onKeyDown={(e) => e.stopPropagation()}
+                                      className="w-full rounded-md border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm px-2.5 py-1.5 placeholder:text-gray-400"
+                                    />
+                                  </div>
+                                  <div className="max-h-[220px] overflow-y-auto">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setRefDraft(ref, { advocate_client_id: "" });
+                                        setOpenAdvocateDropdownRefId(null);
+                                      }}
+                                      className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                                    >
+                                      — None / use business name —
+                                    </button>
+                                    {clientList
+                                      .filter((c) => {
+                                        const q = (referralAdvocateSearch[ref.id] ?? "").trim().toLowerCase();
+                                        if (!q) return true;
+                                        const matches = c.business_name.toLowerCase().includes(q);
+                                        const isSelected = c.id === v.advocate_client_id;
+                                        return matches || isSelected;
+                                      })
+                                      .map((c) => (
+                                        <button
+                                          key={c.id}
+                                          type="button"
+                                          onClick={() => {
+                                            setRefDraft(ref, {
+                                              advocate_client_id: c.id,
+                                            });
+                                            setOpenAdvocateDropdownRefId(null);
+                                          }}
+                                          className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 ${
+                                            c.id === v.advocate_client_id
+                                              ? "bg-primary/10 text-primary font-medium"
+                                              : "text-gray-700 dark:text-gray-300"
+                                          }`}
+                                        >
+                                          {c.business_name}
+                                        </button>
+                                      ))}
+                                  </div>
+                                </DropdownContent>
+                              </Dropdown>
                             </div>
                             <div className="flex-1 min-w-[140px]">
                               <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">

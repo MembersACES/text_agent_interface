@@ -218,6 +218,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
   const [gasDiscrepancyRows, setGasDiscrepancyRows] = useState<DiscrepancyRow[]>([]);
   const [electricityContractRows, setElectricityContractRows] = useState<Array<Record<string, string>>>([]);
   const [electricityDmaRows, setElectricityDmaRows] = useState<Array<Record<string, string>>>([]);
+  const [electricityDemandReviewFlags, setElectricityDemandReviewFlags] = useState<Record<string, boolean>>({});
   const [expandedGasDiscrepancyId, setExpandedGasDiscrepancyId] = useState<string | null>(null);
   const [expandedElectricityDiscrepancyId, setExpandedElectricityDiscrepancyId] = useState<string | null>(null);
   const [advocacyLoading, setAdvocacyLoading] = useState(false);
@@ -292,10 +293,12 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
       setGasDiscrepancyRows([]);
       setElectricityContractRows([]);
       setElectricityDmaRows([]);
+      setElectricityDemandReviewFlags({});
       return;
     }
     let cancelled = false;
     const params = new URLSearchParams({ business_name: businessName.trim() });
+    setDiscrepancyLoading(true);
     fetch(`${getApiBaseUrl()}/api/resources/discrepancy-check?${params.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
@@ -305,11 +308,14 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
         gas?: DiscrepancyRow[];
         electricity_contract?: Array<Record<string, string>>;
         electricity_dma?: Array<Record<string, string>>;
+        electricity_demand_review_flags?: Record<string, boolean>;
       }) => {
         if (!cancelled) {
+          setDiscrepancyData(data);
           setGasDiscrepancyRows(data.rows ?? data.gas ?? []);
           setElectricityContractRows(data.electricity_contract ?? []);
           setElectricityDmaRows(data.electricity_dma ?? []);
+          setElectricityDemandReviewFlags(data.electricity_demand_review_flags ?? {});
         }
       })
       .catch(() => {
@@ -317,6 +323,12 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
           setGasDiscrepancyRows([]);
           setElectricityContractRows([]);
           setElectricityDmaRows([]);
+          setElectricityDemandReviewFlags({});
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setDiscrepancyLoading(false);
         }
       });
     return () => {
@@ -1170,6 +1182,30 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
       
       if (webhookRes.ok) {
         setAdditionalDocResult("✅ Document uploaded successfully!");
+        // Silent C&I contract API call for discrepancy automation (fire-and-forget)
+        if (fileName.endsWith(".pdf")) {
+          const docTypeNorm = additionalDocType.trim().toLowerCase();
+          const ciElectricityUrl = "https://aces-invoice-api-672026052958.australia-southeast2.run.app/v1/ci-electricity-contract/process-contract";
+          const ciGasUrl = "https://aces-invoice-api-672026052958.australia-southeast2.run.app/v1/ci-gas-contract/process-contract";
+          const logContractResponse = (label: string, url: string) => (res: Response) => {
+            res.text().then((text) => {
+              let body: unknown;
+              try { body = text ? JSON.parse(text) : null; } catch { body = text; }
+              console.log("[C&I Contract API] Response", label, "status:", res.status, res.statusText, "body:", body);
+            }).catch((err) => console.error("[C&I Contract API] Parse error", label, err));
+          };
+          if (docTypeNorm === "c&i electricity" || docTypeNorm === "ci electricity") {
+            console.log("[C&I Contract API] Calling C&I Electricity file:", additionalDocFile.name, "url:", ciElectricityUrl);
+            const fd = new FormData(); fd.append("file", additionalDocFile);
+            fetch(ciElectricityUrl, { method: "POST", body: fd }).then(logContractResponse("C&I Electricity", ciElectricityUrl)).catch((err) => console.error("[C&I Contract API] Error C&I Electricity", err));
+          } else if (docTypeNorm === "c&i gas" || docTypeNorm === "ci gas") {
+            console.log("[C&I Contract API] Calling C&I Gas file:", additionalDocFile.name, "url:", ciGasUrl);
+            const fd = new FormData(); fd.append("file", additionalDocFile);
+            fetch(ciGasUrl, { method: "POST", body: fd }).then(logContractResponse("C&I Gas", ciGasUrl)).catch((err) => console.error("[C&I Contract API] Error C&I Gas", err));
+          } else {
+            console.log("[C&I Contract API] Skipped (document type not C&I Electricity/Gas):", additionalDocType);
+          }
+        }
         // Refresh the documents list
         setTimeout(() => {
           fetchWIPData();
@@ -1899,7 +1935,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
             onClick={() => setDocumentsSectionOpen((o) => !o)}
             className="w-full flex items-center justify-between mb-3 px-1 py-2 rounded hover:bg-gray-50 transition-colors text-left"
           >
-            <h2 className="text-xl font-bold text-gray-800">Business Documents & Agreements</h2>
+            <h2 className="text-xl font-bold text-gray-800">Business Documents & Agreements - Press File button to upload new documents & lodgements</h2>
             <span className="text-gray-500">{documentsSectionOpen ? "▲" : "▼"}</span>
           </button>
           {documentsSectionOpen && (
@@ -2385,6 +2421,11 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                           (key === "C&I Gas" && hasGasDiscrepancy) ||
                           (key === "C&I Electricity" && hasElectricityDiscrepancy);
 
+                        const normalizedIdentifier = String(identifier || "").trim();
+                        const hasDemandReview =
+                          key === "C&I Electricity" &&
+                          !!electricityDemandReviewFlags[normalizedIdentifier];
+
                         return (
                           <div key={`${realKey}-${idx}`} className="border-l-2 border-blue-200 pl-3">
                             <div className="text-sm font-medium flex flex-wrap items-center gap-2">
@@ -2392,6 +2433,11 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                               {hasDiscrepancy && (
                                 <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-300">
                                   Discrepancy
+                                </span>
+                              )}
+                              {hasDemandReview && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-semibold bg-blue-100 text-blue-800 border border-blue-300">
+                                  Interval Data Included — Press “Account Info” for demand review vs invoice
                                 </span>
                               )}
                             </div>

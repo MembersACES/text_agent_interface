@@ -296,6 +296,37 @@ export function DocumentsTab({ businessInfo, setBusinessInfo, businessName }: Do
 
   // ── Contract helpers ───────────────────────────────────────────────────────
 
+  const CI_CONTRACT_API = {
+    "C&I Electricity": "https://aces-invoice-api-672026052958.australia-southeast2.run.app/v1/ci-electricity-contract/process-contract",
+    "C&I Gas": "https://aces-invoice-api-672026052958.australia-southeast2.run.app/v1/ci-gas-contract/process-contract",
+  } as const;
+
+  /** Fire-and-forget: send file to C&I contract API for discrepancy automation. */
+  const silentProcessContract = (file: File, key: "C&I Electricity" | "C&I Gas") => {
+    const url = CI_CONTRACT_API[key];
+    if (!url || !file.name.toLowerCase().endsWith(".pdf")) {
+      console.log("[C&I Contract API] Skipped:", key, !url ? "no URL" : "not a PDF", "file:", file.name);
+      return;
+    }
+    console.log("[C&I Contract API] Calling", key, "file:", file.name, "url:", url);
+    const fd = new FormData();
+    fd.append("file", file);
+    fetch(url, { method: "POST", body: fd })
+      .then(async (res) => {
+        const text = await res.text();
+        let data: unknown;
+        try {
+          data = text ? JSON.parse(text) : null;
+        } catch {
+          data = text;
+        }
+        console.log("[C&I Contract API] Response", key, "status:", res.status, res.statusText, "body:", data);
+      })
+      .catch((err) => {
+        console.error("[C&I Contract API] Error", key, "file:", file.name, err);
+      });
+  };
+
   const CONTRACT_TO_FILING: Record<string, string> = {
     "C&I Electricity": "signed_CI_E", "SME Electricity": "signed_SME_E",
     "C&I Gas": "signed_CI_G", "SME Gas": "signed_SME_G",
@@ -344,8 +375,11 @@ export function DocumentsTab({ businessInfo, setBusinessInfo, businessName }: Do
         method: "POST", headers: { Authorization: `Bearer ${token}` }, body: fd,
       });
       const data = await res.json();
-      if (data.status === "success") { setDriveResult("File successfully uploaded!"); showToast("File uploaded successfully.","success"); }
-      else { setDriveResult(`Error: ${data.message||"Upload failed"}`); showToast(data.message||"Upload failed","error"); }
+      if (data.status === "success") {
+        setDriveResult("File successfully uploaded!"); showToast("File uploaded successfully.","success");
+        console.log("[C&I Contract API] Drive upload OK. driveContractKey:", driveContractKey);
+        if (driveContractKey === "C&I Electricity" || driveContractKey === "C&I Gas") silentProcessContract(driveFile, driveContractKey);
+      } else { setDriveResult(`Error: ${data.message||"Upload failed"}`); showToast(data.message||"Upload failed","error"); }
     } catch (e: any) { setDriveResult(`Error: ${e?.message}`); showToast(e?.message,"error"); }
     finally { setDriveLoading(false); }
   };
@@ -367,6 +401,10 @@ export function DocumentsTab({ businessInfo, setBusinessInfo, businessName }: Do
       let d: any; try { d = JSON.parse(text); } catch { d = { message: text }; }
       if (res.ok) {
         setAddDocResult("Document uploaded successfully!"); showToast("Document uploaded successfully.","success");
+        const docTypeNorm = addDocType.trim().toLowerCase();
+        console.log("[C&I Contract API] Additional doc upload OK, checking type. docType:", JSON.stringify(addDocType), "normalized:", JSON.stringify(docTypeNorm), "isPdf:", fn.endsWith(".pdf"));
+        if (fn.endsWith(".pdf") && (docTypeNorm === "c&i electricity" || docTypeNorm === "ci electricity")) silentProcessContract(addDocFile, "C&I Electricity");
+        else if (fn.endsWith(".pdf") && (docTypeNorm === "c&i gas" || docTypeNorm === "ci gas")) silentProcessContract(addDocFile, "C&I Gas");
         setTimeout(() => fetchWIP(), 1000);
         setTimeout(() => { setShowAddDocModal(false); setAddDocFile(null); setAddDocType(""); setAddDocResult(""); }, 2000);
       } else { setAddDocResult(`Error: ${d.message||"Failed"}`); showToast(d.message||"Upload failed","error"); }
