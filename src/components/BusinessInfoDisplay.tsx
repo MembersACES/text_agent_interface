@@ -1170,6 +1170,30 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
       
       if (webhookRes.ok) {
         setAdditionalDocResult("✅ Document uploaded successfully!");
+        // Silent C&I contract API call for discrepancy automation (fire-and-forget)
+        if (fileName.endsWith(".pdf")) {
+          const docTypeNorm = additionalDocType.trim().toLowerCase();
+          const ciElectricityUrl = "https://aces-invoice-api-672026052958.australia-southeast2.run.app/v1/ci-electricity-contract/process-contract";
+          const ciGasUrl = "https://aces-invoice-api-672026052958.australia-southeast2.run.app/v1/ci-gas-contract/process-contract";
+          const logContractResponse = (label: string, url: string) => (res: Response) => {
+            res.text().then((text) => {
+              let body: unknown;
+              try { body = text ? JSON.parse(text) : null; } catch { body = text; }
+              console.log("[C&I Contract API] Response", label, "status:", res.status, res.statusText, "body:", body);
+            }).catch((err) => console.error("[C&I Contract API] Parse error", label, err));
+          };
+          if (docTypeNorm === "c&i electricity" || docTypeNorm === "ci electricity") {
+            console.log("[C&I Contract API] Calling C&I Electricity file:", additionalDocFile.name, "url:", ciElectricityUrl);
+            const fd = new FormData(); fd.append("file", additionalDocFile);
+            fetch(ciElectricityUrl, { method: "POST", body: fd }).then(logContractResponse("C&I Electricity", ciElectricityUrl)).catch((err) => console.error("[C&I Contract API] Error C&I Electricity", err));
+          } else if (docTypeNorm === "c&i gas" || docTypeNorm === "ci gas") {
+            console.log("[C&I Contract API] Calling C&I Gas file:", additionalDocFile.name, "url:", ciGasUrl);
+            const fd = new FormData(); fd.append("file", additionalDocFile);
+            fetch(ciGasUrl, { method: "POST", body: fd }).then(logContractResponse("C&I Gas", ciGasUrl)).catch((err) => console.error("[C&I Contract API] Error C&I Gas", err));
+          } else {
+            console.log("[C&I Contract API] Skipped (document type not C&I Electricity/Gas):", additionalDocType);
+          }
+        }
         // Refresh the documents list
         setTimeout(() => {
           fetchWIPData();
@@ -1899,7 +1923,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
             onClick={() => setDocumentsSectionOpen((o) => !o)}
             className="w-full flex items-center justify-between mb-3 px-1 py-2 rounded hover:bg-gray-50 transition-colors text-left"
           >
-            <h2 className="text-xl font-bold text-gray-800">Business Documents & Agreements</h2>
+            <h2 className="text-xl font-bold text-gray-800">Business Documents & Agreements - Press File button to upload new documents & lodgements</h2>
             <span className="text-gray-500">{documentsSectionOpen ? "▲" : "▼"}</span>
           </button>
           {documentsSectionOpen && (

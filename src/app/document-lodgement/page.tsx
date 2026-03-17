@@ -3,7 +3,7 @@
 import React, { useMemo, useState } from "react";
 
 // ---- Types ----
-type Category = "INVOICE" | "DATA";
+type Category = "INVOICE" | "DATA" | "CONTRACT";
 
 type UtilityKey =
   | "WASTE"
@@ -15,8 +15,11 @@ type UtilityKey =
   | "GREASE_TRAP"
   | "WATER"
   | "CLEANING"
+  | "LINEN_CLEANING"
   | "ELECTRICITY_CI_INTERVAL"
-  | "EOI";
+  | "EOI"
+  | "CI_ELECTRICITY_CONTRACT"
+  | "CI_GAS_CONTRACT";
 // ---- Catalogs ----
 const LABELS: Record<UtilityKey, string> = {
   WASTE: "WASTE",
@@ -28,8 +31,11 @@ const LABELS: Record<UtilityKey, string> = {
   GREASE_TRAP: "GREASE TRAP",
   WATER: "WATER",
   CLEANING: "CLEANING",
+  LINEN_CLEANING: "LINEN CLEANING",
   ELECTRICITY_CI_INTERVAL: "C&I E Interval Data",
   EOI: "EOI",
+  CI_ELECTRICITY_CONTRACT: "C&I Electricity",
+  CI_GAS_CONTRACT: "C&I Gas",
 };
 
 const API_ENDPOINTS: Record<UtilityKey, string> = {
@@ -49,9 +55,15 @@ const API_ENDPOINTS: Record<UtilityKey, string> = {
   WATER: "https://aces-api-63gwbzzcdq-km.a.run.app/v1/water/process-invoice",
   CLEANING:
     "https://aces-invoice-api-672026052958.australia-southeast2.run.app/v1/cleaning-invoice/process-invoice",
+  LINEN_CLEANING:
+    "https://aces-invoice-api-672026052958.australia-southeast2.run.app/v1/linen-cleaning-invoice/process-invoice",
   ELECTRICITY_CI_INTERVAL:
     "https://aces-invoice-api-672026052958.australia-southeast2.run.app/v1/interval-ci-electricity/process-interval-ci-electricity-data",
   EOI: "https://aces-invoice-api-672026052958.australia-southeast2.run.app/v1/eoi/process-eoi",
+  CI_ELECTRICITY_CONTRACT:
+    "https://aces-invoice-api-672026052958.australia-southeast2.run.app/v1/ci-electricity-contract/process-contract",
+  CI_GAS_CONTRACT:
+    "https://aces-invoice-api-672026052958.australia-southeast2.run.app/v1/ci-gas-contract/process-contract",
 };
 
 // File accept strings
@@ -70,6 +82,9 @@ const ACCEPTS: Record<UtilityKey, string> = {
   GREASE_TRAP: "application/pdf",
   WATER: "application/pdf",
   CLEANING: "application/pdf",
+  LINEN_CLEANING: "application/pdf",
+  CI_ELECTRICITY_CONTRACT: "application/pdf",
+  CI_GAS_CONTRACT: "application/pdf",
 };
 
 // Friendly upload labels
@@ -85,6 +100,9 @@ const FRIENDLY_UPLOAD_LABEL: Record<UtilityKey, string> = {
   GREASE_TRAP: "Upload Invoice (PDF)",
   WATER: "Upload Invoice (PDF)",
   CLEANING: "Upload Invoice (PDF)",
+  LINEN_CLEANING: "Upload Invoice (PDF)",
+  CI_ELECTRICITY_CONTRACT: "Upload Signed Agreement (PDF)",
+  CI_GAS_CONTRACT: "Upload Signed Agreement (PDF)",
 };
 
 // Partition utilities by category
@@ -98,11 +116,17 @@ const INVOICE_UTILS: UtilityKey[] = [
   "GREASE_TRAP",
   "WATER",
   "CLEANING",
+  "LINEN_CLEANING",
 ];
 
 const DATA_UTILS: UtilityKey[] = [
   "ELECTRICITY_CI_INTERVAL",
   "EOI",
+];
+
+const CONTRACT_UTILS: UtilityKey[] = [
+  "CI_ELECTRICITY_CONTRACT",
+  "CI_GAS_CONTRACT",
 ];
 
 type FileStatus = {
@@ -120,7 +144,12 @@ export default function UtilityInvoiceLodgementPage() {
 
   // Options for current category
   const options = useMemo(
-    () => (category === "INVOICE" ? INVOICE_UTILS : DATA_UTILS),
+    () =>
+      category === "INVOICE"
+        ? INVOICE_UTILS
+        : category === "CONTRACT"
+          ? CONTRACT_UTILS
+          : DATA_UTILS,
     [category]
   );
 
@@ -151,6 +180,7 @@ export default function UtilityInvoiceLodgementPage() {
             invalidFiles.push(file.name);
           }
         } else {
+          // INVOICE and CONTRACT both accept PDF
           const ok = /\.pdf$/i.test(file.name);
           if (ok) {
             validFiles.push(file);
@@ -159,9 +189,11 @@ export default function UtilityInvoiceLodgementPage() {
           }
         }
       });
-      
+
       if (invalidFiles.length > 0) {
-        alert(`Invalid file types:\n${invalidFiles.join("\n")}\n\n${category === "DATA" ? "Please select .csv, .xls, or .xlsx files" : "Please select PDF files"}`);
+        alert(
+          `Invalid file types:\n${invalidFiles.join("\n")}\n\n${category === "DATA" ? "Please select .csv, .xls, or .xlsx files" : "Please select PDF files"}`
+        );
       }
       
       if (validFiles.length > 0) {
@@ -306,6 +338,21 @@ export default function UtilityInvoiceLodgementPage() {
               className="h-4 w-4"
             />
             <span>Data</span>
+          </label>
+          <label className="inline-flex items-center gap-2 cursor-pointer">
+            <input
+              type="radio"
+              name="category"
+              value="CONTRACT"
+              checked={category === "CONTRACT"}
+              onChange={() => {
+                setCategory("CONTRACT");
+                setFiles([]);
+                setFileStatuses([]);
+              }}
+              className="h-4 w-4"
+            />
+            <span>Contract</span>
           </label>
         </div>
       </div>
