@@ -6,6 +6,7 @@ import { useSession } from "next-auth/react";
 import { FileLink } from "../shared/FileLink";
 import { getApiBaseUrl } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
+import { combineFilesIntoPdf } from "@/lib/combineFiles";
 import {
   getBusinessDocumentFileUrl,
   getBusinessDocumentsForOverview,
@@ -211,7 +212,7 @@ export function DocumentsTab({ businessInfo, setBusinessInfo, businessName }: Do
   const [driveResult, setDriveResult] = useState<string | null>(null);
 
   const [showAddDocModal, setShowAddDocModal] = useState(false);
-  const [addDocFile, setAddDocFile] = useState<File | null>(null);
+  const [addDocFiles, setAddDocFiles] = useState<File[]>([]);
   const [addDocType, setAddDocType] = useState("");
   const [addDocLoading, setAddDocLoading] = useState(false);
   const [addDocResult, setAddDocResult] = useState("");
@@ -385,31 +386,142 @@ export function DocumentsTab({ businessInfo, setBusinessInfo, businessName }: Do
   };
 
   const uploadAddDoc = async () => {
-    if (!addDocFile || !business?.name) { setAddDocResult("No file selected."); return; }
-    const fn = addDocFile.name.toLowerCase();
-    if (![".pdf",".xlsx",".xls",".docx",".doc"].some((e) => fn.endsWith(e))) { setAddDocResult("Please upload a PDF, Excel, or Word file."); return; }
-    if (!addDocType.trim()) { setAddDocResult("Please enter a document type."); return; }
-    setAddDocLoading(true); setAddDocResult("");
+    if (!business?.name) {
+      setAddDocResult("No business name found.");
+      return;
+    }
+    if (!addDocFiles.length) {
+      setAddDocResult("No file selected.");
+      return;
+    }
+    if (!addDocType.trim()) {
+      setAddDocResult("Please enter a document type.");
+      return;
+    }
+
+    const files = addDocFiles;
+    const lowerNames = files.map((f) => f.name.toLowerCase());
+    const isPdf = (name: string) => name.endsWith(".pdf");
+    const isImage = (name: string) =>
+      name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg");
+    const isOffice = (name: string) =>
+      [".xlsx", ".xls", ".docx", ".doc"].some((ext) => name.endsWith(ext));
+
+    // Validate file types
+    if (
+      !files.every((f, idx) => {
+        const n = lowerNames[idx];
+        return isPdf(n) || isImage(n) || isOffice(n);
+      })
+    ) {
+      setAddDocResult(
+        "Please upload only PDF, image (PNG/JPG), Excel (.xlsx, .xls), or Word (.docx, .doc) files.",
+      );
+      return;
+    }
+
+    const hasNonPdfImageOrPdf = files.some((_, idx) => {
+      const n = lowerNames[idx];
+      return isPdf(n) || isImage(n);
+    });
+
+    // When multiple files are selected they must all be PDFs or images
+    if (files.length > 1) {
+      const allPdfOrImage = files.every((_, idx) => {
+        const n = lowerNames[idx];
+        return isPdf(n) || isImage(n);
+      });
+      if (!allPdfOrImage) {
+        setAddDocResult(
+          "When uploading multiple files, only PDF and image (PNG/JPG) files are supported.",
+        );
+        return;
+      }
+    }
+
+    setAddDocLoading(true);
+    setAddDocResult("");
+
     try {
-      const ext = fn.slice(fn.lastIndexOf("."));
+      let uploadFile: File;
+      let ext = ".pdf";
+
+      if (files.length === 1) {
+        const n = lowerNames[0];
+        const single = files[0];
+        if (isImage(n) || isPdf(n)) {
+          uploadFile = await combineFilesIntoPdf([single]);
+          ext = ".pdf";
+        } else {
+          // Single office document — send as-is
+          uploadFile = single;
+          ext = n.slice(n.lastIndexOf("."));
+        }
+      } else {
+        // Multiple PDF/images → merge into single PDF
+        uploadFile = await combineFilesIntoPdf(files);
+        ext = ".pdf";
+      }
+
       const fd = new FormData();
-      fd.append("file", addDocFile); fd.append("business_name", business.name);
-      fd.append("gdrive_url", driveUrl); fd.append("timestamp", new Date().toISOString());
+      fd.append("file", uploadFile);
+      fd.append("business_name", business.name);
+      fd.append("gdrive_url", driveUrl);
+      fd.append("timestamp", new Date().toISOString());
       fd.append("new_filename", `${business.name} - ${addDocType}${ext}`);
-      const res = await fetch("https://membersaces.app.n8n.cloud/webhook/additional_document_upload", { method: "POST", body: fd });
+
+      const res = await fetch(
+        "https://membersaces.app.n8n.cloud/webhook/additional_document_upload",
+        { method: "POST", body: fd },
+      );
       const text = await res.text();
-      let d: any; try { d = JSON.parse(text); } catch { d = { message: text }; }
+      let d: any;
+      try {
+        d = JSON.parse(text);
+      } catch {
+        d = { message: text };
+      }
       if (res.ok) {
-        setAddDocResult("Document uploaded successfully!"); showToast("Document uploaded successfully.","success");
+        setAddDocResult("Document uploaded successfully!");
+        showToast("Document uploaded successfully.", "success");
         const docTypeNorm = addDocType.trim().toLowerCase();
-        console.log("[C&I Contract API] Additional doc upload OK, checking type. docType:", JSON.stringify(addDocType), "normalized:", JSON.stringify(docTypeNorm), "isPdf:", fn.endsWith(".pdf"));
-        if (fn.endsWith(".pdf") && (docTypeNorm === "c&i electricity" || docTypeNorm === "ci electricity")) silentProcessContract(addDocFile, "C&I Electricity");
-        else if (fn.endsWith(".pdf") && (docTypeNorm === "c&i gas" || docTypeNorm === "ci gas")) silentProcessContract(addDocFile, "C&I Gas");
+        console.log(
+          "[C&I Contract API] Additional doc upload OK, checking type. docType:",
+          JSON.stringify(addDocType),
+          "normalized:",
+          JSON.stringify(docTypeNorm),
+          "isPdf:",
+          uploadFile.name.toLowerCase().endsWith(".pdf"),
+        );
+        if (
+          uploadFile.name.toLowerCase().endsWith(".pdf") &&
+          (docTypeNorm === "c&i electricity" ||
+            docTypeNorm === "ci electricity")
+        ) {
+          silentProcessContract(uploadFile, "C&I Electricity");
+        } else if (
+          uploadFile.name.toLowerCase().endsWith(".pdf") &&
+          (docTypeNorm === "c&i gas" || docTypeNorm === "ci gas")
+        ) {
+          silentProcessContract(uploadFile, "C&I Gas");
+        }
         setTimeout(() => fetchWIP(), 1000);
-        setTimeout(() => { setShowAddDocModal(false); setAddDocFile(null); setAddDocType(""); setAddDocResult(""); }, 2000);
-      } else { setAddDocResult(`Error: ${d.message||"Failed"}`); showToast(d.message||"Upload failed","error"); }
-    } catch (e: any) { setAddDocResult(`Error: ${e?.message}`); showToast(e?.message,"error"); }
-    finally { setAddDocLoading(false); }
+        setTimeout(() => {
+          setShowAddDocModal(false);
+          setAddDocFiles([]);
+          setAddDocType("");
+          setAddDocResult("");
+        }, 2000);
+      } else {
+        setAddDocResult(`Error: ${d.message || "Failed"}`);
+        showToast(d.message || "Upload failed", "error");
+      }
+    } catch (e: any) {
+      setAddDocResult(`Error: ${e?.message}`);
+      showToast(e?.message, "error");
+    } finally {
+      setAddDocLoading(false);
+    }
   };
 
   const uploadEOI = async () => {
@@ -533,7 +645,7 @@ export function DocumentsTab({ businessInfo, setBusinessInfo, businessName }: Do
           type="button"
           onClick={() => {
             setShowAddDocModal(true);
-            setAddDocFile(null);
+            setAddDocFiles([]);
             setAddDocType("");
             setAddDocResult("");
           }}
@@ -1002,11 +1114,32 @@ export function DocumentsTab({ businessInfo, setBusinessInfo, businessName }: Do
             className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-200 dark:focus:ring-gray-700"
           />
         </MField>
-        <MField label="File — PDF, Excel, or Word">
-          <FileDropInput accept=".pdf,.xlsx,.xls,.docx,.doc" onChange={setAddDocFile} file={addDocFile} />
+        <MField label="Files — PDF, images, Excel, or Word">
+          <div className="rounded-lg border-2 border-dashed border-gray-200 dark:border-gray-700 px-3 py-2.5">
+            <input
+              type="file"
+              accept=".pdf,.xlsx,.xls,.docx,.doc,image/png,image/jpeg,image/jpg,.png,.jpg,.jpeg"
+              multiple
+              onChange={(e) =>
+                setAddDocFiles(
+                  e.target.files ? Array.from(e.target.files) : [],
+                )
+              }
+              className="block w-full text-xs text-gray-500 file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-medium file:bg-gray-100 dark:file:bg-gray-800 file:text-gray-700 dark:file:text-gray-200 hover:file:bg-gray-200 dark:hover:file:bg-gray-700 file:cursor-pointer file:transition-colors"
+            />
+            {addDocFiles.length > 0 && (
+              <ul className="mt-1 text-[11px] text-gray-400 space-y-0.5 max-h-24 overflow-auto">
+                {addDocFiles.map((f) => (
+                  <li key={f.name} className="truncate">
+                    {f.name}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </MField>
         {addDocResult && <Alert msg={addDocResult} successStart="Document uploaded" />}
-        <MFooter onCancel={() => setShowAddDocModal(false)} onSubmit={uploadAddDoc} label="Upload" disabled={!addDocFile || !addDocType.trim()} loading={addDocLoading} />
+        <MFooter onCancel={() => setShowAddDocModal(false)} onSubmit={uploadAddDoc} label="Upload" disabled={!addDocFiles.length || !addDocType.trim()} loading={addDocLoading} />
       </Modal>
 
       {/* ── EOI modal ── */}
