@@ -2666,6 +2666,9 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                                   let url = `/utility-invoice-info/${tool}?business_name=${encodeURIComponent(invoiceBusinessName)}&autoSubmit=1`;
                                   if (param !== "business_name" && param !== "client_name") url += `&${param}=${encodeURIComponent(identifier)}`;
                                   if (param === "client_name") url += `&client_name=${encodeURIComponent(displayValue)}`;
+                                  if (clientIdFromInfo != null && clientIdFromInfo !== undefined) {
+                                    url += `&clientId=${encodeURIComponent(String(clientIdFromInfo))}`;
+                                  }
                                   
                                   // Add business information as URL parameters
                                   if (business.name) url += `&business_abn=${encodeURIComponent(business.abn || '')}`;
@@ -2742,6 +2745,9 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                                   onClick={() => {
                                     let url = `/utility-invoice-info/${tool}?business_name=${encodeURIComponent(invoiceBusinessName)}&autoSubmit=1&autoOpenDMA=1`;
                                     if (param !== "business_name") url += `&${param}=${encodeURIComponent(identifier)}`;
+                                    if (clientIdFromInfo != null && clientIdFromInfo !== undefined) {
+                                      url += `&clientId=${encodeURIComponent(String(clientIdFromInfo))}`;
+                                    }
                                     
                                     // Add business information as URL parameters
                                     if (business.name) url += `&business_abn=${encodeURIComponent(business.abn || '')}`;

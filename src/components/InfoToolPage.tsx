@@ -3,6 +3,29 @@ import { useSession } from "next-auth/react";
 import ReactMarkdown from 'react-markdown';
 import { getApiBaseUrl } from "@/lib/utils";
 
+// Normalize document link before sending to API: strip leading =, fix https:/ → https://.
+function normalizeDocumentLink(link: string | undefined): string | undefined {
+  if (!link || typeof link !== "string") return undefined;
+  let s = link.trim();
+  if (s.startsWith("=")) s = s.slice(1).trim();
+  if (s.startsWith("https:/") && !s.startsWith("https://")) s = "https://" + s.slice(7);
+  if (s.startsWith("http:/") && !s.startsWith("http://")) s = "http://" + s.slice(6);
+  return (s.startsWith("http://") || s.startsWith("https://")) ? s : undefined;
+}
+
+// Normalize currency-like strings (e.g. "$5,111.38") into numbers so backend can parse them.
+function normalizeMoneyToNumber(value: unknown): number | undefined {
+  if (value == null || value === "") return undefined;
+  if (typeof value === "number") return value;
+  if (typeof value === "string") {
+    const cleaned = value.replace(/[^0-9.\-]/g, "");
+    if (!cleaned) return undefined;
+    const num = Number(cleaned);
+    return Number.isFinite(num) ? num : undefined;
+  }
+  return undefined;
+}
+
 interface ExtraField {
   name: string;
   label: string;
@@ -26,6 +49,8 @@ interface InfoToolPageProps {
   autoOpenDMA?: boolean;
   /** Optional offer id for logging DMA / utility invoice activities back to an offer */
   offerId?: number;
+  /** Optional client id for logging utility activities by creating a minimal offer when offerId isn't provided */
+  clientId?: number;
 }
 
 interface CIElectricityOfferData {
@@ -214,7 +239,9 @@ function CIElectricityOfferModal({
   invoiceData, 
   session,
   token,
-  businessInfo
+  businessInfo,
+  offerId,
+  clientId
 }: { 
   isOpen: boolean; 
   onClose: () => void; 
@@ -222,6 +249,8 @@ function CIElectricityOfferModal({
   session: any;
   token: string;
   businessInfo?: any;
+  offerId?: number;
+  clientId?: number;
 }) {
   const [formData, setFormData] = useState<CIElectricityOfferData>({
     invoiceId: '',
@@ -631,9 +660,112 @@ function CIElectricityOfferModal({
       });
 
       if (response.ok) {
-        const result = await response.json();
-        const pdfLink = result.pdf_document_link;
-        const spreadsheetLink = result.spreadsheet_document_link;
+        const webhookResult = await response.json();
+        const result = Array.isArray(webhookResult) ? webhookResult?.[0] : webhookResult;
+
+        const pdfLink = result?.pdf_document_link;
+        const spreadsheetLink = result?.spreadsheet_document_link;
+        const annualSavings = normalizeMoneyToNumber((result as any)?.annual_savings);
+        const currentCost = normalizeMoneyToNumber((result as any)?.current_cost);
+        const newCost = normalizeMoneyToNumber((result as any)?.new_cost);
+
+        // Log into the offer activity report (same pattern as Base 2)
+        if (session?.user?.email && token) {
+          console.log("[C&I Electricity offer] Logging comparison activity:", {
+            offerId,
+            clientId,
+            userEmail: session.user.email,
+            hasDoc: !!(pdfLink || spreadsheetLink),
+            annualSavings,
+            currentCost,
+            newCost,
+          });
+
+          try {
+            const baseUrl = getApiBaseUrl();
+
+            let offerIdToUse: number | null = typeof offerId === "number" ? offerId : null;
+
+            // If no offerId was provided, create a minimal offer like Base 2 does (when we have clientId).
+            if (offerIdToUse == null && typeof clientId === "number" && !isNaN(clientId)) {
+              const createRes = await fetch(`${baseUrl}/api/offers`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "Authorization": `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                  client_id: clientId,
+                  status: "requested",
+                  business_name: formData.businessName || businessInfo?.name || undefined,
+                }),
+              });
+
+              console.log("[C&I Electricity offer] create minimal offer response:", {
+                ok: createRes.ok,
+                status: createRes.status,
+              });
+
+              if (createRes.ok) {
+                const created = await createRes.json();
+                offerIdToUse = created?.id ?? null;
+              } else {
+                const errText = await createRes.text().catch(() => "");
+                console.warn("[C&I Electricity offer] Failed to create offer:", errText);
+              }
+            }
+
+            if (offerIdToUse != null) {
+              const documentLink = pdfLink || spreadsheetLink || undefined;
+              const metadata: Record<string, any> = {
+                utility_type: "electricity",
+                nmi: formData.nmi,
+                comparison_type: "electricity_ci",
+                source: "utility_invoice_info_page",
+              };
+              if (annualSavings != null) metadata.annual_savings = annualSavings;
+              if (currentCost != null) metadata.current_cost = currentCost;
+              if (newCost != null) metadata.new_cost = newCost;
+
+              const payload = {
+                activity_type: "comparison",
+                document_link: normalizeDocumentLink(documentLink) ?? undefined,
+                metadata,
+                created_by: session.user.email,
+              };
+
+              console.log("[C&I Electricity offer] POST /api/offers/:id/activities payload:", {
+                offerIdToUse,
+                activity_type: payload.activity_type,
+                document_link: payload.document_link,
+                metadata,
+              });
+
+              const activityRes = await fetch(`${baseUrl}/api/offers/${offerIdToUse}/activities`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "Authorization": `Bearer ${token}`,
+                },
+                body: JSON.stringify(payload),
+              });
+
+              console.log("[C&I Electricity offer] activity POST response:", {
+                ok: activityRes.ok,
+                status: activityRes.status,
+              });
+
+              if (!activityRes.ok) {
+                const errBody = await activityRes.text().catch(() => "");
+                console.warn("[C&I Electricity offer] Failed to log activity:", errBody);
+              }
+            } else {
+              console.warn("[C&I Electricity offer] Skipping activity log: no offerIdToUse available.");
+            }
+          } catch (logErr) {
+            console.warn("Failed to log C&I Electricity offer comparison activity:", logErr);
+          }
+        }
         
         let message = 'C&I Electricity Offer Comparison sent successfully!';
         if (pdfLink) message += `\nPDF: ${pdfLink}`;
@@ -5668,7 +5800,7 @@ const EnhancedSMEGasInvoiceDetails = ({ smeGasData }: { smeGasData: any }) => {
   );
 };
 
-function InvoiceResult({ result, session, token, autoOpenDMA = false, autoExpandDetails = false, offerId }: { result: any; session: any; token: string; autoOpenDMA?: boolean; autoExpandDetails?: boolean; offerId?: number }) {
+function InvoiceResult({ result, session, token, autoOpenDMA = false, autoExpandDetails = false, offerId, clientId }: { result: any; session: any; token: string; autoOpenDMA?: boolean; autoExpandDetails?: boolean; offerId?: number; clientId?: number }) {
   const [showDMAModal, setShowDMAModal] = useState(false);
   const [showCIOfferModal, setShowCIOfferModal] = useState(false);
   const [showCIGasOfferModal, setShowCIGasOfferModal] = useState(false);
@@ -6035,6 +6167,8 @@ function InvoiceResult({ result, session, token, autoOpenDMA = false, autoExpand
             session={session}
             token={token}
             businessInfo={result}
+            offerId={offerId}
+            clientId={clientId}
           />
           <DMAModal
             isOpen={showDMAModal}
@@ -6684,7 +6818,7 @@ function IntervalDataSection({
   );
 }
 
-export default function InfoToolPage({ title, description, endpoint, extraFields = [], isFileUpload = false, secondaryField, initialBusinessName = "", initialSecondaryValue = "", autoSubmit = false, formRef, initialExtraFields = {}, autoOpenDMA = false, offerId }: InfoToolPageProps) {
+export default function InfoToolPage({ title, description, endpoint, extraFields = [], isFileUpload = false, secondaryField, initialBusinessName = "", initialSecondaryValue = "", autoSubmit = false, formRef, initialExtraFields = {}, autoOpenDMA = false, offerId, clientId }: InfoToolPageProps) {
   // ========== PROMINENT LOG - InfoToolPage Component Rendered ==========
   console.log('🔵 ========== InfoToolPage Component Rendered ==========');
   console.log('🔵 Title:', title);
@@ -7007,7 +7141,15 @@ export default function InfoToolPage({ title, description, endpoint, extraFields
               <ResultMessage message={result.message} />
             </div>
           ) : (
-            <InvoiceResult result={result} session={session} token={token} autoOpenDMA={autoOpenDMA} autoExpandDetails={autoSubmit} offerId={offerId} />
+            <InvoiceResult
+              result={result}
+              session={session}
+              token={token}
+              autoOpenDMA={autoOpenDMA}
+              autoExpandDetails={autoSubmit}
+              offerId={offerId}
+              clientId={clientId}
+            />
           )}
         </div>
       )}
