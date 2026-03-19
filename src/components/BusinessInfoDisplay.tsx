@@ -3953,6 +3953,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                       setDriveModalResult(null);
                       
                       try {
+                        let fileForContractApi: File | null = null;
                         const formData = new FormData();
                         formData.append('business_name', driveModalBusinessName);
                         formData.append('filing_type', driveModalFilingType);
@@ -3966,8 +3967,10 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                         if (driveModalMultipleFiles && filesToUpload.length > 1) {
                           const combined = await combineFilesIntoPdf(filesToUpload);
                           formData.append("file", combined);
+                          fileForContractApi = combined;
                         } else {
                           formData.append("file", filesToUpload[0]);
+                          fileForContractApi = filesToUpload[0];
                         }
                         
                         const res = await fetch(`${getApiBaseUrl()}/api/drive-filing?token=${encodeURIComponent(token)}`, {
@@ -3982,11 +3985,57 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                           // File IDs will be updated when user clicks "Get Member Profile" again.
                           // Set the exact message that triggers modal close
                           setDriveModalResult('File successfully uploaded! Click "Get Member Profile" to refresh file links.');
+
+                          // C&I contract silent automation (Electricity/Gas).
+                          // This is intentionally "fire-and-forget", but we log everything so we can diagnose failures.
+                          const ciContractApi: Record<string, string> = {
+                            "C&I Electricity": "https://aces-invoice-api-672026052958.australia-southeast2.run.app/v1/ci-electricity-contract/process-contract",
+                            "C&I Gas": "https://aces-invoice-api-672026052958.australia-southeast2.run.app/v1/ci-gas-contract/process-contract",
+                          };
+
+                          const contractKey = driveModalContractKey;
+                          console.log("[Signed Contract Upload] driveModalContractKey:", contractKey);
+                          console.log("[Signed Contract Upload] driveModalFilingType:", driveModalFilingType);
+                          console.log("[Signed Contract Upload] backend drive-filing upload ok. Preparing contract API call. data.status:", data.status);
+                          console.log("[Signed Contract Upload] fileForContractApi:", fileForContractApi ? { name: fileForContractApi.name, type: fileForContractApi.type, size: fileForContractApi.size } : null);
+
+                          if (!contractKey || !ciContractApi[contractKey]) {
+                            console.log("[C&I Contract API] Skipped: contractKey not C&I Electricity/Gas or missing.", { contractKey, hasUrl: !!(contractKey && ciContractApi[contractKey]) });
+                          } else if (!fileForContractApi) {
+                            console.error("[C&I Contract API] Skipped: no fileForContractApi available.", { contractKey });
+                          } else if (!fileForContractApi.name.toLowerCase().endsWith(".pdf")) {
+                            console.error("[C&I Contract API] Skipped: file is not a PDF.", { contractKey, fileName: fileForContractApi.name });
+                          } else {
+                            const url = ciContractApi[contractKey];
+                            console.log("[C&I Contract API] Calling:", { contractKey, url, fileName: fileForContractApi.name });
+                            const fd = new FormData();
+                            fd.append("file", fileForContractApi);
+                            fetch(url, { method: "POST", body: fd })
+                              .then(async (contractRes) => {
+                                const text = await contractRes.text().catch(() => "");
+                                let body: unknown = null;
+                                try {
+                                  body = text ? JSON.parse(text) : null;
+                                } catch {
+                                  body = text || null;
+                                }
+                                console.log("[C&I Contract API] Response:", {
+                                  contractKey,
+                                  url,
+                                  status: contractRes.status,
+                                  statusText: contractRes.statusText,
+                                  body,
+                                });
+                              })
+                              .catch((err) => {
+                                console.error("[C&I Contract API] Error calling:", { contractKey, url, err });
+                              });
+                          }
                           
                           // Store the file in sessionStorage for potential lodgement transfer
                               // Only do this for signed contracts
                               if (driveModalFilingType.startsWith('signed_') && filesToUpload.length > 0) {
-                                const fileToStore = filesToUpload[0]; // Store the first file
+                                const fileToStore = fileForContractApi ?? filesToUpload[0]; // Prefer combined file if we merged
                                 try {
                                   const reader = new FileReader();
                                   reader.onloadend = () => {
