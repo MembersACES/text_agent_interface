@@ -1,6 +1,5 @@
 import { cn } from "@/lib/utils";
 import { useTheme } from "next-themes";
-import { useEffect, useState } from "react";
 import { Moon, Sun } from "./icons";
 
 const THEMES = [
@@ -15,24 +14,18 @@ const THEMES = [
 ];
 
 export function ThemeToggleSwitch() {
-  const { setTheme, theme } = useTheme();
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  if (!mounted) {
+  const { setTheme, resolvedTheme } = useTheme();
+  if (!resolvedTheme) {
     return null;
   }
 
   return (
     <button
-      onClick={() => setTheme(theme === "light" ? "dark" : "light")}
+      onClick={() => setTheme(resolvedTheme === "light" ? "dark" : "light")}
       className="group rounded-full bg-gray-3 p-[5px] text-[#111928] outline-1 outline-primary focus-visible:outline dark:bg-[#020D1A] dark:text-current"
     >
       <span className="sr-only">
-        Switch to {theme === "light" ? "dark" : "light"} mode
+        Switch to {resolvedTheme === "light" ? "dark" : "light"} mode
       </span>
 
       <span aria-hidden className="relative flex gap-2.5">

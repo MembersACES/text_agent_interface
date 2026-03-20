@@ -20,7 +20,19 @@ function isNavGroup(item: NavLinkItem | NavGroupItem): item is NavGroupItem {
 export function Sidebar() {
   const pathname = usePathname();
   const { setIsOpen, isOpen, isMobile, toggleSidebar, isCollapsed } = useSidebarContext();
-  const [sectionOpen, setSectionOpen] = useState<Record<string, boolean>>({});
+  const [sectionOpen, setSectionOpen] = useState<Record<string, boolean>>(() => {
+    if (typeof window === "undefined") return {};
+    const initial: Record<string, boolean> = {};
+    NAV_DATA.forEach((section) => {
+      try {
+        const stored = localStorage.getItem(SECTION_COLLAPSED_KEY_PREFIX + section.label);
+        initial[section.label] = stored !== "false";
+      } catch {
+        initial[section.label] = true;
+      }
+    });
+    return initial;
+  });
 
   const setSectionExpanded = useCallback((label: string, open: boolean) => {
     setSectionOpen((prev) => ({ ...prev, [label]: open }));
@@ -31,20 +43,6 @@ export function Sidebar() {
         // ignore
       }
     }
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const initial: Record<string, boolean> = {};
-    NAV_DATA.forEach((section) => {
-      try {
-        const stored = localStorage.getItem(SECTION_COLLAPSED_KEY_PREFIX + section.label);
-        initial[section.label] = stored !== "false";
-      } catch {
-        initial[section.label] = true;
-      }
-    });
-    setSectionOpen((prev) => ({ ...initial, ...prev }));
   }, []);
 
   const isSectionOpen = useCallback((label: string) => sectionOpen[label] !== false, [sectionOpen]);

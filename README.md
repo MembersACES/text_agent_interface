@@ -109,6 +109,9 @@ NEXTAUTH_URL="http://localhost:8080"
 
 # API Configuration
 NEXT_PUBLIC_API_BASE_URL="http://localhost:8000"
+
+# Optional: autonomous sequences on a separate service (same /api/autonomous paths)
+# NEXT_PUBLIC_AUTONOMOUS_API_BASE_URL="http://localhost:8001"
 ```
 
 **Step 3: Run the Frontend Development Server**

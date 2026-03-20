@@ -14,6 +14,8 @@ export const OFFER_STATUSES = [
   "requested",
   "awaiting_response",
   "response_received",
+  "autonomous_agent_trigger",
+  "autonomous_agent_stopped",
   "accepted",
   "lost",
 ] as const;
@@ -24,9 +26,15 @@ export const OFFER_STATUS_LABELS: Record<OfferStatus, string> = {
   requested: "Requested",
   awaiting_response: "Awaiting Response",
   response_received: "Response Received",
+  autonomous_agent_trigger: "Autonomous Agent Trigger",
+  autonomous_agent_stopped: "Autonomous Agent Stopped",
   accepted: "Accepted",
   lost: "Lost",
 };
+
+/** Offer statuses used on the Autonomous Agent workspace (Running vs Stopped tabs). */
+export const AUTONOMOUS_AGENT_RUNNING_STATUS = "autonomous_agent_trigger" as const;
+export const AUTONOMOUS_AGENT_STOPPED_STATUS = "autonomous_agent_stopped" as const;
 
 export const OFFER_PIPELINE_STAGES = [
   "comparison_sent",

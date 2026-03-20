@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { getApiBaseUrl } from "@/lib/utils";
+import { getApiBaseUrl, getAutonomousApiBaseUrl } from "@/lib/utils";
 import { PageHeader } from "@/components/Layouts/PageHeader";
 
 interface BusinessInfo {
@@ -137,6 +137,10 @@ interface GenerateResultModalState {
   results: GenerateResultItem[];
   errors: string[];
 }
+
+/** Backend autonomous sequence types (Base 2 comparison success). */
+const AUTONOMOUS_SEQUENCE_CI_GAS = 'gas_base2_followup_v1';
+const AUTONOMOUS_SEQUENCE_CI_ELECTRICITY = 'ci_electricity_base2_followup_v1';
 
 export default function Base2Page() {
   const { data: session } = useSession();
@@ -1442,6 +1446,7 @@ export default function Base2Page() {
               if (util.utilityType === 'Cleaning') return 'cleaning';
               return null;
             };
+            const activityIdByLane: Partial<Record<'ci_gas' | 'ci_electricity', number>> = {};
             for (const { util, result } of successResults) {
               const slug = comparisonTypeSlug(util, action === 'dma');
               if (slug) {
@@ -1493,9 +1498,84 @@ export default function Base2Page() {
                   headers,
                   body: JSON.stringify(activityPayload),
                 });
-                if (!activityRes.ok) {
+                if (activityRes.ok) {
+                  try {
+                    const act = (await activityRes.json()) as { id?: number };
+                    if (typeof act.id === 'number') {
+                      if (slug === 'gas') activityIdByLane.ci_gas = act.id;
+                      if (slug === 'electricity_ci') activityIdByLane.ci_electricity = act.id;
+                    }
+                  } catch {
+                    /* ignore */
+                  }
+                } else {
                   const errBody = await activityRes.text();
                   console.warn('[Base2 offer activity] Backend responded with error', activityRes.status, errBody);
+                }
+              }
+            }
+
+            // Autonomous follow-up: only after comparison success (not DMA-only). C&I gas has comparison only; C&I electricity follows after comparison so DMA+comparison workflow still ends on comparison for outreach.
+            if (action === 'comparison') {
+              const lanes = new Set<'ci_gas' | 'ci_electricity'>();
+              for (const { util } of successResults) {
+                if (util.utilityType === 'C&I Gas') lanes.add('ci_gas');
+                if (util.utilityType === 'C&I Electricity') lanes.add('ci_electricity');
+              }
+              if (lanes.size > 0) {
+                const anchorIso = new Date().toISOString();
+                const tz =
+                  typeof Intl !== 'undefined'
+                    ? Intl.DateTimeFormat().resolvedOptions().timeZone || 'Australia/Melbourne'
+                    : 'Australia/Melbourne';
+                const ctxBase = {
+                  base2_trigger: 'comparison_success',
+                  business_name: businessName || businessInfo?.name,
+                  contact_email: businessInfo?.email,
+                  contact_phone: businessInfo?.telephone,
+                  contact_name: businessInfo?.contact_name,
+                };
+                for (const lane of lanes) {
+                  const sequence_type =
+                    lane === 'ci_gas' ? AUTONOMOUS_SEQUENCE_CI_GAS : AUTONOMOUS_SEQUENCE_CI_ELECTRICITY;
+                  const identifiers = successResults
+                    .filter(({ util }) =>
+                      lane === 'ci_gas'
+                        ? util.utilityType === 'C&I Gas'
+                        : util.utilityType === 'C&I Electricity',
+                    )
+                    .map(({ util }) => util.identifier);
+                  try {
+                    const startRes = await fetch(
+                      `${getAutonomousApiBaseUrl()}/api/autonomous/sequences/start`,
+                      {
+                        method: 'POST',
+                        headers,
+                        body: JSON.stringify({
+                          sequence_type,
+                          offer_id: offerIdToUse,
+                          client_id: hasValidClientId ? clientIdFromUrl! : undefined,
+                          crm_activity_id: activityIdByLane[lane],
+                          anchor_at: anchorIso,
+                          timezone: tz,
+                          context: {
+                            ...ctxBase,
+                            utility_lane: lane,
+                            site_identifiers: identifiers,
+                          },
+                        }),
+                      },
+                    );
+                    if (!startRes.ok) {
+                      const errTxt = await startRes.text();
+                      console.warn('[Base2 autonomous] start failed', startRes.status, errTxt);
+                    } else {
+                      const started = await startRes.json().catch(() => ({}));
+                      console.log('[Base2 autonomous] sequence start', { lane, ...started });
+                    }
+                  } catch (autoErr) {
+                    console.warn('[Base2 autonomous] start error', autoErr);
+                  }
                 }
               }
             }

@@ -35,6 +35,22 @@ export function getApiBaseUrl(requestHost?: string): string {
     : "https://text-agent-backend-672026052958.australia-southeast2.run.app";
 }
 
+/**
+ * Base URL for autonomous sequence API (`/api/autonomous/*`).
+ * When unset, uses the main CRM API (monolith). Set `NEXT_PUBLIC_AUTONOMOUS_API_BASE_URL`
+ * when sequences run on a dedicated service (same path prefix).
+ */
+export function getAutonomousApiBaseUrl(requestHost?: string): string {
+  const trim = (u: string) => u.replace(/\/$/, "");
+  const publicUrl = process.env.NEXT_PUBLIC_AUTONOMOUS_API_BASE_URL?.trim();
+  if (publicUrl) return trim(publicUrl);
+  if (typeof window === "undefined") {
+    const serverOnly = process.env.AUTONOMOUS_API_URL?.trim();
+    if (serverOnly) return trim(serverOnly);
+  }
+  return getApiBaseUrl(requestHost);
+}
+
 export function getCanvaApiBaseUrl() {
   return process.env.NODE_ENV === "development"
     ? "http://localhost:3000"

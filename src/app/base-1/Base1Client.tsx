@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useEffect, useState } from "react";
+import React, { useMemo, useEffect, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import UtilityBillReviewForm from "./UtilityBillReviewForm";
 import { Card, CardContent } from "@/components/ui/card";
@@ -72,34 +72,7 @@ export default function Base1Client({
     }
   }, [base1Url]);
 
-  useEffect(() => {
-    if (mode !== "choice" || !token) return;
-    setLandingError(null);
-    setLoadingLanding(true);
-    fetch("/api/base1-landing-responses", { credentials: "include" })
-      .then((res) => {
-        if (!res.ok) {
-          if (res.status === 401) setLandingError("Please sign in to view Base 1 runs.");
-          else if (res.status === 502) setLandingError("Backend unavailable. Deploy text_agent_backend with the latest code (GET /api/base1-landing-responses) and ensure it is running.");
-          else setLandingError("Couldn't load Base 1 runs. Try again.");
-          return { rows: [] };
-        }
-        return res.json();
-      })
-      .then((data) => {
-        if (Array.isArray(data?.rows)) setLandingRows(data.rows);
-        else setLandingRows([]);
-      })
-      .catch(() => {
-        setLandingError(
-          "Couldn't load Base 1 runs. Check your connection and that the backend is running."
-        );
-        setLandingRows([]);
-      })
-      .finally(() => setLoadingLanding(false));
-  }, [mode, token]);
-
-  function retryLandingFetch() {
+  const retryLandingFetch = useCallback(() => {
     if (!token) return;
     setLandingError(null);
     setLoadingLanding(true);
@@ -124,7 +97,14 @@ export default function Base1Client({
         setLandingRows([]);
       })
       .finally(() => setLoadingLanding(false));
-  }
+  }, [token]);
+
+  useEffect(() => {
+    if (mode !== "choice" || !token) return;
+    Promise.resolve().then(() => {
+      retryLandingFetch();
+    });
+  }, [mode, token, retryLandingFetch]);
 
   if (mode === "form") {
     return (
