@@ -1477,6 +1477,23 @@ export default function Base2Page() {
                 if (normNew != null) {
                   metadata.new_cost = normNew;
                 }
+                // Additional Base 2 comparison offer metrics (persisted to CRM offer)
+                const normAnnualUsage = normalizeMoneyToNumber((result as any).annual_usage_gj);
+                if (normAnnualUsage != null) {
+                  metadata.annual_usage_gj = normAnnualUsage;
+                }
+                const normEnergyChargePct = normalizeMoneyToNumber((result as any).energy_charge_pct);
+                if (normEnergyChargePct != null) {
+                  metadata.energy_charge_pct = normEnergyChargePct;
+                }
+                const normContractedRate = normalizeMoneyToNumber((result as any).contracted_rate);
+                if (normContractedRate != null) {
+                  metadata.contracted_rate = normContractedRate;
+                }
+                const normOfferRate = normalizeMoneyToNumber((result as any).offer_rate);
+                if (normOfferRate != null) {
+                  metadata.offer_rate = normOfferRate;
+                }
                 const activityPayload = {
                   activity_type: action === 'dma' ? 'dma_review_generated' : 'comparison',
                   document_link: normalizeDocumentLink(comparisonDocLink) ?? undefined,

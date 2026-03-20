@@ -79,6 +79,34 @@ export function OffersTab({
                       )}
                     </p>
                   )}
+                  {(o.annual_usage_gj != null || o.energy_charge_pct != null || o.contracted_rate != null || o.offer_rate != null) && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                      {(() => {
+                        const parts: string[] = [];
+                        if (o.annual_usage_gj != null) {
+                          parts.push(
+                            `Annual usage: ${Number(o.annual_usage_gj).toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} GJ`,
+                          );
+                        }
+                        if (o.energy_charge_pct != null) {
+                          parts.push(
+                            `Energy charge: ${Number(o.energy_charge_pct).toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`,
+                          );
+                        }
+                        if (o.contracted_rate != null) {
+                          parts.push(
+                            `Contracted rate: $${Number(o.contracted_rate).toLocaleString("en-AU", { minimumFractionDigits: 4, maximumFractionDigits: 4 })}`,
+                          );
+                        }
+                        if (o.offer_rate != null) {
+                          parts.push(
+                            `Offer rate: $${Number(o.offer_rate).toLocaleString("en-AU", { minimumFractionDigits: 4, maximumFractionDigits: 4 })}`,
+                          );
+                        }
+                        return parts.join(" · ");
+                      })()}
+                    </p>
+                  )}
                 </div>
                 <div className="text-right text-xs whitespace-nowrap">
                   <OfferStatusBadge status={o.status} />

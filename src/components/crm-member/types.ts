@@ -55,6 +55,10 @@ export interface Offer {
   annual_savings?: number | null;
   current_cost?: number | null;
   new_cost?: number | null;
+  annual_usage_gj?: number | null;
+  energy_charge_pct?: number | null;
+  contracted_rate?: number | null;
+  offer_rate?: number | null;
   created_at: string;
   updated_at?: string | null;
 }

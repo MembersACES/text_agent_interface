@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { getAutonomousApiBaseUrl } from "@/lib/utils";
+import { getAutonomousApiBaseUrl, getApiBaseUrl } from "@/lib/utils";
 import { PageHeader } from "@/components/Layouts/PageHeader";
 import { useToast } from "@/components/ui/toast";
 
@@ -37,6 +37,19 @@ interface RunDetail {
   steps: StepRow[];
 }
 
+interface Offer {
+  id: number;
+  annual_savings?: number | null;
+  current_cost?: number | null;
+  new_cost?: number | null;
+  annual_usage_gj?: number | null;
+  energy_charge_pct?: number | null;
+  contracted_rate?: number | null;
+  offer_rate?: number | null;
+  utility_display?: string | null;
+  identifier?: string | null;
+}
+
 function formatDt(iso: string | null) {
   if (!iso) return "—";
   try {
@@ -58,6 +71,11 @@ function strField(ctx: Record<string, unknown>, key: string): string {
   return String(v);
 }
 
+function formatMoney(v: number | null | undefined, digits = 2): string {
+  if (v == null || !Number.isFinite(Number(v))) return "—";
+  return `$${Number(v).toLocaleString("en-AU", { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
+}
+
 export default function AutonomousRunDetailPage() {
   const params = useParams();
   const runId = params?.runId as string;
@@ -68,6 +86,7 @@ export default function AutonomousRunDetailPage() {
   const [run, setRun] = useState<RunDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [offer, setOffer] = useState<Offer | null>(null);
 
   const [contactName, setContactName] = useState("");
   const [businessNameCtx, setBusinessNameCtx] = useState("");
@@ -138,6 +157,29 @@ export default function AutonomousRunDetailPage() {
       cancelled = true;
     };
   }, [token, runId, loadRun]);
+
+  useEffect(() => {
+    if (!token || !run?.offer_id) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const base = getApiBaseUrl();
+        const headers = {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        };
+        const res = await fetch(`${base}/api/offers/${run.offer_id}`, { headers });
+        if (!res.ok) return;
+        const data = (await res.json()) as Offer;
+        if (!cancelled) setOffer(data);
+      } catch {
+        // Non-blocking: run detail page can still work without offer metrics.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [token, run?.offer_id]);
 
   const applyContextFromRun = (data: RunDetail) => {
     setRun(data);
@@ -383,6 +425,78 @@ export default function AutonomousRunDetailPage() {
                 {savingContext ? "Saving…" : "Save context"}
               </button>
             </div>
+
+            {offer ? (
+              <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm p-4 mb-6">
+                <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">
+                  Offer metrics (Base 2)
+                </h2>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {offer.annual_savings != null && (
+                    <div className="text-xs text-gray-600 dark:text-gray-300">
+                      Annual savings:{" "}
+                      <span className="font-medium text-gray-900 dark:text-gray-100">
+                        {formatMoney(offer.annual_savings)}
+                      </span>
+                    </div>
+                  )}
+                  {offer.annual_usage_gj != null && (
+                    <div className="text-xs text-gray-600 dark:text-gray-300">
+                      Annual usage:{" "}
+                      <span className="font-medium text-gray-900 dark:text-gray-100">
+                        {Number(offer.annual_usage_gj).toLocaleString("en-AU", {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}{" "}
+                        GJ/yr
+                      </span>
+                    </div>
+                  )}
+                  {offer.energy_charge_pct != null && (
+                    <div className="text-xs text-gray-600 dark:text-gray-300">
+                      Energy charge:{" "}
+                      <span className="font-medium text-gray-900 dark:text-gray-100">
+                        {Number(offer.energy_charge_pct).toLocaleString("en-AU", {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}%
+                      </span>
+                    </div>
+                  )}
+                  {offer.contracted_rate != null && (
+                    <div className="text-xs text-gray-600 dark:text-gray-300">
+                      Contracted rate:{" "}
+                      <span className="font-medium text-gray-900 dark:text-gray-100">
+                        ${Number(offer.contracted_rate).toLocaleString("en-AU", {
+                          minimumFractionDigits: 4,
+                          maximumFractionDigits: 4,
+                        })}
+                      </span>
+                    </div>
+                  )}
+                  {offer.offer_rate != null && (
+                    <div className="text-xs text-gray-600 dark:text-gray-300">
+                      Offer rate:{" "}
+                      <span className="font-medium text-gray-900 dark:text-gray-100">
+                        ${Number(offer.offer_rate).toLocaleString("en-AU", {
+                          minimumFractionDigits: 4,
+                          maximumFractionDigits: 4,
+                        })}
+                      </span>
+                    </div>
+                  )}
+                  {(offer.current_cost != null || offer.new_cost != null) && (
+                    <div className="text-xs text-gray-600 dark:text-gray-300 sm:col-span-2">
+                      Costs:{" "}
+                      <span className="font-medium text-gray-900 dark:text-gray-100">
+                        {offer.current_cost != null ? formatMoney(offer.current_cost) : "—"}{" "}
+                        → {offer.new_cost != null ? formatMoney(offer.new_cost) : "—"}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : null}
 
             <div className="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-900 shadow-sm">
               <div className="overflow-x-auto">
