@@ -1,12 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import dayjs from "dayjs";
+import utc from "dayjs/plugin/utc";
+import timezone from "dayjs/plugin/timezone";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { getAutonomousApiBaseUrl, getApiBaseUrl } from "@/lib/utils";
 import { PageHeader } from "@/components/Layouts/PageHeader";
 import { useToast } from "@/components/ui/toast";
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
 
 interface StepRow {
   id: number;
@@ -133,6 +139,124 @@ function MetricTile({ label, value }: { label: string; value: string }) {
 const inputCls =
   "mt-1 w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition";
 
+const scheduleInputCls =
+  "rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950 px-2 py-1 text-xs text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary/25 focus:border-primary min-w-[11rem] max-w-full";
+
+function isScheduleEditable(stepStatus: string): boolean {
+  const s = stepStatus.toLowerCase();
+  return s === "ready" || s === "to_start";
+}
+
+/** ISO instant from API → datetime-local value in the run's timezone */
+function scheduledToScheduleInput(iso: string | null, tz: string): string {
+  if (!iso) return "";
+  return dayjs(iso).tz(tz).format("YYYY-MM-DDTHH:mm");
+}
+
+/** datetime-local (wall clock in run TZ) → UTC ISO for the API */
+function scheduleInputToIso(local: string, tz: string): string {
+  const d = dayjs.tz(local, "YYYY-MM-DDTHH:mm", tz);
+  if (!d.isValid()) throw new Error("Invalid date");
+  return d.utc().toISOString();
+}
+
+/** Milliseconds for cascade: current draft if valid, else server `scheduled_at`. */
+function effectiveStepMs(st: StepRow, prevDraft: string | undefined, tz: string): number | null {
+  const d = prevDraft?.trim();
+  if (d) {
+    const t = dayjs.tz(d, "YYYY-MM-DDTHH:mm", tz);
+    if (t.isValid()) return t.valueOf();
+  }
+  return st.scheduled_at ? dayjs(st.scheduled_at).valueOf() : null;
+}
+
+/** dayjs: 0 = Sun … 6 = Sat — align with backend “no weekend outreach”. */
+function isWeekendWall(t: dayjs.Dayjs): boolean {
+  const d = t.day();
+  return d === 0 || d === 6;
+}
+
+/** Same idea as Python `ensure_weekday`: roll calendar forward until Mon–Fri, keep clock time. */
+function snapForwardToBusinessDayWall(t: dayjs.Dayjs): dayjs.Dayjs {
+  let x = t;
+  while (isWeekendWall(x)) {
+    x = x.add(1, "day");
+  }
+  return x;
+}
+
+/**
+ * When the user edits step at `changedStepId`, set that time and shift every later *editable* step
+ * by the same millisecond gaps as between steps now (drafts if set, else server times).
+ * Then snaps each affected step to a weekday and keeps strict time order (business-day rules).
+ */
+function applySequentialCascadeToDrafts(
+  orderedSteps: StepRow[],
+  changedStepId: number,
+  newLocalValue: string,
+  tz: string,
+  prev: Record<number, string>,
+): Record<number, string> {
+  const ci = orderedSteps.findIndex((x) => x.id === changedStepId);
+  if (ci < 0) return { ...prev, [changedStepId]: newLocalValue };
+
+  const out = { ...prev };
+  if (!newLocalValue.trim()) {
+    out[changedStepId] = newLocalValue;
+    return out;
+  }
+
+  const anchor = dayjs.tz(newLocalValue, "YYYY-MM-DDTHH:mm", tz);
+  if (!anchor.isValid()) {
+    out[changedStepId] = newLocalValue;
+    return out;
+  }
+
+  const n = orderedSteps.length;
+  const origMs: (number | null)[] = orderedSteps.map((st) =>
+    effectiveStepMs(st, prev[st.id], tz),
+  );
+
+  const deltaMs: number[] = new Array(n).fill(0);
+  for (let j = 1; j < n; j++) {
+    const a = origMs[j - 1];
+    const b = origMs[j];
+    deltaMs[j] = a != null && b != null ? b - a : 0;
+  }
+
+  const newMs: number[] = new Array(n).fill(0);
+  newMs[ci] = anchor.valueOf();
+  for (let j = ci + 1; j < n; j++) {
+    newMs[j] = newMs[j - 1] + deltaMs[j];
+  }
+
+  for (let j = 0; j < ci; j++) {
+    newMs[j] = origMs[j] ?? newMs[ci];
+  }
+
+  for (let j = ci; j < n; j++) {
+    let t = dayjs(newMs[j]).tz(tz);
+    t = snapForwardToBusinessDayWall(t);
+    if (j > 0) {
+      const prevMs = newMs[j - 1];
+      let guard = 0;
+      while (t.valueOf() <= prevMs && guard < 21) {
+        t = t.add(1, "day");
+        t = snapForwardToBusinessDayWall(t);
+        guard++;
+      }
+    }
+    newMs[j] = t.valueOf();
+  }
+
+  for (let j = ci; j < n; j++) {
+    if (!isScheduleEditable(orderedSteps[j].step_status)) continue;
+    out[orderedSteps[j].id] = dayjs(newMs[j]).tz(tz).format("YYYY-MM-DDTHH:mm");
+  }
+
+  return out;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function AutonomousRunDetailPage() {
@@ -156,6 +280,8 @@ export default function AutonomousRunDetailPage() {
   const [siteIdentifiers, setSiteIdentifiers] = useState<string[]>([]);
   const [savingContext, setSavingContext] = useState(false);
   const [stopping, setStopping] = useState(false);
+  const [scheduleDrafts, setScheduleDrafts] = useState<Record<number, string>>({});
+  const [savingSchedules, setSavingSchedules] = useState(false);
 
   const loadRun = useCallback(async () => {
     if (!token || !runId) return;
@@ -215,6 +341,37 @@ export default function AutonomousRunDetailPage() {
     })();
     return () => { cancelled = true; };
   }, [token, run?.offer_id]);
+
+  const stepScheduleFingerprint = useMemo(() => {
+    if (!run) return "";
+    return run.steps.map((s) => `${s.id}:${s.scheduled_at ?? ""}:${s.step_status}`).join("|");
+  }, [run]);
+
+  useEffect(() => {
+    if (!run) {
+      setScheduleDrafts({});
+      return;
+    }
+    const next: Record<number, string> = {};
+    for (const s of run.steps) {
+      if (isScheduleEditable(s.step_status)) {
+        next[s.id] = scheduledToScheduleInput(s.scheduled_at, run.timezone);
+      }
+    }
+    setScheduleDrafts(next);
+  }, [run?.id, run?.timezone, stepScheduleFingerprint]);
+
+  const hasScheduleChanges = useMemo(() => {
+    if (!run) return false;
+    for (const s of run.steps) {
+      if (!isScheduleEditable(s.step_status)) continue;
+      const draft = scheduleDrafts[s.id];
+      if (draft === undefined) continue;
+      const orig = scheduledToScheduleInput(s.scheduled_at, run.timezone);
+      if (draft !== orig) return true;
+    }
+    return false;
+  }, [run, scheduleDrafts]);
 
   const applyContextFromRun = (data: RunDetail) => {
     setRun(data);
@@ -283,8 +440,57 @@ export default function AutonomousRunDetailPage() {
     } finally { setStopping(false); }
   };
 
+  const handleSaveSchedules = async () => {
+    if (!token || !runId || !run) return;
+    const updates: { step_id: number; scheduled_at: string }[] = [];
+    for (const s of run.steps) {
+      if (!isScheduleEditable(s.step_status)) continue;
+      const raw = scheduleDrafts[s.id];
+      if (raw === undefined) continue;
+      const orig = scheduledToScheduleInput(s.scheduled_at, run.timezone);
+      if (raw === orig) continue;
+      if (!raw.trim()) {
+        showToast("Each updated step needs a scheduled date and time.", "error");
+        return;
+      }
+      try {
+        updates.push({ step_id: s.id, scheduled_at: scheduleInputToIso(raw, run.timezone) });
+      } catch {
+        showToast("Invalid date or time for one or more steps.", "error");
+        return;
+      }
+    }
+    if (updates.length === 0) return;
+    setSavingSchedules(true);
+    try {
+      const res = await fetch(
+        `${getAutonomousApiBaseUrl()}/api/autonomous/sequences/runs/${runId}/steps/schedule`,
+        {
+          method: "PATCH",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ updates }),
+        },
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(typeof data.detail === "string" ? data.detail : "Schedule update failed");
+      }
+      applyContextFromRun((await res.json()) as RunDetail);
+      showToast("Step schedules saved.", "success");
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : "Schedule update failed", "error");
+    } finally {
+      setSavingSchedules(false);
+    }
+  };
+
   const isRunning = run?.run_status === "running";
   const base2Trigger = run ? strField(run.context, "base2_trigger") : "";
+
+  const orderedSteps = useMemo((): StepRow[] => {
+    if (!run) return [];
+    return [...run.steps].sort((a, b) => a.step_index - b.step_index);
+  }, [run]);
 
   // Progress bar calc
   const stepsTotal = run?.steps.length ?? 0;
@@ -502,22 +708,67 @@ export default function AutonomousRunDetailPage() {
 
                 {/* Sequence steps */}
                 <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm overflow-hidden">
-                  <div className="px-4 py-3 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
-                    <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">Sequence steps</span>
-                    <span className="text-xs text-gray-400">{run.steps.length} steps · {Math.max(...run.steps.map(s => s.day_number), 0)} days</span>
+                  <div className="px-4 py-3 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800 flex flex-wrap items-center gap-2 justify-between">
+                    <div className="flex flex-col gap-0.5 min-w-0">
+                      <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">Sequence steps</span>
+                      <span className="text-[11px] text-gray-400 dark:text-gray-500">
+                        Times use {run.timezone}. Editing a step shifts later pending steps by the same gaps, then snaps to
+                        weekdays (Sat/Sun roll to Mon) and keeps order — same idea as automatic planning.
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-xs text-gray-400">{run.steps.length} steps · {Math.max(...run.steps.map(s => s.day_number), 0)} days</span>
+                      <button
+                        type="button"
+                        onClick={handleSaveSchedules}
+                        disabled={savingSchedules || !hasScheduleChanges}
+                        className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold bg-primary text-white hover:bg-primary/90 disabled:opacity-50 transition shadow-sm"
+                      >
+                        {savingSchedules ? (
+                          <><span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />Saving…</>
+                        ) : (
+                          "Save schedules"
+                        )}
+                      </button>
+                    </div>
                   </div>
                   <div className="divide-y divide-gray-100 dark:divide-gray-800">
-                    {run.steps.map((s) => (
-                      <div key={s.id} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
-                        <span className="shrink-0 inline-flex h-6 w-6 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 text-xs font-bold text-gray-500">{s.day_number}</span>
-                        <span className="shrink-0 text-base leading-none"><ChannelIcon channel={s.channel} /></span>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-700 dark:text-gray-300 capitalize">{s.channel.replace(/_/g, " ")}</p>
-                          <p className="text-xs text-gray-400 mt-0.5 truncate">{formatDt(s.scheduled_at)}</p>
+                    {orderedSteps.map((s) => {
+                      const editable = isScheduleEditable(s.step_status);
+                      return (
+                        <div key={s.id} className="flex flex-wrap items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
+                          <span className="shrink-0 inline-flex h-6 w-6 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 text-xs font-bold text-gray-500">{s.day_number}</span>
+                          <span className="shrink-0 text-base leading-none"><ChannelIcon channel={s.channel} /></span>
+                          <div className="flex-1 min-w-[8rem]">
+                            <p className="text-sm font-medium text-gray-700 dark:text-gray-300 capitalize">{s.channel.replace(/_/g, " ")}</p>
+                            {editable ? (
+                              <label className="mt-1 block text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                                Scheduled (local to timezone above)
+                                <input
+                                  type="datetime-local"
+                                  value={scheduleDrafts[s.id] ?? ""}
+                                  onChange={(e) =>
+                                    setScheduleDrafts((prev) =>
+                                      applySequentialCascadeToDrafts(
+                                        orderedSteps,
+                                        s.id,
+                                        e.target.value,
+                                        run.timezone,
+                                        prev,
+                                      ),
+                                    )
+                                  }
+                                  className={`${scheduleInputCls} mt-0.5 block w-full max-w-xs`}
+                                />
+                              </label>
+                            ) : (
+                              <p className="text-xs text-gray-400 mt-0.5">{formatDt(s.scheduled_at)}</p>
+                            )}
+                          </div>
+                          <StepStatusPill status={s.step_status} />
                         </div>
-                        <StepStatusPill status={s.step_status} />
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
 
