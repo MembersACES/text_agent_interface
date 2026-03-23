@@ -56,6 +56,10 @@ interface UtilityComparison {
   cleaningUsage?: number;
   demandQuantity?: number;
   estimatedAnnualUsage?: number; // For SME Gas: (usage / days * 365)
+  /** C&I Gas: invoice period length (days), from invoice — used with annual override */
+  ciGasInvoiceReviewDays?: number;
+  /** C&I Gas: optional user-entered annual consumption (GJ/year); bill usage = (this/365)*invoice days */
+  ciGasAnnualConsumptionGJ?: number;
   // Frequency/other
   oilFrequency?: string;
   wasteFrequency?: string;
@@ -88,7 +92,31 @@ interface UtilityComparison {
     demandSavings?: number;
     totalAnnualSavings?: number;
     totalAnnualSavingsPercent?: number;
+    /** C&I Gas with annual override: annual $ savings from usage (else UI uses usageSavings * 12) */
+    gasUsageSavingsAnnual?: number;
   };
+}
+
+/** Bill-period GJ from stated annual and invoice days: (GJ/yr / 365) * days */
+function ciGasBillPeriodUsageFromAnnual(
+  annualGJ: number | undefined,
+  invoiceDays: number | undefined
+): number | undefined {
+  if (annualGJ == null || annualGJ <= 0 || invoiceDays == null || invoiceDays <= 0) return undefined;
+  return (annualGJ / 365) * invoiceDays;
+}
+
+/** Usage (GJ) for C&I Gas comparisons: derived from annual when set, else invoice gasUsage */
+function getCiGasEffectiveUsageGJ(comparison: UtilityComparison): number {
+  if (comparison.utilityType !== "C&I Gas") {
+    return comparison.gasUsage || comparison.monthlyUsage || 0;
+  }
+  const derived = ciGasBillPeriodUsageFromAnnual(
+    comparison.ciGasAnnualConsumptionGJ,
+    comparison.ciGasInvoiceReviewDays
+  );
+  if (derived != null && derived > 0) return derived;
+  return comparison.gasUsage || comparison.monthlyUsage || 0;
 }
 
 /** Normalize document link before sending to API: strip leading =, fix https:/ → https://. */
@@ -138,6 +166,34 @@ interface GenerateResultModalState {
   errors: string[];
 }
 
+/** Modal: confirm/edit client contact before n8n webhook */
+interface RecipientConfirmModalState {
+  open: boolean;
+  comparison: UtilityComparison | null;
+  action: "comparison" | "dma";
+  generateAll: boolean;
+  contactName: string;
+  contactEmail: string;
+}
+
+function defaultWebhookRecipient(
+  businessInfo: BusinessInfo | null,
+  businessInfoData: unknown
+): { contactName: string; contactEmail: string } {
+  const d = businessInfoData && typeof businessInfoData === "object" ? (businessInfoData as Record<string, unknown>) : {};
+  const name =
+    businessInfo?.contact_name ||
+    (typeof d.contact_name === "string" ? d.contact_name : "") ||
+    (typeof d.contactName === "string" ? d.contactName : "") ||
+    "";
+  const email =
+    businessInfo?.email ||
+    (typeof d.email === "string" ? d.email : "") ||
+    (typeof d.contact_email === "string" ? d.contact_email : "") ||
+    "";
+  return { contactName: name, contactEmail: email };
+}
+
 /** Backend autonomous sequence types (Base 2 comparison success). */
 const AUTONOMOUS_SEQUENCE_CI_GAS = 'gas_base2_followup_v1';
 const AUTONOMOUS_SEQUENCE_CI_ELECTRICITY = 'ci_electricity_base2_followup_v1';
@@ -173,6 +229,14 @@ export default function Base2Page() {
     actionName: '',
     results: [],
     errors: [],
+  });
+  const [recipientConfirmModal, setRecipientConfirmModal] = useState<RecipientConfirmModalState>({
+    open: false,
+    comparison: null,
+    action: "comparison",
+    generateAll: false,
+    contactName: "",
+    contactEmail: "",
   });
 
   const token = (session as any)?.id_token;
@@ -373,9 +437,22 @@ export default function Base2Page() {
       } else {
         // C&I Gas extraction (existing logic)
         console.log('Gas extraction - Full invoiceData keys:', Object.keys(invoiceData || {}));
-        
-        const details = invoiceData?.gas_ci_invoice_details || invoiceData?.gas_invoice_details || {};
-        const fullData = details?.full_invoice_data || invoiceData?.full_invoice_data || invoiceData || {};
+
+        // n8n may nest rows under gas_ci_invoice_details and/or gas_invoice_details; full_invoice_data
+        // (incl. Invoice Review Number of Days) is not always on the same object as scalars — merge both.
+        const gci = invoiceData?.gas_ci_invoice_details;
+        const ginv = invoiceData?.gas_invoice_details;
+        const details = { ...(typeof ginv === "object" && ginv ? ginv : {}), ...(typeof gci === "object" && gci ? gci : {}) };
+        const fullCi = typeof gci?.full_invoice_data === "object" && gci.full_invoice_data ? gci.full_invoice_data : {};
+        const fullInv = typeof ginv?.full_invoice_data === "object" && ginv.full_invoice_data ? ginv.full_invoice_data : {};
+        // Merge spreadsheet rows from both n8n shapes so days/quantities are not dropped when split across objects
+        const mergedFull = { ...fullInv, ...fullCi };
+        const fullData =
+          Object.keys(mergedFull).length > 0
+            ? mergedFull
+            : invoiceData?.full_invoice_data && typeof invoiceData.full_invoice_data === "object"
+              ? invoiceData.full_invoice_data
+              : invoiceData || {};
         
         // Extract gas usage/quantity - try all possible field names
         let gasQuantity = 0;
@@ -467,6 +544,16 @@ export default function Base2Page() {
         rates.comparisonDailySupply = rates.currentDailySupply && rates.currentDailySupply > 0
           ? parseFloat((rates.currentDailySupply * 0.95).toFixed(2)) 
           : 1.20;
+
+        const daysRaw =
+          fullData["Invoice Review Number of Days"] ??
+          details.invoice_review_days ??
+          fullData["invoice_review_days"] ??
+          details.invoice_period_days;
+        const ciInvoiceDays = parseFloat(String(daysRaw ?? "").replace(/[^\d.]/g, "") || "");
+        if (Number.isFinite(ciInvoiceDays) && ciInvoiceDays > 0) {
+          rates.ciGasInvoiceReviewDays = ciInvoiceDays;
+        }
       }
     } else if (utilityType === 'Oil') {
       // Extract oil rates - check oil_invoice_details structure
@@ -1000,34 +1087,45 @@ export default function Base2Page() {
       // Gas rate comparison - rate is in $/GJ, usage is in GJ
       const currentRate = comparison.currentGasRate || 0;
       const compRate = comparison.comparisonGasRate || 0;
-      const usage = comparison.gasUsage || comparison.monthlyUsage || 0;
-      
+      const usage = getCiGasEffectiveUsageGJ(comparison);
+      const annualOverride =
+        comparison.utilityType === "C&I Gas" &&
+        comparison.ciGasAnnualConsumptionGJ != null &&
+        comparison.ciGasAnnualConsumptionGJ > 0 &&
+        comparison.ciGasInvoiceReviewDays != null &&
+        comparison.ciGasInvoiceReviewDays > 0;
+
       if (currentRate > 0 && compRate > 0 && usage > 0) {
-        // Calculate monthly cost: usage (GJ) * rate ($/GJ)
+        // Per–invoice-period cost: usage (GJ for period) * rate ($/GJ)
         const currentMonthlyCost = usage * currentRate;
         const comparisonMonthlyCost = usage * compRate;
         savings.usageSavings = currentMonthlyCost - comparisonMonthlyCost;
         savings.usageSavingsPercent = currentMonthlyCost > 0 ? ((savings.usageSavings / currentMonthlyCost) * 100) : 0;
-        
+
+        if (annualOverride && comparison.ciGasAnnualConsumptionGJ != null) {
+          const annualGJ = comparison.ciGasAnnualConsumptionGJ;
+          savings.gasUsageSavingsAnnual = annualGJ * (currentRate - compRate);
+        }
+
         // Daily supply savings (annual)
         savings.supplySavings = 0;
         if (comparison.currentDailySupply && comparison.comparisonDailySupply) {
           savings.supplySavings = (comparison.currentDailySupply - comparison.comparisonDailySupply) * 365;
         }
-        
-        // Total annual savings = usage (monthly * 12) + supply
-        const totalCurrentAnnual = 
-          (currentMonthlyCost * 12) +
-          ((comparison.currentDailySupply || 0) * 365);
-        
-        const totalComparisonAnnual = 
-          (comparisonMonthlyCost * 12) +
-          ((comparison.comparisonDailySupply || 0) * 365);
-        
-        savings.totalAnnualSavings = (savings.usageSavings * 12) + savings.supplySavings;
-        savings.totalAnnualSavingsPercent = totalCurrentAnnual > 0 
-          ? ((savings.totalAnnualSavings / totalCurrentAnnual) * 100) 
-          : 0;
+
+        if (annualOverride && comparison.ciGasAnnualConsumptionGJ != null) {
+          const annualGJ = comparison.ciGasAnnualConsumptionGJ;
+          const totalCurrentAnnual = annualGJ * currentRate + (comparison.currentDailySupply || 0) * 365;
+          savings.totalAnnualSavings = annualGJ * (currentRate - compRate) + savings.supplySavings;
+          savings.totalAnnualSavingsPercent =
+            totalCurrentAnnual > 0 ? (savings.totalAnnualSavings / totalCurrentAnnual) * 100 : 0;
+        } else {
+          const totalCurrentAnnual =
+            currentMonthlyCost * 12 + (comparison.currentDailySupply || 0) * 365;
+          savings.totalAnnualSavings = savings.usageSavings * 12 + savings.supplySavings;
+          savings.totalAnnualSavingsPercent =
+            totalCurrentAnnual > 0 ? (savings.totalAnnualSavings / totalCurrentAnnual) * 100 : 0;
+        }
       }
     } else if (comparison.utilityType === 'Oil') {
       // Oil rate comparison - rate is in $/L, usage is in liters
@@ -1083,6 +1181,22 @@ export default function Base2Page() {
     return savings;
   };
 
+  const openRecipientConfirmModal = (
+    comparison: UtilityComparison,
+    action: "comparison" | "dma",
+    generateAll: boolean
+  ) => {
+    const { contactName, contactEmail } = defaultWebhookRecipient(businessInfo, businessInfoData);
+    setRecipientConfirmModal({
+      open: true,
+      comparison,
+      action,
+      generateAll,
+      contactName,
+      contactEmail,
+    });
+  };
+
   const handleGenerateClick = (comparison: UtilityComparison, action: 'comparison' | 'dma' = 'comparison') => {
     // Find all matching utilities (same type and action)
     const matchingUtilities = utilityComparisons.filter(
@@ -1090,8 +1204,7 @@ export default function Base2Page() {
     );
 
     if (matchingUtilities.length <= 1) {
-      // Only one utility, generate directly
-      generateComparison(comparison, action, false);
+      openRecipientConfirmModal(comparison, action, false);
       return;
     }
 
@@ -1108,13 +1221,21 @@ export default function Base2Page() {
     const { comparison, action } = generateChoiceModal;
     if (!comparison) return;
     setGenerateChoiceModal(prev => ({ ...prev, open: false }));
-    generateComparison(comparison, action, generateAll);
+    openRecipientConfirmModal(comparison, action, generateAll);
+  };
+
+  const handleRecipientConfirmSubmit = () => {
+    const { comparison, action, generateAll, contactName, contactEmail } = recipientConfirmModal;
+    if (!comparison) return;
+    setRecipientConfirmModal((prev) => ({ ...prev, open: false }));
+    generateComparison(comparison, action, generateAll, { contactName, contactEmail });
   };
 
   const generateComparison = async (
     comparison: UtilityComparison, 
     action: 'comparison' | 'dma' = 'comparison',
-    generateAll: boolean = false
+    generateAll: boolean = false,
+    webhookRecipient?: { contactName: string; contactEmail: string }
   ) => {
     if (!token || !session) {
       alert('Please log in to generate comparisons');
@@ -1173,6 +1294,10 @@ export default function Base2Page() {
           payload.contact_email = businessInfo.email || '';
           payload.contact_name = businessInfo.contact_name || '';
           payload.contact_position = businessInfo.position || '';
+        }
+        if (webhookRecipient) {
+          payload.contact_name = webhookRecipient.contactName;
+          payload.contact_email = webhookRecipient.contactEmail;
         }
 
         // Check DMA first (before general C&I Electricity check)
@@ -1245,7 +1370,7 @@ export default function Base2Page() {
           payload.comparison_demand_charge = util.comparisonDemandCharge?.toFixed(2) || '0';
           payload.demand_quantity = util.demandQuantity?.toFixed(2) || '0';
         } else if (util.utilityType === 'C&I Gas') {
-          webhookUrl = 'https://membersaces.app.n8n.cloud/webhook/generate-gas-ci-comparaison-b2';
+          webhookUrl = 'https://membersaces.app.n8n.cloud/webhook-test/generate-gas-ci-comparaison-b2';
           // Add gas-specific fields
           const details = util.invoiceData?.gas_ci_invoice_details || {};
           const fullData = details?.full_invoice_data || {};
@@ -1254,10 +1379,15 @@ export default function Base2Page() {
           payload.site_address = fullData['Site Address'] || details?.site_address || businessInfo?.site_address || '';
           payload.invoice_number = fullData['Invoice Number'] || details?.invoice_number || '';
           
-          // CURRENT RATES FROM INVOICE
+          // CURRENT RATES FROM INVOICE (C&I: usage = bill-period GJ; if annual override set, derived from annual × invoice days)
           payload.gas_rate_invoice = util.currentGasRate?.toFixed(4) || '0';
-          payload.gas_usage_invoice = util.gasUsage?.toFixed(2) || util.monthlyUsage?.toFixed(2) || '0';
-          payload.total_monthly_usage = util.gasUsage?.toFixed(2) || util.monthlyUsage?.toFixed(2) || '0';
+          const gasUsageForWebhook = getCiGasEffectiveUsageGJ(util);
+          const gasUsageStr =
+            gasUsageForWebhook > 0
+              ? gasUsageForWebhook.toFixed(2)
+              : util.gasUsage?.toFixed(2) || util.monthlyUsage?.toFixed(2) || '0';
+          payload.gas_usage_invoice = gasUsageStr;
+          payload.total_monthly_usage = gasUsageStr;
           
           // COMPARISON/OFFER RATES (from editable UI fields)
           payload.offer1GasRate = util.comparisonGasRate?.toFixed(4) || '0';
@@ -1548,9 +1678,9 @@ export default function Base2Page() {
                 const ctxBase = {
                   base2_trigger: 'comparison_success',
                   business_name: businessName || businessInfo?.name,
-                  contact_email: businessInfo?.email,
+                  contact_email: webhookRecipient?.contactEmail ?? businessInfo?.email,
                   contact_phone: businessInfo?.telephone,
-                  contact_name: businessInfo?.contact_name,
+                  contact_name: webhookRecipient?.contactName ?? businessInfo?.contact_name,
                 };
                 for (const lane of lanes) {
                   const sequence_type =
@@ -1993,6 +2123,57 @@ export default function Base2Page() {
               className="w-full px-1 py-0.5 border border-gray-300 rounded text-right text-xs"
               placeholder="Usage (GJ)"
             />
+            {comparison.utilityType === "C&I Gas" && (
+              <div className="mt-2 space-y-1 text-left">
+                <label className="block text-[10px] uppercase tracking-wide text-gray-500">
+                  Annual consumption (GJ/yr)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={comparison.ciGasAnnualConsumptionGJ ?? ""}
+                  onChange={(e) =>
+                    updateUsage(
+                      comparison.utilityType,
+                      comparison.identifier,
+                      "ciGasAnnualConsumptionGJ",
+                      e.target.value
+                    )
+                  }
+                  className="w-full px-1 py-0.5 border border-gray-300 rounded text-right text-xs"
+                  placeholder="Optional"
+                />
+                {(() => {
+                  const derived = ciGasBillPeriodUsageFromAnnual(
+                    comparison.ciGasAnnualConsumptionGJ,
+                    comparison.ciGasInvoiceReviewDays
+                  );
+                  if (derived != null && derived > 0) {
+                    return (
+                      <div className="text-xs text-gray-500 text-right">
+                        Bill-period usage: {derived.toFixed(3)} GJ
+                        {comparison.ciGasInvoiceReviewDays != null
+                          ? ` (${comparison.ciGasInvoiceReviewDays} d)`
+                          : ""}
+                      </div>
+                    );
+                  }
+                  if (
+                    comparison.ciGasAnnualConsumptionGJ != null &&
+                    comparison.ciGasAnnualConsumptionGJ > 0 &&
+                    !(comparison.ciGasInvoiceReviewDays != null && comparison.ciGasInvoiceReviewDays > 0)
+                  ) {
+                    return (
+                      <div className="text-[10px] text-amber-700 text-right">
+                        Add invoice days on the bill to derive period usage, or leave annual blank to use invoice
+                        GJ.
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
+              </div>
+            )}
             {comparison.estimatedAnnualUsage && comparison.estimatedAnnualUsage > 0 && (
               <div className="text-xs text-gray-500 text-right mt-1">
                 (Est. Annual: {comparison.estimatedAnnualUsage.toFixed(2)} GJ)
@@ -2009,8 +2190,10 @@ export default function Base2Page() {
               placeholder="16.75"
             />
           </td>
-          <td className={`border border-gray-300 px-1 py-0.5 text-right text-xs font-semibold ${savingsCellClass(savings?.usageSavings != null ? savings.usageSavings * 12 : undefined)}`}>
-            {savings?.usageSavings != null ? `$${(savings.usageSavings * 12).toFixed(2)}/yr` : '-'}
+          <td className={`border border-gray-300 px-1 py-0.5 text-right text-xs font-semibold ${savingsCellClass(savings?.usageSavings != null ? (savings.gasUsageSavingsAnnual ?? savings.usageSavings * 12) : undefined)}`}>
+            {savings?.usageSavings != null
+              ? `$${((savings.gasUsageSavingsAnnual ?? savings.usageSavings * 12)).toFixed(2)}/yr`
+              : '-'}
           </td>
           <td className={`border border-gray-300 px-1 py-0.5 text-right text-xs font-semibold ${savingsCellClass(savings?.usageSavingsPercent)}`}>
             {savings?.usageSavingsPercent ? `${savings.usageSavingsPercent.toFixed(1)}%` : '-'}
@@ -2389,6 +2572,85 @@ export default function Base2Page() {
                 className="w-full px-4 py-2 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 font-medium"
               >
                 Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Recipient confirmation before n8n webhook */}
+      {recipientConfirmModal.open && recipientConfirmModal.comparison && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+          aria-modal="true"
+          role="dialog"
+        >
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full p-6">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
+              {recipientConfirmModal.action === "dma" ? "DMA review" : "Comparison"} recipient
+            </h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+              {recipientConfirmModal.action === "dma"
+                ? "The DMA review will be sent to:"
+                : "The comparison will be sent to:"}
+              <span className="block mt-1 text-xs text-gray-500 dark:text-gray-500">
+                You can edit the name and email if the CRM contact is not the right recipient.
+              </span>
+            </p>
+            <div className="space-y-3 mb-6">
+              <div>
+                <label
+                  htmlFor="b2-recipient-name"
+                  className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1"
+                >
+                  Client name
+                </label>
+                <input
+                  id="b2-recipient-name"
+                  type="text"
+                  value={recipientConfirmModal.contactName}
+                  onChange={(e) =>
+                    setRecipientConfirmModal((prev) => ({ ...prev, contactName: e.target.value }))
+                  }
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm"
+                  placeholder="Contact name"
+                  autoComplete="name"
+                />
+              </div>
+              <div>
+                <label
+                  htmlFor="b2-recipient-email"
+                  className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1"
+                >
+                  Email
+                </label>
+                <input
+                  id="b2-recipient-email"
+                  type="email"
+                  value={recipientConfirmModal.contactEmail}
+                  onChange={(e) =>
+                    setRecipientConfirmModal((prev) => ({ ...prev, contactEmail: e.target.value }))
+                  }
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm"
+                  placeholder="name@example.com"
+                  autoComplete="email"
+                />
+              </div>
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setRecipientConfirmModal((prev) => ({ ...prev, open: false }))}
+                className="w-full sm:w-auto px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 font-medium text-sm order-2 sm:order-1"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleRecipientConfirmSubmit}
+                className="w-full sm:w-auto px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm order-1 sm:order-2"
+              >
+                {recipientConfirmModal.action === "dma" ? "Send DMA review" : "Send comparison"}
               </button>
             </div>
           </div>
