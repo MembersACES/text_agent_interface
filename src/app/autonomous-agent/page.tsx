@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { getAutonomousApiBaseUrl, cn } from "@/lib/utils";
 import { PageHeader } from "@/components/Layouts/PageHeader";
+import { useToast } from "@/components/ui/toast";
 
 type AgentTab = "running" | "finished";
 
@@ -43,6 +44,7 @@ const PAGE_SIZE = 20;
 export default function AutonomousAgentPage() {
   const { data: session } = useSession();
   const token = (session as any)?.id_token || (session as any)?.accessToken;
+  const { showToast } = useToast();
 
   const [tab, setTab] = useState<AgentTab>("running");
   const [runs, setRuns] = useState<AutonomousRunRow[]>([]);
@@ -50,6 +52,7 @@ export default function AutonomousAgentPage() {
   const [error, setError] = useState<string | null>(null);
   const [total, setTotal] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   useEffect(() => {
     if (!token) {
@@ -116,6 +119,38 @@ export default function AutonomousAgentPage() {
       console.error("Load more sequences", e);
     } finally {
       setLoadingMore(false);
+    }
+  };
+
+  const handleDeleteRun = async (runId: number) => {
+    if (!token) return;
+    if (
+      !window.confirm(
+        `Delete sequence #${runId} permanently? All steps and event history will be removed. This cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+    setDeletingId(runId);
+    try {
+      const res = await fetch(
+        `${getAutonomousApiBaseUrl()}/api/autonomous/sequences/runs/${runId}`,
+        {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        },
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(typeof data.detail === "string" ? data.detail : "Delete failed");
+      }
+      setRuns((prev) => prev.filter((r) => r.id !== runId));
+      setTotal((t) => Math.max(0, t - 1));
+      showToast("Sequence deleted.", "success");
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : "Delete failed", "error");
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -269,6 +304,14 @@ export default function AutonomousAgentPage() {
                           >
                             Offer
                           </Link>
+                          <button
+                            type="button"
+                            disabled={deletingId === r.id}
+                            onClick={() => handleDeleteRun(r.id)}
+                            className="text-left text-xs font-medium text-red-600 dark:text-red-400 hover:underline disabled:opacity-50"
+                          >
+                            {deletingId === r.id ? "Deleting…" : "Delete"}
+                          </button>
                         </div>
                       </td>
                     </tr>

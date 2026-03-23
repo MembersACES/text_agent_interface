@@ -6,7 +6,7 @@ import utc from "dayjs/plugin/utc";
 import timezone from "dayjs/plugin/timezone";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { getAutonomousApiBaseUrl, getApiBaseUrl } from "@/lib/utils";
 import { PageHeader } from "@/components/Layouts/PageHeader";
 import { useToast } from "@/components/ui/toast";
@@ -261,6 +261,7 @@ function applySequentialCascadeToDrafts(
 
 export default function AutonomousRunDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const runId = params?.runId as string;
   const { data: session } = useSession();
   const token = (session as any)?.id_token || (session as any)?.accessToken;
@@ -280,6 +281,7 @@ export default function AutonomousRunDetailPage() {
   const [siteIdentifiers, setSiteIdentifiers] = useState<string[]>([]);
   const [savingContext, setSavingContext] = useState(false);
   const [stopping, setStopping] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [scheduleDrafts, setScheduleDrafts] = useState<Record<number, string>>({});
   const [savingSchedules, setSavingSchedules] = useState(false);
 
@@ -440,6 +442,34 @@ export default function AutonomousRunDetailPage() {
     } finally { setStopping(false); }
   };
 
+  const handleDeleteSequence = async () => {
+    if (!token || !runId || !run) return;
+    if (
+      !window.confirm(
+        "Delete this sequence permanently? All steps and event history will be removed from the database. This cannot be undone.",
+      )
+    ) {
+      return;
+    }
+    setDeleting(true);
+    try {
+      const res = await fetch(`${getAutonomousApiBaseUrl()}/api/autonomous/sequences/runs/${runId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(typeof data.detail === "string" ? data.detail : "Delete failed");
+      }
+      showToast("Sequence deleted.", "success");
+      router.push("/autonomous-agent");
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : "Delete failed", "error");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const handleSaveSchedules = async () => {
     if (!token || !runId || !run) return;
     const updates: { step_id: number; scheduled_at: string }[] = [];
@@ -551,16 +581,33 @@ export default function AutonomousRunDetailPage() {
                 Offer #{run.offer_id} →
               </Link>
               <div className="flex-1" />
-              {isRunning && (
+              <div className="flex flex-wrap items-center gap-2">
+                {isRunning && (
+                  <button
+                    type="button"
+                    onClick={handleStopSequence}
+                    disabled={stopping || deleting}
+                    className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition shadow-sm"
+                  >
+                    {stopping ? <><span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />Stopping…</> : <>⏹ Stop sequence</>}
+                  </button>
+                )}
                 <button
                   type="button"
-                  onClick={handleStopSequence}
-                  disabled={stopping}
-                  className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition shadow-sm"
+                  onClick={handleDeleteSequence}
+                  disabled={deleting || stopping}
+                  className="flex items-center gap-2 rounded-lg border border-red-200 dark:border-red-900 bg-white dark:bg-gray-900 px-4 py-2 text-sm font-semibold text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 disabled:opacity-50 transition"
                 >
-                  {stopping ? <><span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />Stopping…</> : <>⏹ Stop sequence</>}
+                  {deleting ? (
+                    <>
+                      <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-red-600 border-t-transparent dark:border-red-400" />
+                      Deleting…
+                    </>
+                  ) : (
+                    <>🗑 Delete sequence</>
+                  )}
                 </button>
-              )}
+              </div>
             </div>
 
             {/* ── Two-column body ── */}
