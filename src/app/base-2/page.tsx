@@ -293,6 +293,20 @@ function defaultWebhookRecipient(
   return { contactName: name, contactEmail: email };
 }
 
+/** Label after "Generate …" for offer-comparison actions (buttons + scope modal). */
+function offerComparisonKindLabel(c: UtilityComparison): string {
+  if (c.utilityType === "C&I Electricity") return "C&I E Offer Comparison";
+  if (c.utilityType === "C&I Gas") return "C&I G Offer Comparison";
+  if (c.utilityType === "SME Gas" && (c.smeGasComparisonMode ?? "invoice_blocks") === "ci_offer") {
+    return "SME G Offer Comparison";
+  }
+  return "Comparison";
+}
+
+function offerComparisonButtonLabel(c: UtilityComparison): string {
+  return `Generate ${offerComparisonKindLabel(c)}`;
+}
+
 /** Backend autonomous sequence types (Base 2 comparison success). */
 const AUTONOMOUS_SEQUENCE_CI_GAS = 'gas_base2_followup_v1';
 const AUTONOMOUS_SEQUENCE_CI_ELECTRICITY = 'ci_electricity_base2_followup_v1';
@@ -1763,7 +1777,7 @@ export default function Base2Page() {
             continue;
           }
           webhookUrl =
-            "https://membersaces.app.n8n.cloud/webhook-test/generate-gas-sme-ci-comparaison-b2";
+            "https://membersaces.app.n8n.cloud/webhook/generate-gas-sme-ci-comparaison-b2";
           const sme = util.invoiceData?.gas_sme_invoicedetails;
           payload.mrin = util.identifier;
           payload.invoice_id = sme?.invoice_number || sme?.invoice_id || "";
@@ -3191,7 +3205,7 @@ export default function Base2Page() {
                           disabled={sending !== null && sending.includes(`${comparison.utilityType}-${comparison.identifier}-comparison`)}
                           className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-sm font-semibold"
                         >
-                          {sending !== null && sending.includes(`${comparison.utilityType}-${comparison.identifier}-comparison`) ? 'Generating...' : 'Generate Comparison'}
+                          {sending !== null && sending.includes(`${comparison.utilityType}-${comparison.identifier}-comparison`) ? 'Generating...' : offerComparisonButtonLabel(comparison)}
                         </button>
                       </>
                     )}
@@ -3201,7 +3215,7 @@ export default function Base2Page() {
                         disabled={sending !== null && sending.includes(`${comparison.utilityType}-${comparison.identifier}-comparison`)}
                         className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-sm font-semibold"
                       >
-                        {sending !== null && sending.includes(`${comparison.utilityType}-${comparison.identifier}-comparison`) ? 'Generating...' : 'Generate Comparison'}
+                        {sending !== null && sending.includes(`${comparison.utilityType}-${comparison.identifier}-comparison`) ? 'Generating...' : offerComparisonButtonLabel(comparison)}
                       </button>
                     )}
                     {comparison.utilityType === 'SME Gas' &&
@@ -3218,7 +3232,7 @@ export default function Base2Page() {
                           {sending !== null &&
                           sending.includes(`${comparison.utilityType}-${comparison.identifier}-comparison`)
                             ? 'Generating...'
-                            : 'Generate Comparison'}
+                            : offerComparisonButtonLabel(comparison)}
                         </button>
                       )}
                   </div>
@@ -3247,7 +3261,13 @@ export default function Base2Page() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" aria-modal="true" role="dialog">
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full mx-4 p-6">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-              Generate {generateChoiceModal.action === 'dma' ? 'DMA Review' : 'Comparison'} for
+              Generate{' '}
+              {generateChoiceModal.action === 'dma'
+                ? 'DMA Review'
+                : generateChoiceModal.comparison
+                  ? offerComparisonKindLabel(generateChoiceModal.comparison)
+                  : 'Comparison'}{' '}
+              for
             </h3>
             <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
               You have {generateChoiceModal.matchingUtilities.length} {generateChoiceModal.comparison.utilityType} site(s). Choose scope:
