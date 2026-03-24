@@ -1,23 +1,10 @@
 "use client";
 import { useSession, getSession } from "next-auth/react";
-import { useEffect, useState } from "react";
 import BusinessInfoTool from "@/components/BusinessInfoTool";
 
 export default function BusinessInfoPage() {
   const { data: session } = useSession();
-  const [token, setToken] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (session) {
-      // Use ID token for Google authentication (backend expects this)
-      const currentToken = session?.id_token || session?.accessToken || null;
-      setToken(currentToken);
-      console.log("Session:", session);
-      console.log("Access token:", session?.accessToken ? "Present" : "Missing");
-      console.log("ID token:", session?.id_token ? "Present" : "Missing");
-      console.log("Using token:", currentToken ? "Present" : "Missing");
-    }
-  }, [session]);
+  const token = session?.id_token || session?.accessToken || null;
 
   // Get fresh token from session when needed
   const getValidToken = async () => {
@@ -53,7 +40,6 @@ export default function BusinessInfoPage() {
         }
       }
       
-      setToken(newToken);
       console.log("🔄 Updated token from fresh session");
       return newToken;
     }

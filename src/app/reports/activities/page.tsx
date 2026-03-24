@@ -81,6 +81,9 @@ export default function ActivityReportPage() {
   const [clients, setClients] = useState<ClientOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [deleteActivityId, setDeleteActivityId] = useState<number | null>(null);
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const filterClientId = searchParams.get("client_id") ?? "";
   const filterActivityType = searchParams.get("activity_type") ?? "";
@@ -116,6 +119,40 @@ export default function ActivityReportPage() {
   );
 
   const hasAnyFilter = !!(filterClientId || filterActivityType || filterCreatedAfter || filterCreatedBefore);
+
+  const handleDeleteActivity = useCallback(async () => {
+    if (!token || deleteActivityId == null) return;
+    try {
+      setDeleteSubmitting(true);
+      setDeleteError(null);
+      const res = await fetch(
+        `${getApiBaseUrl()}/api/reports/activities/${deleteActivityId}`,
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(
+          typeof data.detail === "string"
+            ? data.detail
+            : "Failed to delete activity"
+        );
+      }
+      setActivities((prev) => prev.filter((a) => a.id !== deleteActivityId));
+      setDeleteActivityId(null);
+    } catch (e: unknown) {
+      setDeleteError(
+        e instanceof Error ? e.message : "Failed to delete activity"
+      );
+    } finally {
+      setDeleteSubmitting(false);
+    }
+  }, [token, deleteActivityId]);
 
   useEffect(() => {
     if (!token) {
@@ -349,6 +386,7 @@ export default function ActivityReportPage() {
                     <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Offer</th>
                     <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Created by</th>
                     <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Document</th>
+                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-900">
@@ -395,12 +433,72 @@ export default function ActivityReportPage() {
                           <span className="text-gray-500">—</span>
                         )}
                       </td>
+                      <td className="px-4 py-2 text-sm">
+                        {a.offer_id > 0 && a.activity_type !== "note_added" && a.activity_type !== "task_created" ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDeleteError(null);
+                              setDeleteActivityId(a.id);
+                            }}
+                            className="text-red-600 hover:underline dark:text-red-400"
+                          >
+                            Delete
+                          </button>
+                        ) : (
+                          <span className="text-gray-500">—</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           </>
+        )}
+        {deleteActivityId != null && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 shadow-lg max-w-md w-full mx-2">
+              <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-2">
+                Delete activity?
+              </h3>
+              <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
+                This will permanently remove this activity record from the database.
+                This action cannot be undone.
+              </p>
+              {deleteError && (
+                <p className="mb-2 text-xs text-red-600 dark:text-red-400">
+                  {deleteError}
+                </p>
+              )}
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (deleteSubmitting) return;
+                    setDeleteActivityId(null);
+                    setDeleteError(null);
+                  }}
+                  className="px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"
+                  disabled={deleteSubmitting}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteActivity}
+                  disabled={deleteSubmitting}
+                  className="px-3 py-1.5 rounded-md bg-red-600 text-white text-xs font-medium hover:bg-red-700 disabled:opacity-50"
+                >
+                  {deleteSubmitting ? "Deleting..." : "Delete"}
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </>

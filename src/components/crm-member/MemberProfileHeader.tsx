@@ -98,7 +98,7 @@ export function MemberProfileHeader({
     return params;
   }
 
-  /** Open Base 2 the same way as business-info: URL with businessInfo JSON, new tab, no CRM clientId. */
+  /** Open Base 2 with CRM context so offer activities / autonomous follow-up can run after a successful comparison. */
   const handleOpenBase2 = async () => {
     const params = new URLSearchParams();
     let info = businessInfo && typeof businessInfo === "object" ? businessInfo : null;
@@ -115,6 +115,10 @@ export function MemberProfileHeader({
       base2Params.forEach((value, key) => params.set(key, value));
     } else if (client.business_name) {
       params.set("businessName", client.business_name);
+    }
+    params.set("clientId", String(client.id));
+    if (firstOfferId != null && Number.isFinite(firstOfferId)) {
+      params.set("offerId", String(firstOfferId));
     }
     const url = `/base-2?${params.toString()}`;
     window.open(url, "_blank");

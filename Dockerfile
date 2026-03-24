@@ -1,5 +1,5 @@
-# Use the official Node.js 18 image as the base image
-FROM node:18-alpine AS base
+# Next.js 16+ requires Node >=20.9; Prisma-related deps prefer 20.19+ / 22.x
+FROM node:22-alpine AS base
 
 ARG NEXT_PUBLIC_API_BASE_URL
 

@@ -63,6 +63,7 @@ export const NAV_DATA: NavSection[] = [
       { title: "Dashboard", url: "/crm", icon: LayoutDashboard },
       { title: "Members", url: "/crm-members", icon: Users },
       { title: "Offers", url: "/offers", icon: HandCoins },
+      { title: "Autonomous Agent", url: "/autonomous-agent", icon: Bot },
       { title: "Activity Report", url: "/reports/activities", icon: Activity },
     ],
   },

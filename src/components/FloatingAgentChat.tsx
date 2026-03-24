@@ -18,15 +18,17 @@ export default function FloatingAgentChat() {
   const router = useRouter();
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const saved = sessionStorage.getItem("floatingAgentChat");
+      return saved ? (JSON.parse(saved) as ChatMessage[]) : [];
+    } catch {
+      return [];
+    }
+  });
   const [input, setInput] = useState("");
   const chatEndRef = useRef<HTMLDivElement | null>(null);
-
-  // 🔁 Restore chat from session storage (so it persists when switching pages)
-  useEffect(() => {
-    const saved = sessionStorage.getItem("floatingAgentChat");
-    if (saved) setMessages(JSON.parse(saved));
-  }, []);
 
   // 💾 Save chat to session storage whenever it updates
   useEffect(() => {

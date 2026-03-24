@@ -34,10 +34,9 @@ export function CommandPalette() {
   const token = (session as any)?.id_token || (session as any)?.accessToken;
   const palette = useCommandPalette();
   const open = palette?.open ?? false;
-  const setOpen = palette?.setOpen ?? (() => {});
+  const setOpen = useMemo(() => palette?.setOpen ?? (() => {}), [palette]);
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<SearchResult | null>(null);
 
   useEffect(() => {
@@ -46,20 +45,8 @@ export function CommandPalette() {
   }, [query]);
 
   useEffect(() => {
-    if (!open) return;
-    setQuery("");
-    setResult(null);
-  }, [open]);
-
-  useEffect(() => {
-    if (!token || !open) return;
-    if (!debouncedQuery) {
-      setResult({ clients: [], offers: [] });
-      setLoading(false);
-      return;
-    }
+    if (!token || !open || !debouncedQuery) return;
     let cancelled = false;
-    setLoading(true);
     fetch(`${getApiBaseUrl()}/api/search?q=${encodeURIComponent(debouncedQuery)}&limit=8`, {
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     })
@@ -69,9 +56,6 @@ export function CommandPalette() {
       })
       .catch(() => {
         if (!cancelled) setResult({ clients: [], offers: [] });
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
   }, [token, open, debouncedQuery]);
@@ -118,7 +102,10 @@ export function CommandPalette() {
           <input
             type="text"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setResult(null);
+            }}
             placeholder="Search members and offers..."
             className="flex-1 bg-transparent text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none text-sm py-1"
             autoFocus
@@ -126,7 +113,7 @@ export function CommandPalette() {
           />
         </div>
         <div className="max-h-[60vh] overflow-y-auto py-2">
-          {loading && !result ? (
+          {!result && debouncedQuery ? (
             <div className="px-4 py-6 text-center text-sm text-gray-500 dark:text-gray-400">
               Searching...
             </div>

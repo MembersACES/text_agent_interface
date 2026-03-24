@@ -1,10 +1,13 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { getApiBaseUrl } from "@/lib/utils";
+import { getApiBaseUrl, getAutonomousApiBaseUrl } from "@/lib/utils";
 import { PageHeader } from "@/components/Layouts/PageHeader";
+
+/** SME Gas → C&I comparison: how current SME bill is interpreted in the UI */
+type SmeGasComparisonMode = "invoice_blocks" | "ci_offer" | "sme_benchmark_stub";
 
 interface BusinessInfo {
   name?: string;
@@ -56,6 +59,36 @@ interface UtilityComparison {
   cleaningUsage?: number;
   demandQuantity?: number;
   estimatedAnnualUsage?: number; // For SME Gas: (usage / days * 365)
+  /** SME Gas: comparison workflow (invoice block rates vs C&I-style vs stub) */
+  smeGasComparisonMode?: SmeGasComparisonMode;
+  /** Postcode for C&I reference bills (parsed from site address; editable) */
+  smeGasPostcode?: string;
+  /** Stated invoice total from extraction or user edit (interpret as ex-GST unless includes-GST is checked) */
+  smeGasTotalExGst?: number;
+  /** When true, smeGasTotalExGst is inc-GST; effective ex-GST = total ÷ 1.1 (AU) */
+  smeGasInvoiceTotalIncludesGst?: boolean;
+  /** GJ on the bill used to compute bundled rate (editable if extraction missed usage) */
+  smeGasInvoicePeriodGJ?: number;
+  /** Invoice total ex GST ÷ period usage (GJ), for C&I-style path */
+  smeGasBundledRatePerGJ?: number;
+  smeGasInvoiceReviewDays?: number;
+  /** SME Gas C&I-style: optional annual consumption (GJ/yr) */
+  smeGasAnnualConsumptionGJ?: number;
+  /** Share of invoice $ attributed to energy (0–1), from Airtable reference or manual */
+  smeCiEnergyShareOfInvoice?: number;
+  smeCiReferenceSampleCount?: number;
+  smeCiReferenceLoading?: boolean;
+  smeCiReferenceError?: string | null;
+  /** From API: exact_postcode | prefix_3digit | nearest_numeric_postcode | global_dataset_median | default_share */
+  smeCiReferenceMatchStrategy?: string | null;
+  smeCiReferenceMatchedPostcodes?: string[];
+  smeCiReferenceConfidence?: string | null;
+  /** `${mrin}|${postcode}` after last successful reference fetch */
+  smeCiReferenceFetchedTag?: string;
+  /** C&I Gas: invoice period length (days), from invoice — used with annual override */
+  ciGasInvoiceReviewDays?: number;
+  /** C&I Gas: optional user-entered annual consumption (GJ/year); bill usage = (this/365)*invoice days */
+  ciGasAnnualConsumptionGJ?: number;
   // Frequency/other
   oilFrequency?: string;
   wasteFrequency?: string;
@@ -88,7 +121,101 @@ interface UtilityComparison {
     demandSavings?: number;
     totalAnnualSavings?: number;
     totalAnnualSavingsPercent?: number;
+    /** C&I Gas with annual override: annual $ savings from usage (else UI uses usageSavings * 12) */
+    gasUsageSavingsAnnual?: number;
   };
+}
+
+/** Bill-period GJ from stated annual and invoice days: (GJ/yr / 365) * days */
+function ciGasBillPeriodUsageFromAnnual(
+  annualGJ: number | undefined,
+  invoiceDays: number | undefined
+): number | undefined {
+  if (annualGJ == null || annualGJ <= 0 || invoiceDays == null || invoiceDays <= 0) return undefined;
+  return (annualGJ / 365) * invoiceDays;
+}
+
+/** Usage (GJ) for C&I Gas comparisons: derived from annual when set, else invoice gasUsage */
+function getCiGasEffectiveUsageGJ(comparison: UtilityComparison): number {
+  if (comparison.utilityType !== "C&I Gas") {
+    return comparison.gasUsage || comparison.monthlyUsage || 0;
+  }
+  const derived = ciGasBillPeriodUsageFromAnnual(
+    comparison.ciGasAnnualConsumptionGJ,
+    comparison.ciGasInvoiceReviewDays
+  );
+  if (derived != null && derived > 0) return derived;
+  return comparison.gasUsage || comparison.monthlyUsage || 0;
+}
+
+function extractAustralianPostcode(text: string | undefined): string | undefined {
+  if (!text || typeof text !== "string") return undefined;
+  const matches = text.match(/\b\d{4}\b/g);
+  if (!matches?.length) return undefined;
+  return matches[matches.length - 1];
+}
+
+/** Normalise user-entered postcode to 4 digits (AU). */
+function normalizeAustralianPostcodeInput(raw: string | undefined): string {
+  if (!raw?.trim()) return "";
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length >= 4) return digits.slice(-4);
+  return "";
+}
+
+function formatAud(value: number | undefined, empty = "—"): string {
+  if (value == null || !Number.isFinite(value)) return empty;
+  return value.toLocaleString("en-AU", { style: "currency", currency: "AUD" });
+}
+
+const AU_GST_DIVISOR = 1.1;
+
+/** C&I gas comparison $/GJ — C&I Gas invoices and SME → C&I mode (aligned offer rate). */
+const DEFAULT_CI_GAS_COMPARISON_RATE_PER_GJ = 14.8;
+
+/** Ex-GST dollar amount used for bundled $/GJ when “includes GST” is checked. */
+function getSmeGasEffectiveTotalExGst(c: UtilityComparison): number | undefined {
+  const raw = c.smeGasTotalExGst;
+  if (raw == null || !Number.isFinite(raw) || raw <= 0) return undefined;
+  return c.smeGasInvoiceTotalIncludesGst ? raw / AU_GST_DIVISOR : raw;
+}
+
+function getSmeGasBundledRatePerGJFromState(c: UtilityComparison): number | undefined {
+  const ex = getSmeGasEffectiveTotalExGst(c);
+  const gj = c.smeGasInvoicePeriodGJ;
+  if (ex == null || gj == null || !Number.isFinite(gj) || gj <= 0) return undefined;
+  return ex / gj;
+}
+
+/** Recompute smeGasBundledRatePerGJ and (in ci_offer) implied currentGasRate from share. */
+function withSmeGasCiDerivedRates(u: UtilityComparison): UtilityComparison {
+  if (u.utilityType !== "SME Gas") return u;
+  const bundled = getSmeGasBundledRatePerGJFromState(u);
+  const next: UtilityComparison = { ...u, smeGasBundledRatePerGJ: bundled };
+  const mode = next.smeGasComparisonMode ?? "invoice_blocks";
+  if (mode === "ci_offer" && bundled != null && bundled > 0) {
+    const share = next.smeCiEnergyShareOfInvoice ?? 0.72;
+    next.currentGasRate = parseFloat((bundled * share).toFixed(4));
+    // Same fixed comparison $/GJ as C&I Gas flow (not a % off current).
+    if (next.currentGasRate > 0) {
+      next.comparisonGasRate = DEFAULT_CI_GAS_COMPARISON_RATE_PER_GJ;
+    }
+  }
+  return next;
+}
+
+/** Bill-period GJ for SME when comparing like C&I (annual override × invoice days). */
+function getSmeCiGasEffectiveUsageGJ(comparison: UtilityComparison): number {
+  const period = comparison.smeGasInvoicePeriodGJ;
+  if (period != null && period > 0 && Number.isFinite(period)) {
+    return period;
+  }
+  const derived = ciGasBillPeriodUsageFromAnnual(
+    comparison.smeGasAnnualConsumptionGJ,
+    comparison.smeGasInvoiceReviewDays
+  );
+  if (derived != null && derived > 0) return derived;
+  return comparison.gasUsage || comparison.monthlyUsage || 0;
 }
 
 /** Normalize document link before sending to API: strip leading =, fix https:/ → https://. */
@@ -138,6 +265,38 @@ interface GenerateResultModalState {
   errors: string[];
 }
 
+/** Modal: confirm/edit client contact before n8n webhook */
+interface RecipientConfirmModalState {
+  open: boolean;
+  comparison: UtilityComparison | null;
+  action: "comparison" | "dma";
+  generateAll: boolean;
+  contactName: string;
+  contactEmail: string;
+}
+
+function defaultWebhookRecipient(
+  businessInfo: BusinessInfo | null,
+  businessInfoData: unknown
+): { contactName: string; contactEmail: string } {
+  const d = businessInfoData && typeof businessInfoData === "object" ? (businessInfoData as Record<string, unknown>) : {};
+  const name =
+    businessInfo?.contact_name ||
+    (typeof d.contact_name === "string" ? d.contact_name : "") ||
+    (typeof d.contactName === "string" ? d.contactName : "") ||
+    "";
+  const email =
+    businessInfo?.email ||
+    (typeof d.email === "string" ? d.email : "") ||
+    (typeof d.contact_email === "string" ? d.contact_email : "") ||
+    "";
+  return { contactName: name, contactEmail: email };
+}
+
+/** Backend autonomous sequence types (Base 2 comparison success). */
+const AUTONOMOUS_SEQUENCE_CI_GAS = 'gas_base2_followup_v1';
+const AUTONOMOUS_SEQUENCE_CI_ELECTRICITY = 'ci_electricity_base2_followup_v1';
+
 export default function Base2Page() {
   const { data: session } = useSession();
   const searchParams = useSearchParams();
@@ -152,6 +311,8 @@ export default function Base2Page() {
   );
   
   const [utilityComparisons, setUtilityComparisons] = useState<UtilityComparison[]>([]);
+  const utilityComparisonsRef = useRef<UtilityComparison[]>([]);
+  utilityComparisonsRef.current = utilityComparisons;
   const [sending, setSending] = useState<string | null>(null); // Track which comparison is being generated: "type-identifier-action"
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -170,8 +331,120 @@ export default function Base2Page() {
     results: [],
     errors: [],
   });
+  const [recipientConfirmModal, setRecipientConfirmModal] = useState<RecipientConfirmModalState>({
+    open: false,
+    comparison: null,
+    action: "comparison",
+    generateAll: false,
+    contactName: "",
+    contactEmail: "",
+  });
 
   const token = (session as any)?.id_token;
+
+  const smeCiGasReferenceKey = useMemo(
+    () =>
+      utilityComparisons
+        .filter(
+          (c) => c.utilityType === "SME Gas" && c.smeGasComparisonMode === "ci_offer"
+        )
+        .map((c) => `${c.identifier}|${normalizeAustralianPostcodeInput(c.smeGasPostcode || "")}`)
+        .join(";"),
+    [utilityComparisons]
+  );
+
+  useEffect(() => {
+    if (!token || !smeCiGasReferenceKey) return;
+    const list = utilityComparisonsRef.current;
+    const run = async () => {
+      for (const c of list) {
+        if (c.utilityType !== "SME Gas" || c.smeGasComparisonMode !== "ci_offer") continue;
+        const pc = normalizeAustralianPostcodeInput(c.smeGasPostcode || "");
+        if (pc.length !== 4) continue;
+        const tag = `${c.identifier}|${pc}`;
+        if (c.smeCiReferenceFetchedTag === tag) continue;
+
+        setUtilityComparisons((prev) =>
+          prev.map((u) =>
+            u.utilityType === "SME Gas" && u.identifier === c.identifier
+              ? { ...u, smeCiReferenceLoading: true, smeCiReferenceError: null }
+              : u
+          )
+        );
+        try {
+          const debugQs =
+            typeof process !== "undefined" && process.env.NODE_ENV === "development"
+              ? "&debug=true"
+              : "";
+          const url = `${getApiBaseUrl()}/api/base2/ci-gas-energy-reference?postcode=${encodeURIComponent(
+            pc
+          )}&relax_postcode=true${debugQs}`;
+          const res = await fetch(url, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          const data = (await res.json()) as Record<string, unknown>;
+          if (data.diagnostics != null && typeof data.diagnostics === "object") {
+            console.info("[Base2 ci-gas-ref diagnostics]", data.diagnostics);
+          }
+          if (!res.ok) {
+            throw new Error(
+              typeof data.detail === "string" ? data.detail : "Reference fetch failed"
+            );
+          }
+          const med =
+            typeof data.median_energy_share === "number" ? data.median_energy_share : 0.72;
+          const sampleCount = typeof data.sample_count === "number" ? data.sample_count : 0;
+          const usedFallback = data.used_fallback === true;
+          const msg = typeof data.message === "string" ? data.message : null;
+          const matchStrategy =
+            typeof data.match_strategy === "string" ? data.match_strategy : null;
+          const confidence =
+            typeof data.confidence === "string" ? data.confidence : null;
+          const matchedPostcodes = Array.isArray(data.matched_postcodes)
+            ? (data.matched_postcodes as unknown[]).filter(
+                (x): x is string => typeof x === "string"
+              )
+            : [];
+
+          setUtilityComparisons((prev) =>
+            prev.map((u) => {
+              if (u.utilityType !== "SME Gas" || u.identifier !== c.identifier) return u;
+              const nextShare = Math.max(0.01, Math.min(1, med));
+              return withSmeGasCiDerivedRates({
+                ...u,
+                smeCiReferenceLoading: false,
+                smeCiEnergyShareOfInvoice: nextShare,
+                smeCiReferenceSampleCount: sampleCount,
+                smeCiReferenceError: usedFallback && msg ? msg : null,
+                smeCiReferenceMatchStrategy: matchStrategy,
+                smeCiReferenceMatchedPostcodes:
+                  matchedPostcodes.length > 0 ? matchedPostcodes : undefined,
+                smeCiReferenceConfidence: confidence,
+                smeCiReferenceFetchedTag: tag,
+              });
+            })
+          );
+          } catch (e: unknown) {
+          const message = e instanceof Error ? e.message : "Reference fetch failed";
+          setUtilityComparisons((prev) =>
+            prev.map((u) =>
+              u.utilityType === "SME Gas" && u.identifier === c.identifier
+                ? {
+                    ...u,
+                    smeCiReferenceLoading: false,
+                    smeCiReferenceError: message,
+                    smeCiReferenceMatchStrategy: undefined,
+                    smeCiReferenceMatchedPostcodes: undefined,
+                    smeCiReferenceConfidence: undefined,
+                  }
+                : u
+            )
+          );
+        }
+      }
+    };
+    void run();
+  }, [token, smeCiGasReferenceKey]);
 
   // Helper function to extract File ID from Google Drive URL
   const extractFileIdFromUrl = (url: string | undefined): string | null => {
@@ -346,11 +619,23 @@ export default function Base2Page() {
         rates.monthlyUsage = gasQuantityGJ > 0 ? gasQuantityGJ : undefined;
         rates.currentDailySupply = dailySupply > 0 ? dailySupply : undefined;
         rates.estimatedAnnualUsage = estimatedAnnualUsageGJ;
+
+        const totalEx = normalizeMoneyToNumber(
+          smeDetails.total_invoice_cost ?? smeDetails.total_amount
+        );
+        rates.smeGasTotalExGst = totalEx ?? undefined;
+        rates.smeGasInvoiceReviewDays = invoiceDays > 0 ? invoiceDays : undefined;
+        if (gasQuantityGJ > 0) {
+          rates.smeGasInvoicePeriodGJ = gasQuantityGJ;
+        }
+        const siteAddr = typeof smeDetails.site_address === "string" ? smeDetails.site_address : "";
+        const pc = extractAustralianPostcode(siteAddr);
+        if (pc) rates.smeGasPostcode = pc;
         
-        // Set comparison placeholder
+        // Set comparison placeholder (invoice block mode); C&I-style overwrites via DEFAULT_CI when switched
         rates.comparisonGasRate = rates.currentGasRate && rates.currentGasRate > 0 
           ? parseFloat((rates.currentGasRate * 0.95).toFixed(4)) 
-          : 17.8;
+          : DEFAULT_CI_GAS_COMPARISON_RATE_PER_GJ;
         rates.comparisonDailySupply = rates.currentDailySupply && rates.currentDailySupply > 0
           ? parseFloat((rates.currentDailySupply * 0.95).toFixed(2)) 
           : 1.20;
@@ -369,9 +654,22 @@ export default function Base2Page() {
       } else {
         // C&I Gas extraction (existing logic)
         console.log('Gas extraction - Full invoiceData keys:', Object.keys(invoiceData || {}));
-        
-        const details = invoiceData?.gas_ci_invoice_details || invoiceData?.gas_invoice_details || {};
-        const fullData = details?.full_invoice_data || invoiceData?.full_invoice_data || invoiceData || {};
+
+        // n8n may nest rows under gas_ci_invoice_details and/or gas_invoice_details; full_invoice_data
+        // (incl. Invoice Review Number of Days) is not always on the same object as scalars — merge both.
+        const gci = invoiceData?.gas_ci_invoice_details;
+        const ginv = invoiceData?.gas_invoice_details;
+        const details = { ...(typeof ginv === "object" && ginv ? ginv : {}), ...(typeof gci === "object" && gci ? gci : {}) };
+        const fullCi = typeof gci?.full_invoice_data === "object" && gci.full_invoice_data ? gci.full_invoice_data : {};
+        const fullInv = typeof ginv?.full_invoice_data === "object" && ginv.full_invoice_data ? ginv.full_invoice_data : {};
+        // Merge spreadsheet rows from both n8n shapes so days/quantities are not dropped when split across objects
+        const mergedFull = { ...fullInv, ...fullCi };
+        const fullData =
+          Object.keys(mergedFull).length > 0
+            ? mergedFull
+            : invoiceData?.full_invoice_data && typeof invoiceData.full_invoice_data === "object"
+              ? invoiceData.full_invoice_data
+              : invoiceData || {};
         
         // Extract gas usage/quantity - try all possible field names
         let gasQuantity = 0;
@@ -458,11 +756,21 @@ export default function Base2Page() {
           0;
         rates.currentDailySupply = dailySupply > 0 ? dailySupply : undefined;
         
-        // C&I Gas: hardcoded comparison rate $/GJ
-        rates.comparisonGasRate = 17.8;
+        // C&I Gas: default comparison rate $/GJ (editable in table)
+        rates.comparisonGasRate = DEFAULT_CI_GAS_COMPARISON_RATE_PER_GJ;
         rates.comparisonDailySupply = rates.currentDailySupply && rates.currentDailySupply > 0
           ? parseFloat((rates.currentDailySupply * 0.95).toFixed(2)) 
           : 1.20;
+
+        const daysRaw =
+          fullData["Invoice Review Number of Days"] ??
+          details.invoice_review_days ??
+          fullData["invoice_review_days"] ??
+          details.invoice_period_days;
+        const ciInvoiceDays = parseFloat(String(daysRaw ?? "").replace(/[^\d.]/g, "") || "");
+        if (Number.isFinite(ciInvoiceDays) && ciInvoiceDays > 0) {
+          rates.ciGasInvoiceReviewDays = ciInvoiceDays;
+        }
       }
     } else if (utilityType === 'Oil') {
       // Extract oil rates - check oil_invoice_details structure
@@ -826,7 +1134,11 @@ export default function Base2Page() {
       const next = [...prev];
       for (const { index, update } of results) {
         if (index >= 0 && index < next.length) {
-          next[index] = { ...next[index], ...update };
+          const merged = { ...next[index], ...update };
+          next[index] =
+            merged.utilityType === "SME Gas"
+              ? withSmeGasCiDerivedRates(merged)
+              : merged;
         }
       }
       return next;
@@ -891,11 +1203,96 @@ export default function Base2Page() {
       return prev.map(u => {
         if (u.utilityType === utilityType && u.identifier === identifier) {
           const parsedValue = value === '' ? undefined : (parseFloat(value) || 0);
+          if (
+            utilityType === "SME Gas" &&
+            field === "smeCiEnergyShareOfInvoice" &&
+            parsedValue != null
+          ) {
+            const share = Math.max(0.01, Math.min(1, parsedValue));
+            return withSmeGasCiDerivedRates({ ...u, smeCiEnergyShareOfInvoice: share });
+          }
+          if (
+            utilityType === "SME Gas" &&
+            field === "gasUsage" &&
+            (u.smeGasComparisonMode ?? "invoice_blocks") === "ci_offer"
+          ) {
+            const gj =
+              parsedValue != null && parsedValue > 0 ? parsedValue : undefined;
+            return withSmeGasCiDerivedRates({
+              ...u,
+              gasUsage: gj,
+              monthlyUsage: gj,
+              smeGasInvoicePeriodGJ: gj,
+            });
+          }
           return { ...u, [field]: parsedValue };
         }
         return u;
       });
     });
+  };
+
+  const setSmeGasComparisonModeFor = (identifier: string, mode: SmeGasComparisonMode) => {
+    setUtilityComparisons((prev) =>
+      prev.map((u) => {
+        if (u.utilityType !== "SME Gas" || u.identifier !== identifier) return u;
+        let next: UtilityComparison = {
+          ...u,
+          smeGasComparisonMode: mode,
+          smeCiReferenceFetchedTag: undefined,
+        };
+        if (mode === "ci_offer") {
+          next.comparisonGasRate =
+            u.comparisonGasRate ?? DEFAULT_CI_GAS_COMPARISON_RATE_PER_GJ;
+          next = withSmeGasCiDerivedRates(next);
+        }
+        return next;
+      })
+    );
+  };
+
+  const updateSmeGasBillModeling = (
+    identifier: string,
+    patch: Partial<
+      Pick<
+        UtilityComparison,
+        "smeGasTotalExGst" | "smeGasInvoicePeriodGJ" | "smeGasInvoiceTotalIncludesGst"
+      >
+    >
+  ) => {
+    setUtilityComparisons((prev) =>
+      prev.map((u) => {
+        if (u.utilityType !== "SME Gas" || u.identifier !== identifier) return u;
+        let next: UtilityComparison = { ...u, ...patch };
+        if ("smeGasInvoicePeriodGJ" in patch) {
+          const raw = patch.smeGasInvoicePeriodGJ;
+          const gj =
+            raw != null && raw > 0 && Number.isFinite(raw) ? raw : undefined;
+          next.gasUsage = gj;
+          next.monthlyUsage = gj;
+          next.smeGasInvoicePeriodGJ = gj;
+        }
+        return withSmeGasCiDerivedRates(next);
+      })
+    );
+  };
+
+  const updateSmeGasPostcode = (identifier: string, value: string) => {
+    setUtilityComparisons((prev) =>
+      prev.map((u) => {
+        if (u.utilityType !== "SME Gas" || u.identifier !== identifier) return u;
+        return {
+          ...u,
+          smeGasPostcode: value,
+          smeCiReferenceFetchedTag: undefined,
+          smeCiReferenceMatchStrategy: undefined,
+          smeCiReferenceMatchedPostcodes: undefined,
+          smeCiReferenceConfidence: undefined,
+          smeCiReferenceError: null,
+          smeCiReferenceSampleCount: undefined,
+        };
+      })
+    );
   };
 
   const calculateSavings = (comparison: UtilityComparison) => {
@@ -993,37 +1390,71 @@ export default function Base2Page() {
         ? ((savings.totalAnnualSavings / totalCurrentAnnual) * 100) 
         : 0;
     } else if (comparison.utilityType.includes('Gas')) {
+      if (
+        comparison.utilityType === "SME Gas" &&
+        comparison.smeGasComparisonMode === "sme_benchmark_stub"
+      ) {
+        return savings;
+      }
       // Gas rate comparison - rate is in $/GJ, usage is in GJ
       const currentRate = comparison.currentGasRate || 0;
       const compRate = comparison.comparisonGasRate || 0;
-      const usage = comparison.gasUsage || comparison.monthlyUsage || 0;
-      
+      const usage =
+        comparison.utilityType === "C&I Gas"
+          ? getCiGasEffectiveUsageGJ(comparison)
+          : comparison.utilityType === "SME Gas" &&
+              comparison.smeGasComparisonMode === "ci_offer"
+            ? getSmeCiGasEffectiveUsageGJ(comparison)
+            : comparison.gasUsage || comparison.monthlyUsage || 0;
+      const annualOverride =
+        (comparison.utilityType === "C&I Gas" &&
+          comparison.ciGasAnnualConsumptionGJ != null &&
+          comparison.ciGasAnnualConsumptionGJ > 0 &&
+          comparison.ciGasInvoiceReviewDays != null &&
+          comparison.ciGasInvoiceReviewDays > 0) ||
+        (comparison.utilityType === "SME Gas" &&
+          comparison.smeGasComparisonMode === "ci_offer" &&
+          comparison.smeGasAnnualConsumptionGJ != null &&
+          comparison.smeGasAnnualConsumptionGJ > 0 &&
+          comparison.smeGasInvoiceReviewDays != null &&
+          comparison.smeGasInvoiceReviewDays > 0);
+
       if (currentRate > 0 && compRate > 0 && usage > 0) {
-        // Calculate monthly cost: usage (GJ) * rate ($/GJ)
+        // Per–invoice-period cost: usage (GJ for period) * rate ($/GJ)
         const currentMonthlyCost = usage * currentRate;
         const comparisonMonthlyCost = usage * compRate;
         savings.usageSavings = currentMonthlyCost - comparisonMonthlyCost;
         savings.usageSavingsPercent = currentMonthlyCost > 0 ? ((savings.usageSavings / currentMonthlyCost) * 100) : 0;
-        
+
+        const annualGJForGas =
+          comparison.utilityType === "C&I Gas"
+            ? comparison.ciGasAnnualConsumptionGJ
+            : comparison.smeGasAnnualConsumptionGJ;
+
+        if (annualOverride && annualGJForGas != null) {
+          const annualGJ = annualGJForGas;
+          savings.gasUsageSavingsAnnual = annualGJ * (currentRate - compRate);
+        }
+
         // Daily supply savings (annual)
         savings.supplySavings = 0;
         if (comparison.currentDailySupply && comparison.comparisonDailySupply) {
           savings.supplySavings = (comparison.currentDailySupply - comparison.comparisonDailySupply) * 365;
         }
-        
-        // Total annual savings = usage (monthly * 12) + supply
-        const totalCurrentAnnual = 
-          (currentMonthlyCost * 12) +
-          ((comparison.currentDailySupply || 0) * 365);
-        
-        const totalComparisonAnnual = 
-          (comparisonMonthlyCost * 12) +
-          ((comparison.comparisonDailySupply || 0) * 365);
-        
-        savings.totalAnnualSavings = (savings.usageSavings * 12) + savings.supplySavings;
-        savings.totalAnnualSavingsPercent = totalCurrentAnnual > 0 
-          ? ((savings.totalAnnualSavings / totalCurrentAnnual) * 100) 
-          : 0;
+
+        if (annualOverride && annualGJForGas != null) {
+          const annualGJ = annualGJForGas;
+          const totalCurrentAnnual = annualGJ * currentRate + (comparison.currentDailySupply || 0) * 365;
+          savings.totalAnnualSavings = annualGJ * (currentRate - compRate) + savings.supplySavings;
+          savings.totalAnnualSavingsPercent =
+            totalCurrentAnnual > 0 ? (savings.totalAnnualSavings / totalCurrentAnnual) * 100 : 0;
+        } else {
+          const totalCurrentAnnual =
+            currentMonthlyCost * 12 + (comparison.currentDailySupply || 0) * 365;
+          savings.totalAnnualSavings = savings.usageSavings * 12 + savings.supplySavings;
+          savings.totalAnnualSavingsPercent =
+            totalCurrentAnnual > 0 ? (savings.totalAnnualSavings / totalCurrentAnnual) * 100 : 0;
+        }
       }
     } else if (comparison.utilityType === 'Oil') {
       // Oil rate comparison - rate is in $/L, usage is in liters
@@ -1079,15 +1510,49 @@ export default function Base2Page() {
     return savings;
   };
 
+  const openRecipientConfirmModal = (
+    comparison: UtilityComparison,
+    action: "comparison" | "dma",
+    generateAll: boolean
+  ) => {
+    const { contactName, contactEmail } = defaultWebhookRecipient(businessInfo, businessInfoData);
+    setRecipientConfirmModal({
+      open: true,
+      comparison,
+      action,
+      generateAll,
+      contactName,
+      contactEmail,
+    });
+  };
+
   const handleGenerateClick = (comparison: UtilityComparison, action: 'comparison' | 'dma' = 'comparison') => {
+    if (comparison.utilityType === "SME Gas") {
+      const mode = comparison.smeGasComparisonMode ?? "invoice_blocks";
+      if (mode === "sme_benchmark_stub") {
+        alert("SME vs SME benchmark comparison is not available yet.");
+        return;
+      }
+      if (mode === "invoice_blocks") {
+        alert(
+          "PDF generation for invoice block rates is not wired yet. Choose “C&I-style comparison (SME → C&I)” to generate."
+        );
+        return;
+      }
+    }
     // Find all matching utilities (same type and action)
-    const matchingUtilities = utilityComparisons.filter(
-      u => u.utilityType === comparison.utilityType && !u.loading && !u.error
-    );
+    const matchingUtilities = utilityComparisons.filter((u) => {
+      if (u.utilityType !== comparison.utilityType || u.loading || u.error) return false;
+      if (comparison.utilityType === "SME Gas") {
+        const m = comparison.smeGasComparisonMode ?? "invoice_blocks";
+        const um = u.smeGasComparisonMode ?? "invoice_blocks";
+        return m === um;
+      }
+      return true;
+    });
 
     if (matchingUtilities.length <= 1) {
-      // Only one utility, generate directly
-      generateComparison(comparison, action, false);
+      openRecipientConfirmModal(comparison, action, false);
       return;
     }
 
@@ -1104,13 +1569,21 @@ export default function Base2Page() {
     const { comparison, action } = generateChoiceModal;
     if (!comparison) return;
     setGenerateChoiceModal(prev => ({ ...prev, open: false }));
-    generateComparison(comparison, action, generateAll);
+    openRecipientConfirmModal(comparison, action, generateAll);
+  };
+
+  const handleRecipientConfirmSubmit = () => {
+    const { comparison, action, generateAll, contactName, contactEmail } = recipientConfirmModal;
+    if (!comparison) return;
+    setRecipientConfirmModal((prev) => ({ ...prev, open: false }));
+    generateComparison(comparison, action, generateAll, { contactName, contactEmail });
   };
 
   const generateComparison = async (
     comparison: UtilityComparison, 
     action: 'comparison' | 'dma' = 'comparison',
-    generateAll: boolean = false
+    generateAll: boolean = false,
+    webhookRecipient?: { contactName: string; contactEmail: string }
   ) => {
     if (!token || !session) {
       alert('Please log in to generate comparisons');
@@ -1119,9 +1592,15 @@ export default function Base2Page() {
 
     // If generateAll, find all matching utilities
     const utilitiesToProcess = generateAll
-      ? utilityComparisons.filter(
-          u => u.utilityType === comparison.utilityType && !u.loading && !u.error
-        )
+      ? utilityComparisons.filter((u) => {
+          if (u.utilityType !== comparison.utilityType || u.loading || u.error) return false;
+          if (comparison.utilityType === "SME Gas") {
+            const m = comparison.smeGasComparisonMode ?? "invoice_blocks";
+            const um = u.smeGasComparisonMode ?? "invoice_blocks";
+            return m === um;
+          }
+          return true;
+        })
       : [comparison];
 
     if (utilitiesToProcess.length === 0) {
@@ -1169,6 +1648,10 @@ export default function Base2Page() {
           payload.contact_email = businessInfo.email || '';
           payload.contact_name = businessInfo.contact_name || '';
           payload.contact_position = businessInfo.position || '';
+        }
+        if (webhookRecipient) {
+          payload.contact_name = webhookRecipient.contactName;
+          payload.contact_email = webhookRecipient.contactEmail;
         }
 
         // Check DMA first (before general C&I Electricity check)
@@ -1250,10 +1733,15 @@ export default function Base2Page() {
           payload.site_address = fullData['Site Address'] || details?.site_address || businessInfo?.site_address || '';
           payload.invoice_number = fullData['Invoice Number'] || details?.invoice_number || '';
           
-          // CURRENT RATES FROM INVOICE
+          // CURRENT RATES FROM INVOICE (C&I: usage = bill-period GJ; if annual override set, derived from annual × invoice days)
           payload.gas_rate_invoice = util.currentGasRate?.toFixed(4) || '0';
-          payload.gas_usage_invoice = util.gasUsage?.toFixed(2) || util.monthlyUsage?.toFixed(2) || '0';
-          payload.total_monthly_usage = util.gasUsage?.toFixed(2) || util.monthlyUsage?.toFixed(2) || '0';
+          const gasUsageForWebhook = getCiGasEffectiveUsageGJ(util);
+          const gasUsageStr =
+            gasUsageForWebhook > 0
+              ? gasUsageForWebhook.toFixed(2)
+              : util.gasUsage?.toFixed(2) || util.monthlyUsage?.toFixed(2) || '0';
+          payload.gas_usage_invoice = gasUsageStr;
+          payload.total_monthly_usage = gasUsageStr;
           
           // COMPARISON/OFFER RATES (from editable UI fields)
           payload.offer1GasRate = util.comparisonGasRate?.toFixed(4) || '0';
@@ -1266,6 +1754,52 @@ export default function Base2Page() {
           // Additional rates
           payload.current_daily_supply = util.currentDailySupply?.toFixed(2) || '0';
           payload.comparison_daily_supply = util.comparisonDailySupply?.toFixed(2) || '0';
+        } else if (util.utilityType === "SME Gas") {
+          if (util.smeGasComparisonMode !== "ci_offer") {
+            errors.push(
+              `${util.identifier}: Select “C&I-style comparison (SME → C&I)” to generate this comparison.`
+            );
+            setSending(null);
+            continue;
+          }
+          webhookUrl =
+            "https://membersaces.app.n8n.cloud/webhook-test/generate-gas-sme-ci-comparaison-b2";
+          const sme = util.invoiceData?.gas_sme_invoicedetails;
+          payload.mrin = util.identifier;
+          payload.invoice_id = sme?.invoice_number || sme?.invoice_id || "";
+          payload.site_address =
+            (typeof sme?.site_address === "string" && sme.site_address) ||
+            businessInfo?.site_address ||
+            "";
+          payload.invoice_number = sme?.invoice_number || "";
+          payload.gas_rate_invoice = util.currentGasRate?.toFixed(4) || "0";
+          const gasUsageForWebhook = getSmeCiGasEffectiveUsageGJ(util);
+          const gasUsageStr =
+            gasUsageForWebhook > 0
+              ? gasUsageForWebhook.toFixed(2)
+              : util.gasUsage?.toFixed(2) || util.monthlyUsage?.toFixed(2) || "0";
+          payload.gas_usage_invoice = gasUsageStr;
+          payload.total_monthly_usage = gasUsageStr;
+          payload.offer1GasRate = util.comparisonGasRate?.toFixed(4) || "0";
+          payload.offer1Retailer = "Comparison Offer";
+          payload.offer1Validity = "12 months";
+          payload.offer1Type = "smoothed";
+          payload.offer1PeriodYears = "1";
+          payload.offer1StartDate = new Date().toISOString().split("T")[0];
+          payload.current_daily_supply = util.currentDailySupply?.toFixed(2) || "0";
+          payload.comparison_daily_supply = util.comparisonDailySupply?.toFixed(2) || "0";
+          payload.sme_gas_ci_comparison = true;
+          payload.sme_gas_bundled_rate_per_gj = util.smeGasBundledRatePerGJ?.toFixed(4) ?? "";
+          payload.sme_gas_energy_share = util.smeCiEnergyShareOfInvoice?.toFixed(4) ?? "";
+          payload.sme_gas_postcode = util.smeGasPostcode || "";
+          payload.sme_gas_invoice_total_stated = util.smeGasTotalExGst?.toFixed(2) ?? "";
+          payload.sme_gas_invoice_includes_gst = util.smeGasInvoiceTotalIncludesGst === true;
+          const exGst = getSmeGasEffectiveTotalExGst(util);
+          payload.sme_gas_effective_total_ex_gst = exGst != null ? exGst.toFixed(2) : "";
+          payload.sme_gas_invoice_period_gj =
+            util.smeGasInvoicePeriodGJ != null && util.smeGasInvoicePeriodGJ > 0
+              ? util.smeGasInvoicePeriodGJ.toFixed(3)
+              : "";
         } else {
           errors.push(`${util.identifier}: Comparison generation not yet supported for this utility type`);
           setSending(null);
@@ -1314,6 +1848,7 @@ export default function Base2Page() {
           annual_savings: result.annual_savings,
           current_cost: result.current_cost,
           new_cost: result.new_cost,
+          email_ID: result.email_ID ?? result.email_id,
         });
 
         if (response.ok) {
@@ -1442,6 +1977,7 @@ export default function Base2Page() {
               if (util.utilityType === 'Cleaning') return 'cleaning';
               return null;
             };
+            const activityIdByLane: Partial<Record<'ci_gas' | 'ci_electricity', number>> = {};
             for (const { util, result } of successResults) {
               const slug = comparisonTypeSlug(util, action === 'dma');
               if (slug) {
@@ -1472,6 +2008,23 @@ export default function Base2Page() {
                 if (normNew != null) {
                   metadata.new_cost = normNew;
                 }
+                // Additional Base 2 comparison offer metrics (persisted to CRM offer)
+                const normAnnualUsage = normalizeMoneyToNumber((result as any).annual_usage_gj);
+                if (normAnnualUsage != null) {
+                  metadata.annual_usage_gj = normAnnualUsage;
+                }
+                const normEnergyChargePct = normalizeMoneyToNumber((result as any).energy_charge_pct);
+                if (normEnergyChargePct != null) {
+                  metadata.energy_charge_pct = normEnergyChargePct;
+                }
+                const normContractedRate = normalizeMoneyToNumber((result as any).contracted_rate);
+                if (normContractedRate != null) {
+                  metadata.contracted_rate = normContractedRate;
+                }
+                const normOfferRate = normalizeMoneyToNumber((result as any).offer_rate);
+                if (normOfferRate != null) {
+                  metadata.offer_rate = normOfferRate;
+                }
                 const activityPayload = {
                   activity_type: action === 'dma' ? 'dma_review_generated' : 'comparison',
                   document_link: normalizeDocumentLink(comparisonDocLink) ?? undefined,
@@ -1493,9 +2046,109 @@ export default function Base2Page() {
                   headers,
                   body: JSON.stringify(activityPayload),
                 });
-                if (!activityRes.ok) {
+                if (activityRes.ok) {
+                  try {
+                    const act = (await activityRes.json()) as { id?: number };
+                    if (typeof act.id === 'number') {
+                      if (slug === 'gas') activityIdByLane.ci_gas = act.id;
+                      if (slug === 'electricity_ci') activityIdByLane.ci_electricity = act.id;
+                    }
+                  } catch {
+                    /* ignore */
+                  }
+                } else {
                   const errBody = await activityRes.text();
                   console.warn('[Base2 offer activity] Backend responded with error', activityRes.status, errBody);
+                }
+              }
+            }
+
+            // Autonomous follow-up: only after comparison success (not DMA-only). C&I gas has comparison only; C&I electricity follows after comparison so DMA+comparison workflow still ends on comparison for outreach.
+            if (action === 'comparison') {
+              const lanes = new Set<'ci_gas' | 'ci_electricity'>();
+              for (const { util } of successResults) {
+                if (
+                  util.utilityType === 'C&I Gas' ||
+                  (util.utilityType === 'SME Gas' && util.smeGasComparisonMode === 'ci_offer')
+                ) {
+                  lanes.add('ci_gas');
+                }
+                if (util.utilityType === 'C&I Electricity') lanes.add('ci_electricity');
+              }
+              if (lanes.size > 0) {
+                const anchorIso = new Date().toISOString();
+                const tz =
+                  typeof Intl !== 'undefined'
+                    ? Intl.DateTimeFormat().resolvedOptions().timeZone || 'Australia/Melbourne'
+                    : 'Australia/Melbourne';
+                const ctxBase = {
+                  base2_trigger: 'comparison_success',
+                  business_name: businessName || businessInfo?.name,
+                  contact_email: webhookRecipient?.contactEmail ?? businessInfo?.email,
+                  contact_phone: businessInfo?.telephone,
+                  contact_name: webhookRecipient?.contactName ?? businessInfo?.contact_name,
+                };
+                for (const lane of lanes) {
+                  const sequence_type =
+                    lane === 'ci_gas' ? AUTONOMOUS_SEQUENCE_CI_GAS : AUTONOMOUS_SEQUENCE_CI_ELECTRICITY;
+                  const laneSuccess = successResults.filter(({ util }) =>
+                    lane === 'ci_gas'
+                      ? util.utilityType === 'C&I Gas' ||
+                        (util.utilityType === 'SME Gas' && util.smeGasComparisonMode === 'ci_offer')
+                      : util.utilityType === 'C&I Electricity',
+                  );
+                  const identifiers = laneSuccess.map(({ util }) => util.identifier);
+
+                  const emailIdsBySite: Record<string, string> = {};
+                  let firstEmailId: string | undefined;
+                  for (const { util, result } of laneSuccess) {
+                    const raw = result.email_ID ?? result.email_id;
+                    if (typeof raw === 'string' && raw.trim()) {
+                      const eid = raw.trim();
+                      emailIdsBySite[util.identifier] = eid;
+                      if (!firstEmailId) firstEmailId = eid;
+                    }
+                  }
+
+                  const sequenceContext: Record<string, unknown> = {
+                    ...ctxBase,
+                    utility_lane: lane,
+                    site_identifiers: identifiers,
+                  };
+                  if (firstEmailId) {
+                    sequenceContext.email_ID = firstEmailId;
+                  }
+                  if (Object.keys(emailIdsBySite).length > 1) {
+                    sequenceContext.email_ids_by_site = emailIdsBySite;
+                  }
+
+                  try {
+                    const startRes = await fetch(
+                      `${getAutonomousApiBaseUrl()}/api/autonomous/sequences/start`,
+                      {
+                        method: 'POST',
+                        headers,
+                        body: JSON.stringify({
+                          sequence_type,
+                          offer_id: offerIdToUse,
+                          client_id: hasValidClientId ? clientIdFromUrl! : undefined,
+                          crm_activity_id: activityIdByLane[lane],
+                          anchor_at: anchorIso,
+                          timezone: tz,
+                          context: sequenceContext,
+                        }),
+                      },
+                    );
+                    if (!startRes.ok) {
+                      const errTxt = await startRes.text();
+                      console.warn('[Base2 autonomous] start failed', startRes.status, errTxt);
+                    } else {
+                      const started = await startRes.json().catch(() => ({}));
+                      console.log('[Base2 autonomous] sequence start', { lane, ...started });
+                    }
+                  } catch (autoErr) {
+                    console.warn('[Base2 autonomous] start error', autoErr);
+                  }
                 }
               }
             }
@@ -1896,6 +2549,117 @@ export default function Base2Page() {
               className="w-full px-1 py-0.5 border border-gray-300 rounded text-right text-xs"
               placeholder="Usage (GJ)"
             />
+            {comparison.utilityType === "C&I Gas" && (
+              <div className="mt-2 space-y-1 text-left">
+                <label className="block text-[10px] uppercase tracking-wide text-gray-500">
+                  Annual consumption (GJ/yr)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={comparison.ciGasAnnualConsumptionGJ ?? ""}
+                  onChange={(e) =>
+                    updateUsage(
+                      comparison.utilityType,
+                      comparison.identifier,
+                      "ciGasAnnualConsumptionGJ",
+                      e.target.value
+                    )
+                  }
+                  className="w-full px-1 py-0.5 border border-gray-300 rounded text-right text-xs"
+                  placeholder="Optional"
+                />
+                {(() => {
+                  const derived = ciGasBillPeriodUsageFromAnnual(
+                    comparison.ciGasAnnualConsumptionGJ,
+                    comparison.ciGasInvoiceReviewDays
+                  );
+                  if (derived != null && derived > 0) {
+                    return (
+                      <div className="text-xs text-gray-500 text-right">
+                        Bill-period usage: {derived.toFixed(3)} GJ
+                        {comparison.ciGasInvoiceReviewDays != null
+                          ? ` (${comparison.ciGasInvoiceReviewDays} d)`
+                          : ""}
+                      </div>
+                    );
+                  }
+                  if (
+                    comparison.ciGasAnnualConsumptionGJ != null &&
+                    comparison.ciGasAnnualConsumptionGJ > 0 &&
+                    !(comparison.ciGasInvoiceReviewDays != null && comparison.ciGasInvoiceReviewDays > 0)
+                  ) {
+                    return (
+                      <div className="text-[10px] text-amber-700 text-right">
+                        Add invoice days on the bill to derive period usage, or leave annual blank to use invoice
+                        GJ.
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
+              </div>
+            )}
+            {comparison.utilityType === "SME Gas" &&
+              (comparison.smeGasComparisonMode ?? "invoice_blocks") === "ci_offer" && (
+                <div className="mt-2 space-y-1 text-left">
+                  <label className="block text-[10px] uppercase tracking-wide text-gray-500">
+                    Energy share of invoice (0–1)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min={0.01}
+                    max={1}
+                    value={comparison.smeCiEnergyShareOfInvoice ?? ""}
+                    onChange={(e) =>
+                      updateUsage(
+                        comparison.utilityType,
+                        comparison.identifier,
+                        "smeCiEnergyShareOfInvoice",
+                        e.target.value
+                      )
+                    }
+                    className="w-full rounded border border-gray-300 px-1 py-0.5 text-right text-xs"
+                    placeholder="0.72"
+                  />
+                  <label className="block text-[10px] uppercase tracking-wide text-gray-500">
+                    Annual consumption (GJ/yr)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={comparison.smeGasAnnualConsumptionGJ ?? ""}
+                    onChange={(e) =>
+                      updateUsage(
+                        comparison.utilityType,
+                        comparison.identifier,
+                        "smeGasAnnualConsumptionGJ",
+                        e.target.value
+                      )
+                    }
+                    className="w-full rounded border border-gray-300 px-1 py-0.5 text-right text-xs"
+                    placeholder="Optional"
+                  />
+                  {(() => {
+                    const derived = ciGasBillPeriodUsageFromAnnual(
+                      comparison.smeGasAnnualConsumptionGJ,
+                      comparison.smeGasInvoiceReviewDays
+                    );
+                    if (derived != null && derived > 0) {
+                      return (
+                        <div className="text-right text-xs text-gray-500">
+                          Bill-period usage: {derived.toFixed(3)} GJ
+                          {comparison.smeGasInvoiceReviewDays != null
+                            ? ` (${comparison.smeGasInvoiceReviewDays} d)`
+                            : ""}
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
+                </div>
+              )}
             {comparison.estimatedAnnualUsage && comparison.estimatedAnnualUsage > 0 && (
               <div className="text-xs text-gray-500 text-right mt-1">
                 (Est. Annual: {comparison.estimatedAnnualUsage.toFixed(2)} GJ)
@@ -1912,8 +2676,10 @@ export default function Base2Page() {
               placeholder="16.75"
             />
           </td>
-          <td className={`border border-gray-300 px-1 py-0.5 text-right text-xs font-semibold ${savingsCellClass(savings?.usageSavings != null ? savings.usageSavings * 12 : undefined)}`}>
-            {savings?.usageSavings != null ? `$${(savings.usageSavings * 12).toFixed(2)}/yr` : '-'}
+          <td className={`border border-gray-300 px-1 py-0.5 text-right text-xs font-semibold ${savingsCellClass(savings?.usageSavings != null ? (savings.gasUsageSavingsAnnual ?? savings.usageSavings * 12) : undefined)}`}>
+            {savings?.usageSavings != null
+              ? `$${((savings.gasUsageSavingsAnnual ?? savings.usageSavings * 12)).toFixed(2)}/yr`
+              : '-'}
           </td>
           <td className={`border border-gray-300 px-1 py-0.5 text-right text-xs font-semibold ${savingsCellClass(savings?.usageSavingsPercent)}`}>
             {savings?.usageSavingsPercent ? `${savings.usageSavingsPercent.toFixed(1)}%` : '-'}
@@ -1921,8 +2687,14 @@ export default function Base2Page() {
         </tr>
       );
 
-      // Daily Supply Charge for SME Gas only
-      if (comparison.utilityType !== 'C&I Gas') {
+      // Daily Supply Charge for SME Gas (invoice blocks); hidden for C&I Gas and SME → C&I path
+      const showSmeGasSupplyRow =
+        comparison.utilityType !== "C&I Gas" &&
+        !(
+          comparison.utilityType === "SME Gas" &&
+          (comparison.smeGasComparisonMode ?? "invoice_blocks") === "ci_offer"
+        );
+      if (showSmeGasSupplyRow) {
         rows.push(
           <tr key="gas-supply">
             <td className="border border-gray-300 px-1 py-0.5 text-xs">Daily Supply Charge ($/day)</td>
@@ -2192,6 +2964,195 @@ export default function Base2Page() {
             {/* Comparison Table */}
             {!comparison.loading && !comparison.error && (
               <>
+                {comparison.utilityType === "SME Gas" &&
+                  comparison.invoiceData?.gas_sme_invoicedetails && (
+                    <div className="mb-4 rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm">
+                      <div className="mb-2 font-semibold text-gray-800">Comparison type (SME Gas)</div>
+                      <select
+                        value={comparison.smeGasComparisonMode ?? "invoice_blocks"}
+                        onChange={(e) =>
+                          setSmeGasComparisonModeFor(
+                            comparison.identifier,
+                            e.target.value as SmeGasComparisonMode
+                          )
+                        }
+                        className="w-full max-w-md rounded border border-gray-300 px-2 py-1.5 text-sm"
+                      >
+                        <option value="invoice_blocks">
+                          Invoice block rates (tariff lines from bill)
+                        </option>
+                        <option value="ci_offer">C&I-style comparison (SME → C&I)</option>
+                        <option value="sme_benchmark_stub">SME vs SME benchmark (coming soon)</option>
+                      </select>
+                      {(comparison.smeGasComparisonMode ?? "invoice_blocks") === "sme_benchmark_stub" && (
+                        <p className="mt-2 text-xs text-amber-800">
+                          This comparison mode is not available yet.
+                        </p>
+                      )}
+                      {(comparison.smeGasComparisonMode ?? "invoice_blocks") === "ci_offer" && (
+                        <div className="mt-3 space-y-3 text-xs text-gray-700">
+                          <div className="rounded-md border border-blue-200 bg-blue-50/90 p-3 text-gray-800">
+                            <div className="mb-2 text-sm font-semibold text-gray-900">
+                              This bill — bundled rate (C&I-style comparison)
+                            </div>
+                            <p className="mb-2 text-[11px] leading-snug text-gray-600">
+                              We compare using <strong>implied energy $/GJ</strong> = reference{" "}
+                              <strong>energy share ×</strong> bundled <strong>$ / GJ</strong>. Edit totals
+                              or usage if extraction missed them. Check <strong>GST</strong> if the LLM
+                              captured an inc-GST total (we divide by 1.1 for the bundled calculation).
+                            </p>
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                              <div>
+                                <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-gray-500">
+                                  Invoice total ($)
+                                </label>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min={0}
+                                  value={comparison.smeGasTotalExGst ?? ""}
+                                  onChange={(e) => {
+                                    const v = e.target.value;
+                                    updateSmeGasBillModeling(comparison.identifier, {
+                                      smeGasTotalExGst:
+                                        v === "" ? undefined : parseFloat(v) || undefined,
+                                    });
+                                  }}
+                                  className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 font-mono text-sm text-right"
+                                  placeholder="0.00"
+                                />
+                                <label className="mt-2 flex cursor-pointer items-center gap-2 text-[11px] text-gray-700">
+                                  <input
+                                    type="checkbox"
+                                    checked={comparison.smeGasInvoiceTotalIncludesGst === true}
+                                    onChange={(e) =>
+                                      updateSmeGasBillModeling(comparison.identifier, {
+                                        smeGasInvoiceTotalIncludesGst: e.target.checked,
+                                      })
+                                    }
+                                    className="rounded border-gray-300"
+                                  />
+                                  <span>
+                                    Amount <strong>includes GST</strong> (divide by 1.1 for ex-GST)
+                                  </span>
+                                </label>
+                                {comparison.smeGasTotalExGst != null &&
+                                  comparison.smeGasTotalExGst > 0 &&
+                                  comparison.smeGasInvoiceTotalIncludesGst === true && (
+                                    <p className="mt-1 text-[10px] text-gray-600">
+                                      Ex-GST equivalent:{" "}
+                                      <span className="font-mono font-semibold">
+                                        {formatAud(getSmeGasEffectiveTotalExGst(comparison))}
+                                      </span>
+                                    </p>
+                                  )}
+                              </div>
+                              <div>
+                                <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-gray-500">
+                                  Bill-period gas (GJ)
+                                </label>
+                                <input
+                                  type="number"
+                                  step="0.001"
+                                  min={0}
+                                  value={
+                                    comparison.smeGasInvoicePeriodGJ != null &&
+                                    comparison.smeGasInvoicePeriodGJ > 0
+                                      ? comparison.smeGasInvoicePeriodGJ
+                                      : ""
+                                  }
+                                  onChange={(e) => {
+                                    const v = e.target.value;
+                                    const n = v === "" ? NaN : parseFloat(v);
+                                    updateSmeGasBillModeling(comparison.identifier, {
+                                      smeGasInvoicePeriodGJ:
+                                        v === "" || !Number.isFinite(n) || n <= 0 ? undefined : n,
+                                    });
+                                  }}
+                                  className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 font-mono text-sm text-right"
+                                  placeholder="e.g. from invoice"
+                                />
+                              </div>
+                            </div>
+                            {(() => {
+                              const ex = getSmeGasEffectiveTotalExGst(comparison);
+                              const gj = comparison.smeGasInvoicePeriodGJ;
+                              if (
+                                ex != null &&
+                                ex > 0 &&
+                                gj != null &&
+                                Number.isFinite(gj) &&
+                                gj > 0
+                              ) {
+                                const bundled = ex / gj;
+                                return (
+                                  <p className="mt-2 rounded border border-blue-100 bg-white/80 px-2 py-1.5 font-mono text-[11px] text-gray-800">
+                                    {formatAud(ex)} (ex GST) ÷{" "}
+                                    {gj.toLocaleString("en-AU", { maximumFractionDigits: 3 })} GJ ={" "}
+                                    <strong className="text-blue-900">
+                                      ${bundled.toFixed(4)} / GJ
+                                    </strong>{" "}
+                                    bundled
+                                  </p>
+                                );
+                              }
+                              return (
+                                <p className="mt-2 text-[10px] text-amber-800">
+                                  Enter a positive invoice total and bill-period GJ to compute bundled
+                                  $/GJ.
+                                </p>
+                              );
+                            })()}
+                            <p className="mt-2 text-[10px] text-gray-500">
+                              The usage (GJ) column in the table below stays in sync with bill-period GJ
+                              in this mode; you can edit either place.
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-medium">Postcode (C&I reference bills)</span>
+                            <input
+                              type="text"
+                              value={comparison.smeGasPostcode ?? ""}
+                              onChange={(e) =>
+                                updateSmeGasPostcode(comparison.identifier, e.target.value)
+                              }
+                              className="w-28 rounded border border-gray-300 px-2 py-1 text-right"
+                              placeholder="3029"
+                              maxLength={12}
+                            />
+                            {comparison.smeCiReferenceLoading && (
+                              <span className="text-gray-500">Loading reference…</span>
+                            )}
+                          </div>
+                          {comparison.smeCiReferenceError && (
+                            <p className="text-amber-800">{comparison.smeCiReferenceError}</p>
+                          )}
+                          {comparison.smeCiReferenceSampleCount != null &&
+                            comparison.smeCiReferenceSampleCount > 0 && (
+                              <p className="text-gray-600">
+                                Reference: {comparison.smeCiReferenceSampleCount} C&I bill
+                                {comparison.smeCiReferenceSampleCount === 1 ? "" : "s"} (median energy $
+                                ÷ invoice total).
+                              </p>
+                            )}
+                          {comparison.smeCiReferenceMatchStrategy &&
+                            comparison.smeCiReferenceMatchStrategy !== "exact_postcode" &&
+                            comparison.smeCiReferenceSampleCount != null &&
+                            comparison.smeCiReferenceSampleCount > 0 && (
+                              <p className="mt-1 text-[11px] leading-snug text-gray-500">
+                                Match: <span className="font-mono">{comparison.smeCiReferenceMatchStrategy}</span>
+                                {comparison.smeCiReferenceConfidence
+                                  ? ` · confidence ${comparison.smeCiReferenceConfidence}`
+                                  : ""}
+                                {comparison.smeCiReferenceMatchedPostcodes?.length
+                                  ? ` · postcodes ${comparison.smeCiReferenceMatchedPostcodes.join(", ")}`
+                                  : ""}
+                              </p>
+                            )}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 <div className="overflow-x-auto mb-4">
                   <table className="w-full border-collapse border border-gray-300 text-sm">
                     <thead>
@@ -2211,7 +3172,10 @@ export default function Base2Page() {
                 </div>
 
                 {/* Generate Comparison Buttons */}
-                {(comparison.utilityType === 'C&I Electricity' || comparison.utilityType === 'C&I Gas') && (
+                {(comparison.utilityType === 'C&I Electricity' ||
+                  comparison.utilityType === 'C&I Gas' ||
+                  (comparison.utilityType === 'SME Gas' &&
+                    (comparison.smeGasComparisonMode ?? 'invoice_blocks') === 'ci_offer')) && (
                   <div className="mt-4 flex justify-end gap-3">
                     {comparison.utilityType === 'C&I Electricity' && (
                       <>
@@ -2240,6 +3204,23 @@ export default function Base2Page() {
                         {sending !== null && sending.includes(`${comparison.utilityType}-${comparison.identifier}-comparison`) ? 'Generating...' : 'Generate Comparison'}
                       </button>
                     )}
+                    {comparison.utilityType === 'SME Gas' &&
+                      (comparison.smeGasComparisonMode ?? 'invoice_blocks') === 'ci_offer' && (
+                        <button
+                          type="button"
+                          onClick={() => handleGenerateClick(comparison, 'comparison')}
+                          disabled={
+                            sending !== null &&
+                            sending.includes(`${comparison.utilityType}-${comparison.identifier}-comparison`)
+                          }
+                          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-sm font-semibold"
+                        >
+                          {sending !== null &&
+                          sending.includes(`${comparison.utilityType}-${comparison.identifier}-comparison`)
+                            ? 'Generating...'
+                            : 'Generate Comparison'}
+                        </button>
+                      )}
                   </div>
                 )}
               </>
@@ -2292,6 +3273,85 @@ export default function Base2Page() {
                 className="w-full px-4 py-2 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 font-medium"
               >
                 Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Recipient confirmation before n8n webhook */}
+      {recipientConfirmModal.open && recipientConfirmModal.comparison && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+          aria-modal="true"
+          role="dialog"
+        >
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full p-6">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
+              {recipientConfirmModal.action === "dma" ? "DMA review" : "Comparison"} recipient
+            </h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+              {recipientConfirmModal.action === "dma"
+                ? "The DMA review will be sent to:"
+                : "The comparison will be sent to:"}
+              <span className="block mt-1 text-xs text-gray-500 dark:text-gray-500">
+                You can edit the name and email if the CRM contact is not the right recipient.
+              </span>
+            </p>
+            <div className="space-y-3 mb-6">
+              <div>
+                <label
+                  htmlFor="b2-recipient-name"
+                  className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1"
+                >
+                  Client name
+                </label>
+                <input
+                  id="b2-recipient-name"
+                  type="text"
+                  value={recipientConfirmModal.contactName}
+                  onChange={(e) =>
+                    setRecipientConfirmModal((prev) => ({ ...prev, contactName: e.target.value }))
+                  }
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm"
+                  placeholder="Contact name"
+                  autoComplete="name"
+                />
+              </div>
+              <div>
+                <label
+                  htmlFor="b2-recipient-email"
+                  className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1"
+                >
+                  Email
+                </label>
+                <input
+                  id="b2-recipient-email"
+                  type="email"
+                  value={recipientConfirmModal.contactEmail}
+                  onChange={(e) =>
+                    setRecipientConfirmModal((prev) => ({ ...prev, contactEmail: e.target.value }))
+                  }
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm"
+                  placeholder="name@example.com"
+                  autoComplete="email"
+                />
+              </div>
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setRecipientConfirmModal((prev) => ({ ...prev, open: false }))}
+                className="w-full sm:w-auto px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 font-medium text-sm order-2 sm:order-1"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleRecipientConfirmSubmit}
+                className="w-full sm:w-auto px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm order-1 sm:order-2"
+              >
+                {recipientConfirmModal.action === "dma" ? "Send DMA review" : "Send comparison"}
               </button>
             </div>
           </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useIsMobile } from "@/hooks/use-mobile";
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useState } from "react";
 
 const SIDEBAR_COLLAPSED_KEY = "aces-sidebar-collapsed";
 
@@ -35,30 +35,24 @@ export function SidebarProvider({
   children: React.ReactNode;
   defaultOpen?: boolean;
 }) {
-  const [isOpen, setIsOpen] = useState(defaultOpen);
-  const [isCollapsed, setIsCollapsed] = useState(false);
-  const isMobile = useIsMobile();
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
+  const [mobileOpen, setMobileOpen] = useState(defaultOpen);
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    if (typeof window === "undefined") return false;
     try {
       const stored = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
-      if (stored !== null) setIsCollapsed(stored === "true");
+      return stored === "true";
     } catch {
-      // ignore
+      return false;
     }
-  }, []);
-
-  useEffect(() => {
-    if (isMobile) {
-      setIsOpen(false);
-    } else {
-      setIsOpen(true);
-    }
-  }, [isMobile]);
+  });
+  const isMobile = useIsMobile();
+  const isOpen = isMobile ? mobileOpen : true;
+  const setIsOpen = (open: boolean) => {
+    if (isMobile) setMobileOpen(open);
+  };
 
   function toggleSidebar() {
-    setIsOpen((prev) => !prev);
+    if (isMobile) setMobileOpen((prev) => !prev);
   }
 
   function toggleCollapse() {

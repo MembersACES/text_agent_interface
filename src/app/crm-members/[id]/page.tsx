@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useEffect, useCallback, type FormEvent } from "react";
+import { useMemo, useState, useCallback, type FormEvent } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 
@@ -65,13 +65,7 @@ export default function ClientDetailPage() {
     refetchTasks,
   } = useMemberData(clientId);
 
-  const [stageValue, setStageValue] = useState<ClientStage | undefined>(
-    undefined
-  );
-
-  useEffect(() => {
-    if (client?.stage != null) setStageValue(client.stage as ClientStage);
-  }, [client?.stage]);
+  const stageValue = client?.stage as ClientStage | undefined;
 
   const actions = useMemberActions({
     clientId,
@@ -120,7 +114,7 @@ export default function ClientDetailPage() {
     } catch {
       return null;
     }
-  }, [businessInfo, client?.business_name, token]);
+  }, [businessInfo, client, token, setBusinessInfo]);
 
   const [businessInfoOpen, setBusinessInfoOpen] = useState(true);
   const [createOfferOpen, setCreateOfferOpen] = useState(false);
@@ -302,7 +296,6 @@ export default function ClientDetailPage() {
                   stageValue={stageValue}
                   savingStage={actions.savingStage}
                   onStageChange={(value) => {
-                    setStageValue(value);
                     actions.handleStageChange(value);
                   }}
                   firstOfferId={offers[0]?.id ?? null}

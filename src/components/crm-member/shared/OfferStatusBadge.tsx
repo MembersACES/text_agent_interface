@@ -15,6 +15,10 @@ const statusStyles: Record<string, string> = {
     "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
   response_received:
     "bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-300",
+  autonomous_agent_trigger:
+    "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-300",
+  autonomous_agent_stopped:
+    "bg-fuchsia-100 text-fuchsia-800 dark:bg-fuchsia-900/30 dark:text-fuchsia-300",
   accepted:
     "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
   lost: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",

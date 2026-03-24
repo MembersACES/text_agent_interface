@@ -21,6 +21,7 @@ const ROUTE_TITLES: Record<string, string> = {
   "/clients": "Members",
   "/pipeline": "Pipeline",
   "/offers": "Offers",
+  "/autonomous-agent": "Autonomous Agent",
   "/reports": "Reports",
   "/reports/activities": "Activity report",
   "/loa-upload": "Google Drive - New Member Creation",
@@ -58,6 +59,7 @@ const ROUTE_PREFIX_TITLES: { prefix: string; title: string }[] = [
   { prefix: "/crm-members/", title: "Member" },
   { prefix: "/clients/", title: "Member" },
   { prefix: "/offers/", title: "Offer" },
+  { prefix: "/autonomous-agent/", title: "Autonomous run" },
 ];
 
 export function getTitleForPath(pathname: string): string {

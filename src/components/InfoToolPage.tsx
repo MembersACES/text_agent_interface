@@ -668,6 +668,11 @@ function CIElectricityOfferModal({
         const annualSavings = normalizeMoneyToNumber((result as any)?.annual_savings);
         const currentCost = normalizeMoneyToNumber((result as any)?.current_cost);
         const newCost = normalizeMoneyToNumber((result as any)?.new_cost);
+        // Additional Base 2 / comparison offer metrics (persisted to CRM offer)
+        const annualUsageGj = normalizeMoneyToNumber((result as any)?.annual_usage_gj);
+        const energyChargePct = normalizeMoneyToNumber((result as any)?.energy_charge_pct);
+        const contractedRate = normalizeMoneyToNumber((result as any)?.contracted_rate);
+        const offerRate = normalizeMoneyToNumber((result as any)?.offer_rate);
 
         // Log into the offer activity report (same pattern as Base 2)
         if (session?.user?.email && token) {
@@ -726,6 +731,10 @@ function CIElectricityOfferModal({
               if (annualSavings != null) metadata.annual_savings = annualSavings;
               if (currentCost != null) metadata.current_cost = currentCost;
               if (newCost != null) metadata.new_cost = newCost;
+              if (annualUsageGj != null) metadata.annual_usage_gj = annualUsageGj;
+              if (energyChargePct != null) metadata.energy_charge_pct = energyChargePct;
+              if (contractedRate != null) metadata.contracted_rate = contractedRate;
+              if (offerRate != null) metadata.offer_rate = offerRate;
 
               const payload = {
                 activity_type: "comparison",

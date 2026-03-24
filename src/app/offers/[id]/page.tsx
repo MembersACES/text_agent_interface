@@ -30,6 +30,10 @@ interface Offer {
   annual_savings?: number | null;
   current_cost?: number | null;
   new_cost?: number | null;
+  annual_usage_gj?: number | null;
+  energy_charge_pct?: number | null;
+  contracted_rate?: number | null;
+  offer_rate?: number | null;
   document_link?: string | null;
   created_at: string;
   updated_at: string;
@@ -786,6 +790,42 @@ export default function OfferDetailPage() {
                           ${Number(offer.annual_savings).toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </dd>
                       </div>
+                    )}
+                    {offer.annual_usage_gj != null && (
+                      <div className="flex justify-between gap-4">
+                        <dt className="text-gray-500 dark:text-gray-400">Annual usage</dt>
+                        <dd className="text-gray-900 dark:text-gray-100 text-right">
+                          {Number(offer.annual_usage_gj).toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} GJ
+                        </dd>
+                      </div>
+                    )}
+                    {offer.energy_charge_pct != null && (
+                      <div className="flex justify-between gap-4">
+                        <dt className="text-gray-500 dark:text-gray-400">Energy charge</dt>
+                        <dd className="text-gray-900 dark:text-gray-100 text-right">
+                          {Number(offer.energy_charge_pct).toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%
+                        </dd>
+                      </div>
+                    )}
+                    {(offer.contracted_rate != null || offer.offer_rate != null) && (
+                      <>
+                        {offer.contracted_rate != null && (
+                          <div className="flex justify-between gap-4">
+                            <dt className="text-gray-500 dark:text-gray-400">Contracted rate</dt>
+                            <dd className="text-gray-900 dark:text-gray-100 text-right">
+                              ${Number(offer.contracted_rate).toLocaleString("en-AU", { minimumFractionDigits: 4, maximumFractionDigits: 4 })}
+                            </dd>
+                          </div>
+                        )}
+                        {offer.offer_rate != null && (
+                          <div className="flex justify-between gap-4">
+                            <dt className="text-gray-500 dark:text-gray-400">Offer rate</dt>
+                            <dd className="text-gray-900 dark:text-gray-100 text-right">
+                              ${Number(offer.offer_rate).toLocaleString("en-AU", { minimumFractionDigits: 4, maximumFractionDigits: 4 })}
+                            </dd>
+                          </div>
+                        )}
+                      </>
                     )}
                     {(offer.current_cost != null || offer.new_cost != null) && (
                       <>
