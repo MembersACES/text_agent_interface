@@ -41,6 +41,12 @@ function formatDateTime(iso?: string | null) {
 
 const PAGE_SIZE = 20;
 
+/** Base-2 follow-up types that support POST .../restart (must match backend). */
+const RESTARTABLE_SEQUENCE_TYPES = new Set([
+  "gas_base2_followup_v1",
+  "ci_electricity_base2_followup_v1",
+]);
+
 export default function AutonomousAgentPage() {
   const { data: session } = useSession();
   const token = (session as any)?.id_token || (session as any)?.accessToken;
@@ -53,6 +59,8 @@ export default function AutonomousAgentPage() {
   const [total, setTotal] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [stoppingId, setStoppingId] = useState<number | null>(null);
+  const [restartingId, setRestartingId] = useState<number | null>(null);
 
   useEffect(() => {
     if (!token) {
@@ -119,6 +127,75 @@ export default function AutonomousAgentPage() {
       console.error("Load more sequences", e);
     } finally {
       setLoadingMore(false);
+    }
+  };
+
+  const handleStopRun = async (runId: number) => {
+    if (!token) return;
+    if (
+      !window.confirm(
+        "Stop this sequence? Pending steps will be skipped and no further outreach will run.",
+      )
+    ) {
+      return;
+    }
+    setStoppingId(runId);
+    try {
+      const res = await fetch(
+        `${getAutonomousApiBaseUrl()}/api/autonomous/sequences/runs/${runId}/stop`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        },
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(typeof data.detail === "string" ? data.detail : "Stop failed");
+      }
+      setRuns((prev) => prev.filter((r) => r.id !== runId));
+      setTotal((t) => Math.max(0, t - 1));
+      showToast("Sequence stopped.", "success");
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : "Stop failed", "error");
+    } finally {
+      setStoppingId(null);
+    }
+  };
+
+  const handleRestartRun = async (runId: number) => {
+    if (!token) return;
+    if (
+      !window.confirm(
+        "Start a new sequence for this offer using the same sequence type and saved context? The schedule is anchored from today in AEST; day 1 starts at 9:00 on the next business day.",
+      )
+    ) {
+      return;
+    }
+    setRestartingId(runId);
+    try {
+      const res = await fetch(
+        `${getAutonomousApiBaseUrl()}/api/autonomous/sequences/runs/${runId}/restart`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        },
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(typeof data.detail === "string" ? data.detail : "Restart failed");
+      }
+      if (data.reused_existing) {
+        showToast(
+          `This offer already has an active sequence of this type (run #${data.run_id}).`,
+          "success",
+        );
+      } else {
+        showToast(`New sequence started (run #${data.run_id}).`, "success");
+      }
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : "Restart failed", "error");
+    } finally {
+      setRestartingId(null);
     }
   };
 
@@ -304,9 +381,35 @@ export default function AutonomousAgentPage() {
                           >
                             Offer
                           </Link>
+                          {tab === "running" && r.run_status === "running" ? (
+                            <button
+                              type="button"
+                              disabled={stoppingId === r.id || deletingId === r.id || restartingId === r.id}
+                              onClick={() => handleStopRun(r.id)}
+                              className="text-left text-xs font-medium text-amber-700 dark:text-amber-400 hover:underline disabled:opacity-50"
+                            >
+                              {stoppingId === r.id ? "Stopping…" : "Stop"}
+                            </button>
+                          ) : null}
+                          {tab === "finished" &&
+                          ["stopped", "completed", "cancelled"].includes(r.run_status) &&
+                          RESTARTABLE_SEQUENCE_TYPES.has(r.sequence_type) ? (
+                            <button
+                              type="button"
+                              disabled={
+                                restartingId === r.id || deletingId === r.id || stoppingId === r.id
+                              }
+                              onClick={() => handleRestartRun(r.id)}
+                              className="text-left text-xs font-medium text-emerald-700 dark:text-emerald-400 hover:underline disabled:opacity-50"
+                            >
+                              {restartingId === r.id ? "Starting…" : "Start again"}
+                            </button>
+                          ) : null}
                           <button
                             type="button"
-                            disabled={deletingId === r.id}
+                            disabled={
+                              deletingId === r.id || stoppingId === r.id || restartingId === r.id
+                            }
                             onClick={() => handleDeleteRun(r.id)}
                             className="text-left text-xs font-medium text-red-600 dark:text-red-400 hover:underline disabled:opacity-50"
                           >
