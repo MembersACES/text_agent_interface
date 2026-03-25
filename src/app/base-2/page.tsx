@@ -288,6 +288,15 @@ function getSmeCiGasEffectiveUsageGJ(comparison: UtilityComparison): number {
   return comparison.gasUsage || comparison.monthlyUsage || 0;
 }
 
+function parseBusinessInfoParam(raw: string | null): BusinessInfo | null {
+  if (!raw || typeof raw !== "string") return null;
+  try {
+    return JSON.parse(decodeURIComponent(raw)) as BusinessInfo;
+  } catch {
+    return null;
+  }
+}
+
 function normalizeDocumentLink(link: string | undefined): string | undefined {
   if (!link || typeof link !== "string") return undefined;
   let s = link.trim();
@@ -380,13 +389,9 @@ export default function Base2Page() {
   const searchParams = useSearchParams();
   const urlBusinessName = searchParams.get('businessName') || "";
   const urlBusinessInfo = searchParams.get('businessInfo');
-  const urlOfferId = searchParams.get('offerId');
-  const urlClientId = searchParams.get('clientId');
 
   const [businessName, setBusinessName] = useState<string>(urlBusinessName);
-  const [businessInfo, setBusinessInfo] = useState<BusinessInfo | null>(
-    urlBusinessInfo ? JSON.parse(decodeURIComponent(urlBusinessInfo)) : null
-  );
+  const [businessInfo, setBusinessInfo] = useState<BusinessInfo | null>(() => parseBusinessInfoParam(urlBusinessInfo));
 
   const [utilityComparisons, setUtilityComparisons] = useState<UtilityComparison[]>([]);
   const utilityComparisonsRef = useRef<UtilityComparison[]>([]);
@@ -419,6 +424,14 @@ export default function Base2Page() {
   });
 
   const token = (session as any)?.id_token;
+
+  // Next.js can hydrate search params after the first paint; state from useState(initial) does not re-run.
+  // Sync CRM context (businessName / businessInfo) when the URL updates so offers & activities still post.
+  useEffect(() => {
+    if (urlBusinessName) setBusinessName(urlBusinessName);
+    const parsed = parseBusinessInfoParam(urlBusinessInfo);
+    if (parsed) setBusinessInfo(parsed);
+  }, [urlBusinessName, urlBusinessInfo]);
 
   const smeCiGasReferenceKey = useMemo(
     () =>
@@ -1083,7 +1096,14 @@ export default function Base2Page() {
       else setError(null);
       if (results.length > 0) {
         setSuccess(true);
-        const offerIdFromUrl = urlOfferId ? parseInt(urlOfferId, 10) : null; const clientIdFromUrl = urlClientId ? parseInt(urlClientId, 10) : null;
+        const sp =
+          typeof window !== "undefined"
+            ? new URLSearchParams(window.location.search)
+            : new URLSearchParams();
+        const offerIdRaw = sp.get("offerId");
+        const clientIdRaw = sp.get("clientId");
+        const offerIdFromUrl = offerIdRaw ? parseInt(offerIdRaw, 10) : null;
+        const clientIdFromUrl = clientIdRaw ? parseInt(clientIdRaw, 10) : null;
         const hasValidOfferId = offerIdFromUrl != null && !isNaN(offerIdFromUrl); const hasValidClientId = clientIdFromUrl != null && !isNaN(clientIdFromUrl);
         let offerIdToUse: number | null = hasValidOfferId ? offerIdFromUrl : null;
         if (offerIdToUse == null && hasValidClientId && token && successResults.length > 0) {
