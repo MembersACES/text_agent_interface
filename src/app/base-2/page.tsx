@@ -186,6 +186,59 @@ function normalizeAustralianPostcodeInput(raw: string | undefined): string {
   return "";
 }
 
+function formatSmeCiMatchStrategy(strategy: string | null | undefined): string | null {
+  if (!strategy) return null;
+  if (strategy === "exact_postcode") return "Exact postcode match";
+  if (strategy === "prefix_3digit") return "Same area match";
+  if (strategy === "nearest_numeric_postcode") return "Nearby postcode estimate";
+  if (strategy === "global_dataset_median") return "Portfolio-wide estimate";
+  if (strategy === "default_share") return "Default estimate";
+  return "Estimated reference";
+}
+
+function formatSmeCiConfidence(confidence: string | null | undefined): string | null {
+  if (!confidence) return null;
+  if (confidence === "high") return "High";
+  if (confidence === "medium") return "Medium";
+  if (confidence === "low") return "Low";
+  return confidence;
+}
+
+function getSmeCiMethodLine(comparison: UtilityComparison): string | null {
+  const sampleCount = comparison.smeCiReferenceSampleCount;
+  if (sampleCount == null || sampleCount <= 0) return null;
+  const share = comparison.smeCiEnergyShareOfInvoice;
+  const sharePct = share != null && Number.isFinite(share) ? `${(share * 100).toFixed(1)}%` : null;
+  const bills = `${sampleCount} C&I bill${sampleCount === 1 ? "" : "s"}`;
+  if (sharePct) return `Based on ${bills}. Typical energy portion: ${sharePct} of invoice total.`;
+  return `Based on ${bills}. Typical energy portion estimated from energy charges divided by invoice total.`;
+}
+
+function getSmeCiFallbackExplanation(comparison: UtilityComparison): string | null {
+  const strategy = comparison.smeCiReferenceMatchStrategy;
+  if (!strategy || strategy === "exact_postcode") return null;
+  const postcode = normalizeAustralianPostcodeInput(comparison.smeGasPostcode);
+  const pcList = comparison.smeCiReferenceMatchedPostcodes?.length
+    ? comparison.smeCiReferenceMatchedPostcodes.join(", ")
+    : null;
+  if (strategy === "nearest_numeric_postcode") {
+    if (postcode && pcList) return `No usable C&I gas bills were found for ${postcode}, so this uses nearby postcodes ${pcList}.`;
+    if (pcList) return `No exact local match was found, so this uses nearby postcodes ${pcList}.`;
+    return "No exact local match was found, so this uses nearby postcodes.";
+  }
+  if (strategy === "prefix_3digit") {
+    if (postcode) return `No usable exact match was found for ${postcode}, so this uses nearby postcodes in the same 3-digit area.`;
+    return "No usable exact match was found, so this uses nearby postcodes in the same 3-digit area.";
+  }
+  if (strategy === "global_dataset_median") {
+    return "No local postcode matches were available, so this uses a broader C&I portfolio estimate.";
+  }
+  if (strategy === "default_share") {
+    return "Not enough reference data was available, so this uses a default energy portion.";
+  }
+  return null;
+}
+
 function formatAud(value: number | undefined, empty = "—"): string {
   if (value == null || !Number.isFinite(value)) return empty;
   return value.toLocaleString("en-AU", { style: "currency", currency: "AUD" });
@@ -376,75 +429,88 @@ export default function Base2Page() {
     [utilityComparisons]
   );
 
+  const fetchSmeCiGasReferenceFor = async (comparison: UtilityComparison, force = false) => {
+    if (!token) return;
+    if (comparison.utilityType !== "SME Gas" || comparison.smeGasComparisonMode !== "ci_offer") return;
+    const pc = normalizeAustralianPostcodeInput(comparison.smeGasPostcode || "");
+    if (pc.length !== 4) return;
+    const tag = `${comparison.identifier}|${pc}`;
+    if (!force && comparison.smeCiReferenceFetchedTag === tag) return;
+
+    setUtilityComparisons((prev) =>
+      prev.map((u) =>
+        u.utilityType === "SME Gas" && u.identifier === comparison.identifier
+          ? { ...u, smeCiReferenceLoading: true, smeCiReferenceError: null }
+          : u
+      )
+    );
+    try {
+      const debugQs =
+        typeof process !== "undefined" && process.env.NODE_ENV === "development"
+          ? "&debug=true"
+          : "";
+      const url = `${getApiBaseUrl()}/api/base2/ci-gas-energy-reference?postcode=${encodeURIComponent(pc)}&relax_postcode=true${debugQs}`;
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      const data = (await res.json()) as Record<string, unknown>;
+      if (data.diagnostics != null && typeof data.diagnostics === "object") {
+        console.info("[Base2 ci-gas-ref diagnostics]", data.diagnostics);
+      }
+      if (!res.ok) {
+        throw new Error(typeof data.detail === "string" ? data.detail : "Reference fetch failed");
+      }
+      const med = typeof data.median_energy_share === "number" ? data.median_energy_share : 0.72;
+      const sampleCount = typeof data.sample_count === "number" ? data.sample_count : 0;
+      const usedFallback = data.used_fallback === true;
+      const msg = typeof data.message === "string" ? data.message : null;
+      const matchStrategy = typeof data.match_strategy === "string" ? data.match_strategy : null;
+      const confidence = typeof data.confidence === "string" ? data.confidence : null;
+      const matchedPostcodes = Array.isArray(data.matched_postcodes)
+        ? (data.matched_postcodes as unknown[]).filter((x): x is string => typeof x === "string")
+        : [];
+
+      setUtilityComparisons((prev) =>
+        prev.map((u) => {
+          if (u.utilityType !== "SME Gas" || u.identifier !== comparison.identifier) return u;
+          const nextShare = Math.max(0.01, Math.min(1, med));
+          return withSmeGasCiDerivedRates({
+            ...u,
+            smeCiReferenceLoading: false,
+            smeCiEnergyShareOfInvoice: nextShare,
+            smeCiReferenceSampleCount: sampleCount,
+            smeCiReferenceError: usedFallback && msg ? msg : null,
+            smeCiReferenceMatchStrategy: matchStrategy,
+            smeCiReferenceMatchedPostcodes: matchedPostcodes.length > 0 ? matchedPostcodes : undefined,
+            smeCiReferenceConfidence: confidence,
+            smeCiReferenceFetchedTag: tag,
+          });
+        })
+      );
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "Reference fetch failed";
+      setUtilityComparisons((prev) =>
+        prev.map((u) =>
+          u.utilityType === "SME Gas" && u.identifier === comparison.identifier
+            ? { ...u, smeCiReferenceLoading: false, smeCiReferenceError: message, smeCiReferenceMatchStrategy: undefined, smeCiReferenceMatchedPostcodes: undefined, smeCiReferenceConfidence: undefined }
+            : u
+        )
+      );
+    }
+  };
+
+  const refreshSmeCiGasReference = async (identifier: string) => {
+    const current = utilityComparisonsRef.current.find(
+      (u) => u.utilityType === "SME Gas" && u.identifier === identifier
+    );
+    if (!current) return;
+    await fetchSmeCiGasReferenceFor(current, true);
+  };
+
   useEffect(() => {
     if (!token || !smeCiGasReferenceKey) return;
     const list = utilityComparisonsRef.current;
     const run = async () => {
       for (const c of list) {
-        if (c.utilityType !== "SME Gas" || c.smeGasComparisonMode !== "ci_offer") continue;
-        const pc = normalizeAustralianPostcodeInput(c.smeGasPostcode || "");
-        if (pc.length !== 4) continue;
-        const tag = `${c.identifier}|${pc}`;
-        if (c.smeCiReferenceFetchedTag === tag) continue;
-
-        setUtilityComparisons((prev) =>
-          prev.map((u) =>
-            u.utilityType === "SME Gas" && u.identifier === c.identifier
-              ? { ...u, smeCiReferenceLoading: true, smeCiReferenceError: null }
-              : u
-          )
-        );
-        try {
-          const debugQs =
-            typeof process !== "undefined" && process.env.NODE_ENV === "development"
-              ? "&debug=true"
-              : "";
-          const url = `${getApiBaseUrl()}/api/base2/ci-gas-energy-reference?postcode=${encodeURIComponent(pc)}&relax_postcode=true${debugQs}`;
-          const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-          const data = (await res.json()) as Record<string, unknown>;
-          if (data.diagnostics != null && typeof data.diagnostics === "object") {
-            console.info("[Base2 ci-gas-ref diagnostics]", data.diagnostics);
-          }
-          if (!res.ok) {
-            throw new Error(typeof data.detail === "string" ? data.detail : "Reference fetch failed");
-          }
-          const med = typeof data.median_energy_share === "number" ? data.median_energy_share : 0.72;
-          const sampleCount = typeof data.sample_count === "number" ? data.sample_count : 0;
-          const usedFallback = data.used_fallback === true;
-          const msg = typeof data.message === "string" ? data.message : null;
-          const matchStrategy = typeof data.match_strategy === "string" ? data.match_strategy : null;
-          const confidence = typeof data.confidence === "string" ? data.confidence : null;
-          const matchedPostcodes = Array.isArray(data.matched_postcodes)
-            ? (data.matched_postcodes as unknown[]).filter((x): x is string => typeof x === "string")
-            : [];
-
-          setUtilityComparisons((prev) =>
-            prev.map((u) => {
-              if (u.utilityType !== "SME Gas" || u.identifier !== c.identifier) return u;
-              const nextShare = Math.max(0.01, Math.min(1, med));
-              return withSmeGasCiDerivedRates({
-                ...u,
-                smeCiReferenceLoading: false,
-                smeCiEnergyShareOfInvoice: nextShare,
-                smeCiReferenceSampleCount: sampleCount,
-                smeCiReferenceError: usedFallback && msg ? msg : null,
-                smeCiReferenceMatchStrategy: matchStrategy,
-                smeCiReferenceMatchedPostcodes: matchedPostcodes.length > 0 ? matchedPostcodes : undefined,
-                smeCiReferenceConfidence: confidence,
-                smeCiReferenceFetchedTag: tag,
-              });
-            })
-          );
-        } catch (e: unknown) {
-          const message = e instanceof Error ? e.message : "Reference fetch failed";
-          setUtilityComparisons((prev) =>
-            prev.map((u) =>
-              u.utilityType === "SME Gas" && u.identifier === c.identifier
-                ? { ...u, smeCiReferenceLoading: false, smeCiReferenceError: message, smeCiReferenceMatchStrategy: undefined, smeCiReferenceMatchedPostcodes: undefined, smeCiReferenceConfidence: undefined }
-                : u
-            )
-          );
-        }
+        await fetchSmeCiGasReferenceFor(c);
       }
     };
     void run();
@@ -1536,13 +1602,44 @@ export default function Base2Page() {
                             <div className="flex flex-wrap items-center gap-2">
                               <span className="text-xs font-medium text-gray-600">Postcode (C&I reference bills)</span>
                               <input type="text" value={comparison.smeGasPostcode ?? ""} onChange={(e) => updateSmeGasPostcode(comparison.identifier, e.target.value)} className="w-28 rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-400" placeholder="3029" maxLength={12} />
+                              <button
+                                type="button"
+                                onClick={() => void refreshSmeCiGasReference(comparison.identifier)}
+                                disabled={
+                                  comparison.smeCiReferenceLoading === true ||
+                                  normalizeAustralianPostcodeInput(comparison.smeGasPostcode || "").length !== 4
+                                }
+                                className="rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                title="Re-check Airtable using the current postcode"
+                              >
+                                Refresh
+                              </button>
                               {comparison.smeCiReferenceLoading && <span className="text-xs text-gray-400">Loading reference…</span>}
                             </div>
-                            {comparison.smeCiReferenceError && <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">{comparison.smeCiReferenceError}</p>}
-                            {comparison.smeCiReferenceSampleCount != null && comparison.smeCiReferenceSampleCount > 0 && <p className="text-xs text-gray-500">Reference: {comparison.smeCiReferenceSampleCount} C&I bill{comparison.smeCiReferenceSampleCount === 1 ? "" : "s"} (median energy $ ÷ invoice total).</p>}
-                            {comparison.smeCiReferenceMatchStrategy && comparison.smeCiReferenceMatchStrategy !== "exact_postcode" && comparison.smeCiReferenceSampleCount != null && comparison.smeCiReferenceSampleCount > 0 && (
-                              <p className="text-[11px] text-gray-400">Match: <span className="font-mono">{comparison.smeCiReferenceMatchStrategy}</span>{comparison.smeCiReferenceConfidence ? ` · confidence ${comparison.smeCiReferenceConfidence}` : ""}{comparison.smeCiReferenceMatchedPostcodes?.length ? ` · postcodes ${comparison.smeCiReferenceMatchedPostcodes.join(", ")}` : ""}</p>
+                            {comparison.smeCiReferenceError && (
+                              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                                {comparison.smeCiReferenceError}
+                              </p>
                             )}
+                            {(() => {
+                              const methodLine = getSmeCiMethodLine(comparison);
+                              const fallbackLine = getSmeCiFallbackExplanation(comparison);
+                              const matchLabel = formatSmeCiMatchStrategy(comparison.smeCiReferenceMatchStrategy);
+                              const confidenceLabel = formatSmeCiConfidence(comparison.smeCiReferenceConfidence);
+                              if (!methodLine && !fallbackLine && !matchLabel && !confidenceLabel) return null;
+                              return (
+                                <div className="space-y-1">
+                                  {methodLine && <p className="text-xs text-gray-600">{methodLine}</p>}
+                                  {fallbackLine && <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">{fallbackLine}</p>}
+                                  {(matchLabel || confidenceLabel) && (
+                                    <p className="text-[11px] text-gray-500">
+                                      Estimate quality: {confidenceLabel ?? "Unknown"}
+                                      {matchLabel ? ` · ${matchLabel}` : ""}
+                                    </p>
+                                  )}
+                                </div>
+                              );
+                            })()}
                           </div>
                         )}
                       </div>
