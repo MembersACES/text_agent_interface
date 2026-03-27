@@ -71,8 +71,20 @@ interface UtilityComparison {
   smeCiReferenceError?: string | null;
   smeCiReferenceMatchStrategy?: string | null;
   smeCiReferenceMatchedPostcodes?: string[];
+  /** Postcodes that contributed to the median, with C&I client business labels from Airtable (when present). */
+  smeCiReferenceMatchedPostcodeReference?: { postcode: string; business_names: string[] }[];
   smeCiReferenceConfidence?: string | null;
   smeCiReferenceFetchedTag?: string;
+  /** Aggregated from all SME Gas invoice rows in Airtable for this MRIN (Base 2). */
+  smeAirtableAnnualUsageGJ?: number | null;
+  smeAirtableMeetsCiThreshold1000GJ?: boolean | null;
+  smeAirtableHistoryBillCount?: number;
+  smeAirtableHistoryTotalDays?: number;
+  smeAirtableHistoryConfidence?: string | null;
+  smeAirtableHistoryLoading?: boolean;
+  smeAirtableHistoryError?: string | null;
+  smeAirtableHistoryFetchedTag?: string;
+  smeAirtableHistoryMessage?: string | null;
   ciGasInvoiceReviewDays?: number;
   ciGasAnnualConsumptionGJ?: number;
   oilFrequency?: string;
@@ -204,6 +216,31 @@ function formatSmeCiConfidence(confidence: string | null | undefined): string | 
   return confidence;
 }
 
+function clearSmeAirtableHistoryFields(): Pick<
+  UtilityComparison,
+  | "smeAirtableAnnualUsageGJ"
+  | "smeAirtableMeetsCiThreshold1000GJ"
+  | "smeAirtableHistoryBillCount"
+  | "smeAirtableHistoryTotalDays"
+  | "smeAirtableHistoryConfidence"
+  | "smeAirtableHistoryLoading"
+  | "smeAirtableHistoryError"
+  | "smeAirtableHistoryFetchedTag"
+  | "smeAirtableHistoryMessage"
+> {
+  return {
+    smeAirtableAnnualUsageGJ: undefined,
+    smeAirtableMeetsCiThreshold1000GJ: undefined,
+    smeAirtableHistoryBillCount: undefined,
+    smeAirtableHistoryTotalDays: undefined,
+    smeAirtableHistoryConfidence: undefined,
+    smeAirtableHistoryLoading: false,
+    smeAirtableHistoryError: undefined,
+    smeAirtableHistoryFetchedTag: undefined,
+    smeAirtableHistoryMessage: undefined,
+  };
+}
+
 function getSmeCiMethodLine(comparison: UtilityComparison): string | null {
   const sampleCount = comparison.smeCiReferenceSampleCount;
   if (sampleCount == null || sampleCount <= 0) return null;
@@ -214,19 +251,37 @@ function getSmeCiMethodLine(comparison: UtilityComparison): string | null {
   return `Based on ${bills}. Typical energy portion estimated from energy charges divided by invoice total.`;
 }
 
+function formatSmeCiMatchedPostcodesWithBusinesses(
+  postcodes: string[] | undefined,
+  reference: UtilityComparison["smeCiReferenceMatchedPostcodeReference"]
+): string | null {
+  if (!postcodes?.length) return null;
+  if (!reference?.length) return postcodes.join(", ");
+  return postcodes
+    .map((pc) => {
+      const row = reference.find((r) => r.postcode === pc);
+      const names = (row?.business_names ?? []).map((s) => String(s).trim()).filter(Boolean);
+      return names.length ? `${pc} (${names.join(", ")})` : pc;
+    })
+    .join(", ");
+}
+
 function getSmeCiFallbackExplanation(comparison: UtilityComparison): string | null {
+  if (comparison.smeCiReferenceError) return null;
   const strategy = comparison.smeCiReferenceMatchStrategy;
   if (!strategy || strategy === "exact_postcode") return null;
   const postcode = normalizeAustralianPostcodeInput(comparison.smeGasPostcode);
-  const pcList = comparison.smeCiReferenceMatchedPostcodes?.length
-    ? comparison.smeCiReferenceMatchedPostcodes.join(", ")
-    : null;
+  const pcs = comparison.smeCiReferenceMatchedPostcodes;
+  const pcList = formatSmeCiMatchedPostcodesWithBusinesses(pcs, comparison.smeCiReferenceMatchedPostcodeReference);
   if (strategy === "nearest_numeric_postcode") {
     if (postcode && pcList) return `No usable C&I gas bills were found for ${postcode}, so this uses nearby postcodes ${pcList}.`;
     if (pcList) return `No exact local match was found, so this uses nearby postcodes ${pcList}.`;
     return "No exact local match was found, so this uses nearby postcodes.";
   }
   if (strategy === "prefix_3digit") {
+    if (postcode && pcList) {
+      return `No usable exact match was found for ${postcode}, so this uses C&I reference bills for ${pcList} in the same 3-digit area.`;
+    }
     if (postcode) return `No usable exact match was found for ${postcode}, so this uses nearby postcodes in the same 3-digit area.`;
     return "No usable exact match was found, so this uses nearby postcodes in the same 3-digit area.";
   }
@@ -245,7 +300,7 @@ function formatAud(value: number | undefined, empty = "—"): string {
 }
 
 const AU_GST_DIVISOR = 1.1;
-const DEFAULT_CI_GAS_COMPARISON_RATE_PER_GJ = 14.8;
+const DEFAULT_CI_GAS_COMPARISON_RATE_PER_GJ = 17.8;
 
 function getSmeGasEffectiveTotalExGst(c: UtilityComparison): number | undefined {
   const raw = c.smeGasTotalExGst;
@@ -442,6 +497,17 @@ export default function Base2Page() {
     [utilityComparisons]
   );
 
+  const smeAirtableAnnualUsageKey = useMemo(
+    () =>
+      utilityComparisons
+        .filter((c) => c.utilityType === "SME Gas" && c.smeGasComparisonMode === "ci_offer")
+        .map((c) => (c.identifier || "").trim())
+        .filter((id) => id.length >= 4)
+        .sort()
+        .join(";"),
+    [utilityComparisons]
+  );
+
   const fetchSmeCiGasReferenceFor = async (comparison: UtilityComparison, force = false) => {
     if (!token) return;
     if (comparison.utilityType !== "SME Gas" || comparison.smeGasComparisonMode !== "ci_offer") return;
@@ -480,6 +546,22 @@ export default function Base2Page() {
       const matchedPostcodes = Array.isArray(data.matched_postcodes)
         ? (data.matched_postcodes as unknown[]).filter((x): x is string => typeof x === "string")
         : [];
+      const rawRef = data.matched_postcode_reference;
+      const matchedPostcodeReference = Array.isArray(rawRef)
+        ? (rawRef as unknown[])
+            .map((row) => {
+              if (!row || typeof row !== "object") return null;
+              const o = row as Record<string, unknown>;
+              const pc = typeof o.postcode === "string" ? o.postcode : null;
+              if (!pc) return null;
+              const namesRaw = o.business_names;
+              const businessNames = Array.isArray(namesRaw)
+                ? (namesRaw as unknown[]).filter((x): x is string => typeof x === "string")
+                : [];
+              return { postcode: pc, business_names: businessNames };
+            })
+            .filter((x): x is { postcode: string; business_names: string[] } => x != null)
+        : [];
 
       setUtilityComparisons((prev) =>
         prev.map((u) => {
@@ -493,6 +575,8 @@ export default function Base2Page() {
             smeCiReferenceError: usedFallback && msg ? msg : null,
             smeCiReferenceMatchStrategy: matchStrategy,
             smeCiReferenceMatchedPostcodes: matchedPostcodes.length > 0 ? matchedPostcodes : undefined,
+            smeCiReferenceMatchedPostcodeReference:
+              matchedPostcodeReference.length > 0 ? matchedPostcodeReference : undefined,
             smeCiReferenceConfidence: confidence,
             smeCiReferenceFetchedTag: tag,
           });
@@ -503,7 +587,15 @@ export default function Base2Page() {
       setUtilityComparisons((prev) =>
         prev.map((u) =>
           u.utilityType === "SME Gas" && u.identifier === comparison.identifier
-            ? { ...u, smeCiReferenceLoading: false, smeCiReferenceError: message, smeCiReferenceMatchStrategy: undefined, smeCiReferenceMatchedPostcodes: undefined, smeCiReferenceConfidence: undefined }
+            ? {
+                ...u,
+                smeCiReferenceLoading: false,
+                smeCiReferenceError: message,
+                smeCiReferenceMatchStrategy: undefined,
+                smeCiReferenceMatchedPostcodes: undefined,
+                smeCiReferenceMatchedPostcodeReference: undefined,
+                smeCiReferenceConfidence: undefined,
+              }
             : u
         )
       );
@@ -518,6 +610,92 @@ export default function Base2Page() {
     await fetchSmeCiGasReferenceFor(current, true);
   };
 
+  const fetchSmeAirtableAnnualUsageFor = async (comparison: UtilityComparison, force = false) => {
+    if (!token) return;
+    if (comparison.utilityType !== "SME Gas" || comparison.smeGasComparisonMode !== "ci_offer") return;
+    const mrin = (comparison.identifier || "").trim();
+    if (mrin.length < 4) return;
+    const tag = mrin;
+    if (!force && comparison.smeAirtableHistoryFetchedTag === tag) return;
+
+    setUtilityComparisons((prev) =>
+      prev.map((u) =>
+        u.utilityType === "SME Gas" && u.identifier === comparison.identifier
+          ? { ...u, smeAirtableHistoryLoading: true, smeAirtableHistoryError: null }
+          : u
+      )
+    );
+    try {
+      const qs = new URLSearchParams({ mrin, usage_unit: "auto" });
+      const debugSuffix =
+        typeof process !== "undefined" && process.env.NODE_ENV === "development" ? "&debug=true" : "";
+      const url = `${getApiBaseUrl()}/api/base2/sme-gas-airtable-annual-usage?${qs.toString()}${debugSuffix}`;
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      const data = (await res.json()) as Record<string, unknown>;
+      if (data.diagnostics != null && typeof data.diagnostics === "object") {
+        console.info("[Base2 sme-gas-airtable-annual]", data.diagnostics);
+      }
+      if (!res.ok) {
+        throw new Error(typeof data.detail === "string" ? data.detail : "Airtable usage fetch failed");
+      }
+      const annual =
+        typeof data.annual_usage_gj === "number" && Number.isFinite(data.annual_usage_gj)
+          ? data.annual_usage_gj
+          : null;
+      const meets =
+        typeof data.meets_ci_threshold_1000gj === "boolean" ? data.meets_ci_threshold_1000gj : null;
+      const billCount = typeof data.bill_count === "number" ? data.bill_count : 0;
+      const totalDays = typeof data.total_days === "number" ? data.total_days : 0;
+      const confidence = typeof data.confidence === "string" ? data.confidence : null;
+      const msg = typeof data.message === "string" ? data.message : null;
+      setUtilityComparisons((prev) =>
+        prev.map((u) => {
+          if (u.utilityType !== "SME Gas" || u.identifier !== comparison.identifier) return u;
+          return {
+            ...u,
+            smeAirtableHistoryLoading: false,
+            smeAirtableAnnualUsageGJ: annual,
+            smeAirtableMeetsCiThreshold1000GJ: meets,
+            smeAirtableHistoryBillCount: billCount,
+            smeAirtableHistoryTotalDays: totalDays,
+            smeAirtableHistoryConfidence: confidence,
+            smeAirtableHistoryFetchedTag: tag,
+            smeAirtableHistoryMessage: msg,
+            smeAirtableHistoryError: null,
+          };
+        })
+      );
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "Airtable usage fetch failed";
+      setUtilityComparisons((prev) =>
+        prev.map((u) =>
+          u.utilityType === "SME Gas" && u.identifier === comparison.identifier
+            ? {
+                ...u,
+                smeAirtableHistoryLoading: false,
+                smeAirtableHistoryError: message,
+                smeAirtableHistoryFetchedTag: undefined,
+                smeAirtableAnnualUsageGJ: undefined,
+                smeAirtableMeetsCiThreshold1000GJ: undefined,
+                smeAirtableHistoryBillCount: undefined,
+                smeAirtableHistoryTotalDays: undefined,
+                smeAirtableHistoryConfidence: undefined,
+                smeAirtableHistoryMessage: undefined,
+              }
+            : u
+        )
+      );
+    }
+  };
+
+  const refreshSmeAirtableAnnualUsage = async (identifier: string) => {
+    const current = utilityComparisonsRef.current.find(
+      (u) => u.utilityType === "SME Gas" && u.identifier === identifier
+    );
+    if (!current) return;
+    await fetchSmeAirtableAnnualUsageFor(current, true);
+  };
+
   useEffect(() => {
     if (!token || !smeCiGasReferenceKey) return;
     const list = utilityComparisonsRef.current;
@@ -528,6 +706,19 @@ export default function Base2Page() {
     };
     void run();
   }, [token, smeCiGasReferenceKey]);
+
+  useEffect(() => {
+    if (!token || !smeAirtableAnnualUsageKey) return;
+    const list = utilityComparisonsRef.current;
+    const run = async () => {
+      for (const c of list) {
+        if (c.utilityType === "SME Gas" && c.smeGasComparisonMode === "ci_offer") {
+          await fetchSmeAirtableAnnualUsageFor(c);
+        }
+      }
+    };
+    void run();
+  }, [token, smeAirtableAnnualUsageKey]);
 
   const extractFileIdFromUrl = (url: string | undefined): string | null => {
     if (!url || typeof url !== 'string') return null;
@@ -602,22 +793,27 @@ export default function Base2Page() {
       const demandRateStr = fullData['DUOS - Network Demand Charge Rate ($/KVA)'] || fullData['DUOS - Network Demand Charge Rate'] || details?.demand_charge_rate || '0';
       rates.currentDemandCharge = parseFloat(String(demandRateStr)) || undefined;
       console.log('Demand charge extraction:', { utilityType, demandRateStr, parsed: rates.currentDemandCharge, fullDataKey: fullData['DUOS - Network Demand Charge Rate ($/KVA)'], demandQuantity: rates.demandQuantity });
-      rates.comparisonPeakRate = (rates.currentPeakRate && rates.currentPeakRate > 0) ? parseFloat((rates.currentPeakRate * 0.95).toFixed(2)) : 24.50;
-      rates.comparisonOffPeakRate = (rates.currentOffPeakRate && rates.currentOffPeakRate > 0) ? parseFloat((rates.currentOffPeakRate * 0.95).toFixed(2)) : 18.00;
-      rates.comparisonShoulderRate = (rates.currentShoulderRate && rates.currentShoulderRate > 0) ? parseFloat((rates.currentShoulderRate * 0.95).toFixed(2)) : 20.00;
       if (utilityType === 'C&I Electricity') {
+        rates.comparisonPeakRate = 0;
+        rates.comparisonOffPeakRate = 0;
+        rates.comparisonShoulderRate = 0;
         rates.comparisonMeterAnnual = 600;
         rates.comparisonVasAnnual = 300;
         rates.comparisonMeteringAnnual = 900;
         rates.comparisonMeteringDaily = parseFloat((900 / 365).toFixed(4));
         rates.comparisonMeterDaily = parseFloat((600 / 365).toFixed(4));
         rates.comparisonVasDaily = parseFloat((300 / 365).toFixed(4));
+        rates.comparisonDailySupply = 0;
+        rates.comparisonDemandCharge = 0;
       } else {
+        rates.comparisonPeakRate = (rates.currentPeakRate && rates.currentPeakRate > 0) ? parseFloat((rates.currentPeakRate * 0.95).toFixed(2)) : 24.50;
+        rates.comparisonOffPeakRate = (rates.currentOffPeakRate && rates.currentOffPeakRate > 0) ? parseFloat((rates.currentOffPeakRate * 0.95).toFixed(2)) : 18.00;
+        rates.comparisonShoulderRate = (rates.currentShoulderRate && rates.currentShoulderRate > 0) ? parseFloat((rates.currentShoulderRate * 0.95).toFixed(2)) : 20.00;
         rates.comparisonMeteringAnnual = 700.00;
         rates.comparisonMeteringDaily = parseFloat((700.00 / 365).toFixed(2));
+        rates.comparisonDailySupply = rates.currentDailySupply > 0 ? parseFloat((rates.currentDailySupply * 0.95).toFixed(2)) : 1.50;
+        rates.comparisonDemandCharge = (rates.currentDemandCharge && rates.currentDemandCharge > 0) ? parseFloat((rates.currentDemandCharge * 0.95).toFixed(2)) : 12.00;
       }
-      rates.comparisonDailySupply = rates.currentDailySupply > 0 ? parseFloat((rates.currentDailySupply * 0.95).toFixed(2)) : 1.50;
-      rates.comparisonDemandCharge = (rates.currentDemandCharge && rates.currentDemandCharge > 0) ? parseFloat((rates.currentDemandCharge * 0.95).toFixed(2)) : 12.00;
     } else if (utilityType.includes('Gas')) {
       if (invoiceData?.gas_sme_invoicedetails) {
         const smeDetails = invoiceData.gas_sme_invoicedetails;
@@ -903,7 +1099,12 @@ export default function Base2Page() {
   const setSmeGasComparisonModeFor = (identifier: string, mode: SmeGasComparisonMode) => {
     setUtilityComparisons((prev) => prev.map((u) => {
       if (u.utilityType !== "SME Gas" || u.identifier !== identifier) return u;
-      let next: UtilityComparison = { ...u, smeGasComparisonMode: mode, smeCiReferenceFetchedTag: undefined };
+      let next: UtilityComparison = {
+        ...u,
+        smeGasComparisonMode: mode,
+        smeCiReferenceFetchedTag: undefined,
+        ...(mode !== "ci_offer" ? clearSmeAirtableHistoryFields() : {}),
+      };
       if (mode === "ci_offer") { next.comparisonGasRate = u.comparisonGasRate ?? DEFAULT_CI_GAS_COMPARISON_RATE_PER_GJ; next = withSmeGasCiDerivedRates(next); }
       return next;
     }));
@@ -925,7 +1126,17 @@ export default function Base2Page() {
   const updateSmeGasPostcode = (identifier: string, value: string) => {
     setUtilityComparisons((prev) => prev.map((u) => {
       if (u.utilityType !== "SME Gas" || u.identifier !== identifier) return u;
-      return { ...u, smeGasPostcode: value, smeCiReferenceFetchedTag: undefined, smeCiReferenceMatchStrategy: undefined, smeCiReferenceMatchedPostcodes: undefined, smeCiReferenceConfidence: undefined, smeCiReferenceError: null, smeCiReferenceSampleCount: undefined };
+      return {
+        ...u,
+        smeGasPostcode: value,
+        smeCiReferenceFetchedTag: undefined,
+        smeCiReferenceMatchStrategy: undefined,
+        smeCiReferenceMatchedPostcodes: undefined,
+        smeCiReferenceMatchedPostcodeReference: undefined,
+        smeCiReferenceConfidence: undefined,
+        smeCiReferenceError: null,
+        smeCiReferenceSampleCount: undefined,
+      };
     }));
   };
 
@@ -1073,8 +1284,21 @@ export default function Base2Page() {
           payload.offer1GasRate = util.comparisonGasRate?.toFixed(4) || "0"; payload.offer1Retailer = "Comparison Offer"; payload.offer1Validity = "12 months"; payload.offer1Type = "smoothed"; payload.offer1PeriodYears = "1"; payload.offer1StartDate = new Date().toISOString().split("T")[0];
           payload.current_daily_supply = util.currentDailySupply?.toFixed(2) || "0"; payload.comparison_daily_supply = util.comparisonDailySupply?.toFixed(2) || "0";
           payload.sme_gas_ci_comparison = true; payload.sme_gas_bundled_rate_per_gj = util.smeGasBundledRatePerGJ?.toFixed(4) ?? ""; payload.sme_gas_energy_share = util.smeCiEnergyShareOfInvoice?.toFixed(4) ?? ""; payload.sme_gas_postcode = util.smeGasPostcode || ""; payload.sme_gas_invoice_total_stated = util.smeGasTotalExGst?.toFixed(2) ?? ""; payload.sme_gas_invoice_includes_gst = util.smeGasInvoiceTotalIncludesGst === true;
+          // Include postcode business labels used to derive the reference energy share
+          payload.sme_gas_ci_reference_matched_postcodes = util.smeCiReferenceMatchedPostcodes ?? [];
+          payload.sme_gas_ci_reference_matched_postcode_reference = util.smeCiReferenceMatchedPostcodeReference ?? [];
+          payload.sme_gas_ci_reference_match_strategy = util.smeCiReferenceMatchStrategy ?? "";
+          payload.sme_gas_ci_reference_confidence = util.smeCiReferenceConfidence ?? "";
           const exGst = getSmeGasEffectiveTotalExGst(util); payload.sme_gas_effective_total_ex_gst = exGst != null ? exGst.toFixed(2) : "";
           payload.sme_gas_invoice_period_gj = util.smeGasInvoicePeriodGJ != null && util.smeGasInvoicePeriodGJ > 0 ? util.smeGasInvoicePeriodGJ.toFixed(3) : "";
+          payload.sme_gas_airtable_annual_gj =
+            util.smeAirtableAnnualUsageGJ != null && Number.isFinite(util.smeAirtableAnnualUsageGJ)
+              ? util.smeAirtableAnnualUsageGJ.toFixed(2)
+              : "";
+          payload.sme_gas_airtable_meets_1000gj = util.smeAirtableMeetsCiThreshold1000GJ === true;
+          payload.sme_gas_airtable_history_bill_count = util.smeAirtableHistoryBillCount ?? 0;
+          payload.sme_gas_airtable_history_total_days = util.smeAirtableHistoryTotalDays ?? 0;
+          payload.sme_gas_airtable_history_confidence = util.smeAirtableHistoryConfidence ?? "";
         } else { errors.push(`${util.identifier}: Comparison generation not yet supported for this utility type`); setSending(null); continue; }
         const response = await fetch(webhookUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(payload) });
         const responseText = await response.text();
@@ -1305,7 +1529,7 @@ export default function Base2Page() {
             <td className={labelTd}>Demand Charge <span className="text-gray-400">($/kVA/mth)</span></td>
             <td className={tdBase}><input type="number" step="0.01" value={currentDemand > 0 ? currentDemand : ''} onChange={(e) => updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentDemandCharge', e.target.value)} className={inputCls} placeholder="$/kVA" /></td>
             <td className={tdBase}><input type="number" step="0.01" value={demandQty > 0 ? demandQty : ''} onChange={(e) => updateUsage(comparison.utilityType, comparison.identifier, 'demandQuantity', e.target.value)} className={inputCls} placeholder="kVA" /></td>
-            <td className={tdBase}><input type="number" step="0.01" value={comparison.comparisonDemandCharge || ''} onChange={(e) => updateComparisonRate(comparison.utilityType, comparison.identifier, 'comparisonDemandCharge', e.target.value)} className={inputCls} placeholder="12.00" /></td>
+            <td className={tdBase}><input type="number" step="0.01" value={comparison.comparisonDemandCharge || ''} onChange={(e) => updateComparisonRate(comparison.utilityType, comparison.identifier, 'comparisonDemandCharge', e.target.value)} className={inputCls} placeholder="0" /></td>
             <td className={`${tdBase} text-right`}>{savingsPill(comparison.comparisonDemandCharge && comparison.comparisonDemandCharge > 0 && currentDemand > 0 ? demandSavings : undefined)}{comparison.comparisonDemandCharge && currentDemand > 0 && <div className="text-[10px] text-gray-400 text-right mt-0.5">/yr</div>}</td>
             <td className={`${tdBase} text-right`}>{savingsPct(comparison.comparisonDemandCharge && comparison.comparisonDemandCharge > 0 && currentDemand > 0 && currentDemandAnnual > 0 ? (demandSavings / currentDemandAnnual) * 100 : undefined)}</td>
           </tr>
@@ -1338,7 +1562,7 @@ export default function Base2Page() {
             )}
             {comparison.estimatedAnnualUsage && comparison.estimatedAnnualUsage > 0 && <div className="text-[10px] text-gray-400 text-right mt-1">Est. annual: {comparison.estimatedAnnualUsage.toFixed(2)} GJ</div>}
           </td>
-          <td className={tdBase}><input type="number" step="0.01" value={comparison.comparisonGasRate || ''} onChange={(e) => updateComparisonRate(comparison.utilityType, comparison.identifier, 'comparisonGasRate', e.target.value)} className={inputCls} placeholder="14.8" /></td>
+          <td className={tdBase}><input type="number" step="0.01" value={comparison.comparisonGasRate || ''} onChange={(e) => updateComparisonRate(comparison.utilityType, comparison.identifier, 'comparisonGasRate', e.target.value)} className={inputCls} placeholder="17.8" /></td>
           <td className={`${tdBase} text-right`}>{savingsPill(savings?.usageSavings != null ? (savings.gasUsageSavingsAnnual ?? savings.usageSavings * 12) : undefined)}{savings?.usageSavings != null && <div className="text-[10px] text-gray-400 text-right mt-0.5">/yr</div>}</td>
           <td className={`${tdBase} text-right`}>{savingsPct(savings?.usageSavingsPercent)}</td>
         </tr>
@@ -1618,6 +1842,66 @@ export default function Base2Page() {
                                 </div>
                               </div>
                               {(() => { const ex = getSmeGasEffectiveTotalExGst(comparison); const gj = comparison.smeGasInvoicePeriodGJ; if (ex != null && ex > 0 && gj != null && Number.isFinite(gj) && gj > 0) { const bundled = ex / gj; return <p className="mt-2 rounded-lg border border-blue-100 bg-white/80 px-3 py-2 font-mono text-[11px] text-gray-800">{formatAud(ex)} ex-GST ÷ {gj.toLocaleString("en-AU", { maximumFractionDigits: 3 })} GJ = <strong className="text-blue-800">${bundled.toFixed(4)}/GJ</strong> bundled</p>; } return <p className="mt-2 text-[10px] text-amber-700">Enter a positive invoice total and bill-period GJ to compute bundled $/GJ.</p>; })()}
+                            </div>
+                            <div className="rounded-xl border border-violet-200 bg-violet-50/50 p-4">
+                              <div className="mb-2 flex flex-wrap items-center gap-2">
+                                <span className="text-sm font-semibold text-gray-900">Airtable usage (all bills for this MRIN)</span>
+                                <button
+                                  type="button"
+                                  onClick={() => void refreshSmeAirtableAnnualUsage(comparison.identifier)}
+                                  disabled={comparison.smeAirtableHistoryLoading === true || (comparison.identifier || "").trim().length < 4}
+                                  className="rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                  title="Re-fetch SME Gas invoice rows from Airtable for this MRIN"
+                                >
+                                  Refresh
+                                </button>
+                                {comparison.smeAirtableHistoryLoading === true && (
+                                  <span className="text-xs text-gray-400">Loading Airtable history…</span>
+                                )}
+                              </div>
+                              <p className="mb-2 text-[10px] leading-snug text-gray-500">
+                                Annual GJ is estimated from bill-period usage and days in your SME Gas table (usage is treated as MJ unless auto-detection suggests GJ). C&I-style offers often assume about <strong>1,000 GJ/year</strong> minimum.
+                              </p>
+                              {comparison.smeAirtableHistoryError && (
+                                <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2 mb-2">
+                                  {comparison.smeAirtableHistoryError}
+                                </p>
+                              )}
+                              {comparison.smeAirtableHistoryMessage &&
+                                comparison.smeAirtableAnnualUsageGJ == null &&
+                                !comparison.smeAirtableHistoryError && (
+                                  <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-2">
+                                    {comparison.smeAirtableHistoryMessage}
+                                  </p>
+                                )}
+                              {comparison.smeAirtableAnnualUsageGJ != null && Number.isFinite(comparison.smeAirtableAnnualUsageGJ) && (
+                                <div className="space-y-1.5 text-xs text-gray-800">
+                                  <p>
+                                    <span className="font-medium">Estimated annual usage: </span>
+                                    <span className="font-mono font-semibold tabular-nums">
+                                      {comparison.smeAirtableAnnualUsageGJ.toLocaleString("en-AU", { maximumFractionDigits: 1 })} GJ/yr
+                                    </span>
+                                  </p>
+                                  <p>
+                                    <span className="font-medium">~1000 GJ/yr threshold: </span>
+                                    {comparison.smeAirtableMeetsCiThreshold1000GJ === true ? (
+                                      <span className="text-emerald-700 font-semibold">Met or exceeded</span>
+                                    ) : comparison.smeAirtableMeetsCiThreshold1000GJ === false ? (
+                                      <span className="text-gray-700">Below (estimate)</span>
+                                    ) : (
+                                      <span className="text-gray-500">Unknown</span>
+                                    )}
+                                  </p>
+                                  <p className="text-[11px] text-gray-600">
+                                    Based on {comparison.smeAirtableHistoryBillCount ?? 0} bill period
+                                    {(comparison.smeAirtableHistoryBillCount ?? 0) === 1 ? "" : "s"} (
+                                    {comparison.smeAirtableHistoryTotalDays ?? 0} total days in data).
+                                    {formatSmeCiConfidence(comparison.smeAirtableHistoryConfidence)
+                                      ? ` Estimate quality: ${formatSmeCiConfidence(comparison.smeAirtableHistoryConfidence)}.`
+                                      : ""}
+                                  </p>
+                                </div>
+                              )}
                             </div>
                             <div className="flex flex-wrap items-center gap-2">
                               <span className="text-xs font-medium text-gray-600">Postcode (C&I reference bills)</span>

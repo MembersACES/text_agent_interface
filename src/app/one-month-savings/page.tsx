@@ -25,6 +25,7 @@ const EGB_DETAILS = {
 // Solution types that can have savings
 const SOLUTION_TYPES = [
   { id: "ci_electricity", label: "C&I Electricity Reviews", category: "Profile Reset" },
+  { id: "ci_electricity_dma_review", label: "C&I Electricity DMA Review", category: "Profile Reset" },
   { id: "sme_electricity", label: "SME Electricity Reviews", category: "Profile Reset" },
   { id: "ci_gas", label: "C&I Gas Reviews", category: "Profile Reset" },
   { id: "sme_gas", label: "SME Gas Reviews", category: "Profile Reset" },
@@ -77,6 +78,24 @@ interface InvoiceRecord {
   invoice_file_id?: string;
 }
 
+interface SendInvoiceRequest {
+  invoice_number: string;
+  business_name: string;
+  client_name: string;
+  client_email: string;
+  subject: string;
+  html_body: string;
+  attachment_filename: string;
+  pdf_base64: string;
+  invoice_file_id?: string;
+  invoice_date: string;
+  due_date: string;
+  subtotal: number;
+  total_gst: number;
+  total_amount: number;
+  line_items: InvoiceLineItem[];
+}
+
 export default function OneMonthSavingsPage() {
   const { data: session } = useSession();
   const token = (session as any)?.id_token || (session as any)?.accessToken;
@@ -101,6 +120,13 @@ export default function OneMonthSavingsPage() {
   // Generation state
   const [generating, setGenerating] = useState(false);
   const [result, setResult] = useState("");
+  const [sendModalOpen, setSendModalOpen] = useState(false);
+  const [sendingToClient, setSendingToClient] = useState(false);
+  const [sendClientName, setSendClientName] = useState("");
+  const [sendClientEmail, setSendClientEmail] = useState("");
+  const [sendSubject, setSendSubject] = useState("");
+  const [sendHtmlBody, setSendHtmlBody] = useState("");
+  const [sendRequestPayload, setSendRequestPayload] = useState<SendInvoiceRequest | null>(null);
 
   // Testimonial soft guard: warn if no approved testimonial before 1st Month Savings invoice
   const [testimonialCheck, setTestimonialCheck] = useState<{ has_approved: boolean; count: number } | null>(null);
@@ -382,7 +408,130 @@ export default function OneMonthSavingsPage() {
     });
   };
 
+  const formatDateForEmail = (date: Date) => {
+    return date.toLocaleDateString("en-AU", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+  };
+
+  const formatIsoDateForEmail = (isoDate: string) => {
+    const parsed = new Date(isoDate);
+    if (Number.isNaN(parsed.getTime())) return isoDate;
+    return formatDateForEmail(parsed);
+  };
+
   // Generate PDF Invoice
+  const buildInvoiceEmailHtml = ({
+    clientName,
+    businessName,
+    solutionSummary,
+    invoiceNumber,
+    invoiceDate,
+    dueDate,
+    totalAmountValue,
+  }: {
+    clientName: string;
+    businessName: string;
+    solutionSummary: string;
+    invoiceNumber: string;
+    invoiceDate: string;
+    dueDate: string;
+    totalAmountValue: number;
+  }) => {
+    const safeClientName = clientName || "Client";
+    const safeSolutionSummary = solutionSummary || "the selected solution";
+
+    return [
+      `<p>Hi ${safeClientName},</p>`,
+      `<p>Your 1st Month Savings invoice has been generated for ${businessName} for the solution ${safeSolutionSummary}.</p>`,
+      `<p><strong>Key details:</strong><br/>Invoice number: ${invoiceNumber}<br/>Invoice date: ${invoiceDate}<br/>Due date: ${dueDate}<br/>Total amount due: ${formatCurrency(totalAmountValue)} (incl. GST)<br/>The full invoice is attached as a PDF for your records.</p>`,
+      `<p>If you have any questions, please reply to this email.</p>`,
+      `<p>Best Regards,</p>`,
+      `<p>Amelia Williams<br/>Customer Success Manager (CSM) - Implementation: Connects onboarding directly to future success.</p>`,
+      `<p>Carbon Zero Australasia<br/>Australian Circular Economy Solutions Division<br/>Direct: Ph: 1300 938 638<br/>Email: business@acesolutions.com.au<br/>470 St Kilda Road, Melbourne VIC 3004<br/>Ph: 1300 849 908 | Website: acesolutions.com.au</p>`,
+    ].join("");
+  };
+
+  const handleSendToClient = async () => {
+    if (!sendRequestPayload) return;
+    if (!sendClientEmail.trim()) {
+      setResult("Please provide a client email address before sending.");
+      return;
+    }
+
+    setSendingToClient(true);
+    try {
+      const finalClientName = sendClientName.trim() || sendRequestPayload.business_name;
+      const finalClientEmail = sendClientEmail.trim();
+      const finalSubject = sendSubject.trim();
+      const solutionSummary = Array.from(
+        new Set(
+          (sendRequestPayload.line_items || [])
+            .map((item) => item.solution_label)
+            .filter(Boolean)
+        )
+      ).join(", ");
+      const finalHtmlBody = buildInvoiceEmailHtml({
+        clientName: finalClientName,
+        businessName: sendRequestPayload.business_name,
+        solutionSummary,
+        invoiceNumber: sendRequestPayload.invoice_number,
+        invoiceDate: formatIsoDateForEmail(sendRequestPayload.invoice_date),
+        dueDate: formatIsoDateForEmail(sendRequestPayload.due_date),
+        totalAmountValue: sendRequestPayload.total_amount,
+      });
+
+      const res = await fetch("/api/one-month-savings/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...sendRequestPayload,
+          client_name: finalClientName,
+          client_email: finalClientEmail,
+          subject: finalSubject,
+          html_body: finalHtmlBody,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.error || "Failed to send invoice to client");
+      }
+
+      // Mark invoice as Sent after successful send request
+      const statusRes = await fetch("/api/one-month-savings/status", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          business_name: sendRequestPayload.business_name,
+          invoice_number: sendRequestPayload.invoice_number,
+          status: "Sent",
+        }),
+      });
+
+      if (statusRes.ok) {
+        setInvoiceHistory((prev) =>
+          prev.map((inv) =>
+            inv.invoice_number === sendRequestPayload.invoice_number
+              ? { ...inv, status: "Sent" }
+              : inv
+          )
+        );
+      }
+
+      setSendModalOpen(false);
+      setResult(
+        `Invoice ${sendRequestPayload.invoice_number} generated and sent request submitted for ${finalClientEmail}.`
+      );
+    } catch (error: any) {
+      setResult(`Send failed: ${error.message}`);
+    } finally {
+      setSendingToClient(false);
+    }
+  };
+
   const generateInvoicePDF = async () => {
     if (!businessInfo || lineItems.length === 0) {
       setResult("Please add at least one service with savings");
@@ -610,6 +759,8 @@ export default function OneMonthSavingsPage() {
       link.click();
       URL.revokeObjectURL(url);
 
+      let generatedPdfBase64 = "";
+
       // Upload to Google Drive (uses fixed folder, no client folder URL needed)
       let uploadResult = "";
       let invoiceFileId = "";
@@ -624,6 +775,7 @@ export default function OneMonthSavingsPage() {
           binaryString += String.fromCharCode.apply(null, Array.from(chunk));
         }
         const base64Pdf = btoa(binaryString);
+        generatedPdfBase64 = base64Pdf;
 
         const uploadResponse = await fetch("/api/one-month-savings/upload-pdf", {
           method: "POST",
@@ -712,6 +864,49 @@ export default function OneMonthSavingsPage() {
       } catch (logError) {
         console.error("❌ Exception logging invoice:", logError);
       }
+
+      const invoiceDateStr = invoiceDate.toISOString().split("T")[0];
+      const dueDateStr = dueDate.toISOString().split("T")[0];
+      const invoiceDateEmail = formatDateForEmail(invoiceDate);
+      const dueDateEmail = formatDateForEmail(dueDate);
+      const defaultClientName = businessInfo.contact_name || businessInfo.business_name;
+      const defaultClientEmail = businessInfo.email || "";
+      const solutionSummary = Array.from(
+        new Set(lineItems.map((item) => item.solution_label).filter(Boolean))
+      ).join(", ");
+      const defaultSubject = `1st Month Savings Invoice ${invoiceNumber} – ${solutionSummary} - ${businessInfo.business_name}`;
+      const defaultHtml = buildInvoiceEmailHtml({
+        clientName: defaultClientName,
+        businessName: businessInfo.business_name,
+        solutionSummary,
+        invoiceNumber,
+        invoiceDate: invoiceDateEmail,
+        dueDate: dueDateEmail,
+        totalAmountValue: totalAmount,
+      });
+
+      setSendClientName(defaultClientName);
+      setSendClientEmail(defaultClientEmail);
+      setSendSubject(defaultSubject);
+      setSendHtmlBody(defaultHtml);
+      setSendRequestPayload({
+        invoice_number: invoiceNumber,
+        business_name: businessInfo.business_name,
+        client_name: defaultClientName,
+        client_email: defaultClientEmail,
+        subject: defaultSubject,
+        html_body: defaultHtml,
+        attachment_filename: filename,
+        pdf_base64: generatedPdfBase64,
+        invoice_file_id: invoiceFileId,
+        invoice_date: invoiceDateStr,
+        due_date: dueDateStr,
+        subtotal,
+        total_gst: totalGst,
+        total_amount: totalAmount,
+        line_items: lineItems,
+      });
+      setSendModalOpen(true);
 
       setResult(`Invoice ${invoiceNumber} generated and downloaded successfully!${uploadResult}`);
 
@@ -1097,6 +1292,73 @@ export default function OneMonthSavingsPage() {
           </div>
         </div>
       </div>
+
+      {sendModalOpen && sendRequestPayload && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-2xl rounded-xl bg-white shadow-2xl border border-gray-200">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-800">Send invoice to client?</h3>
+              <p className="text-sm text-gray-600 mt-1">
+                Invoice <strong>{sendRequestPayload.invoice_number}</strong> is ready. Review details below and send via webhook.
+              </p>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Client Name</label>
+                  <input
+                    type="text"
+                    value={sendClientName}
+                    onChange={(e) => setSendClientName(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500"
+                    placeholder="Client name"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Client Email</label>
+                  <input
+                    type="email"
+                    value={sendClientEmail}
+                    onChange={(e) => setSendClientEmail(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500"
+                    placeholder="client@example.com"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email Subject</label>
+                <input
+                  type="text"
+                  value={sendSubject}
+                  onChange={(e) => setSendSubject(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setSendModalOpen(false)}
+                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
+                disabled={sendingToClient}
+              >
+                Not now
+              </button>
+              <button
+                type="button"
+                onClick={handleSendToClient}
+                className="px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+                disabled={sendingToClient}
+              >
+                {sendingToClient ? "Sending..." : "Send"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
