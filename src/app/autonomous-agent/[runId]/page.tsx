@@ -153,6 +153,11 @@ function scheduledToScheduleInput(iso: string | null, tz: string): string {
   return dayjs(iso).tz(tz).format("YYYY-MM-DDTHH:mm");
 }
 
+/** Human label: new sequences use fixed AEST via Australia/Brisbane. */
+function autonomousScheduleTimezoneLabel(tz: string): string {
+  return tz === "Australia/Brisbane" ? "AEST (Australia/Brisbane)" : tz;
+}
+
 /** datetime-local (wall clock in run TZ) → UTC ISO for the API */
 function scheduleInputToIso(local: string, tz: string): string {
   const d = dayjs.tz(local, "YYYY-MM-DDTHH:mm", tz);
@@ -562,7 +567,7 @@ export default function AutonomousRunDetailPage() {
               <div className="h-4 w-px bg-gray-200 dark:bg-gray-700" />
               <StatusBadge status={run.run_status} stopReason={run.stop_reason} />
               <span className="rounded-full bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-2.5 py-1 text-xs text-gray-500">
-                {run.timezone}
+                {autonomousScheduleTimezoneLabel(run.timezone)}
               </span>
               {base2Trigger && (
                 <span className="rounded-full bg-violet-50 dark:bg-violet-950/40 border border-violet-200 dark:border-violet-800 px-2.5 py-1 text-xs text-violet-600 dark:text-violet-400">
@@ -759,7 +764,7 @@ export default function AutonomousRunDetailPage() {
                     <div className="flex flex-col gap-0.5 min-w-0">
                       <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">Sequence steps</span>
                       <span className="text-[11px] text-gray-400 dark:text-gray-500">
-                        Times use {run.timezone}. Editing a step shifts later pending steps by the same gaps, then snaps to
+                        Times use {autonomousScheduleTimezoneLabel(run.timezone)}. Editing a step shifts later pending steps by the same gaps, then snaps to
                         weekdays (Sat/Sun roll to Mon) and keeps order — same idea as automatic planning.
                       </span>
                     </div>
