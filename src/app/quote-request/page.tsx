@@ -1016,7 +1016,12 @@ export default function QuoteRequestPage() {
       let successMessage = '';
       
       if (typeof result === 'string') {
-        // New format - formatted string like data request tool
+        // Tool-style string: success (✅) or validation / n8n error (❌)
+        if (result.includes('❌')) {
+          alert(result);
+          setShowSummaryModal(false);
+          return;
+        }
         successMessage = result;
       } else if (result.message || result.success) {
         // Old format - JSON object (fallback)
@@ -1039,13 +1044,15 @@ export default function QuoteRequestPage() {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
     
-      if (errorMessage.includes('✅') || errorMessage.includes('❌')) {
-        // This is actually a formatted response, treat as success/info
+      if (errorMessage.includes('✅')) {
         showSuccessModal(errorMessage);
         setShowSummaryModal(false);
       } else {
-        // This is a real error
-        alert(`Error: ${errorMessage}`);
+        alert(
+          errorMessage.includes('❌')
+            ? errorMessage
+            : `Error: ${errorMessage}`
+        );
       }
     } finally {
       setLoading(false);

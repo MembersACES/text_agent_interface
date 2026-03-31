@@ -9,6 +9,22 @@ import { PageHeader } from "@/components/Layouts/PageHeader";
 /** SME Gas → C&I comparison: how current SME bill is interpreted in the UI */
 type SmeGasComparisonMode = "invoice_blocks" | "ci_offer" | "sme_benchmark_stub";
 
+/** From GET /api/base2/sme-gas-airtable-annual-usage when bills are aggregated */
+interface SmeAirtablePeriodCoverage {
+  bills_with_parsed_period_dates?: number;
+  bill_count?: number;
+  sum_of_bill_period_days?: number;
+  calendar_start?: string;
+  calendar_end?: string;
+  calendar_span_inclusive_days?: number;
+  period_range_label_au?: string;
+  /** Hybrid annualisation: which formula matches `annual_usage_gj` when both exist */
+  annual_usage_gj_primary_method?: "calendar_window" | "bill_period_days";
+  annual_usage_gj_bill_period_days?: number;
+  annual_usage_gj_calendar_window?: number;
+  explanation?: string;
+}
+
 interface BusinessInfo {
   name?: string;
   abn?: string;
@@ -76,8 +92,14 @@ interface UtilityComparison {
   smeCiReferenceConfidence?: string | null;
   smeCiReferenceFetchedTag?: string;
   /** Aggregated from all SME Gas invoice rows in Airtable for this MRIN (Base 2). */
+  /** Hybrid “primary” annual from API (`annual_usage_gj`) — often calendar-window when that method wins. */
   smeAirtableAnnualUsageGJ?: number | null;
+  /** Bill-period-days annual (`annual_usage_gj_bill_period_days`) — used for 1,000 GJ screen and comparison usage. */
+  smeAirtableAnnualBillDaysGJ?: number | null;
+  /** Bill-day ≥ threshold (default 1000 GJ). Mirrors API `meets_1000gj_screen` / `meets_ci_threshold_1000gj`. */
   smeAirtableMeetsCiThreshold1000GJ?: boolean | null;
+  /** Bill-day in near band [850, 1000) by default — manual review signal. API `near_1000gj_screen`. */
+  smeAirtableNear1000GJ?: boolean | null;
   smeAirtableHistoryBillCount?: number;
   smeAirtableHistoryTotalDays?: number;
   smeAirtableHistoryConfidence?: string | null;
@@ -85,6 +107,8 @@ interface UtilityComparison {
   smeAirtableHistoryError?: string | null;
   smeAirtableHistoryFetchedTag?: string;
   smeAirtableHistoryMessage?: string | null;
+  /** Calendar / bill-period context from Airtable history aggregation */
+  smeAirtablePeriodCoverage?: SmeAirtablePeriodCoverage | null;
   ciGasInvoiceReviewDays?: number;
   ciGasAnnualConsumptionGJ?: number;
   oilFrequency?: string;
@@ -216,10 +240,45 @@ function formatSmeCiConfidence(confidence: string | null | undefined): string | 
   return confidence;
 }
 
+function parseSmeAirtablePeriodCoverage(raw: unknown): SmeAirtablePeriodCoverage | undefined {
+  if (raw == null || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const pc = raw as Record<string, unknown>;
+  const num = (k: string) => (typeof pc[k] === "number" && Number.isFinite(pc[k] as number) ? (pc[k] as number) : undefined);
+  const str = (k: string) => (typeof pc[k] === "string" && (pc[k] as string).length > 0 ? (pc[k] as string) : undefined);
+  const primaryRaw = pc["annual_usage_gj_primary_method"];
+  const annual_usage_gj_primary_method =
+    primaryRaw === "calendar_window" || primaryRaw === "bill_period_days" ? primaryRaw : undefined;
+  const out: SmeAirtablePeriodCoverage = {
+    bills_with_parsed_period_dates: num("bills_with_parsed_period_dates"),
+    bill_count: num("bill_count"),
+    sum_of_bill_period_days: num("sum_of_bill_period_days"),
+    calendar_start: str("calendar_start"),
+    calendar_end: str("calendar_end"),
+    calendar_span_inclusive_days: num("calendar_span_inclusive_days"),
+    period_range_label_au: str("period_range_label_au"),
+    annual_usage_gj_primary_method,
+    annual_usage_gj_bill_period_days: num("annual_usage_gj_bill_period_days"),
+    annual_usage_gj_calendar_window: num("annual_usage_gj_calendar_window"),
+    explanation: str("explanation"),
+  };
+  const has =
+    out.explanation != null ||
+    out.period_range_label_au != null ||
+    out.calendar_span_inclusive_days != null ||
+    out.bill_count != null ||
+    out.bills_with_parsed_period_dates != null ||
+    out.annual_usage_gj_primary_method != null ||
+    out.annual_usage_gj_bill_period_days != null ||
+    out.annual_usage_gj_calendar_window != null;
+  return has ? out : undefined;
+}
+
 function clearSmeAirtableHistoryFields(): Pick<
   UtilityComparison,
   | "smeAirtableAnnualUsageGJ"
+  | "smeAirtableAnnualBillDaysGJ"
   | "smeAirtableMeetsCiThreshold1000GJ"
+  | "smeAirtableNear1000GJ"
   | "smeAirtableHistoryBillCount"
   | "smeAirtableHistoryTotalDays"
   | "smeAirtableHistoryConfidence"
@@ -227,10 +286,13 @@ function clearSmeAirtableHistoryFields(): Pick<
   | "smeAirtableHistoryError"
   | "smeAirtableHistoryFetchedTag"
   | "smeAirtableHistoryMessage"
+  | "smeAirtablePeriodCoverage"
 > {
   return {
     smeAirtableAnnualUsageGJ: undefined,
+    smeAirtableAnnualBillDaysGJ: undefined,
     smeAirtableMeetsCiThreshold1000GJ: undefined,
+    smeAirtableNear1000GJ: undefined,
     smeAirtableHistoryBillCount: undefined,
     smeAirtableHistoryTotalDays: undefined,
     smeAirtableHistoryConfidence: undefined,
@@ -238,6 +300,7 @@ function clearSmeAirtableHistoryFields(): Pick<
     smeAirtableHistoryError: undefined,
     smeAirtableHistoryFetchedTag: undefined,
     smeAirtableHistoryMessage: undefined,
+    smeAirtablePeriodCoverage: undefined,
   };
 }
 
@@ -301,6 +364,13 @@ function formatAud(value: number | undefined, empty = "—"): string {
 
 const AU_GST_DIVISOR = 1.1;
 const DEFAULT_CI_GAS_COMPARISON_RATE_PER_GJ = 17.8;
+/** Keep in sync with backend `AIRTABLE_SME_GAS_NEAR_SCREEN_GJ` (default 850). */
+const SME_GAS_NEAR_BAND_LOW_GJ = 850;
+const SME_GAS_GAP_DAYS_BADGE_MIN = 30;
+
+function roundGjForInput(n: number): number {
+  return Math.round(n * 1000) / 1000;
+}
 
 function getSmeGasEffectiveTotalExGst(c: UtilityComparison): number | undefined {
   const raw = c.smeGasTotalExGst;
@@ -331,6 +401,12 @@ function withSmeGasCiDerivedRates(u: UtilityComparison): UtilityComparison {
 }
 
 function getSmeCiGasEffectiveUsageGJ(comparison: UtilityComparison): number {
+  const billDayAnnual = comparison.smeAirtableAnnualBillDaysGJ;
+  if (billDayAnnual != null && billDayAnnual > 0 && Number.isFinite(billDayAnnual)) {
+    const g = comparison.gasUsage ?? comparison.monthlyUsage;
+    if (g != null && g > 0 && Number.isFinite(g)) return g;
+    return billDayAnnual / 12;
+  }
   const period = comparison.smeGasInvoicePeriodGJ;
   if (period != null && period > 0 && Number.isFinite(period)) {
     return period;
@@ -642,27 +718,50 @@ export default function Base2Page() {
         typeof data.annual_usage_gj === "number" && Number.isFinite(data.annual_usage_gj)
           ? data.annual_usage_gj
           : null;
-      const meets =
-        typeof data.meets_ci_threshold_1000gj === "boolean" ? data.meets_ci_threshold_1000gj : null;
+      const billDaysAnnual =
+        typeof data.annual_usage_gj_bill_period_days === "number" &&
+        Number.isFinite(data.annual_usage_gj_bill_period_days as number)
+          ? (data.annual_usage_gj_bill_period_days as number)
+          : null;
+      const meetsRaw =
+        typeof data.meets_1000gj_screen === "boolean"
+          ? data.meets_1000gj_screen
+          : typeof data.meets_ci_threshold_1000gj === "boolean"
+            ? data.meets_ci_threshold_1000gj
+            : null;
+      const nearRaw = typeof data.near_1000gj_screen === "boolean" ? data.near_1000gj_screen : null;
       const billCount = typeof data.bill_count === "number" ? data.bill_count : 0;
       const totalDays = typeof data.total_days === "number" ? data.total_days : 0;
       const confidence = typeof data.confidence === "string" ? data.confidence : null;
       const msg = typeof data.message === "string" ? data.message : null;
+      const periodCoverage = parseSmeAirtablePeriodCoverage(data.period_coverage);
+      const avgMonthlyFromBillDayAnnual =
+        billDaysAnnual != null && billDaysAnnual > 0 && Number.isFinite(billDaysAnnual)
+          ? roundGjForInput(billDaysAnnual / 12)
+          : undefined;
       setUtilityComparisons((prev) =>
         prev.map((u) => {
           if (u.utilityType !== "SME Gas" || u.identifier !== comparison.identifier) return u;
-          return {
+          const merged: UtilityComparison = {
             ...u,
             smeAirtableHistoryLoading: false,
             smeAirtableAnnualUsageGJ: annual,
-            smeAirtableMeetsCiThreshold1000GJ: meets,
+            smeAirtableAnnualBillDaysGJ: billDaysAnnual,
+            smeAirtableMeetsCiThreshold1000GJ: meetsRaw,
+            smeAirtableNear1000GJ: nearRaw,
             smeAirtableHistoryBillCount: billCount,
             smeAirtableHistoryTotalDays: totalDays,
             smeAirtableHistoryConfidence: confidence,
             smeAirtableHistoryFetchedTag: tag,
             smeAirtableHistoryMessage: msg,
             smeAirtableHistoryError: null,
+            smeAirtablePeriodCoverage: periodCoverage ?? null,
           };
+          if (avgMonthlyFromBillDayAnnual != null) {
+            merged.gasUsage = avgMonthlyFromBillDayAnnual;
+            merged.monthlyUsage = avgMonthlyFromBillDayAnnual;
+          }
+          return withSmeGasCiDerivedRates(merged);
         })
       );
     } catch (e: unknown) {
@@ -676,11 +775,14 @@ export default function Base2Page() {
                 smeAirtableHistoryError: message,
                 smeAirtableHistoryFetchedTag: undefined,
                 smeAirtableAnnualUsageGJ: undefined,
+                smeAirtableAnnualBillDaysGJ: undefined,
                 smeAirtableMeetsCiThreshold1000GJ: undefined,
+                smeAirtableNear1000GJ: undefined,
                 smeAirtableHistoryBillCount: undefined,
                 smeAirtableHistoryTotalDays: undefined,
                 smeAirtableHistoryConfidence: undefined,
                 smeAirtableHistoryMessage: undefined,
+                smeAirtablePeriodCoverage: undefined,
               }
             : u
         )
@@ -1170,11 +1272,36 @@ export default function Base2Page() {
       if (comparison.utilityType === "SME Gas" && comparison.smeGasComparisonMode === "sme_benchmark_stub") return savings;
       const currentRate = comparison.currentGasRate || 0; const compRate = comparison.comparisonGasRate || 0;
       const usage = comparison.utilityType === "C&I Gas" ? getCiGasEffectiveUsageGJ(comparison) : comparison.utilityType === "SME Gas" && comparison.smeGasComparisonMode === "ci_offer" ? getSmeCiGasEffectiveUsageGJ(comparison) : comparison.gasUsage || comparison.monthlyUsage || 0;
-      const annualOverride = (comparison.utilityType === "C&I Gas" && comparison.ciGasAnnualConsumptionGJ != null && comparison.ciGasAnnualConsumptionGJ > 0 && comparison.ciGasInvoiceReviewDays != null && comparison.ciGasInvoiceReviewDays > 0) || (comparison.utilityType === "SME Gas" && comparison.smeGasComparisonMode === "ci_offer" && comparison.smeGasAnnualConsumptionGJ != null && comparison.smeGasAnnualConsumptionGJ > 0 && comparison.smeGasInvoiceReviewDays != null && comparison.smeGasInvoiceReviewDays > 0);
+      const smeAirtableBillDayAnnual =
+        comparison.utilityType === "SME Gas" &&
+        comparison.smeGasComparisonMode === "ci_offer" &&
+        comparison.smeAirtableAnnualBillDaysGJ != null &&
+        comparison.smeAirtableAnnualBillDaysGJ > 0 &&
+        Number.isFinite(comparison.smeAirtableAnnualBillDaysGJ);
+      const annualOverride =
+        (comparison.utilityType === "C&I Gas" &&
+          comparison.ciGasAnnualConsumptionGJ != null &&
+          comparison.ciGasAnnualConsumptionGJ > 0 &&
+          comparison.ciGasInvoiceReviewDays != null &&
+          comparison.ciGasInvoiceReviewDays > 0) ||
+        (comparison.utilityType === "SME Gas" &&
+          comparison.smeGasComparisonMode === "ci_offer" &&
+          smeAirtableBillDayAnnual) ||
+        (comparison.utilityType === "SME Gas" &&
+          comparison.smeGasComparisonMode === "ci_offer" &&
+          comparison.smeGasAnnualConsumptionGJ != null &&
+          comparison.smeGasAnnualConsumptionGJ > 0 &&
+          comparison.smeGasInvoiceReviewDays != null &&
+          comparison.smeGasInvoiceReviewDays > 0);
       if (currentRate > 0 && compRate > 0 && usage > 0) {
         const currentMonthlyCost = usage * currentRate; const comparisonMonthlyCost = usage * compRate;
         savings.usageSavings = currentMonthlyCost - comparisonMonthlyCost; savings.usageSavingsPercent = currentMonthlyCost > 0 ? ((savings.usageSavings / currentMonthlyCost) * 100) : 0;
-        const annualGJForGas = comparison.utilityType === "C&I Gas" ? comparison.ciGasAnnualConsumptionGJ : comparison.smeGasAnnualConsumptionGJ;
+        const annualGJForGas =
+          comparison.utilityType === "C&I Gas"
+            ? comparison.ciGasAnnualConsumptionGJ
+            : smeAirtableBillDayAnnual
+              ? comparison.smeAirtableAnnualBillDaysGJ
+              : comparison.smeGasAnnualConsumptionGJ;
         if (annualOverride && annualGJForGas != null) savings.gasUsageSavingsAnnual = annualGJForGas * (currentRate - compRate);
         savings.supplySavings = 0;
         if (comparison.currentDailySupply && comparison.comparisonDailySupply) savings.supplySavings = (comparison.currentDailySupply - comparison.comparisonDailySupply) * 365;
@@ -1296,9 +1423,20 @@ export default function Base2Page() {
               ? util.smeAirtableAnnualUsageGJ.toFixed(2)
               : "";
           payload.sme_gas_airtable_meets_1000gj = util.smeAirtableMeetsCiThreshold1000GJ === true;
+          payload.sme_gas_airtable_meets_1000gj_screen = util.smeAirtableMeetsCiThreshold1000GJ === true;
+          payload.sme_gas_airtable_near_1000gj_screen = util.smeAirtableNear1000GJ === true;
           payload.sme_gas_airtable_history_bill_count = util.smeAirtableHistoryBillCount ?? 0;
           payload.sme_gas_airtable_history_total_days = util.smeAirtableHistoryTotalDays ?? 0;
           payload.sme_gas_airtable_history_confidence = util.smeAirtableHistoryConfidence ?? "";
+          payload.sme_gas_airtable_period_range_au = util.smeAirtablePeriodCoverage?.period_range_label_au ?? "";
+          payload.sme_gas_airtable_period_coverage_explanation = util.smeAirtablePeriodCoverage?.explanation ?? "";
+          payload.sme_gas_airtable_annual_primary_method = util.smeAirtablePeriodCoverage?.annual_usage_gj_primary_method ?? "";
+          const pcBill = util.smeAirtablePeriodCoverage?.annual_usage_gj_bill_period_days;
+          const pcCal = util.smeAirtablePeriodCoverage?.annual_usage_gj_calendar_window;
+          payload.sme_gas_airtable_annual_gj_bill_period_days =
+            pcBill != null && Number.isFinite(pcBill) ? pcBill.toFixed(2) : "";
+          payload.sme_gas_airtable_annual_gj_calendar_window =
+            pcCal != null && Number.isFinite(pcCal) ? pcCal.toFixed(2) : "";
         } else { errors.push(`${util.identifier}: Comparison generation not yet supported for this utility type`); setSending(null); continue; }
         const response = await fetch(webhookUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(payload) });
         const responseText = await response.text();
@@ -1543,7 +1681,26 @@ export default function Base2Page() {
           <td className={`${labelTd} font-semibold`}>Gas Rate <span className="font-normal text-gray-400">($/GJ)</span></td>
           <td className={tdBase}><input type="number" step="0.0001" value={comparison.currentGasRate || ''} onChange={(e) => updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentGasRate', e.target.value)} className={inputCls} placeholder="$/GJ" /></td>
           <td className={tdBase}>
-            <input type="number" step="0.01" value={comparison.gasUsage || ''} onChange={(e) => updateUsage(comparison.utilityType, comparison.identifier, 'gasUsage', e.target.value)} className={inputCls} placeholder="GJ" />
+            <input
+              type="number"
+              step="0.001"
+              value={
+                comparison.gasUsage != null && Number.isFinite(comparison.gasUsage)
+                  ? roundGjForInput(comparison.gasUsage)
+                  : ""
+              }
+              onChange={(e) => updateUsage(comparison.utilityType, comparison.identifier, "gasUsage", e.target.value)}
+              className={inputCls}
+              placeholder="GJ"
+            />
+            {comparison.utilityType === "SME Gas" &&
+              (comparison.smeGasComparisonMode ?? "invoice_blocks") === "ci_offer" &&
+              comparison.smeAirtableAnnualBillDaysGJ != null &&
+              comparison.smeAirtableAnnualBillDaysGJ > 0 && (
+                <div className="mt-1 text-[10px] text-violet-700 text-right">
+                  Airtable bill-day ÷ 12 (avg mo). Edit to override.
+                </div>
+              )}
             {comparison.utilityType === "C&I Gas" && (
               <div className="mt-2 space-y-1">
                 <label className="block text-[10px] uppercase tracking-wide text-gray-400">Annual (GJ/yr)</label>
@@ -1554,7 +1711,20 @@ export default function Base2Page() {
             {comparison.utilityType === "SME Gas" && (comparison.smeGasComparisonMode ?? "invoice_blocks") === "ci_offer" && (
               <div className="mt-2 space-y-1">
                 <label className="block text-[10px] uppercase tracking-wide text-gray-400">Energy share (0–1)</label>
-                <input type="number" step="0.01" min={0.01} max={1} value={comparison.smeCiEnergyShareOfInvoice ?? ""} onChange={(e) => updateUsage(comparison.utilityType, comparison.identifier, "smeCiEnergyShareOfInvoice", e.target.value)} className={inputCls} placeholder="0.72" />
+                <input
+                  type="number"
+                  step="0.01"
+                  min={0.01}
+                  max={1}
+                  value={
+                    comparison.smeCiEnergyShareOfInvoice != null && Number.isFinite(comparison.smeCiEnergyShareOfInvoice)
+                      ? Number(comparison.smeCiEnergyShareOfInvoice.toFixed(4))
+                      : ""
+                  }
+                  onChange={(e) => updateUsage(comparison.utilityType, comparison.identifier, "smeCiEnergyShareOfInvoice", e.target.value)}
+                  className={inputCls}
+                  placeholder="0.72"
+                />
                 <label className="block text-[10px] uppercase tracking-wide text-gray-400">Annual (GJ/yr)</label>
                 <input type="number" step="0.01" value={comparison.smeGasAnnualConsumptionGJ ?? ""} onChange={(e) => updateUsage(comparison.utilityType, comparison.identifier, "smeGasAnnualConsumptionGJ", e.target.value)} className={inputCls} placeholder="Optional" />
                 {(() => { const derived = ciGasBillPeriodUsageFromAnnual(comparison.smeGasAnnualConsumptionGJ, comparison.smeGasInvoiceReviewDays); if (derived != null && derived > 0) return <div className="text-[10px] text-gray-400 text-right">Bill-period: {derived.toFixed(3)} GJ{comparison.smeGasInvoiceReviewDays != null ? ` (${comparison.smeGasInvoiceReviewDays} d)` : ""}</div>; return null; })()}
@@ -1859,8 +2029,8 @@ export default function Base2Page() {
                                   <span className="text-xs text-gray-400">Loading Airtable history…</span>
                                 )}
                               </div>
-                              <p className="mb-2 text-[10px] leading-snug text-gray-500">
-                                Annual GJ is estimated from bill-period usage and days in your SME Gas table (usage is treated as MJ unless auto-detection suggests GJ). C&I-style offers often assume about <strong>1,000 GJ/year</strong> minimum.
+                              <p className="mb-3 text-[10px] leading-snug text-gray-500">
+                                From your SME Gas Airtable rows: usage + bill days (MJ unless auto detects GJ). Many C&I gas offers assume <strong>~1,000 GJ/yr</strong>.
                               </p>
                               {comparison.smeAirtableHistoryError && (
                                 <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2 mb-2">
@@ -1869,39 +2039,119 @@ export default function Base2Page() {
                               )}
                               {comparison.smeAirtableHistoryMessage &&
                                 comparison.smeAirtableAnnualUsageGJ == null &&
+                                comparison.smeAirtableAnnualBillDaysGJ == null &&
                                 !comparison.smeAirtableHistoryError && (
                                   <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-2">
                                     {comparison.smeAirtableHistoryMessage}
                                   </p>
                                 )}
-                              {comparison.smeAirtableAnnualUsageGJ != null && Number.isFinite(comparison.smeAirtableAnnualUsageGJ) && (
-                                <div className="space-y-1.5 text-xs text-gray-800">
-                                  <p>
-                                    <span className="font-medium">Estimated annual usage: </span>
-                                    <span className="font-mono font-semibold tabular-nums">
-                                      {comparison.smeAirtableAnnualUsageGJ.toLocaleString("en-AU", { maximumFractionDigits: 1 })} GJ/yr
-                                    </span>
-                                  </p>
-                                  <p>
-                                    <span className="font-medium">~1000 GJ/yr threshold: </span>
-                                    {comparison.smeAirtableMeetsCiThreshold1000GJ === true ? (
-                                      <span className="text-emerald-700 font-semibold">Met or exceeded</span>
-                                    ) : comparison.smeAirtableMeetsCiThreshold1000GJ === false ? (
-                                      <span className="text-gray-700">Below (estimate)</span>
-                                    ) : (
-                                      <span className="text-gray-500">Unknown</span>
+                              {(() => {
+                                const pc = comparison.smeAirtablePeriodCoverage;
+                                const bill =
+                                  comparison.smeAirtableAnnualBillDaysGJ ?? pc?.annual_usage_gj_bill_period_days;
+                                const cal = pc?.annual_usage_gj_calendar_window;
+                                const hasNumbers =
+                                  (bill != null && Number.isFinite(bill)) ||
+                                  (cal != null && Number.isFinite(cal)) ||
+                                  (comparison.smeAirtableAnnualUsageGJ != null &&
+                                    Number.isFinite(comparison.smeAirtableAnnualUsageGJ));
+                                if (!hasNumbers) return null;
+                                const billedDays =
+                                  comparison.smeAirtableHistoryTotalDays ?? pc?.sum_of_bill_period_days;
+                                const calDays = pc?.calendar_span_inclusive_days;
+                                const calDisplay =
+                                  cal != null && Number.isFinite(cal)
+                                    ? cal.toLocaleString("en-AU", { maximumFractionDigits: 1 })
+                                    : "—";
+                                const billDisplay =
+                                  bill != null && Number.isFinite(bill)
+                                    ? bill.toLocaleString("en-AU", { maximumFractionDigits: 1 })
+                                    : "—";
+                                const gapDays =
+                                  billedDays != null &&
+                                  calDays != null &&
+                                  Number.isFinite(billedDays) &&
+                                  Number.isFinite(calDays)
+                                    ? calDays - billedDays
+                                    : null;
+                                const showGapBadge =
+                                  gapDays != null && gapDays >= SME_GAS_GAP_DAYS_BADGE_MIN;
+                                const meets = comparison.smeAirtableMeetsCiThreshold1000GJ;
+                                const near = comparison.smeAirtableNear1000GJ;
+                                let thresholdLabel = "";
+                                if (meets === true) {
+                                  thresholdLabel = "≥1,000 GJ/yr (bill-day) — threshold met.";
+                                } else if (meets === false && near === true) {
+                                  thresholdLabel = `Under 1,000 GJ; ${SME_GAS_NEAR_BAND_LOW_GJ}–1,000 “near” band — quick review.`;
+                                } else if (meets === false) {
+                                  thresholdLabel = "Under 1,000 GJ (bill-day).";
+                                } else {
+                                  thresholdLabel = "1,000 GJ screen not available.";
+                                }
+                                const confShort = formatSmeCiConfidence(comparison.smeAirtableHistoryConfidence);
+                                const hasDetail =
+                                  pc &&
+                                  (pc.period_range_label_au || (pc.explanation && pc.explanation.length > 0));
+                                return (
+                                  <div className="space-y-2.5 text-xs text-gray-800">
+                                    <div className="grid grid-cols-1 gap-x-4 gap-y-1.5 rounded-lg border border-violet-100/80 bg-white/60 px-3 py-2.5 sm:grid-cols-2">
+                                      <div className="sm:col-span-2 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+                                        Annual usage (GJ/yr)
+                                      </div>
+                                      <div>
+                                        <div className="text-[10px] text-gray-500">Bill-day (screening)</div>
+                                        <div className="font-mono text-sm font-semibold tabular-nums text-gray-900">
+                                          {billDisplay}
+                                        </div>
+                                      </div>
+                                      <div>
+                                        <div className="text-[10px] text-gray-500">Calendar window (check)</div>
+                                        <div className="font-mono text-sm font-semibold tabular-nums text-gray-900">
+                                          {calDisplay}
+                                        </div>
+                                      </div>
+                                      {billedDays != null && calDays != null && (
+                                        <div className="sm:col-span-2 border-t border-violet-100/60 pt-1.5 text-[10px] text-gray-600">
+                                          <span className="tabular-nums">{billedDays}</span> billed days ·{" "}
+                                          <span className="tabular-nums">{calDays}</span> calendar days
+                                        </div>
+                                      )}
+                                    </div>
+                                    <p className="text-[11px] leading-snug text-gray-800">{thresholdLabel}</p>
+                                    {showGapBadge && (
+                                      <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-900">
+                                        Bill gaps → calendar figure is lower
+                                      </span>
                                     )}
-                                  </p>
-                                  <p className="text-[11px] text-gray-600">
-                                    Based on {comparison.smeAirtableHistoryBillCount ?? 0} bill period
-                                    {(comparison.smeAirtableHistoryBillCount ?? 0) === 1 ? "" : "s"} (
-                                    {comparison.smeAirtableHistoryTotalDays ?? 0} total days in data).
-                                    {formatSmeCiConfidence(comparison.smeAirtableHistoryConfidence)
-                                      ? ` Estimate quality: ${formatSmeCiConfidence(comparison.smeAirtableHistoryConfidence)}.`
-                                      : ""}
-                                  </p>
-                                </div>
-                              )}
+                                    <p className="text-[10px] leading-snug text-gray-600">
+                                      {comparison.smeAirtableHistoryBillCount ?? 0} bills
+                                      {confShort ? ` · ${confShort} confidence` : ""}. Comparison table uses{" "}
+                                      <strong>avg monthly GJ</strong> (bill-day ÷ 12); change Current Usage to override.
+                                    </p>
+                                    {hasDetail && (
+                                      <details className="group rounded-lg border border-violet-100 bg-white/50 text-[10px] text-gray-600">
+                                        <summary className="cursor-pointer select-none list-none px-3 py-2 font-medium text-violet-900 marker:content-none [&::-webkit-details-marker]:hidden">
+                                          <span className="underline decoration-violet-200 underline-offset-2 group-open:decoration-violet-400">
+                                            Calculation detail
+                                          </span>
+                                        </summary>
+                                        <div className="space-y-2 border-t border-violet-100/80 px-3 pb-3 pt-2 leading-relaxed">
+                                          {pc?.period_range_label_au && (
+                                            <p>
+                                              <span className="font-semibold text-gray-700">Range in Airtable: </span>
+                                              <span className="font-mono tabular-nums">{pc.period_range_label_au}</span>
+                                              {pc.calendar_span_inclusive_days != null && (
+                                                <span className="text-gray-500"> · {pc.calendar_span_inclusive_days} cal. days</span>
+                                              )}
+                                            </p>
+                                          )}
+                                          {pc?.explanation && <p>{pc.explanation}</p>}
+                                        </div>
+                                      </details>
+                                    )}
+                                  </div>
+                                );
+                              })()}
                             </div>
                             <div className="flex flex-wrap items-center gap-2">
                               <span className="text-xs font-medium text-gray-600">Postcode (C&I reference bills)</span>
