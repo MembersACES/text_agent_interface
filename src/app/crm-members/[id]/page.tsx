@@ -289,7 +289,7 @@ export default function ClientDetailPage() {
           />
         ) : (
           <>
-                        <div className="rounded-xl border border-gray-200/80 dark:border-dark-3 bg-white dark:bg-dark-2 shadow-sm ring-1 ring-gray-200/60 dark:ring-gray-700/50 overflow-hidden">
+                        <div className="rounded-xl border border-gray-200/80 dark:border-dark-3 bg-white dark:bg-dark-2 shadow-sm ring-1 ring-gray-200/60 dark:ring-gray-700/50">
               <div className="px-4 py-3 lg:px-5 lg:py-4">
                 <MemberProfileHeader
                   client={client}

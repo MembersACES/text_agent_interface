@@ -85,6 +85,8 @@ export const OFFER_ACTIVITY_TYPES = [
   "manual_document",
   "manual_activity",
   "one_month_savings_invoice",
+  "solar_cleaning_quote_generated",
+  "solar_cleaning_quote_sent",
 ] as const;
 
 export type OfferActivityType = (typeof OFFER_ACTIVITY_TYPES)[number];
@@ -110,6 +112,8 @@ export const OFFER_ACTIVITY_LABELS: Record<OfferActivityType, string> = {
   solution_presentation: "Solution presentation generated",
   manual_document: "Document / link added",
   manual_activity: "Activity note",
-   one_month_savings_invoice: "1st Month Savings Invoice generated",
+  one_month_savings_invoice: "1st Month Savings Invoice generated",
+  solar_cleaning_quote_generated: "EasyNRG solar quote generated",
+  solar_cleaning_quote_sent: "EasyNRG solar quote sent to client",
 };
 
