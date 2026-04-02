@@ -667,6 +667,19 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
     window.open(`/one-month-savings?${params.toString()}`, '_blank');
   };
 
+  const openSolarCleaningQuote = () => {
+    const params = new URLSearchParams();
+    if (business.name) params.set('businessName', business.name);
+    if (contact.email) params.set('email', contact.email);
+    if (contact.site_address) params.set('siteAddress', contact.site_address);
+    if (rep.contact_name) params.set('contactName', rep.contact_name);
+    if (driveUrl) params.set('clientFolderUrl', driveUrl);
+    if (clientIdFromInfo != null && clientIdFromInfo !== undefined) {
+      params.set('clientId', String(clientIdFromInfo));
+    }
+    window.open(`/solar-cleaning-quote?${params.toString()}`, '_blank');
+  };
+
   React.useEffect(() => {
     if (driveModalResult === 'File successfully uploaded and Drive links updated!') {
       // Don't auto-close if we're showing the lodge agreement button for signed contracts
@@ -1762,6 +1775,14 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                   className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
                 >
                   Generate Solution Documents
+                </button>
+                <div className="my-1 border-t border-gray-200" role="separator" />
+                <button
+                  type="button"
+                  onClick={() => { setShowGenerateDocumentsMenu(false); openSolarCleaningQuote(); }}
+                  className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
+                >
+                  Solar Cleaning Quote
                 </button>
               </div>
             )}
