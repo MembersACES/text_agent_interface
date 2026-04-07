@@ -252,10 +252,11 @@ export default function SolarCleaningQuotePage() {
   }, [searchParams]);
 
   useEffect(() => {
-    if (businessName && quoteNumber) {
-      setSendSubject(`EasyNRG solar panel cleaning quote ${quoteNumber} – ${businessName}`);
+    const bn = (businessName || clientName).trim();
+    if (bn && quoteNumber.trim()) {
+      setSendSubject(`Solar panel cleaning quote ${quoteNumber.trim()} – ${bn}`);
     }
-  }, [businessName, quoteNumber]);
+  }, [businessName, clientName, quoteNumber]);
 
   const parseMoney = (s: string): number => {
     const t = s.replace(/[$,\s]/g, "").trim();
@@ -264,7 +265,7 @@ export default function SolarCleaningQuotePage() {
     return Number.isFinite(n) ? n : 0;
   };
 
-  const eazyNrgPricing = useMemo(() => {
+  const quotePricing = useMemo(() => {
     const base = parseMoney(supplierSubtotalExGst);
     const mult = Number.parseFloat(markupMultiplier.replace(",", ".").trim());
     const discPct = Number.parseFloat(discountPercent.replace(",", ".").trim());
@@ -305,10 +306,9 @@ export default function SolarCleaningQuotePage() {
     const bn = businessName || clientName || "your organisation";
     return [
       `<p>Hi ${sendName || "there"},</p>`,
-      `<p>Please find attached your EasyNRG solar panel cleaning quotation <strong>${qn}</strong> for <strong>${bn}</strong>.</p>`,
-      `<p>Terms and conditions are provided separately and will be referenced when you accept.</p>`,
+      `<p>Your solar panel cleaning quote has been prepared for <strong>${bn}</strong> (quote <strong>${qn}</strong>).</p>`,
+      `<p>Please review the attached quotation. Terms and conditions are provided separately and will be referenced when you accept.</p>`,
       `<p>If you have any questions, please reply to this email.</p>`,
-      `<p>Kind regards,<br/>ACES / EasyNRG</p>`,
     ].join("");
   };
 
@@ -551,8 +551,13 @@ export default function SolarCleaningQuotePage() {
       if (!quoteNumber.trim()) { setResultMsg("Quote number is required when using Manual entry."); return; }
       if (!clientName.trim()) { setResultMsg("Client name is required when using Manual entry."); return; }
     }
-    const p = eazyNrgPricing;
-    if (!p) { setResultMsg("Enter supplier Subtotal ex GST and valid markup / discount so EasyNRG pricing can be calculated."); return; }
+    const p = quotePricing;
+    if (!p) {
+      setResultMsg(
+        "Enter supplier Subtotal ex GST and valid markup / discount so quote totals can be calculated."
+      );
+      return;
+    }
     if (p.sellEx < 0 || p.discPct > 100) { setResultMsg("Discount must be 100% or less, and must not make the sell value negative."); return; }
 
     setGenerating(true);
@@ -624,7 +629,9 @@ export default function SolarCleaningQuotePage() {
       setResultMsg("Generate a quote first.");
       return;
     }
-    setSendSubject(`EasyNRG solar panel cleaning quote ${quoteNumber} – ${businessName || clientName}`);
+    setSendSubject(
+      `Solar panel cleaning quote ${quoteNumber} – ${(businessName || clientName).trim() || "Client"}`
+    );
     setSendModalOpen(true);
   };
 
@@ -668,6 +675,15 @@ export default function SolarCleaningQuotePage() {
   return (
     <>
       <div className="max-w-5xl mx-auto px-4 py-4 space-y-5">
+        <header className="space-y-1">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+            Solar panel cleaning quote
+          </h1>
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Build ACES-branded solar panel cleaning quotations from the supplier PDF, with member
+            pricing and CRM filing — same document workflow style as the 1st Month Savings invoice.
+          </p>
+        </header>
 
         {/* ── Manual entry toggle ── */}
         <label className="flex items-start gap-3.5 cursor-pointer rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/60 px-4 py-3.5 hover:border-amber-300 dark:hover:border-amber-700 transition-colors">
@@ -848,7 +864,7 @@ export default function SolarCleaningQuotePage() {
               </div>
             </Section>
 
-            {/* RIGHT: Supplier + EasyNRG Pricing stacked */}
+            {/* RIGHT: Supplier + member quote pricing */}
             <div className="space-y-5">
               <Section
                 title="Supplier Pricing"
@@ -875,7 +891,7 @@ export default function SolarCleaningQuotePage() {
               </Section>
 
               <Section
-                title="EasyNRG Pricing"
+                title="Member quote pricing"
                 subtitle="Markup → discount → GST"
                 icon="💰"
               >
@@ -891,15 +907,15 @@ export default function SolarCleaningQuotePage() {
                   </div>
                 </div>
 
-                {eazyNrgPricing ? (
+                {quotePricing ? (
                   <div className="rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 px-4 py-3 space-y-0.5">
                     <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-2">Breakdown</p>
-                    <PriceRow label="Supplier base" value={formatAudDisplay(eazyNrgPricing.base)} dimmed />
-                    <PriceRow label="Sell before discount" sub={`${eazyNrgPricing.mult}×`} value={formatAudDisplay(eazyNrgPricing.sellBefore)} />
-                    <PriceRow label="Member discount" sub={`${eazyNrgPricing.discPct}%`} value={`− ${formatAudDisplay(eazyNrgPricing.discVal)}`} accent />
-                    <PriceRow label="After discount (ex GST)" value={formatAudDisplay(eazyNrgPricing.sellEx)} />
-                    <PriceRow label="GST" sub="10%" value={formatAudDisplay(eazyNrgPricing.gst)} dimmed />
-                    <PriceRow label="Total inc GST" value={formatAudDisplay(eazyNrgPricing.total)} bold />
+                    <PriceRow label="Supplier base" value={formatAudDisplay(quotePricing.base)} dimmed />
+                    <PriceRow label="Sell before discount" sub={`${quotePricing.mult}×`} value={formatAudDisplay(quotePricing.sellBefore)} />
+                    <PriceRow label="Member discount" sub={`${quotePricing.discPct}%`} value={`− ${formatAudDisplay(quotePricing.discVal)}`} accent />
+                    <PriceRow label="After discount (ex GST)" value={formatAudDisplay(quotePricing.sellEx)} />
+                    <PriceRow label="GST" sub="10%" value={formatAudDisplay(quotePricing.gst)} dimmed />
+                    <PriceRow label="Total inc GST" value={formatAudDisplay(quotePricing.total)} bold />
                   </div>
                 ) : (
                   <div className="rounded-xl border border-dashed border-gray-200 dark:border-gray-700 px-4 py-4 text-center text-sm text-gray-400 dark:text-gray-500">
@@ -928,7 +944,7 @@ export default function SolarCleaningQuotePage() {
                 </svg>
                 Generating…
               </>
-            ) : <>☀️ Generate EasyNRG Quote</>}
+            ) : <>☀️ Generate quote</>}
           </button>
 
           {resultMsg && (

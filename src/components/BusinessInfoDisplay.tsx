@@ -1782,7 +1782,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                   onClick={() => { setShowGenerateDocumentsMenu(false); openSolarCleaningQuote(); }}
                   className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
                 >
-                  Solar Cleaning Quote
+                  Solar Panel Cleaning Quote
                 </button>
               </div>
             )}

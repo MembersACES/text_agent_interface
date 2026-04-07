@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 
 /**
- * n8n: copy template, fill placeholders, upload Doc + PDF. Path matches your workflow webhook URL.
+ * n8n: ACES solar panel cleaning quote — copy template, fill placeholders, upload Doc + PDF.
  * Payload includes amount_*_text fields (AUD strings) for Google Docs replaceText — the API rejects
  * numeric replaceText; use those strings in batchUpdate, not amount_*_ex_gst numbers.
  * Response (object or single-element array): quote_doc_url, quote_pdf_url, quote_google_doc_id,

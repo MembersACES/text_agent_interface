@@ -40,7 +40,7 @@ const ROUTE_TITLES: Record<string, string> = {
   "/document-generation": "Document Generation",
   "/signed-agreement-lodgement": "Signed Agreement Lodgement",
   "/one-month-savings": "1st Month Savings Invoice",
-  "/solar-cleaning-quote": "Solar Cleaning Quote",
+  "/solar-cleaning-quote": "Solar Panel Cleaning Quote",
   "/airtable-integration": "Airtable Integration",
   "/agent": "Text Agent",
   "/base-2": "Base 2 Review",

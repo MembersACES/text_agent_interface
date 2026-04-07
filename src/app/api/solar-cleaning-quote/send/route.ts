@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 
-/** n8n workflow: solar cleaning quote email + Drive moves (update path if the workflow URL changes). */
+/** n8n: ACES solar panel cleaning quote — client email + Drive moves (update if the workflow URL changes). */
 const SOLAR_CLEANING_QUOTE_SEND_WEBHOOK_URL =
   "https://membersaces.app.n8n.cloud/webhook/solar-cleaning-quote-email";
 
