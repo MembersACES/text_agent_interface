@@ -113,7 +113,7 @@ export const OFFER_ACTIVITY_LABELS: Record<OfferActivityType, string> = {
   manual_document: "Document / link added",
   manual_activity: "Activity note",
   one_month_savings_invoice: "1st Month Savings Invoice generated",
-  solar_cleaning_quote_generated: "EasyNRG solar quote generated",
-  solar_cleaning_quote_sent: "EasyNRG solar quote sent to client",
+  solar_cleaning_quote_generated: "Solar panel cleaning quote generated",
+  solar_cleaning_quote_sent: "Solar panel cleaning quote sent to client",
 };
 
