@@ -46,6 +46,16 @@ interface SequenceTemplate {
   steps: SequenceTemplateStep[];
 }
 
+interface SequenceTypePromptConfig {
+  id?: number;
+  sequence_type: string;
+  system_prompt?: string | null;
+  email_example?: string | null;
+  sms_example?: string | null;
+  voice_example?: string | null;
+  retell_agent_id?: string | null;
+}
+
 function formatDateTime(iso?: string | null) {
   if (!iso) return "—";
   try {
@@ -91,6 +101,10 @@ export default function AutonomousAgentPage() {
   const [savingTemplateId, setSavingTemplateId] = useState<number | null>(null);
   const [savingStepId, setSavingStepId] = useState<number | null>(null);
   const [creatingTemplate, setCreatingTemplate] = useState(false);
+  const [typePrompts, setTypePrompts] = useState<SequenceTypePromptConfig | null>(null);
+  const [typePromptsLoading, setTypePromptsLoading] = useState(false);
+  const [typePromptsError, setTypePromptsError] = useState<string | null>(null);
+  const [savingTypePrompts, setSavingTypePrompts] = useState(false);
 
   useEffect(() => {
     if (!token) {
@@ -335,6 +349,86 @@ export default function AutonomousAgentPage() {
       showToast(e instanceof Error ? e.message : "Add step failed", "error");
     } finally {
       setSavingStepId(null);
+    }
+  };
+
+  useEffect(() => {
+    if (!token || tab !== "templates" || !selectedTemplateId) {
+      setTypePrompts(null);
+      setTypePromptsError(null);
+      return;
+    }
+    const selected = templates.find((t) => t.id === selectedTemplateId);
+    const sequenceType = selected?.sequence_type?.trim();
+    if (!sequenceType) {
+      setTypePrompts(null);
+      setTypePromptsError(null);
+      return;
+    }
+    const fetchTypePrompts = async () => {
+      try {
+        setTypePromptsLoading(true);
+        setTypePromptsError(null);
+        const params = new URLSearchParams({ sequence_type: sequenceType });
+        const res = await fetch(
+          `${getAutonomousApiBaseUrl()}/api/autonomous/sequences/type-prompts?${params.toString()}`,
+          {
+            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          },
+        );
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(
+            typeof data.detail === "string"
+              ? data.detail
+              : "No autonomous_sequence_type row for this sequence_type",
+          );
+        }
+        setTypePrompts(data as SequenceTypePromptConfig);
+      } catch (e: unknown) {
+        setTypePrompts(null);
+        setTypePromptsError(
+          e instanceof Error
+            ? e.message
+            : "No autonomous_sequence_type row for this sequence_type",
+        );
+      } finally {
+        setTypePromptsLoading(false);
+      }
+    };
+    fetchTypePrompts();
+  }, [token, tab, selectedTemplateId, templates]);
+
+  const updateTypePromptsLocal = (patch: Partial<SequenceTypePromptConfig>) => {
+    setTypePrompts((prev) => (prev ? { ...prev, ...patch } : prev));
+  };
+
+  const saveTypePrompts = async () => {
+    if (!token || !typePrompts?.sequence_type) return;
+    setSavingTypePrompts(true);
+    try {
+      const res = await fetch(`${getAutonomousApiBaseUrl()}/api/autonomous/sequences/type-prompts`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sequence_type: typePrompts.sequence_type,
+          system_prompt: typePrompts.system_prompt ?? "",
+          email_example: typePrompts.email_example ?? "",
+          sms_example: typePrompts.sms_example ?? "",
+          voice_example: typePrompts.voice_example ?? "",
+          retell_agent_id: typePrompts.retell_agent_id ?? "",
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(typeof data.detail === "string" ? data.detail : "Prompt save failed");
+      }
+      setTypePrompts(data as SequenceTypePromptConfig);
+      showToast("Prompt examples saved to autonomous_sequence_type.", "success");
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : "Prompt save failed", "error");
+    } finally {
+      setSavingTypePrompts(false);
     }
   };
 
@@ -637,6 +731,91 @@ export default function AutonomousAgentPage() {
                     >
                       Add step
                     </button>
+                  </div>
+
+                  <div className="rounded border border-gray-200 dark:border-gray-700 p-3 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="text-sm font-semibold text-gray-800 dark:text-gray-200">
+                          Prompt examples (source of truth)
+                        </h4>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          Reads/writes `autonomous_sequence_type` for this sequence type.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={saveTypePrompts}
+                        disabled={savingTypePrompts || !typePrompts}
+                        className="text-xs px-3 py-1.5 rounded bg-primary text-white hover:opacity-90 disabled:opacity-50"
+                      >
+                        {savingTypePrompts ? "Saving…" : "Save prompts"}
+                      </button>
+                    </div>
+
+                    {typePromptsLoading ? (
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Loading prompt fields…</p>
+                    ) : typePromptsError ? (
+                      <p className="text-xs text-amber-700 dark:text-amber-400">
+                        {typePromptsError}
+                      </p>
+                    ) : typePrompts ? (
+                      <div className="grid grid-cols-1 gap-3">
+                        <label className="text-xs font-medium text-gray-600 dark:text-gray-300">
+                          System prompt
+                          <textarea
+                            value={typePrompts.system_prompt ?? ""}
+                            onChange={(e) =>
+                              updateTypePromptsLocal({ system_prompt: e.target.value })
+                            }
+                            rows={4}
+                            className="mt-1 w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-950 px-2 py-1.5 text-xs"
+                          />
+                        </label>
+                        <label className="text-xs font-medium text-gray-600 dark:text-gray-300">
+                          Email example
+                          <textarea
+                            value={typePrompts.email_example ?? ""}
+                            onChange={(e) =>
+                              updateTypePromptsLocal({ email_example: e.target.value })
+                            }
+                            rows={4}
+                            className="mt-1 w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-950 px-2 py-1.5 text-xs"
+                          />
+                        </label>
+                        <label className="text-xs font-medium text-gray-600 dark:text-gray-300">
+                          SMS example
+                          <textarea
+                            value={typePrompts.sms_example ?? ""}
+                            onChange={(e) => updateTypePromptsLocal({ sms_example: e.target.value })}
+                            rows={3}
+                            className="mt-1 w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-950 px-2 py-1.5 text-xs"
+                          />
+                        </label>
+                        <label className="text-xs font-medium text-gray-600 dark:text-gray-300">
+                          Voice example
+                          <textarea
+                            value={typePrompts.voice_example ?? ""}
+                            onChange={(e) =>
+                              updateTypePromptsLocal({ voice_example: e.target.value })
+                            }
+                            rows={3}
+                            className="mt-1 w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-950 px-2 py-1.5 text-xs"
+                          />
+                        </label>
+                        <label className="text-xs font-medium text-gray-600 dark:text-gray-300">
+                          Retell agent ID
+                          <input
+                            type="text"
+                            value={typePrompts.retell_agent_id ?? ""}
+                            onChange={(e) =>
+                              updateTypePromptsLocal({ retell_agent_id: e.target.value })
+                            }
+                            className="mt-1 w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-950 px-2 py-1.5 text-xs"
+                          />
+                        </label>
+                      </div>
+                    ) : null}
                   </div>
 
                   <div className="overflow-x-auto rounded border border-gray-200 dark:border-gray-700">
