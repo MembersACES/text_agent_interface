@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { getApiBaseUrl } from "@/lib/utils";
+import { getApiBaseUrl, getAutonomousApiBaseUrl } from "@/lib/utils";
 
 type StaffUser = { id: number; email: string; name?: string; full_name?: string };
 
@@ -542,6 +542,39 @@ export default function SolarCleaningQuotePage() {
     } catch (e) { console.warn("[Solar quote CRM] sent activity error:", e); }
   };
 
+  const startSolarAutonomousSequence = async () => {
+    if (!token) return;
+    const oid = await ensureSolarCleaningCrmOfferId();
+    if (oid == null) return;
+    const clientNum = clientId ? Number(clientId) : NaN;
+    const context: Record<string, unknown> = {
+      source: "solar_cleaning_quote_page",
+      contact_name: sendName.trim() || null,
+      contact_email: sendEmail.trim() || null,
+      business_name: (businessName || clientName).trim() || null,
+      quote_number: quoteNumber.trim() || null,
+    };
+    const res = await fetch(`${getAutonomousApiBaseUrl()}/api/autonomous/sequences/start`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sequence_type: "solar_clean_followup_v1",
+        offer_id: oid,
+        client_id: Number.isFinite(clientNum) && clientNum > 0 ? clientNum : null,
+        crm_activity_id: null,
+        anchor_at: new Date().toISOString(),
+        timezone: "Australia/Brisbane",
+        context,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(
+        (data as { detail?: string }).detail || "Email sent, but failed to start autonomous sequence",
+      );
+    }
+  };
+
   const handleGenerate = async () => {
     if (!manualEntry && !vendorPdfFile) {
       setResultMsg("Attach the vendor quote PDF to generate the offer (or enable Manual entry).");
@@ -662,8 +695,11 @@ export default function SolarCleaningQuotePage() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error((data as { error?: string }).error || "Send failed");
       await recordSolarQuoteSentInCrm(sendEmail.trim(), sendSubject.trim(), generateResult);
+      await startSolarAutonomousSequence();
       setSendModalOpen(false);
-      setResultMsg(`Send request submitted successfully for ${sendEmail.trim()}.`);
+      setResultMsg(
+        `Send request submitted successfully for ${sendEmail.trim()}. Autonomous follow-up sequence started.`,
+      );
     } catch (e: unknown) {
       setResultMsg(e instanceof Error ? e.message : "Send failed");
     } finally {
