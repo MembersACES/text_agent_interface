@@ -737,7 +737,7 @@ export default function AutonomousAgentPage() {
                     <div className="flex items-center justify-between">
                       <div>
                         <h4 className="text-sm font-semibold text-gray-800 dark:text-gray-200">
-                          Prompt examples (source of truth)
+                          Prompt examples
                         </h4>
                         <p className="text-xs text-gray-500 dark:text-gray-400">
                           Reads/writes `autonomous_sequence_type` for this sequence type.

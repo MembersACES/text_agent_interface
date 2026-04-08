@@ -281,8 +281,6 @@ export default function AutonomousRunDetailPage() {
   const [businessNameCtx, setBusinessNameCtx] = useState("");
   const [contactEmail, setContactEmail] = useState("");
   const [contactPhone, setContactPhone] = useState("");
-  const [utilityLane, setUtilityLane] = useState("");
-  const [retellAgentId, setRetellAgentId] = useState("");
   const [siteIdentifiers, setSiteIdentifiers] = useState<string[]>([]);
   const [savingContext, setSavingContext] = useState(false);
   const [stopping, setStopping] = useState(false);
@@ -316,8 +314,6 @@ export default function AutonomousRunDetailPage() {
           setBusinessNameCtx(strField(ctx, "business_name"));
           setContactEmail(strField(ctx, "contact_email"));
           setContactPhone(strField(ctx, "contact_phone"));
-          setUtilityLane(strField(ctx, "utility_lane"));
-          setRetellAgentId(strField(ctx, "retell_agent_id"));
           const sid = ctx.site_identifiers;
           try {
             const arr = Array.isArray(sid) ? sid.map(String) : [];
@@ -387,8 +383,6 @@ export default function AutonomousRunDetailPage() {
     setBusinessNameCtx(strField(ctx, "business_name"));
     setContactEmail(strField(ctx, "contact_email"));
     setContactPhone(strField(ctx, "contact_phone"));
-    setUtilityLane(strField(ctx, "utility_lane"));
-    setRetellAgentId(strField(ctx, "retell_agent_id"));
     const sid = ctx.site_identifiers;
     try {
       const arr = Array.isArray(sid) ? sid.map(String) : [];
@@ -406,8 +400,6 @@ export default function AutonomousRunDetailPage() {
     setOrDelete("business_name", businessNameCtx);
     setOrDelete("contact_email", contactEmail);
     setOrDelete("contact_phone", contactPhone);
-    setOrDelete("utility_lane", utilityLane);
-    setOrDelete("retell_agent_id", retellAgentId);
     next.site_identifiers = siteIdentifiers;
     setSavingContext(true);
     try {
@@ -615,11 +607,11 @@ export default function AutonomousRunDetailPage() {
               </div>
             </div>
 
-            {/* ── Two-column body ── */}
-            <div className="grid grid-cols-[1fr_300px] gap-4 items-start">
+            {/* ── Body: main context + horizontal steps, sidebar offer metrics ── */}
+            <div className="grid grid-cols-1 xl:grid-cols-[1fr_300px] gap-4 items-start">
 
-              {/* LEFT — Outreach context */}
-              <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm overflow-hidden">
+              {/* MAIN — Outreach context + horizontal steps */}
+              <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm overflow-hidden min-w-0">
 
                 {/* Header */}
                 <div className="px-5 py-3.5 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800">
@@ -653,42 +645,88 @@ export default function AutonomousRunDetailPage() {
                   </div>
                 </div>
 
-                {/* Configuration section */}
-                <div className="px-5 py-4">
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="flex h-6 w-6 items-center justify-center rounded-md bg-violet-50 dark:bg-violet-950/40 border border-violet-100 dark:border-violet-900 text-sm">⚙️</div>
-                    <span className="text-xs font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">Configuration</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-                    <div>
-                      <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Utility lane</label>
-                      <div className="relative">
-                        <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center"><span className="h-2 w-2 rounded-full bg-amber-400" /></span>
-                        <input type="text" placeholder="ci_gas or ci_electricity" value={utilityLane} onChange={(e) => setUtilityLane(e.target.value)} className={`${inputCls} pl-7`} />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Retell agent ID</label>
-                      <div className="relative">
-                        <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center"><span className="h-2 w-2 rounded-full bg-emerald-400" /></span>
-                        <input type="text" value={retellAgentId} onChange={(e) => setRetellAgentId(e.target.value)} className={`${inputCls} pl-7`} />
-                      </div>
+                {siteIdentifiers.length > 0 && (
+                  <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-800">
+                    <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Site identifiers</label>
+                    <div className="flex flex-wrap gap-2">
+                      {siteIdentifiers.map((id, i) => (
+                        <div key={i} className="inline-flex items-center gap-2 rounded-lg border border-primary/25 bg-primary/5 dark:bg-primary/10 px-3 py-1.5">
+                          <span className="flex h-4 w-4 items-center justify-center rounded-sm bg-primary/15"><span className="h-1.5 w-1.5 rounded-full bg-primary" /></span>
+                          <span className="font-mono text-xs font-semibold text-primary dark:text-primary/90 tracking-wide">{id}</span>
+                        </div>
+                      ))}
                     </div>
                   </div>
+                )}
 
-                  {siteIdentifiers.length > 0 && (
-                    <div className="mt-4">
-                      <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Site identifiers</label>
-                      <div className="flex flex-wrap gap-2">
-                        {siteIdentifiers.map((id, i) => (
-                          <div key={i} className="inline-flex items-center gap-2 rounded-lg border border-primary/25 bg-primary/5 dark:bg-primary/10 px-3 py-1.5">
-                            <span className="flex h-4 w-4 items-center justify-center rounded-sm bg-primary/15"><span className="h-1.5 w-1.5 rounded-full bg-primary" /></span>
-                            <span className="font-mono text-xs font-semibold text-primary dark:text-primary/90 tracking-wide">{id}</span>
-                          </div>
-                        ))}
-                      </div>
+                {/* Sequence steps — horizontal strip */}
+                <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/40">
+                  <div className="flex flex-wrap items-start gap-3 justify-between mb-3">
+                    <div className="flex flex-col gap-0.5 min-w-0">
+                      <span className="text-xs font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">Sequence steps</span>
+                      <span className="text-[11px] text-gray-400 dark:text-gray-500">
+                        Times use {autonomousScheduleTimezoneLabel(run.timezone)}. Editing a step shifts later pending steps by the same gaps, then snaps to weekdays (Sat/Sun → Mon).
+                      </span>
                     </div>
-                  )}
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-xs text-gray-400 dark:text-gray-500 tabular-nums">
+                        {run.steps.length} steps · {Math.max(...run.steps.map((s) => s.day_number), 0)} days
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleSaveSchedules}
+                        disabled={savingSchedules || !hasScheduleChanges}
+                        className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold bg-primary text-white hover:bg-primary/90 disabled:opacity-50 transition shadow-sm"
+                      >
+                        {savingSchedules ? (
+                          <><span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />Saving…</>
+                        ) : (
+                          "Save schedules"
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap xl:flex-nowrap gap-3 xl:overflow-x-auto pb-1 -mx-1 px-1">
+                    {orderedSteps.map((s) => {
+                      const editable = isScheduleEditable(s.step_status);
+                      return (
+                        <div
+                          key={s.id}
+                          className="flex-shrink-0 w-full sm:w-[calc(50%-0.375rem)] xl:w-[220px] rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3.5 py-3 shadow-sm"
+                        >
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 text-xs font-bold text-gray-500">{s.day_number}</span>
+                            <span className="text-base leading-none"><ChannelIcon channel={s.channel} /></span>
+                            <span className="text-xs font-semibold text-gray-600 dark:text-gray-300 capitalize flex-1 truncate">{s.channel.replace(/_/g, " ")}</span>
+                            <StepStatusPill status={s.step_status} />
+                          </div>
+                          {editable ? (
+                            <label className="block text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                              Scheduled (local)
+                              <input
+                                type="datetime-local"
+                                value={scheduleDrafts[s.id] ?? ""}
+                                onChange={(e) =>
+                                  setScheduleDrafts((prev) =>
+                                    applySequentialCascadeToDrafts(
+                                      orderedSteps,
+                                      s.id,
+                                      e.target.value,
+                                      run.timezone,
+                                      prev,
+                                    ),
+                                  )
+                                }
+                                className={`${scheduleInputCls} mt-0.5 block w-full`}
+                              />
+                            </label>
+                          ) : (
+                            <p className="text-xs text-gray-400 dark:text-gray-500">{formatDt(s.scheduled_at)}</p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
 
                 {/* Save footer */}
@@ -708,12 +746,9 @@ export default function AutonomousRunDetailPage() {
                 </div>
               </div>
 
-              {/* RIGHT — Metrics + Steps */}
-              <div className="flex flex-col gap-4">
-
-                {/* Offer metrics */}
-                {offer && (
-                  <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm overflow-hidden">
+              {/* SIDEBAR — Offer metrics only */}
+              {offer && (
+                  <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm overflow-hidden xl:sticky xl:top-4">
                     {offer.annual_savings != null && (
                       <div className="px-4 py-3 bg-emerald-50 dark:bg-emerald-950/30 border-b border-emerald-100 dark:border-emerald-900 flex items-center justify-between">
                         <span className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Annual savings</span>
@@ -758,73 +793,6 @@ export default function AutonomousRunDetailPage() {
                   </div>
                 )}
 
-                {/* Sequence steps */}
-                <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm overflow-hidden">
-                  <div className="px-4 py-3 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800 flex flex-wrap items-center gap-2 justify-between">
-                    <div className="flex flex-col gap-0.5 min-w-0">
-                      <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">Sequence steps</span>
-                      <span className="text-[11px] text-gray-400 dark:text-gray-500">
-                        Times use {autonomousScheduleTimezoneLabel(run.timezone)}. Editing a step shifts later pending steps by the same gaps, then snaps to
-                        weekdays (Sat/Sun roll to Mon) and keeps order — same idea as automatic planning.
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="text-xs text-gray-400">{run.steps.length} steps · {Math.max(...run.steps.map(s => s.day_number), 0)} days</span>
-                      <button
-                        type="button"
-                        onClick={handleSaveSchedules}
-                        disabled={savingSchedules || !hasScheduleChanges}
-                        className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold bg-primary text-white hover:bg-primary/90 disabled:opacity-50 transition shadow-sm"
-                      >
-                        {savingSchedules ? (
-                          <><span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />Saving…</>
-                        ) : (
-                          "Save schedules"
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                  <div className="divide-y divide-gray-100 dark:divide-gray-800">
-                    {orderedSteps.map((s) => {
-                      const editable = isScheduleEditable(s.step_status);
-                      return (
-                        <div key={s.id} className="flex flex-wrap items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
-                          <span className="shrink-0 inline-flex h-6 w-6 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 text-xs font-bold text-gray-500">{s.day_number}</span>
-                          <span className="shrink-0 text-base leading-none"><ChannelIcon channel={s.channel} /></span>
-                          <div className="flex-1 min-w-[8rem]">
-                            <p className="text-sm font-medium text-gray-700 dark:text-gray-300 capitalize">{s.channel.replace(/_/g, " ")}</p>
-                            {editable ? (
-                              <label className="mt-1 block text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-                                Scheduled (local to timezone above)
-                                <input
-                                  type="datetime-local"
-                                  value={scheduleDrafts[s.id] ?? ""}
-                                  onChange={(e) =>
-                                    setScheduleDrafts((prev) =>
-                                      applySequentialCascadeToDrafts(
-                                        orderedSteps,
-                                        s.id,
-                                        e.target.value,
-                                        run.timezone,
-                                        prev,
-                                      ),
-                                    )
-                                  }
-                                  className={`${scheduleInputCls} mt-0.5 block w-full max-w-xs`}
-                                />
-                              </label>
-                            ) : (
-                              <p className="text-xs text-gray-400 mt-0.5">{formatDt(s.scheduled_at)}</p>
-                            )}
-                          </div>
-                          <StepStatusPill status={s.step_status} />
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-              </div>
             </div>
           </>
         ) : null}
