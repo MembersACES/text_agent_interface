@@ -553,12 +553,33 @@ export default function SolarCleaningQuotePage() {
       contact_email: sendEmail.trim() || null,
       business_name: (businessName || clientName).trim() || null,
       quote_number: quoteNumber.trim() || null,
+      site_name: siteName.trim() || null,
+      site_contact: contactName.trim() || null,
     };
+    const p = quotePricing;
+    if (p) {
+      context.member_pricing = {
+        markup_multiplier: p.mult,
+        member_discount_percent: p.discPct,
+        sell_before_discount_ex_gst: p.sellBefore,
+        member_discount_amount: p.discVal,
+        after_discount_ex_gst: p.sellEx,
+        gst: p.gst,
+        total_inc_gst: p.total,
+      };
+      context.member_pricing_display = {
+        sell_before_discount: formatAudDisplay(p.sellBefore),
+        member_discount: formatAudDisplay(p.discVal),
+        after_discount_ex_gst: formatAudDisplay(p.sellEx),
+        gst: formatAudDisplay(p.gst),
+        total_inc_gst: formatAudDisplay(p.total),
+      };
+    }
     const res = await fetch(`${getAutonomousApiBaseUrl()}/api/autonomous/sequences/start`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        sequence_type: "solar_clean_followup_v1",
+        sequence_type: "solar_panel_cleaning_followup_v1",
         offer_id: oid,
         client_id: Number.isFinite(clientNum) && clientNum > 0 ? clientNum : null,
         crm_activity_id: null,
@@ -694,12 +715,16 @@ export default function SolarCleaningQuotePage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error((data as { error?: string }).error || "Send failed");
-      await recordSolarQuoteSentInCrm(sendEmail.trim(), sendSubject.trim(), generateResult);
-      await startSolarAutonomousSequence();
       setSendModalOpen(false);
-      setResultMsg(
-        `Send request submitted successfully for ${sendEmail.trim()}. Autonomous follow-up sequence started.`,
-      );
+      await recordSolarQuoteSentInCrm(sendEmail.trim(), sendSubject.trim(), generateResult);
+      let msg = `Send request submitted successfully for ${sendEmail.trim()}.`;
+      try {
+        await startSolarAutonomousSequence();
+        msg += " Autonomous follow-up sequence started.";
+      } catch (seqErr) {
+        msg += ` Note: ${seqErr instanceof Error ? seqErr.message : "Could not start follow-up sequence."}`;
+      }
+      setResultMsg(msg);
     } catch (e: unknown) {
       setResultMsg(e instanceof Error ? e.message : "Send failed");
     } finally {
