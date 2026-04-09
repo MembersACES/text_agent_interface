@@ -57,6 +57,7 @@ export interface UseMemberActionsResult {
     params: { note: string; note_type?: string }
   ) => Promise<void>;
   handleDeleteNote: (noteId: number) => Promise<void>;
+  handleDeleteTask: (taskId: number) => Promise<void>;
   handleSaveAdvocate: (params: {
     referred_by_client_id: number | null;
     referred_by_business_name: string;
@@ -313,6 +314,35 @@ export function useMemberActions({
     [token, setNotes, setError, showToast]
   );
 
+  const handleDeleteTask = useCallback(
+    async (taskId: number) => {
+      if (!token) return;
+      setError(null);
+      try {
+        const res = await fetch(`${getApiBaseUrl()}/api/tasks/${taskId}`, {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        });
+
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error((data as { detail?: string }).detail || "Failed to delete task");
+        }
+
+        await refetchTasks();
+        showToast("Task deleted", "success");
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : "Failed to delete task";
+        setError(msg);
+        showToast(msg, "error");
+      }
+    },
+    [token, setError, refetchTasks, showToast]
+  );
+
   const handleSaveAdvocate = useCallback(
     async (params: {
       referred_by_client_id: number | null;
@@ -404,6 +434,7 @@ export function useMemberActions({
     handleCreateOffer,
     handleUpdateNote,
     handleDeleteNote,
+    handleDeleteTask,
     handleSaveAdvocate,
     handleSaveAdvocateMeeting,
     savingAdvocateMeeting,

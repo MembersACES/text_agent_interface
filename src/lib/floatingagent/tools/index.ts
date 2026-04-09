@@ -78,6 +78,7 @@ export async function runTool(
     lower.includes("help") ||
     lower.includes("explain") ||
     lower.includes("how do i") ||
+    lower.includes("where do i") ||
     lower.includes("where can i") ||
     lower.includes("where is") ||
     lower.includes("how to") ||
