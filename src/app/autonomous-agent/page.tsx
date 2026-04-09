@@ -54,6 +54,14 @@ interface SequenceTypePromptConfig {
   sms_example?: string | null;
   voice_example?: string | null;
   retell_agent_id?: string | null;
+  retell_agent_copied?: number | null;
+}
+
+function isRetellAgentCopiedFlag(v: unknown): boolean {
+  if (v === true) return true;
+  if (typeof v === "number" && Number.isFinite(v)) return v === 1;
+  if (typeof v === "string") return v === "1" || v.toLowerCase() === "true";
+  return false;
 }
 
 function formatDateTime(iso?: string | null) {
@@ -74,11 +82,73 @@ function formatDateTime(iso?: string | null) {
 
 const PAGE_SIZE = 20;
 
-/** Base-2 follow-up types that support POST .../restart (must match backend). */
 const RESTARTABLE_SEQUENCE_TYPES = new Set([
   "gas_base2_followup_v1",
   "ci_electricity_base2_followup_v1",
 ]);
+
+// ─── small UI helpers ───────────────────────────────────────────────────────
+
+const channelIcon: Record<string, string> = {
+  email: "✉",
+  sms: "💬",
+  voice: "📞",
+};
+
+function ChannelBadge({ channel }: { channel: string }) {
+  const icon = channelIcon[channel.toLowerCase()] ?? "•";
+  const colours: Record<string, string> = {
+    email: "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-800",
+    sms: "bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-950/40 dark:text-violet-300 dark:border-violet-800",
+    voice: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800",
+  };
+  const cls = colours[channel.toLowerCase()] ?? "bg-gray-50 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700";
+  return (
+    <span className={cn("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold tracking-wide", cls)}>
+      <span>{icon}</span>
+      <span className="capitalize">{channel}</span>
+    </span>
+  );
+}
+
+function StatusPill({ status, stopReason }: { status: string; stopReason?: string | null }) {
+  const map: Record<string, string> = {
+    running: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800",
+    completed: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800",
+    stopped: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800",
+    cancelled: "bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800",
+  };
+  const cls = map[status] ?? "bg-gray-50 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700";
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className={cn("inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold tracking-wide capitalize w-fit", cls)}>
+        {status.replace(/_/g, " ")}
+      </span>
+      {stopReason && (
+        <span className="text-[10px] text-gray-400 dark:text-gray-500 pl-0.5">
+          {stopReason.replace(/_/g, " ")}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function ProgressBar({ done, total }: { done: number; total: number }) {
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+  return (
+    <div className="flex items-center gap-2">
+      <div className="h-1.5 w-20 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
+        <div
+          className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-violet-500 transition-all"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <span className="text-xs tabular-nums text-gray-500 dark:text-gray-400">{done}/{total}</span>
+    </div>
+  );
+}
+
+// ─── main component ──────────────────────────────────────────────────────────
 
 export default function AutonomousAgentPage() {
   const { data: session } = useSession();
@@ -106,50 +176,33 @@ export default function AutonomousAgentPage() {
   const [typePromptsError, setTypePromptsError] = useState<string | null>(null);
   const [savingTypePrompts, setSavingTypePrompts] = useState(false);
 
-  useEffect(() => {
-    if (!token) {
-      setLoading(false);
-      return;
-    }
-    if (tab === "templates") {
-      setLoading(false);
-      return;
-    }
+  // ── data fetching (unchanged) ─────────────────────────────────────────────
 
+  useEffect(() => {
+    if (!token) { setLoading(false); return; }
+    if (tab === "templates") { setLoading(false); return; }
     const fetchRuns = async () => {
       try {
-        setLoading(true);
-        setError(null);
+        setLoading(true); setError(null);
         const params = new URLSearchParams();
         params.set("limit", String(PAGE_SIZE));
         params.set("offset", "0");
         params.set("run_status_group", tab === "running" ? "running" : "finished");
         const res = await fetch(
           `${getAutonomousApiBaseUrl()}/api/autonomous/sequences/runs?${params.toString()}`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-            },
-          },
+          { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } },
         );
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
-          throw new Error(
-            typeof data.detail === "string" ? data.detail : "Failed to load sequences",
-          );
+          throw new Error(typeof data.detail === "string" ? data.detail : "Failed to load sequences");
         }
         const data = await res.json();
         setRuns(Array.isArray(data.items) ? data.items : []);
         setTotal(typeof data.total === "number" ? data.total : 0);
       } catch (e: unknown) {
-        console.error("Error loading autonomous sequences", e);
         setError(e instanceof Error ? e.message : "Failed to load sequences");
-      } finally {
-        setLoading(false);
-      }
+      } finally { setLoading(false); }
     };
-
     fetchRuns();
   }, [token, tab]);
 
@@ -163,67 +216,44 @@ export default function AutonomousAgentPage() {
       params.set("run_status_group", tab === "running" ? "running" : "finished");
       const res = await fetch(
         `${getAutonomousApiBaseUrl()}/api/autonomous/sequences/runs?${params.toString()}`,
-        {
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        },
+        { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } },
       );
       if (!res.ok) throw new Error("Failed to load more");
       const data = await res.json();
-      const next = Array.isArray(data.items) ? data.items : [];
-      setRuns((prev) => [...prev, ...next]);
-    } catch (e) {
-      console.error("Load more sequences", e);
-    } finally {
-      setLoadingMore(false);
-    }
+      setRuns((prev) => [...prev, ...(Array.isArray(data.items) ? data.items : [])]);
+    } catch (e) { console.error("Load more sequences", e); }
+    finally { setLoadingMore(false); }
   };
 
   useEffect(() => {
     if (!token || tab !== "templates") return;
     const fetchTemplates = async () => {
       try {
-        setTemplatesLoading(true);
-        setTemplatesError(null);
+        setTemplatesLoading(true); setTemplatesError(null);
         const res = await fetch(`${getAutonomousApiBaseUrl()}/api/autonomous/sequences/templates`, {
           headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         });
         const data = await res.json().catch(() => []);
-        if (!res.ok) {
-          throw new Error(
-            typeof data.detail === "string" ? data.detail : "Failed to load sequence templates",
-          );
-        }
+        if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Failed to load sequence templates");
         const rows = Array.isArray(data) ? data : [];
         setTemplates(rows);
         setSelectedTemplateId((prev) => prev ?? rows[0]?.id ?? null);
       } catch (e: unknown) {
         setTemplatesError(e instanceof Error ? e.message : "Failed to load templates");
-      } finally {
-        setTemplatesLoading(false);
-      }
+      } finally { setTemplatesLoading(false); }
     };
     fetchTemplates();
   }, [token, tab]);
 
-  const updateTemplateLocal = (templateId: number, patch: Partial<SequenceTemplate>) => {
-    setTemplates((prev) =>
-      prev.map((t) => (t.id === templateId ? { ...t, ...patch } : t)),
-    );
-  };
+  const updateTemplateLocal = (templateId: number, patch: Partial<SequenceTemplate>) =>
+    setTemplates((prev) => prev.map((t) => (t.id === templateId ? { ...t, ...patch } : t)));
 
-  const updateStepLocal = (
-    templateId: number,
-    stepId: number,
-    patch: Partial<SequenceTemplateStep>,
-  ) => {
+  const updateStepLocal = (templateId: number, stepId: number, patch: Partial<SequenceTemplateStep>) =>
     setTemplates((prev) =>
       prev.map((t) =>
-        t.id !== templateId
-          ? t
-          : { ...t, steps: t.steps.map((s) => (s.id === stepId ? { ...s, ...patch } : s)) },
+        t.id !== templateId ? t : { ...t, steps: t.steps.map((s) => (s.id === stepId ? { ...s, ...patch } : s)) },
       ),
     );
-  };
 
   const saveTemplate = async (template: SequenceTemplate) => {
     if (!token) return;
@@ -249,9 +279,7 @@ export default function AutonomousAgentPage() {
       showToast("Template saved.", "success");
     } catch (e: unknown) {
       showToast(e instanceof Error ? e.message : "Save failed", "error");
-    } finally {
-      setSavingTemplateId(null);
-    }
+    } finally { setSavingTemplateId(null); }
   };
 
   const saveStep = async (templateId: number, step: SequenceTemplateStep) => {
@@ -280,9 +308,7 @@ export default function AutonomousAgentPage() {
       showToast("Step saved.", "success");
     } catch (e: unknown) {
       showToast(e instanceof Error ? e.message : "Save failed", "error");
-    } finally {
-      setSavingStepId(null);
-    }
+    } finally { setSavingStepId(null); }
   };
 
   const addTemplate = async () => {
@@ -312,9 +338,7 @@ export default function AutonomousAgentPage() {
       showToast("Template created.", "success");
     } catch (e: unknown) {
       showToast(e instanceof Error ? e.message : "Create failed", "error");
-    } finally {
-      setCreatingTemplate(false);
-    }
+    } finally { setCreatingTemplate(false); }
   };
 
   const addStep = async (templateId: number) => {
@@ -347,61 +371,37 @@ export default function AutonomousAgentPage() {
       showToast("Step added.", "success");
     } catch (e: unknown) {
       showToast(e instanceof Error ? e.message : "Add step failed", "error");
-    } finally {
-      setSavingStepId(null);
-    }
+    } finally { setSavingStepId(null); }
   };
 
   useEffect(() => {
     if (!token || tab !== "templates" || !selectedTemplateId) {
-      setTypePrompts(null);
-      setTypePromptsError(null);
-      return;
+      setTypePrompts(null); setTypePromptsError(null); return;
     }
     const selected = templates.find((t) => t.id === selectedTemplateId);
     const sequenceType = selected?.sequence_type?.trim();
-    if (!sequenceType) {
-      setTypePrompts(null);
-      setTypePromptsError(null);
-      return;
-    }
+    if (!sequenceType) { setTypePrompts(null); setTypePromptsError(null); return; }
     const fetchTypePrompts = async () => {
       try {
-        setTypePromptsLoading(true);
-        setTypePromptsError(null);
+        setTypePromptsLoading(true); setTypePromptsError(null);
         const params = new URLSearchParams({ sequence_type: sequenceType });
         const res = await fetch(
           `${getAutonomousApiBaseUrl()}/api/autonomous/sequences/type-prompts?${params.toString()}`,
-          {
-            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-          },
+          { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } },
         );
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          throw new Error(
-            typeof data.detail === "string"
-              ? data.detail
-              : "No autonomous_sequence_type row for this sequence_type",
-          );
-        }
+        if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : "No autonomous_sequence_type row for this sequence_type");
         setTypePrompts(data as SequenceTypePromptConfig);
       } catch (e: unknown) {
         setTypePrompts(null);
-        setTypePromptsError(
-          e instanceof Error
-            ? e.message
-            : "No autonomous_sequence_type row for this sequence_type",
-        );
-      } finally {
-        setTypePromptsLoading(false);
-      }
+        setTypePromptsError(e instanceof Error ? e.message : "No autonomous_sequence_type row for this sequence_type");
+      } finally { setTypePromptsLoading(false); }
     };
     fetchTypePrompts();
   }, [token, tab, selectedTemplateId, templates]);
 
-  const updateTypePromptsLocal = (patch: Partial<SequenceTypePromptConfig>) => {
+  const updateTypePromptsLocal = (patch: Partial<SequenceTypePromptConfig>) =>
     setTypePrompts((prev) => (prev ? { ...prev, ...patch } : prev));
-  };
 
   const saveTypePrompts = async () => {
     if (!token || !typePrompts?.sequence_type) return;
@@ -420,35 +420,22 @@ export default function AutonomousAgentPage() {
         }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(typeof data.detail === "string" ? data.detail : "Prompt save failed");
-      }
+      if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Prompt save failed");
       setTypePrompts(data as SequenceTypePromptConfig);
       showToast("Prompt examples saved to autonomous_sequence_type.", "success");
     } catch (e: unknown) {
       showToast(e instanceof Error ? e.message : "Prompt save failed", "error");
-    } finally {
-      setSavingTypePrompts(false);
-    }
+    } finally { setSavingTypePrompts(false); }
   };
 
   const handleStopRun = async (runId: number) => {
     if (!token) return;
-    if (
-      !window.confirm(
-        "Stop this sequence? Pending steps will be skipped and no further outreach will run.",
-      )
-    ) {
-      return;
-    }
+    if (!window.confirm("Stop this sequence? Pending steps will be skipped and no further outreach will run.")) return;
     setStoppingId(runId);
     try {
       const res = await fetch(
         `${getAutonomousApiBaseUrl()}/api/autonomous/sequences/runs/${runId}/stop`,
-        {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        },
+        { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } },
       );
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -459,65 +446,38 @@ export default function AutonomousAgentPage() {
       showToast("Sequence stopped.", "success");
     } catch (e: unknown) {
       showToast(e instanceof Error ? e.message : "Stop failed", "error");
-    } finally {
-      setStoppingId(null);
-    }
+    } finally { setStoppingId(null); }
   };
 
   const handleRestartRun = async (runId: number) => {
     if (!token) return;
-    if (
-      !window.confirm(
-        "Start a new sequence for this offer using the same sequence type and saved context? The schedule is anchored from today in AEST; day 1 starts at 9:00 on the next business day.",
-      )
-    ) {
-      return;
-    }
+    if (!window.confirm("Start a new sequence for this offer using the same sequence type and saved context? The schedule is anchored from today in AEST; day 1 starts at 9:00 on the next business day.")) return;
     setRestartingId(runId);
     try {
       const res = await fetch(
         `${getAutonomousApiBaseUrl()}/api/autonomous/sequences/runs/${runId}/restart`,
-        {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        },
+        { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } },
       );
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(typeof data.detail === "string" ? data.detail : "Restart failed");
-      }
+      if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Restart failed");
       if (data.reused_existing) {
-        showToast(
-          `This offer already has an active sequence of this type (run #${data.run_id}).`,
-          "success",
-        );
+        showToast(`This offer already has an active sequence of this type (run #${data.run_id}).`, "success");
       } else {
         showToast(`New sequence started (run #${data.run_id}).`, "success");
       }
     } catch (e: unknown) {
       showToast(e instanceof Error ? e.message : "Restart failed", "error");
-    } finally {
-      setRestartingId(null);
-    }
+    } finally { setRestartingId(null); }
   };
 
   const handleDeleteRun = async (runId: number) => {
     if (!token) return;
-    if (
-      !window.confirm(
-        `Delete sequence #${runId} permanently? All steps and event history will be removed. This cannot be undone.`,
-      )
-    ) {
-      return;
-    }
+    if (!window.confirm(`Delete sequence #${runId} permanently? All steps and event history will be removed. This cannot be undone.`)) return;
     setDeletingId(runId);
     try {
       const res = await fetch(
         `${getAutonomousApiBaseUrl()}/api/autonomous/sequences/runs/${runId}`,
-        {
-          method: "DELETE",
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        },
+        { method: "DELETE", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } },
       );
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -528,16 +488,30 @@ export default function AutonomousAgentPage() {
       showToast("Sequence deleted.", "success");
     } catch (e: unknown) {
       showToast(e instanceof Error ? e.message : "Delete failed", "error");
-    } finally {
-      setDeletingId(null);
-    }
+    } finally { setDeletingId(null); }
   };
+
+  // ── derived ───────────────────────────────────────────────────────────────
 
   const emptyMessage =
     tab === "running"
       ? "No active autonomous sequences. Start one via POST /api/autonomous/sequences/start (or wire from Base 2)."
       : "No finished sequences yet.";
   const selectedTemplate = templates.find((t) => t.id === selectedTemplateId) ?? null;
+
+  // ── shared input classes ──────────────────────────────────────────────────
+
+  const inputCls =
+    "mt-1 w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-950 px-2.5 py-1.5 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 transition";
+  const textareaCls =
+    "mt-1 w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-950 px-2.5 py-2 text-xs text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 transition resize-y";
+  const labelCls = "block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide";
+  const btnPrimary =
+    "inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white text-xs font-semibold px-3 py-1.5 transition disabled:opacity-40 disabled:cursor-not-allowed shadow-sm";
+  const btnSecondary =
+    "inline-flex items-center gap-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-semibold px-3 py-1.5 transition disabled:opacity-40 disabled:cursor-not-allowed shadow-sm";
+
+  // ── render ────────────────────────────────────────────────────────────────
 
   return (
     <>
@@ -546,504 +520,433 @@ export default function AutonomousAgentPage() {
         title="Autonomous Agent"
         description="Follow-up sequence runs (email via n8n, voice via Retell). Data lives in the CRM backend."
       />
-      <div className="mt-4">
-        <div className="flex flex-col gap-4 mb-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div
-              className="inline-flex rounded-lg border border-gray-200 dark:border-gray-600 p-0.5 bg-gray-50 dark:bg-gray-800/50"
-              role="tablist"
-              aria-label="Autonomous sequence queue"
-            >
-              <button
-                type="button"
-                role="tab"
-                aria-selected={tab === "running"}
-                onClick={() => setTab("running")}
-                className={cn(
-                  "px-3 py-1.5 text-sm font-medium rounded-md transition-colors",
-                  tab === "running"
-                    ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 shadow-sm"
-                    : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200",
-                )}
-              >
-                Running
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={tab === "finished"}
-                onClick={() => setTab("finished")}
-                className={cn(
-                  "px-3 py-1.5 text-sm font-medium rounded-md transition-colors",
-                  tab === "finished"
-                    ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 shadow-sm"
-                    : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200",
-                )}
-              >
-                Finished
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={tab === "templates"}
-                onClick={() => setTab("templates")}
-                className={cn(
-                  "px-3 py-1.5 text-sm font-medium rounded-md transition-colors",
-                  tab === "templates"
-                    ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 shadow-sm"
-                    : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200",
-                )}
-              >
-                Sequence templates
-              </button>
-            </div>
-            <Link
-              href="/offers"
-              className="text-sm font-medium text-primary hover:underline"
-            >
-              All offers
-            </Link>
+
+      <div className="mt-5 space-y-5">
+
+        {/* ── toolbar ── */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          {/* tab switcher */}
+          <div
+            className="inline-flex items-center rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-1 shadow-sm gap-0.5"
+            role="tablist"
+            aria-label="Autonomous sequence queue"
+          >
+            {(["running", "finished", "templates"] as AgentTab[]).map((t) => {
+              const labels: Record<AgentTab, string> = {
+                running: "Running",
+                finished: "Finished",
+                templates: "Sequence templates",
+              };
+              return (
+                <button
+                  key={t}
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === t}
+                  onClick={() => setTab(t)}
+                  className={cn(
+                    "px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all",
+                    tab === t
+                      ? "bg-indigo-600 text-white shadow-sm"
+                      : "text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800",
+                  )}
+                >
+                  {labels[t]}
+                </button>
+              );
+            })}
           </div>
+
+          <Link
+            href="/offers"
+            className="text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:underline underline-offset-2"
+          >
+            All offers →
+          </Link>
         </div>
 
+        {/* ── error banner ── */}
         {tab !== "templates" && error && (
-          <div className="mb-4 p-3 rounded-md bg-red-50 border border-red-200 text-sm text-red-700 dark:bg-red-950/30 dark:border-red-800 dark:text-red-300">
-            {error}
+          <div className="flex items-start gap-3 rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30 p-3.5 text-sm text-red-700 dark:text-red-300">
+            <span className="mt-0.5 shrink-0 text-base">⚠️</span>
+            <span>{error}</span>
           </div>
         )}
 
+        {/* ══════════════ TEMPLATES TAB ══════════════ */}
         {tab === "templates" ? (
-          <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-4">
-            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200">Templates</h3>
-                <button
-                  type="button"
-                  onClick={addTemplate}
-                  disabled={creatingTemplate}
-                  className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
-                >
-                  {creatingTemplate ? "Creating…" : "New"}
+          <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4 items-start">
+
+            {/* sidebar list */}
+            <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-800">
+                <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">Templates</span>
+                <button type="button" onClick={addTemplate} disabled={creatingTemplate} className={btnSecondary}>
+                  {creatingTemplate ? "Creating…" : "+ New"}
                 </button>
               </div>
               {templatesLoading ? (
-                <p className="text-sm text-gray-500 dark:text-gray-400">Loading templates…</p>
+                <p className="px-4 py-6 text-sm text-gray-400 dark:text-gray-500">Loading templates…</p>
               ) : templatesError ? (
-                <p className="text-sm text-red-600 dark:text-red-400">{templatesError}</p>
+                <p className="px-4 py-6 text-sm text-red-500">{templatesError}</p>
               ) : templates.length === 0 ? (
-                <p className="text-sm text-gray-500 dark:text-gray-400">No templates found.</p>
+                <p className="px-4 py-6 text-sm text-gray-400 dark:text-gray-500">No templates found.</p>
               ) : (
-                <div className="space-y-1">
+                <nav className="divide-y divide-gray-50 dark:divide-gray-800/80">
                   {templates.map((t) => (
                     <button
                       key={t.id}
                       type="button"
                       onClick={() => setSelectedTemplateId(t.id)}
                       className={cn(
-                        "w-full text-left rounded px-2 py-1.5 text-sm border",
+                        "w-full text-left px-4 py-3 transition-colors",
                         selectedTemplateId === t.id
-                          ? "border-primary bg-primary/5 text-primary"
-                          : "border-transparent hover:border-gray-200 dark:hover:border-gray-700 text-gray-700 dark:text-gray-300",
+                          ? "bg-indigo-50 dark:bg-indigo-950/40"
+                          : "hover:bg-gray-50 dark:hover:bg-gray-800/60",
                       )}
                     >
-                      <div className="font-medium">{t.display_name}</div>
-                      <div className="text-xs opacity-70">{t.sequence_type}</div>
+                      <div className={cn("text-sm font-semibold leading-snug", selectedTemplateId === t.id ? "text-indigo-700 dark:text-indigo-300" : "text-gray-800 dark:text-gray-200")}>
+                        {t.display_name}
+                      </div>
+                      <div className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5 font-mono">{t.sequence_type}</div>
+                      <div className="flex gap-1.5 mt-1.5">
+                        {t.is_active ? (
+                          <span className="rounded-full bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 text-[10px] font-semibold px-2 py-0.5">Active</span>
+                        ) : (
+                          <span className="rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-[10px] font-semibold px-2 py-0.5">Inactive</span>
+                        )}
+                        {t.is_restartable && (
+                          <span className="rounded-full bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300 text-[10px] font-semibold px-2 py-0.5">Restartable</span>
+                        )}
+                      </div>
                     </button>
                   ))}
-                </div>
+                </nav>
               )}
             </div>
 
-            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
+            {/* detail pane */}
+            <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm p-5">
               {!selectedTemplate ? (
-                <p className="text-sm text-gray-500 dark:text-gray-400">Select a template to edit.</p>
+                <div className="py-16 text-center text-sm text-gray-400 dark:text-gray-500">
+                  Select a template from the list to edit it.
+                </div>
               ) : (
-                <div className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <label className="text-xs font-medium text-gray-600 dark:text-gray-300">
-                      Display name
-                      <input
-                        type="text"
-                        value={selectedTemplate.display_name}
-                        onChange={(e) =>
-                          updateTemplateLocal(selectedTemplate.id, { display_name: e.target.value })
-                        }
-                        className="mt-1 w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-950 px-2 py-1.5 text-sm"
-                      />
-                    </label>
-                    <label className="text-xs font-medium text-gray-600 dark:text-gray-300">
-                      Timezone
-                      <input
-                        type="text"
-                        value={selectedTemplate.timezone}
-                        onChange={(e) =>
-                          updateTemplateLocal(selectedTemplate.id, { timezone: e.target.value })
-                        }
-                        className="mt-1 w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-950 px-2 py-1.5 text-sm"
-                      />
-                    </label>
-                    <label className="text-xs font-medium text-gray-600 dark:text-gray-300 md:col-span-2">
-                      Description
-                      <input
-                        type="text"
-                        value={selectedTemplate.description ?? ""}
-                        onChange={(e) =>
-                          updateTemplateLocal(selectedTemplate.id, { description: e.target.value })
-                        }
-                        className="mt-1 w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-950 px-2 py-1.5 text-sm"
-                      />
-                    </label>
-                    <label className="text-xs font-medium text-gray-600 dark:text-gray-300 inline-flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={selectedTemplate.is_active}
-                        onChange={(e) =>
-                          updateTemplateLocal(selectedTemplate.id, { is_active: e.target.checked })
-                        }
-                      />
-                      Active
-                    </label>
-                    <label className="text-xs font-medium text-gray-600 dark:text-gray-300 inline-flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={selectedTemplate.is_restartable}
-                        onChange={(e) =>
-                          updateTemplateLocal(selectedTemplate.id, { is_restartable: e.target.checked })
-                        }
-                      />
-                      Restartable
-                    </label>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => saveTemplate(selectedTemplate)}
-                      disabled={savingTemplateId === selectedTemplate.id}
-                      className="text-xs px-3 py-1.5 rounded bg-primary text-white hover:opacity-90 disabled:opacity-50"
-                    >
-                      {savingTemplateId === selectedTemplate.id ? "Saving…" : "Save template"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => addStep(selectedTemplate.id)}
-                      disabled={savingStepId === -1}
-                      className="text-xs px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
-                    >
-                      Add step
-                    </button>
+                <div className="space-y-6">
+
+                  {/* template meta */}
+                  <div>
+                    <h3 className="text-base font-bold text-gray-900 dark:text-gray-100 mb-3">{selectedTemplate.display_name}</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <label className={labelCls}>
+                        Display name
+                        <input type="text" value={selectedTemplate.display_name}
+                          onChange={(e) => updateTemplateLocal(selectedTemplate.id, { display_name: e.target.value })}
+                          className={inputCls} />
+                      </label>
+                      <label className={labelCls}>
+                        Timezone
+                        <input type="text" value={selectedTemplate.timezone}
+                          onChange={(e) => updateTemplateLocal(selectedTemplate.id, { timezone: e.target.value })}
+                          className={inputCls} />
+                      </label>
+                      <label className={cn(labelCls, "md:col-span-2")}>
+                        Description
+                        <input type="text" value={selectedTemplate.description ?? ""}
+                          onChange={(e) => updateTemplateLocal(selectedTemplate.id, { description: e.target.value })}
+                          className={inputCls} />
+                      </label>
+                      <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer select-none">
+                        <input type="checkbox" checked={selectedTemplate.is_active}
+                          onChange={(e) => updateTemplateLocal(selectedTemplate.id, { is_active: e.target.checked })}
+                          className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
+                        Active
+                      </label>
+                      <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer select-none">
+                        <input type="checkbox" checked={selectedTemplate.is_restartable}
+                          onChange={(e) => updateTemplateLocal(selectedTemplate.id, { is_restartable: e.target.checked })}
+                          className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
+                        Restartable
+                      </label>
+                    </div>
+                    <div className="flex gap-2 mt-4">
+                      <button type="button" onClick={() => saveTemplate(selectedTemplate)}
+                        disabled={savingTemplateId === selectedTemplate.id} className={btnPrimary}>
+                        {savingTemplateId === selectedTemplate.id ? "Saving…" : "Save template"}
+                      </button>
+                      <button type="button" onClick={() => addStep(selectedTemplate.id)}
+                        disabled={savingStepId === -1} className={btnSecondary}>
+                        {savingStepId === -1 ? "Adding…" : "+ Add step"}
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="rounded border border-gray-200 dark:border-gray-700 p-3 space-y-3">
+                  {/* prompt examples */}
+                  <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-950/50 p-4 space-y-4">
                     <div className="flex items-center justify-between">
                       <div>
-                        <h4 className="text-sm font-semibold text-gray-800 dark:text-gray-200">
-                          Prompt examples
-                        </h4>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">
-                          Reads/writes `autonomous_sequence_type` for this sequence type.
+                        <h4 className="text-sm font-bold text-gray-900 dark:text-gray-100">Prompt examples</h4>
+                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                          Reads/writes <code className="font-mono text-[10px]">autonomous_sequence_type</code> for this sequence type.
                         </p>
                       </div>
-                      <button
-                        type="button"
-                        onClick={saveTypePrompts}
-                        disabled={savingTypePrompts || !typePrompts}
-                        className="text-xs px-3 py-1.5 rounded bg-primary text-white hover:opacity-90 disabled:opacity-50"
-                      >
+                      <button type="button" onClick={saveTypePrompts}
+                        disabled={savingTypePrompts || !typePrompts} className={btnPrimary}>
                         {savingTypePrompts ? "Saving…" : "Save prompts"}
                       </button>
                     </div>
 
                     {typePromptsLoading ? (
-                      <p className="text-xs text-gray-500 dark:text-gray-400">Loading prompt fields…</p>
+                      <p className="text-xs text-gray-400">Loading prompt fields…</p>
                     ) : typePromptsError ? (
-                      <p className="text-xs text-amber-700 dark:text-amber-400">
-                        {typePromptsError}
-                      </p>
+                      <p className="text-xs text-amber-600 dark:text-amber-400">{typePromptsError}</p>
                     ) : typePrompts ? (
-                      <div className="grid grid-cols-1 gap-3">
-                        <label className="text-xs font-medium text-gray-600 dark:text-gray-300">
+                      <div className="grid grid-cols-1 gap-4">
+                        <label className={labelCls}>
                           System prompt
-                          <textarea
-                            value={typePrompts.system_prompt ?? ""}
-                            onChange={(e) =>
-                              updateTypePromptsLocal({ system_prompt: e.target.value })
-                            }
-                            rows={4}
-                            className="mt-1 w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-950 px-2 py-1.5 text-xs"
-                          />
+                          <textarea value={typePrompts.system_prompt ?? ""}
+                            onChange={(e) => updateTypePromptsLocal({ system_prompt: e.target.value })}
+                            rows={4} className={textareaCls} />
                         </label>
-                        <label className="text-xs font-medium text-gray-600 dark:text-gray-300">
+                        <label className={labelCls}>
                           Email example
-                          <textarea
-                            value={typePrompts.email_example ?? ""}
-                            onChange={(e) =>
-                              updateTypePromptsLocal({ email_example: e.target.value })
-                            }
-                            rows={4}
-                            className="mt-1 w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-950 px-2 py-1.5 text-xs"
-                          />
+                          <textarea value={typePrompts.email_example ?? ""}
+                            onChange={(e) => updateTypePromptsLocal({ email_example: e.target.value })}
+                            rows={4} className={textareaCls} />
                         </label>
-                        <label className="text-xs font-medium text-gray-600 dark:text-gray-300">
+                        <label className={labelCls}>
                           SMS example
-                          <textarea
-                            value={typePrompts.sms_example ?? ""}
+                          <textarea value={typePrompts.sms_example ?? ""}
                             onChange={(e) => updateTypePromptsLocal({ sms_example: e.target.value })}
-                            rows={3}
-                            className="mt-1 w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-950 px-2 py-1.5 text-xs"
-                          />
+                            rows={3} className={textareaCls} />
                         </label>
-                        <label className="text-xs font-medium text-gray-600 dark:text-gray-300">
+                        <label className={labelCls}>
                           Voice example
-                          <textarea
-                            value={typePrompts.voice_example ?? ""}
-                            onChange={(e) =>
-                              updateTypePromptsLocal({ voice_example: e.target.value })
-                            }
-                            rows={3}
-                            className="mt-1 w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-950 px-2 py-1.5 text-xs"
-                          />
+                          <textarea value={typePrompts.voice_example ?? ""}
+                            onChange={(e) => updateTypePromptsLocal({ voice_example: e.target.value })}
+                            rows={3} className={textareaCls} />
                         </label>
-                        <label className="text-xs font-medium text-gray-600 dark:text-gray-300">
-                          Retell agent ID
-                          <input
-                            type="text"
-                            value={typePrompts.retell_agent_id ?? ""}
-                            onChange={(e) =>
-                              updateTypePromptsLocal({ retell_agent_id: e.target.value })
-                            }
-                            className="mt-1 w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-950 px-2 py-1.5 text-xs"
-                          />
-                        </label>
+
+                        {/* retell agent id */}
+                        <div className="space-y-1.5">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className={labelCls}>Retell agent ID</span>
+                            {isRetellAgentCopiedFlag(typePrompts.retell_agent_copied) && (
+                              <span className="inline-flex items-center rounded-full bg-amber-100 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-800 dark:text-amber-200">
+                                ⚠ Copied default — update
+                              </span>
+                            )}
+                          </div>
+                          <input type="text" value={typePrompts.retell_agent_id ?? ""}
+                            onChange={(e) => updateTypePromptsLocal({ retell_agent_id: e.target.value })}
+                            className={cn(inputCls, "mt-0 font-mono text-xs")} />
+                          {isRetellAgentCopiedFlag(typePrompts.retell_agent_copied) && (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                if (!token || !typePrompts?.sequence_type) return;
+                                setSavingTypePrompts(true);
+                                try {
+                                  const res = await fetch(
+                                    `${getAutonomousApiBaseUrl()}/api/autonomous/sequences/type-prompts`,
+                                    {
+                                      method: "PATCH",
+                                      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+                                      body: JSON.stringify({
+                                        sequence_type: typePrompts.sequence_type,
+                                        retell_agent_reviewed: "true",
+                                      }),
+                                    },
+                                  );
+                                  const data = await res.json().catch(() => ({}));
+                                  if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Update failed");
+                                  setTypePrompts(data as SequenceTypePromptConfig);
+                                  showToast("Retell agent marked as reviewed.", "success");
+                                } catch (e: unknown) {
+                                  showToast(e instanceof Error ? e.message : "Update failed", "error");
+                                } finally { setSavingTypePrompts(false); }
+                              }}
+                              disabled={savingTypePrompts}
+                              className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline disabled:opacity-50"
+                            >
+                              This Retell ID is correct — clear warning
+                            </button>
+                          )}
+                        </div>
                       </div>
                     ) : null}
                   </div>
 
-                  <div className="overflow-x-auto rounded border border-gray-200 dark:border-gray-700">
-                    <table className="min-w-full text-xs">
-                      <thead className="bg-gray-50 dark:bg-gray-800">
-                        <tr>
-                          <th className="px-2 py-2 text-left">Index</th>
-                          <th className="px-2 py-2 text-left">Day</th>
-                          <th className="px-2 py-2 text-left">Channel</th>
-                          <th className="px-2 py-2 text-left">Time</th>
-                          <th className="px-2 py-2 text-left">Prompt</th>
-                          <th className="px-2 py-2 text-left">Active</th>
-                          <th className="px-2 py-2 text-left">Action</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {[...selectedTemplate.steps]
-                          .sort((a, b) => a.step_index - b.step_index)
-                          .map((s) => (
-                            <tr key={s.id} className="border-t border-gray-100 dark:border-gray-800">
-                              <td className="px-2 py-2">
-                                <input
-                                  type="number"
-                                  value={s.step_index}
-                                  onChange={(e) =>
-                                    updateStepLocal(selectedTemplate.id, s.id, {
-                                      step_index: Number(e.target.value),
-                                    })
-                                  }
-                                  className="w-16 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-950 px-1 py-1"
-                                />
-                              </td>
-                              <td className="px-2 py-2">
-                                <input
-                                  type="number"
-                                  value={s.day_number}
-                                  onChange={(e) =>
-                                    updateStepLocal(selectedTemplate.id, s.id, {
-                                      day_number: Number(e.target.value),
-                                    })
-                                  }
-                                  className="w-16 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-950 px-1 py-1"
-                                />
-                              </td>
-                              <td className="px-2 py-2">
-                                <input
-                                  type="text"
-                                  value={s.channel}
-                                  onChange={(e) =>
-                                    updateStepLocal(selectedTemplate.id, s.id, {
-                                      channel: e.target.value,
-                                    })
-                                  }
-                                  className="w-28 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-950 px-1 py-1"
-                                />
-                              </td>
-                              <td className="px-2 py-2">
-                                <input
-                                  type="text"
-                                  value={s.send_time_local}
-                                  onChange={(e) =>
-                                    updateStepLocal(selectedTemplate.id, s.id, {
-                                      send_time_local: e.target.value,
-                                    })
-                                  }
-                                  className="w-20 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-950 px-1 py-1"
-                                />
-                              </td>
-                              <td className="px-2 py-2">
-                                <input
-                                  type="text"
-                                  value={s.prompt_text ?? ""}
-                                  onChange={(e) =>
-                                    updateStepLocal(selectedTemplate.id, s.id, {
-                                      prompt_text: e.target.value,
-                                    })
-                                  }
-                                  className="w-72 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-950 px-1 py-1"
-                                />
-                              </td>
-                              <td className="px-2 py-2">
-                                <input
-                                  type="checkbox"
-                                  checked={s.is_active}
-                                  onChange={(e) =>
-                                    updateStepLocal(selectedTemplate.id, s.id, {
-                                      is_active: e.target.checked,
-                                    })
-                                  }
-                                />
-                              </td>
-                              <td className="px-2 py-2">
-                                <button
-                                  type="button"
-                                  onClick={() => saveStep(selectedTemplate.id, s)}
-                                  disabled={savingStepId === s.id}
-                                  className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
-                                >
-                                  {savingStepId === s.id ? "Saving…" : "Save"}
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                      </tbody>
-                    </table>
+                  {/* steps table */}
+                  <div>
+                    <h4 className="text-sm font-bold text-gray-900 dark:text-gray-100 mb-2">Steps</h4>
+                    <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
+                      <table className="min-w-full text-xs">
+                        <thead>
+                          <tr className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+                            {["Index", "Day", "Channel", "Time", "Prompt", "Active", ""].map((h) => (
+                              <th key={h} className="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide whitespace-nowrap">{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                          {[...selectedTemplate.steps]
+                            .sort((a, b) => a.step_index - b.step_index)
+                            .map((s) => (
+                              <tr key={s.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
+                                <td className="px-3 py-2">
+                                  <input type="number" value={s.step_index}
+                                    onChange={(e) => updateStepLocal(selectedTemplate.id, s.id, { step_index: Number(e.target.value) })}
+                                    className="w-14 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-950 px-1.5 py-1 text-xs text-center focus:outline-none focus:ring-2 focus:ring-indigo-500/40" />
+                                </td>
+                                <td className="px-3 py-2">
+                                  <input type="number" value={s.day_number}
+                                    onChange={(e) => updateStepLocal(selectedTemplate.id, s.id, { day_number: Number(e.target.value) })}
+                                    className="w-14 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-950 px-1.5 py-1 text-xs text-center focus:outline-none focus:ring-2 focus:ring-indigo-500/40" />
+                                </td>
+                                <td className="px-3 py-2">
+                                  <input type="text" value={s.channel}
+                                    onChange={(e) => updateStepLocal(selectedTemplate.id, s.id, { channel: e.target.value })}
+                                    className="w-24 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-950 px-1.5 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/40" />
+                                </td>
+                                <td className="px-3 py-2">
+                                  <input type="text" value={s.send_time_local}
+                                    onChange={(e) => updateStepLocal(selectedTemplate.id, s.id, { send_time_local: e.target.value })}
+                                    className="w-20 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-950 px-1.5 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/40" />
+                                </td>
+                                <td className="px-3 py-2">
+                                  <input type="text" value={s.prompt_text ?? ""}
+                                    onChange={(e) => updateStepLocal(selectedTemplate.id, s.id, { prompt_text: e.target.value })}
+                                    className="w-72 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-950 px-1.5 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/40" />
+                                </td>
+                                <td className="px-3 py-2 text-center">
+                                  <input type="checkbox" checked={s.is_active}
+                                    onChange={(e) => updateStepLocal(selectedTemplate.id, s.id, { is_active: e.target.checked })}
+                                    className="h-3.5 w-3.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
+                                </td>
+                                <td className="px-3 py-2">
+                                  <button type="button" onClick={() => saveStep(selectedTemplate.id, s)}
+                                    disabled={savingStepId === s.id} className={btnSecondary}>
+                                    {savingStepId === s.id ? "Saving…" : "Save"}
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
+
                 </div>
               )}
             </div>
           </div>
+
         ) : loading ? (
-          <div className="py-10 text-center text-gray-500 dark:text-gray-400">
+          /* ── loading state ── */
+          <div className="flex items-center justify-center py-20 text-sm text-gray-400 dark:text-gray-500 gap-2">
+            <svg className="animate-spin h-4 w-4 text-indigo-500" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+            </svg>
             Loading sequences…
           </div>
+
         ) : runs.length === 0 ? (
-          <div className="py-10 text-center text-gray-500 dark:text-gray-400">
-            {emptyMessage}
+          /* ── empty state ── */
+          <div className="rounded-xl border border-dashed border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 py-16 text-center">
+            <div className="text-3xl mb-3">🤖</div>
+            <p className="text-sm text-gray-500 dark:text-gray-400 max-w-sm mx-auto">{emptyMessage}</p>
           </div>
+
         ) : (
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-900 shadow-sm">
+          /* ══════════════ RUNS TABLE ══════════════ */
+          <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-sm">
-                <thead className="bg-gray-50 dark:bg-gray-800">
+              <table className="min-w-full divide-y divide-gray-100 dark:divide-gray-800 text-sm">
+                <thead className="bg-gray-50 dark:bg-gray-800/60">
                   <tr>
-                    <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-gray-300">
-                      Client
-                    </th>
-                    <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-gray-300">
-                      Offer
-                    </th>
-                    <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-gray-300">
-                      Run status
-                    </th>
-                    <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-gray-300">
-                      Progress
-                    </th>
-                    <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-gray-300">
-                      Next step
-                    </th>
-                    <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-gray-300">
-                      Anchor
-                    </th>
-                    <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-gray-300">
-                      Actions
-                    </th>
+                    {["Client", "Offer", "Status", "Progress", "Next step", "Anchor", "Actions"].map((h) => (
+                      <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide whitespace-nowrap">
+                        {h}
+                      </th>
+                    ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                <tbody className="divide-y divide-gray-50 dark:divide-gray-800/80">
                   {runs.map((r) => (
-                    <tr key={r.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
-                      <td className="px-4 py-2 whitespace-nowrap text-gray-900 dark:text-gray-100">
-                        {r.business_name || "—"}
+                    <tr key={r.id} className="hover:bg-gray-50/70 dark:hover:bg-gray-800/40 transition-colors">
+
+                      {/* client */}
+                      <td className="px-4 py-3 whitespace-nowrap font-semibold text-gray-900 dark:text-gray-100">
+                        {r.business_name || <span className="text-gray-300 dark:text-gray-600">—</span>}
                       </td>
-                      <td className="px-4 py-2 whitespace-nowrap text-gray-700 dark:text-gray-300">
-                        #{r.offer_id}
+
+                      {/* offer */}
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <span className="font-mono text-xs text-gray-500 dark:text-gray-400">#{r.offer_id}</span>
                       </td>
-                      <td className="px-4 py-2 whitespace-nowrap text-gray-700 dark:text-gray-300">
-                        <span className="capitalize">{r.run_status.replace(/_/g, " ")}</span>
-                        {r.stop_reason ? (
-                          <span className="block text-xs text-gray-500 dark:text-gray-400">
-                            {r.stop_reason.replace(/_/g, " ")}
-                          </span>
-                        ) : null}
+
+                      {/* status */}
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <StatusPill status={r.run_status} stopReason={r.stop_reason} />
                       </td>
-                      <td className="px-4 py-2 whitespace-nowrap text-gray-700 dark:text-gray-300">
-                        {r.steps_done}/{r.steps_total}
+
+                      {/* progress */}
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <ProgressBar done={r.steps_done} total={r.steps_total} />
                       </td>
-                      <td className="px-4 py-2 whitespace-nowrap text-gray-700 dark:text-gray-300">
+
+                      {/* next step */}
+                      <td className="px-4 py-3 whitespace-nowrap">
                         {r.next_step_channel ? (
-                          <>
-                            <span className="capitalize">{r.next_step_channel.replace(/_/g, " ")}</span>
-                            <span className="block text-xs text-gray-500 dark:text-gray-400">
-                              {formatDateTime(r.next_step_at)}
-                            </span>
-                          </>
+                          <div className="space-y-1">
+                            <ChannelBadge channel={r.next_step_channel} />
+                            <div className="text-[11px] text-gray-400 dark:text-gray-500">{formatDateTime(r.next_step_at)}</div>
+                          </div>
                         ) : (
-                          "—"
+                          <span className="text-gray-300 dark:text-gray-600">—</span>
                         )}
                       </td>
-                      <td className="px-4 py-2 whitespace-nowrap text-gray-700 dark:text-gray-300">
+
+                      {/* anchor */}
+                      <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">
                         {formatDateTime(r.anchor_at)}
                       </td>
-                      <td className="px-4 py-2 whitespace-nowrap">
-                        <div className="flex flex-col gap-1">
-                          <Link
-                            href={`/autonomous-agent/${r.id}`}
-                            className="text-primary text-xs font-medium hover:underline"
-                          >
+
+                      {/* actions */}
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="flex flex-wrap gap-1.5">
+                          <Link href={`/autonomous-agent/${r.id}`}
+                            className="inline-flex items-center rounded-md border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 text-[11px] font-semibold px-2 py-1 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition">
                             Sequence
                           </Link>
-                          <Link
-                            href={`/offers/${r.offer_id}`}
-                            className="text-primary text-xs font-medium hover:underline"
-                          >
+                          <Link href={`/offers/${r.offer_id}`}
+                            className="inline-flex items-center rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-300 text-[11px] font-semibold px-2 py-1 hover:bg-gray-50 dark:hover:bg-gray-800 transition">
                             Offer
                           </Link>
-                          {tab === "running" && r.run_status === "running" ? (
-                            <button
-                              type="button"
+                          {tab === "running" && r.run_status === "running" && (
+                            <button type="button"
                               disabled={stoppingId === r.id || deletingId === r.id || restartingId === r.id}
                               onClick={() => handleStopRun(r.id)}
-                              className="text-left text-xs font-medium text-amber-700 dark:text-amber-400 hover:underline disabled:opacity-50"
-                            >
+                              className="inline-flex items-center rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 text-[11px] font-semibold px-2 py-1 hover:bg-amber-100 dark:hover:bg-amber-900/50 transition disabled:opacity-40">
                               {stoppingId === r.id ? "Stopping…" : "Stop"}
                             </button>
-                          ) : null}
+                          )}
                           {tab === "finished" &&
-                          ["stopped", "completed", "cancelled"].includes(r.run_status) &&
-                          RESTARTABLE_SEQUENCE_TYPES.has(r.sequence_type) ? (
-                            <button
-                              type="button"
-                              disabled={
-                                restartingId === r.id || deletingId === r.id || stoppingId === r.id
-                              }
-                              onClick={() => handleRestartRun(r.id)}
-                              className="text-left text-xs font-medium text-emerald-700 dark:text-emerald-400 hover:underline disabled:opacity-50"
-                            >
-                              {restartingId === r.id ? "Starting…" : "Start again"}
-                            </button>
-                          ) : null}
-                          <button
-                            type="button"
-                            disabled={
-                              deletingId === r.id || stoppingId === r.id || restartingId === r.id
-                            }
+                            ["stopped", "completed", "cancelled"].includes(r.run_status) &&
+                            RESTARTABLE_SEQUENCE_TYPES.has(r.sequence_type) && (
+                              <button type="button"
+                                disabled={restartingId === r.id || deletingId === r.id || stoppingId === r.id}
+                                onClick={() => handleRestartRun(r.id)}
+                                className="inline-flex items-center rounded-md border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-[11px] font-semibold px-2 py-1 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition disabled:opacity-40">
+                                {restartingId === r.id ? "Starting…" : "Start again"}
+                              </button>
+                            )}
+                          <button type="button"
+                            disabled={deletingId === r.id || stoppingId === r.id || restartingId === r.id}
                             onClick={() => handleDeleteRun(r.id)}
-                            className="text-left text-xs font-medium text-red-600 dark:text-red-400 hover:underline disabled:opacity-50"
-                          >
+                            className="inline-flex items-center rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 text-[11px] font-semibold px-2 py-1 hover:bg-red-100 dark:hover:bg-red-900/50 transition disabled:opacity-40">
                             {deletingId === r.id ? "Deleting…" : "Delete"}
                           </button>
                         </div>
@@ -1056,14 +959,11 @@ export default function AutonomousAgentPage() {
           </div>
         )}
 
+        {/* load more */}
         {tab !== "templates" && !loading && runs.length > 0 && runs.length < total && (
-          <div className="mt-4 flex justify-center">
-            <button
-              type="button"
-              onClick={() => loadMore()}
-              disabled={loadingMore}
-              className="px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
-            >
+          <div className="flex justify-center">
+            <button type="button" onClick={() => loadMore()} disabled={loadingMore}
+              className={cn(btnSecondary, "px-6 py-2 text-sm")}>
               {loadingMore ? "Loading…" : "Load more"}
             </button>
           </div>
