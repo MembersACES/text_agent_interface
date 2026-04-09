@@ -12,6 +12,8 @@ export interface MemberSidebarProps {
   tasks: Task[];
   timelineEvents: TimelineEvent[];
   onAddTaskClick: () => void;
+  onDeleteTask: (taskId: number) => Promise<void> | void;
+  deletingTaskId?: number | null;
   businessInfo?: Record<string, unknown> | null;
 }
 
@@ -20,6 +22,8 @@ export function MemberSidebar({
   tasks,
   timelineEvents,
   onAddTaskClick,
+  onDeleteTask,
+  deletingTaskId = null,
   businessInfo,
 }: MemberSidebarProps) {
   const contact = (businessInfo as Record<string, unknown> | null | undefined)
@@ -117,9 +121,20 @@ export function MemberSidebar({
                       </p>
                     )}
                   </div>
-                  <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap shrink-0">
-                    {t.status}
-                  </span>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                      {t.status}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => onDeleteTask(t.id)}
+                      disabled={deletingTaskId === t.id}
+                      className="text-xs text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 disabled:opacity-60 disabled:cursor-not-allowed"
+                      title="Delete task"
+                    >
+                      {deletingTaskId === t.id ? "Deleting..." : "Delete"}
+                    </button>
+                  </div>
                 </li>
               ))}
             </ul>

@@ -120,6 +120,7 @@ export default function ClientDetailPage() {
   const [createOfferOpen, setCreateOfferOpen] = useState(false);
   const [editProfileOpen, setEditProfileOpen] = useState(false);
   const [addTaskOpen, setAddTaskOpen] = useState(false);
+  const [deletingTaskId, setDeletingTaskId] = useState<number | null>(null);
   const [editNoteOpen, setEditNoteOpen] = useState(false);
   const [editNoteForm, setEditNoteForm] = useState({
     noteId: 0,
@@ -199,6 +200,16 @@ export default function ClientDetailPage() {
   const handleDeleteNote = (noteId: number) => {
     if (typeof window !== "undefined" && !window.confirm("Delete this note?")) return;
     actions.handleDeleteNote(noteId);
+  };
+
+  const handleDeleteTask = async (taskId: number) => {
+    if (typeof window !== "undefined" && !window.confirm("Delete this task?")) return;
+    setDeletingTaskId(taskId);
+    try {
+      await actions.handleDeleteTask(taskId);
+    } finally {
+      setDeletingTaskId(null);
+    }
   };
 
   const handleSaveProfile = (e: FormEvent) => {
@@ -423,6 +434,8 @@ export default function ClientDetailPage() {
                     setAddTaskOpen(true);
                     setError(null);
                   }}
+                  onDeleteTask={handleDeleteTask}
+                  deletingTaskId={deletingTaskId}
                 />
               </aside>
             </div>

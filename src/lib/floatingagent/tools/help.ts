@@ -88,6 +88,26 @@ ${found.description}
     };
   }
 
+// --- ADDITIONAL DOCUMENT UPLOAD (member-specific) ---
+if (
+  (lower.includes("additional document") && lower.includes("upload")) ||
+  lower.includes("upload an additional document") ||
+  lower.includes("where do i upload an additional document")
+) {
+  return {
+    message: `📁 To upload an **additional document** for a specific member/client:
+1️⃣ Open **CRM Members** and select the member profile.
+2️⃣ Go to the **Documents** tab.
+3️⃣ In **Additional Documents**, click **Upload Document**.
+
+💡 This is member-profile based. It is not the Document Generation flow.`,
+    suggestedLinks: [
+      { label: "Open CRM Members", href: "/crm-members" },
+      { label: "Open Business Info", href: "/business-info" },
+    ],
+  };
+}
+
 // --- DOCUMENT MANAGEMENT (Upload, Lodgement, Agreements) ---
 if (
   lower.includes("upload") ||
@@ -105,7 +125,7 @@ if (
 - **Invoice & Data Lodgement** → Upload invoice and data reports for review.  
 - **Signed Agreement Lodgement** → Upload and track finalised contracts or signatures.  
 
-💡 These tools can be used directly — they do not require a linked business to be preselected.`,
+💡 For **member-specific additional documents**, go via **CRM Member profile → Documents tab → Additional Documents → Upload Document**.`,
     suggestedPage: "/document-generation",
   };
 }
