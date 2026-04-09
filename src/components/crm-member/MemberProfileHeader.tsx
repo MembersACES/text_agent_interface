@@ -266,6 +266,35 @@ export function MemberProfileHeader({
     window.open(`/solar-cleaning-quote?${params.toString()}`, "_blank");
   };
 
+  const openVinylRobotWrap = async () => {
+    setShowGenerateDocumentsMenu(false);
+    let info = businessInfo && typeof businessInfo === "object" ? businessInfo : null;
+    if (!info && fetchBusinessInfo && client.business_name) {
+      info = await fetchBusinessInfo();
+    }
+    const params = new URLSearchParams();
+    params.set("clientId", String(client.id));
+    if (client.business_name) params.set("businessName", client.business_name);
+    if (client.primary_contact_email) params.set("email", client.primary_contact_email);
+    if (client.gdrive_folder_url) params.set("clientFolderUrl", client.gdrive_folder_url);
+
+    if (info && typeof info === "object") {
+      const business = (info.business_details as Record<string, unknown>) ?? {};
+      const contact = (info.contact_information as Record<string, unknown>) ?? {};
+      const rep = (info.representative_details as Record<string, unknown>) ?? {};
+      const site = contact.site_address;
+      if (typeof site === "string" && site.trim()) params.set("siteAddress", site.trim());
+      const cn = rep.contact_name;
+      if (typeof cn === "string" && cn.trim()) params.set("contactName", cn.trim());
+      const web = business.website;
+      if (typeof web === "string" && web.trim()) params.set("website", web.trim());
+      const trading = business.trading_name;
+      if (typeof trading === "string" && trading.trim()) params.set("tradingAs", trading.trim());
+    }
+
+    window.open(`/vinyl-robot-wrap?${params.toString()}`, "_blank");
+  };
+
   return (
     <Card className="border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm ring-1 ring-gray-200/60 dark:ring-gray-700/50 border-l-4 border-l-primary">
       <CardContent className="p-4">
@@ -366,6 +395,13 @@ export function MemberProfileHeader({
                     className="w-full px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
                   >
                     Solar Panel Cleaning Quote
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void openVinylRobotWrap()}
+                    className="w-full px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+                  >
+                    Vinyl Robot Wrap
                   </button>
                 </div>
               )}
