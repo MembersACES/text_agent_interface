@@ -142,16 +142,16 @@ export default function ConfirmLOAPage() {
           {/* Action buttons */}
           <div className="mt-10 grid grid-cols-1 md:grid-cols-2 gap-8">
             <div className="bg-blue-50 border border-blue-200 p-6 rounded-lg">
-              <h3 className="font-semibold text-blue-800 mb-2 text-lg">Update Contact Details</h3>
+              <h3 className="font-semibold text-blue-800 mb-2 text-lg">Proccess new LOA and/or update contact details</h3>
               <p className="text-sm text-gray-700 mb-4">
-                Use this if the business and ABN are unchanged, but the contact person has changed.
+                Use this if the business and ABN are unchanged, but the contact person has changed. Or if you want to proccess a new LOA.
               </p>
               <button
                 onClick={() => handleUpdate('contact')}
                 disabled={loading}
                 className="w-full bg-blue-600 text-white py-2 rounded font-semibold hover:bg-blue-700 disabled:opacity-50"
               >
-                {loading ? 'Updating...' : 'Update Contact Details'}
+                {loading ? 'Updating...' : 'Proccess new LOA and/or update contact details'}
               </button>
             </div>
 
