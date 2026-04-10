@@ -103,6 +103,45 @@ interface GenerateResult {
   error?: string;
 }
 
+function extractEmailIdFromWebhookResponse(webhookResponse: unknown): string | null {
+  const readFromObject = (obj: Record<string, unknown>): string | null => {
+    const direct =
+      (typeof obj.email_id === "string" && obj.email_id.trim()) ||
+      (typeof obj.email_ID === "string" && obj.email_ID.trim()) ||
+      null;
+    if (direct) return direct;
+
+    for (const value of Object.values(obj)) {
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          if (item && typeof item === "object") {
+            const nested = readFromObject(item as Record<string, unknown>);
+            if (nested) return nested;
+          }
+        }
+      } else if (value && typeof value === "object") {
+        const nested = readFromObject(value as Record<string, unknown>);
+        if (nested) return nested;
+      }
+    }
+    return null;
+  };
+
+  if (Array.isArray(webhookResponse)) {
+    for (const item of webhookResponse) {
+      if (item && typeof item === "object") {
+        const found = readFromObject(item as Record<string, unknown>);
+        if (found) return found;
+      }
+    }
+    return null;
+  }
+  if (webhookResponse && typeof webhookResponse === "object") {
+    return readFromObject(webhookResponse as Record<string, unknown>);
+  }
+  return null;
+}
+
 // ─── Shared input style ────────────────────────────────────────────────────
 const inputCls =
   "w-full px-3.5 py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 " +
@@ -542,11 +581,12 @@ export default function SolarCleaningQuotePage() {
     } catch (e) { console.warn("[Solar quote CRM] sent activity error:", e); }
   };
 
-  const startSolarAutonomousSequence = async () => {
+  const startSolarAutonomousSequence = async (emailId?: string | null) => {
     if (!token) return;
     const oid = await ensureSolarCleaningCrmOfferId();
     if (oid == null) return;
     const clientNum = clientId ? Number(clientId) : NaN;
+    const normalizedEmailId = (emailId || "").trim() || null;
     const context: Record<string, unknown> = {
       source: "solar_cleaning_quote_page",
       contact_name: sendName.trim() || null,
@@ -556,6 +596,10 @@ export default function SolarCleaningQuotePage() {
       site_name: siteName.trim() || null,
       site_contact: contactName.trim() || null,
     };
+    if (normalizedEmailId) {
+      context.email_id = normalizedEmailId;
+      context.email_ID = normalizedEmailId;
+    }
     const p = quotePricing;
     if (p) {
       context.member_pricing = {
@@ -585,6 +629,7 @@ export default function SolarCleaningQuotePage() {
         crm_activity_id: null,
         anchor_at: new Date().toISOString(),
         timezone: "Australia/Brisbane",
+        email_id: normalizedEmailId,
         context,
       }),
     });
@@ -719,7 +764,9 @@ export default function SolarCleaningQuotePage() {
       await recordSolarQuoteSentInCrm(sendEmail.trim(), sendSubject.trim(), generateResult);
       let msg = `Send request submitted successfully for ${sendEmail.trim()}.`;
       try {
-        await startSolarAutonomousSequence();
+        const webhookResponse = (data as { webhook_response?: unknown }).webhook_response;
+        const emailId = extractEmailIdFromWebhookResponse(webhookResponse);
+        await startSolarAutonomousSequence(emailId);
         msg += " Autonomous follow-up sequence started.";
       } catch (seqErr) {
         msg += ` Note: ${seqErr instanceof Error ? seqErr.message : "Could not start follow-up sequence."}`;
