@@ -4603,6 +4603,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
           </div>
         </div>
       )}
+
       </div>
     </React.Fragment>
   );

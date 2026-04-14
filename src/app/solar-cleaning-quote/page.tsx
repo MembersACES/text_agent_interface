@@ -255,6 +255,8 @@ export default function SolarCleaningQuotePage() {
   const additionalDocUploadKeyRef = useRef<string | null>(null);
 
   const [sendModalOpen, setSendModalOpen] = useState(false);
+  const [sendFollowUpPrompt, setSendFollowUpPrompt] = useState<{ emailId: string | null; baseMsg: string } | null>(null);
+  const [sendFollowUpBusy, setSendFollowUpBusy] = useState(false);
   const [sending, setSending] = useState(false);
   const [sendName, setSendName] = useState("");
   const [sendEmail, setSendEmail] = useState("");
@@ -734,6 +736,25 @@ export default function SolarCleaningQuotePage() {
     setSendModalOpen(true);
   };
 
+  const dismissSendFollowUpPrompt = () => setSendFollowUpPrompt(null);
+
+  const confirmSendFollowUpPrompt = async () => {
+    if (!sendFollowUpPrompt) return;
+    setSendFollowUpBusy(true);
+    const { emailId, baseMsg } = sendFollowUpPrompt;
+    try {
+      await startSolarAutonomousSequence(emailId);
+      setResultMsg(`${baseMsg} Autonomous follow-up sequence started.`);
+    } catch (seqErr) {
+      setResultMsg(
+        `${baseMsg} Note: ${seqErr instanceof Error ? seqErr.message : "Could not start follow-up sequence."}`,
+      );
+    } finally {
+      setSendFollowUpBusy(false);
+      setSendFollowUpPrompt(null);
+    }
+  };
+
   const handleSend = async () => {
     if (!sendEmail.trim()) { setResultMsg("Client email is required to send."); return; }
     setSending(true);
@@ -762,16 +783,11 @@ export default function SolarCleaningQuotePage() {
       if (!res.ok) throw new Error((data as { error?: string }).error || "Send failed");
       setSendModalOpen(false);
       await recordSolarQuoteSentInCrm(sendEmail.trim(), sendSubject.trim(), generateResult);
-      let msg = `Send request submitted successfully for ${sendEmail.trim()}.`;
-      try {
-        const webhookResponse = (data as { webhook_response?: unknown }).webhook_response;
-        const emailId = extractEmailIdFromWebhookResponse(webhookResponse);
-        await startSolarAutonomousSequence(emailId);
-        msg += " Autonomous follow-up sequence started.";
-      } catch (seqErr) {
-        msg += ` Note: ${seqErr instanceof Error ? seqErr.message : "Could not start follow-up sequence."}`;
-      }
-      setResultMsg(msg);
+      const baseMsg = `Send request submitted successfully for ${sendEmail.trim()}.`;
+      const webhookResponse = (data as { webhook_response?: unknown }).webhook_response;
+      const emailId = extractEmailIdFromWebhookResponse(webhookResponse);
+      setSendFollowUpPrompt({ emailId, baseMsg });
+      setResultMsg(baseMsg);
     } catch (e: unknown) {
       setResultMsg(e instanceof Error ? e.message : "Send failed");
     } finally {
@@ -1170,6 +1186,45 @@ export default function SolarCleaningQuotePage() {
                 {sending ? (
                   <><svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Sending…</>
                 ) : "✉ Send"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {sendFollowUpPrompt && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/45 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-gray-900 shadow-2xl border border-gray-200 dark:border-gray-700 p-6">
+            <h3 className="text-base font-bold text-gray-900 dark:text-gray-100 mb-1">Start autonomous follow-up?</h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+              Schedule the solar panel cleaning outreach sequence (email, voice, follow-up emails) for this offer in the Autonomous Agent.
+            </p>
+            <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+              <button
+                type="button"
+                onClick={dismissSendFollowUpPrompt}
+                disabled={sendFollowUpBusy}
+                className="px-4 py-2.5 rounded-lg border border-gray-200 dark:border-gray-600 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
+              >
+                Not now
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmSendFollowUpPrompt()}
+                disabled={sendFollowUpBusy}
+                className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold disabled:opacity-50"
+              >
+                {sendFollowUpBusy ? (
+                  <>
+                    <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                    </svg>
+                    Starting…
+                  </>
+                ) : (
+                  "Start sequence"
+                )}
               </button>
             </div>
           </div>

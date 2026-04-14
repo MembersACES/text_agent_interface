@@ -43,7 +43,7 @@ export const WORKFLOW_CARD_GROUPS: { label: string; cards: WorkflowCard[] }[] = 
       { title: "SME Gas Invoice Information", description: "Small to medium business gas", href: "/utility-invoice-info/sme-gas", icon: Flame, color: "from-red-500 to-rose-600" },
       { title: "Waste Invoice Information", description: "Waste and recycling data", href: "/utility-invoice-info/waste", icon: Trash2, color: "from-slate-500 to-gray-600" },
       { title: "Oil Invoice Information", description: "Oil and fuel data", href: "/utility-invoice-info/oil", icon: Fuel, color: "from-stone-600 to-neutral-700" },
-      { title: "Robot Cleaning Data", description: "Robot cleaning utility data", href: "/utility-invoice-info/robot", icon: Bot, color: "from-indigo-500 to-violet-600" },
+      { title: "Robot Dashboard", description: "Pudu robot analytics (member utility link)", href: "/utility-invoice-info/robot", icon: Bot, color: "from-indigo-500 to-violet-600" },
     ],
   },
   {

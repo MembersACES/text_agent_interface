@@ -449,6 +449,45 @@ function normalizeMoneyToNumber(value: unknown): number | undefined {
   return undefined;
 }
 
+type AutonomousCiLane = "ci_gas" | "ci_electricity";
+
+/** Persisted on the autonomous run `context` for the run detail UI (gas vs electricity vs legacy offer-only). */
+function buildComparisonSnapshot(
+  lane: AutonomousCiLane,
+  laneSuccess: { util: UtilityComparison; result: Record<string, unknown> }[],
+): Record<string, unknown> | undefined {
+  if (!laneSuccess.length) return undefined;
+  const { util, result } = laneSuccess[0];
+  const fin = {
+    annual_savings: normalizeMoneyToNumber(result.annual_savings) ?? null,
+    current_cost: normalizeMoneyToNumber(result.current_cost) ?? null,
+    new_cost: normalizeMoneyToNumber(result.new_cost) ?? null,
+  };
+  if (lane === "ci_gas") {
+    return {
+      lane,
+      ...fin,
+      annual_usage_gj: normalizeMoneyToNumber(result.annual_usage_gj) ?? null,
+      energy_charge_pct: normalizeMoneyToNumber(result.energy_charge_pct) ?? null,
+      contracted_rate: normalizeMoneyToNumber(result.contracted_rate) ?? null,
+      offer_rate: normalizeMoneyToNumber(result.offer_rate) ?? null,
+    };
+  }
+  const peakU = util.peakUsage != null ? Number(util.peakUsage) : 0;
+  const offU = util.offPeakUsage != null ? Number(util.offPeakUsage) : 0;
+  const periodKwh = peakU + offU;
+  return {
+    lane,
+    ...fin,
+    annual_usage_kwh: normalizeMoneyToNumber(result.annual_usage_kwh) ?? normalizeMoneyToNumber(result.annual_kwh) ?? null,
+    bill_period_usage_kwh: periodKwh > 0 ? Math.round(periodKwh * 100) / 100 : null,
+    current_peak_cpkwh: util.currentPeakRate ?? normalizeMoneyToNumber(result.peak_rate_invoice) ?? null,
+    current_offpeak_cpkwh: util.currentOffPeakRate ?? normalizeMoneyToNumber(result.off_peak_rate_invoice) ?? null,
+    offer_peak_cpkwh: util.comparisonPeakRate ?? normalizeMoneyToNumber(result.offer1PeakRate) ?? null,
+    offer_offpeak_cpkwh: util.comparisonOffPeakRate ?? normalizeMoneyToNumber(result.offer1OffPeakRate) ?? null,
+  };
+}
+
 interface GenerateChoiceModalState {
   open: boolean;
   comparison: UtilityComparison | null;
@@ -477,6 +516,18 @@ interface RecipientConfirmModalState {
   generateAll: boolean;
   contactName: string;
   contactEmail: string;
+}
+
+interface AutonomousSequenceConfirmState {
+  open: boolean;
+  offerIdToUse: number;
+  clientIdFromUrl: number | null;
+  hasValidClientId: boolean;
+  anchorIso: string;
+  tz: string;
+  activityIdByLane: Partial<Record<AutonomousCiLane, number>>;
+  ctxBase: Record<string, unknown>;
+  lanePayloads: { lane: AutonomousCiLane; laneSuccess: { util: UtilityComparison; result: Record<string, unknown> }[] }[];
 }
 
 function defaultWebhookRecipient(
@@ -553,6 +604,8 @@ export default function Base2Page() {
     contactName: "",
     contactEmail: "",
   });
+  const [autonomousSequenceConfirm, setAutonomousSequenceConfirm] = useState<AutonomousSequenceConfirmState | null>(null);
+  const [autonomousSequenceStarting, setAutonomousSequenceStarting] = useState(false);
 
   const token = (session as any)?.id_token;
 
@@ -1501,22 +1554,44 @@ export default function Base2Page() {
               }
             }
             if (action === 'comparison') {
-              const lanes = new Set<'ci_gas' | 'ci_electricity'>();
-              for (const { util } of successResults) { if (util.utilityType === 'C&I Gas' || (util.utilityType === 'SME Gas' && util.smeGasComparisonMode === 'ci_offer')) lanes.add('ci_gas'); if (util.utilityType === 'C&I Electricity') lanes.add('ci_electricity'); }
+              const lanes = new Set<AutonomousCiLane>();
+              for (const { util } of successResults) {
+                if (util.utilityType === 'C&I Gas' || (util.utilityType === 'SME Gas' && util.smeGasComparisonMode === 'ci_offer')) lanes.add('ci_gas');
+                if (util.utilityType === 'C&I Electricity') lanes.add('ci_electricity');
+              }
               if (lanes.size > 0) {
-                const anchorIso = new Date().toISOString(); const tz = typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone || 'Australia/Melbourne' : 'Australia/Melbourne';
-                const ctxBase = { base2_trigger: 'comparison_success', business_name: businessName || businessInfo?.name, contact_email: webhookRecipient?.contactEmail ?? businessInfo?.email, contact_phone: businessInfo?.telephone, contact_name: webhookRecipient?.contactName ?? businessInfo?.contact_name };
+                const anchorIso = new Date().toISOString();
+                const tz =
+                  typeof Intl !== 'undefined'
+                    ? Intl.DateTimeFormat().resolvedOptions().timeZone || 'Australia/Melbourne'
+                    : 'Australia/Melbourne';
+                const ctxBase: Record<string, unknown> = {
+                  base2_trigger: 'comparison_success',
+                  business_name: businessName || businessInfo?.name,
+                  contact_email: webhookRecipient?.contactEmail ?? businessInfo?.email,
+                  contact_phone: businessInfo?.telephone,
+                  contact_name: webhookRecipient?.contactName ?? businessInfo?.contact_name,
+                };
+                const lanePayloads: AutonomousSequenceConfirmState['lanePayloads'] = [];
                 for (const lane of lanes) {
-                  const sequence_type = lane === 'ci_gas' ? AUTONOMOUS_SEQUENCE_CI_GAS : AUTONOMOUS_SEQUENCE_CI_ELECTRICITY;
-                  const laneSuccess = successResults.filter(({ util }) => lane === 'ci_gas' ? util.utilityType === 'C&I Gas' || (util.utilityType === 'SME Gas' && util.smeGasComparisonMode === 'ci_offer') : util.utilityType === 'C&I Electricity');
-                  const identifiers = laneSuccess.map(({ util }) => util.identifier);
-                  const emailIdsBySite: Record<string, string> = {}; let firstEmailId: string | undefined;
-                  for (const { util, result } of laneSuccess) { const raw = result.email_ID ?? result.email_id; if (typeof raw === 'string' && raw.trim()) { const eid = raw.trim(); emailIdsBySite[util.identifier] = eid; if (!firstEmailId) firstEmailId = eid; } }
-                  const sequenceContext: Record<string, unknown> = { ...ctxBase, utility_lane: lane, site_identifiers: identifiers };
-                  if (firstEmailId) sequenceContext.email_ID = firstEmailId;
-                  if (Object.keys(emailIdsBySite).length > 1) sequenceContext.email_ids_by_site = emailIdsBySite;
-                  try { const startRes = await fetch(`${getAutonomousApiBaseUrl()}/api/autonomous/sequences/start`, { method: 'POST', headers, body: JSON.stringify({ sequence_type, offer_id: offerIdToUse, client_id: hasValidClientId ? clientIdFromUrl! : undefined, crm_activity_id: activityIdByLane[lane], anchor_at: anchorIso, timezone: tz, context: sequenceContext }) }); if (!startRes.ok) { const errTxt = await startRes.text(); console.warn('[Base2 autonomous] start failed', startRes.status, errTxt); } else { const started = await startRes.json().catch(() => ({})); console.log('[Base2 autonomous] sequence start', { lane, ...started }); } } catch (autoErr) { console.warn('[Base2 autonomous] start error', autoErr); }
+                  const laneSuccess = successResults.filter(({ util }) =>
+                    lane === 'ci_gas'
+                      ? util.utilityType === 'C&I Gas' || (util.utilityType === 'SME Gas' && util.smeGasComparisonMode === 'ci_offer')
+                      : util.utilityType === 'C&I Electricity',
+                  );
+                  lanePayloads.push({ lane, laneSuccess });
                 }
+                setAutonomousSequenceConfirm({
+                  open: true,
+                  offerIdToUse,
+                  clientIdFromUrl,
+                  hasValidClientId,
+                  anchorIso,
+                  tz,
+                  activityIdByLane,
+                  ctxBase,
+                  lanePayloads,
+                });
               }
             }
           } catch (err) { console.warn('Failed to log offer activities:', err); }
@@ -1812,6 +1887,64 @@ export default function Base2Page() {
     }
 
     return rows;
+  };
+
+  const cancelAutonomousSequenceConfirm = () => setAutonomousSequenceConfirm(null);
+
+  const confirmAutonomousSequenceStarts = async () => {
+    if (!token || !autonomousSequenceConfirm?.open) return;
+    const a = autonomousSequenceConfirm;
+    setAutonomousSequenceStarting(true);
+    try {
+      const headers = { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
+      const baseUrl = getAutonomousApiBaseUrl();
+      for (const lp of a.lanePayloads) {
+        const sequence_type = lp.lane === "ci_gas" ? AUTONOMOUS_SEQUENCE_CI_GAS : AUTONOMOUS_SEQUENCE_CI_ELECTRICITY;
+        const identifiers = lp.laneSuccess.map(({ util }) => util.identifier);
+        const emailIdsBySite: Record<string, string> = {};
+        let firstEmailId: string | undefined;
+        for (const { util, result } of lp.laneSuccess) {
+          const raw = result.email_ID ?? result.email_id;
+          if (typeof raw === "string" && raw.trim()) {
+            const eid = raw.trim();
+            emailIdsBySite[util.identifier] = eid;
+            if (!firstEmailId) firstEmailId = eid;
+          }
+        }
+        const comparison_snapshot = buildComparisonSnapshot(lp.lane, lp.laneSuccess);
+        const sequenceContext: Record<string, unknown> = { ...a.ctxBase, utility_lane: lp.lane, site_identifiers: identifiers };
+        if (comparison_snapshot) sequenceContext.comparison_snapshot = comparison_snapshot;
+        if (firstEmailId) sequenceContext.email_ID = firstEmailId;
+        if (Object.keys(emailIdsBySite).length > 1) sequenceContext.email_ids_by_site = emailIdsBySite;
+        try {
+          const startRes = await fetch(`${baseUrl}/api/autonomous/sequences/start`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+              sequence_type,
+              offer_id: a.offerIdToUse,
+              client_id: a.hasValidClientId ? a.clientIdFromUrl! : undefined,
+              crm_activity_id: a.activityIdByLane[lp.lane],
+              anchor_at: a.anchorIso,
+              timezone: a.tz,
+              context: sequenceContext,
+            }),
+          });
+          if (!startRes.ok) {
+            const errTxt = await startRes.text();
+            console.warn("[Base2 autonomous] start failed", startRes.status, errTxt);
+          } else {
+            const started = await startRes.json().catch(() => ({}));
+            console.log("[Base2 autonomous] sequence start", { lane: lp.lane, ...started });
+          }
+        } catch (autoErr) {
+          console.warn("[Base2 autonomous] start error", autoErr);
+        }
+      }
+    } finally {
+      setAutonomousSequenceStarting(false);
+      setAutonomousSequenceConfirm(null);
+    }
   };
 
   // ─── Render ────────────────────────────────────────────────────────────────────
@@ -2372,6 +2505,57 @@ export default function Base2Page() {
             </div>
             <div className="px-5 py-4 border-t border-gray-200 dark:border-gray-700">
               <button type="button" onClick={() => setGenerateResultModal(prev => ({ ...prev, open: false }))} className="w-full px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-colors" style={{ backgroundColor: '#1696CF' }}>Done</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {autonomousSequenceConfirm?.open && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/45 backdrop-blur-sm p-4"
+          aria-modal="true"
+          role="dialog"
+        >
+          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl max-w-md w-full p-6 border border-gray-200 dark:border-gray-700">
+            <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-1">Start autonomous follow-up?</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+              Offer #{autonomousSequenceConfirm.offerIdToUse} will be enrolled in scheduled email, SMS, and voice steps for:
+            </p>
+            <ul className="mb-5 space-y-2 text-sm text-gray-800 dark:text-gray-200">
+              {autonomousSequenceConfirm.lanePayloads.map(({ lane }) => (
+                <li key={lane} className="flex items-center gap-2 rounded-lg border border-gray-100 dark:border-gray-700 px-3 py-2">
+                  <span className="text-lg">{lane === "ci_gas" ? "🔥" : "⚡"}</span>
+                  <span className="font-medium">{lane === "ci_gas" ? "C&I gas" : "C&I electricity"}</span>
+                  <span className="text-xs text-gray-400 font-mono ml-auto">
+                    {lane === "ci_gas" ? AUTONOMOUS_SEQUENCE_CI_GAS : AUTONOMOUS_SEQUENCE_CI_ELECTRICITY}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={cancelAutonomousSequenceConfirm}
+                disabled={autonomousSequenceStarting}
+                className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
+              >
+                Not now
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmAutonomousSequenceStarts()}
+                disabled={autonomousSequenceStarting}
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-sm font-semibold text-white bg-primary hover:bg-primary/90 disabled:opacity-50 inline-flex items-center justify-center gap-2"
+              >
+                {autonomousSequenceStarting ? (
+                  <>
+                    <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                    Starting…
+                  </>
+                ) : (
+                  "Start sequence(s)"
+                )}
+              </button>
             </div>
           </div>
         </div>

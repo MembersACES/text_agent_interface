@@ -82,6 +82,339 @@ function formatMoney(v: number | null | undefined, digits = 2): string {
   return `$${Number(v).toLocaleString("en-AU", { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
 }
 
+function numFromUnknown(v: unknown, digits?: number): number | null {
+  if (v == null || v === "") return null;
+  const n = typeof v === "number" ? v : Number(String(v).replace(/[^0-9.\-]/g, ""));
+  if (!Number.isFinite(n)) return null;
+  if (digits != null) return Math.round(n * 10 ** digits) / 10 ** digits;
+  return n;
+}
+
+function formatCpkwh(v: number | null | undefined, digits = 2): string {
+  if (v == null || !Number.isFinite(Number(v))) return "—";
+  return `${Number(v).toLocaleString("en-AU", { minimumFractionDigits: digits, maximumFractionDigits: digits })} c/kWh`;
+}
+
+/** Right-hand summary: gas, electricity (from `comparison_snapshot`), or solar cleaning (from context). */
+function SequenceMetricsSidebar({ run, offer }: { run: RunDetail; offer: Offer | null }) {
+  const ctx = run.context || {};
+  const snap = ctx.comparison_snapshot as Record<string, unknown> | undefined;
+  const lane = typeof snap?.lane === "string" ? snap.lane : "";
+
+  if (run.sequence_type === "solar_panel_cleaning_followup_v1") {
+    const qn = strField(ctx, "quote_number");
+    const site = strField(ctx, "site_name");
+    const siteContact = strField(ctx, "site_contact");
+    const mpd = ctx.member_pricing_display;
+    const mpdObj = mpd && typeof mpd === "object" ? (mpd as Record<string, unknown>) : {};
+    const totalInc =
+      typeof mpdObj.total_inc_gst === "string" && mpdObj.total_inc_gst.trim()
+        ? mpdObj.total_inc_gst.trim()
+        : null;
+    const exGst =
+      typeof mpdObj.after_discount_ex_gst === "string" && mpdObj.after_discount_ex_gst.trim()
+        ? mpdObj.after_discount_ex_gst.trim()
+        : null;
+    const gst = typeof mpdObj.gst === "string" && mpdObj.gst.trim() ? mpdObj.gst.trim() : null;
+    const hasAny = Boolean(qn || site || totalInc || exGst);
+    if (!hasAny) {
+      return (
+        <div className="rounded-xl border border-dashed border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-5 text-sm text-gray-500 dark:text-gray-400 xl:sticky xl:top-4">
+          No quote summary stored on this run yet. After send, the sequence context should include quote number and member pricing.
+        </div>
+      );
+    }
+    return (
+      <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm overflow-hidden xl:sticky xl:top-4">
+        <div className="px-4 py-3 bg-amber-50 dark:bg-amber-950/30 border-b border-amber-100 dark:border-amber-900">
+          <span className="text-xs font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300">Solar cleaning quote</span>
+          {totalInc && <p className="text-xl font-bold text-amber-900 dark:text-amber-100 tabular-nums mt-1">{totalInc}</p>}
+          {!totalInc && qn && <p className="text-sm font-semibold text-amber-900 dark:text-amber-100 mt-1">Quote #{qn}</p>}
+        </div>
+        <div className="grid grid-cols-1 divide-y divide-gray-100 dark:divide-gray-800">
+          {qn ? (
+            <div className="px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Quote number</p>
+              <p className="text-sm font-bold text-gray-900 dark:text-gray-100 mt-1 tabular-nums">{qn}</p>
+            </div>
+          ) : null}
+          {site ? (
+            <div className="px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Site</p>
+              <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 mt-1">{site}</p>
+            </div>
+          ) : null}
+          {siteContact ? (
+            <div className="px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Site contact</p>
+              <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 mt-1">{siteContact}</p>
+            </div>
+          ) : null}
+          {exGst ? (
+            <div className="px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Cleaning (ex GST)</p>
+              <p className="text-sm font-bold text-gray-900 dark:text-gray-100 mt-1 tabular-nums">{exGst}</p>
+              {gst ? <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">GST {gst}</p> : null}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
+  if (run.sequence_type === "ci_electricity_base2_followup_v1" && lane === "ci_electricity") {
+    const sav = numFromUnknown(snap?.annual_savings) ?? offer?.annual_savings ?? null;
+    const cur = numFromUnknown(snap?.current_cost) ?? offer?.current_cost ?? null;
+    const neu = numFromUnknown(snap?.new_cost) ?? offer?.new_cost ?? null;
+    const annKwh = numFromUnknown(snap?.annual_usage_kwh);
+    const billKwh = numFromUnknown(snap?.bill_period_usage_kwh);
+    const pkI = numFromUnknown(snap?.current_peak_cpkwh);
+    const opI = numFromUnknown(snap?.current_offpeak_cpkwh);
+    const pkO = numFromUnknown(snap?.offer_peak_cpkwh);
+    const opO = numFromUnknown(snap?.offer_offpeak_cpkwh);
+    const hasRates = pkI != null || opI != null || pkO != null || opO != null;
+    const hasUsage = annKwh != null || billKwh != null;
+    if (sav == null && cur == null && neu == null && !hasRates && !hasUsage) {
+      return (
+        <div className="rounded-xl border border-dashed border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-5 text-sm text-gray-500 dark:text-gray-400 xl:sticky xl:top-4">
+          Electricity comparison metrics will appear here when the sequence is started from Base 2 (comparison snapshot on the run).
+        </div>
+      );
+    }
+    return (
+      <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm overflow-hidden xl:sticky xl:top-4">
+        {sav != null && (
+          <div className="px-4 py-3 bg-emerald-50 dark:bg-emerald-950/30 border-b border-emerald-100 dark:border-emerald-900 flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Annual savings</span>
+            <span className="text-xl font-bold text-emerald-700 dark:text-emerald-300 tabular-nums">{formatMoney(sav)}</span>
+          </div>
+        )}
+        <div className="grid grid-cols-2 divide-x divide-y divide-gray-100 dark:divide-gray-800">
+          {annKwh != null ? (
+            <div className="px-4 py-3 col-span-2">
+              <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Annual usage (est.)</p>
+              <p className="text-sm font-bold text-gray-900 dark:text-gray-100 tabular-nums mt-1">
+                {annKwh.toLocaleString("en-AU", { maximumFractionDigits: 0 })} kWh/yr
+              </p>
+            </div>
+          ) : billKwh != null ? (
+            <div className="px-4 py-3 col-span-2">
+              <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Bill-period usage</p>
+              <p className="text-sm font-bold text-gray-900 dark:text-gray-100 tabular-nums mt-1">
+                {billKwh.toLocaleString("en-AU", { maximumFractionDigits: 0 })} kWh
+              </p>
+            </div>
+          ) : null}
+          {pkI != null ? (
+            <div className="px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Peak (invoice)</p>
+              <p className="text-sm font-bold text-gray-900 dark:text-gray-100 tabular-nums mt-1">{formatCpkwh(pkI)}</p>
+            </div>
+          ) : null}
+          {pkO != null ? (
+            <div className="px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Peak (offer)</p>
+              <p className="text-sm font-bold text-gray-900 dark:text-gray-100 tabular-nums mt-1">{formatCpkwh(pkO)}</p>
+            </div>
+          ) : null}
+          {opI != null ? (
+            <div className="px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Off-peak (invoice)</p>
+              <p className="text-sm font-bold text-gray-900 dark:text-gray-100 tabular-nums mt-1">{formatCpkwh(opI)}</p>
+            </div>
+          ) : null}
+          {opO != null ? (
+            <div className="px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Off-peak (offer)</p>
+              <p className="text-sm font-bold text-gray-900 dark:text-gray-100 tabular-nums mt-1">{formatCpkwh(opO)}</p>
+            </div>
+          ) : null}
+          {(cur != null || neu != null) && (
+            <div className="col-span-2 px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Cost (annual)</p>
+              <p className="text-sm font-bold tabular-nums mt-1">
+                <span className="line-through text-gray-400 mr-2">{cur != null ? formatMoney(cur) : "—"}</span>
+                <span className="text-emerald-600 dark:text-emerald-400">→ {neu != null ? formatMoney(neu) : "—"}</span>
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Gas Base 2 (and legacy runs without snapshot): prefer snapshot then offer.
+  if (run.sequence_type === "gas_base2_followup_v1") {
+    const useSnap = lane === "ci_gas" && snap;
+    const sav = (useSnap ? numFromUnknown(snap?.annual_savings) : null) ?? offer?.annual_savings ?? null;
+    const usageGj = (useSnap ? numFromUnknown(snap?.annual_usage_gj) : null) ?? offer?.annual_usage_gj ?? null;
+    const ec = (useSnap ? numFromUnknown(snap?.energy_charge_pct) : null) ?? offer?.energy_charge_pct ?? null;
+    const cr = (useSnap ? numFromUnknown(snap?.contracted_rate) : null) ?? offer?.contracted_rate ?? null;
+    const or = (useSnap ? numFromUnknown(snap?.offer_rate) : null) ?? offer?.offer_rate ?? null;
+    const cur = (useSnap ? numFromUnknown(snap?.current_cost) : null) ?? offer?.current_cost ?? null;
+    const neu = (useSnap ? numFromUnknown(snap?.new_cost) : null) ?? offer?.new_cost ?? null;
+    if (sav == null && usageGj == null && ec == null && cr == null && or == null && cur == null && neu == null) {
+      return (
+        <div className="rounded-xl border border-dashed border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-5 text-sm text-gray-500 dark:text-gray-400 xl:sticky xl:top-4">
+          No comparison metrics linked to this offer yet.
+        </div>
+      );
+    }
+    return (
+      <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm overflow-hidden xl:sticky xl:top-4">
+        {sav != null && (
+          <div className="px-4 py-3 bg-emerald-50 dark:bg-emerald-950/30 border-b border-emerald-100 dark:border-emerald-900 flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Annual savings</span>
+            <span className="text-xl font-bold text-emerald-700 dark:text-emerald-300 tabular-nums">{formatMoney(sav)}</span>
+          </div>
+        )}
+        <div className="grid grid-cols-2 divide-x divide-y divide-gray-100 dark:divide-gray-800">
+          {usageGj != null && (
+            <div className="px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Usage</p>
+              <p className="text-sm font-bold text-gray-900 dark:text-gray-100 tabular-nums mt-1">
+                {Number(usageGj).toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} GJ/yr
+              </p>
+            </div>
+          )}
+          {ec != null && (
+            <div className="px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Energy charge</p>
+              <p className="text-sm font-bold text-gray-900 dark:text-gray-100 tabular-nums mt-1">
+                {Number(ec).toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%
+              </p>
+            </div>
+          )}
+          {cr != null && (
+            <div className="px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Contracted rate</p>
+              <p className="text-sm font-bold text-gray-900 dark:text-gray-100 tabular-nums mt-1">
+                ${Number(cr).toLocaleString("en-AU", { minimumFractionDigits: 4, maximumFractionDigits: 4 })}
+              </p>
+            </div>
+          )}
+          {or != null && (
+            <div className="px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Offer rate</p>
+              <p className="text-sm font-bold text-gray-900 dark:text-gray-100 tabular-nums mt-1">
+                ${Number(or).toLocaleString("en-AU", { minimumFractionDigits: 4, maximumFractionDigits: 4 })}
+              </p>
+            </div>
+          )}
+          {(cur != null || neu != null) && (
+            <div className="col-span-2 px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Cost</p>
+              <p className="text-sm font-bold tabular-nums mt-1">
+                <span className="line-through text-gray-400 mr-2">{cur != null ? formatMoney(cur) : "—"}</span>
+                <span className="text-emerald-600 dark:text-emerald-400">→ {neu != null ? formatMoney(neu) : "—"}</span>
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ci_electricity without snapshot (legacy): avoid GJ tiles; show offer savings/cost only if present.
+  if (run.sequence_type === "ci_electricity_base2_followup_v1") {
+    const sav = offer?.annual_savings ?? null;
+    const cur = offer?.current_cost ?? null;
+    const neu = offer?.new_cost ?? null;
+    if (sav == null && cur == null && neu == null) {
+      return (
+        <div className="rounded-xl border border-dashed border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-5 text-sm text-gray-500 dark:text-gray-400 xl:sticky xl:top-4">
+          Electricity comparison metrics will appear here for new runs started from Base 2. Older runs may only have CRM offer totals.
+        </div>
+      );
+    }
+    return (
+      <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm overflow-hidden xl:sticky xl:top-4">
+        {sav != null && (
+          <div className="px-4 py-3 bg-emerald-50 dark:bg-emerald-950/30 border-b border-emerald-100 dark:border-emerald-900 flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Annual savings</span>
+            <span className="text-xl font-bold text-emerald-700 dark:text-emerald-300 tabular-nums">{formatMoney(sav)}</span>
+          </div>
+        )}
+        {(cur != null || neu != null) && (
+          <div className="px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Cost (from offer)</p>
+            <p className="text-sm font-bold tabular-nums mt-1">
+              <span className="line-through text-gray-400 mr-2">{cur != null ? formatMoney(cur) : "—"}</span>
+              <span className="text-emerald-600 dark:text-emerald-400">→ {neu != null ? formatMoney(neu) : "—"}</span>
+            </p>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (!offer) return null;
+  if (
+    offer.annual_savings == null &&
+    offer.annual_usage_gj == null &&
+    offer.energy_charge_pct == null &&
+    offer.contracted_rate == null &&
+    offer.offer_rate == null &&
+    offer.current_cost == null &&
+    offer.new_cost == null
+  ) {
+    return null;
+  }
+  return (
+    <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm overflow-hidden xl:sticky xl:top-4">
+      {offer.annual_savings != null && (
+        <div className="px-4 py-3 bg-emerald-50 dark:bg-emerald-950/30 border-b border-emerald-100 dark:border-emerald-900 flex items-center justify-between">
+          <span className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Annual savings</span>
+          <span className="text-xl font-bold text-emerald-700 dark:text-emerald-300 tabular-nums">{formatMoney(offer.annual_savings)}</span>
+        </div>
+      )}
+      <div className="grid grid-cols-2 divide-x divide-y divide-gray-100 dark:divide-gray-800">
+        {offer.annual_usage_gj != null && (
+          <div className="px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Usage</p>
+            <p className="text-sm font-bold text-gray-900 dark:text-gray-100 tabular-nums mt-1">
+              {Number(offer.annual_usage_gj).toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} GJ/yr
+            </p>
+          </div>
+        )}
+        {offer.energy_charge_pct != null && (
+          <div className="px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Energy charge</p>
+            <p className="text-sm font-bold text-gray-900 dark:text-gray-100 tabular-nums mt-1">
+              {Number(offer.energy_charge_pct).toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%
+            </p>
+          </div>
+        )}
+        {offer.contracted_rate != null && (
+          <div className="px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Contracted rate</p>
+            <p className="text-sm font-bold text-gray-900 dark:text-gray-100 tabular-nums mt-1">
+              ${Number(offer.contracted_rate).toLocaleString("en-AU", { minimumFractionDigits: 4, maximumFractionDigits: 4 })}
+            </p>
+          </div>
+        )}
+        {offer.offer_rate != null && (
+          <div className="px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Offer rate</p>
+            <p className="text-sm font-bold text-gray-900 dark:text-gray-100 tabular-nums mt-1">
+              ${Number(offer.offer_rate).toLocaleString("en-AU", { minimumFractionDigits: 4, maximumFractionDigits: 4 })}
+            </p>
+          </div>
+        )}
+        {(offer.current_cost != null || offer.new_cost != null) && (
+          <div className="col-span-2 px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Cost</p>
+            <p className="text-sm font-bold tabular-nums mt-1">
+              <span className="line-through text-gray-400 mr-2">{offer.current_cost != null ? formatMoney(offer.current_cost) : "—"}</span>
+              <span className="text-emerald-600 dark:text-emerald-400">→ {offer.new_cost != null ? formatMoney(offer.new_cost) : "—"}</span>
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Visual helpers ────────────────────────────────────────────────────────────
 
 function StatusBadge({ status, stopReason }: { status: string; stopReason?: string | null }) {
@@ -645,6 +978,27 @@ export default function AutonomousRunDetailPage() {
                   </div>
                 </div>
 
+                {run.sequence_type === "solar_panel_cleaning_followup_v1" && (
+                  <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-800 bg-amber-50/40 dark:bg-amber-950/10">
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="flex h-6 w-6 items-center justify-center rounded-md bg-amber-100 dark:bg-amber-900/40 border border-amber-200 dark:border-amber-800 text-sm">🧾</div>
+                      <span className="text-xs font-bold uppercase tracking-wider text-amber-800 dark:text-amber-200/90">Quote</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                      <div>
+                        <span className="text-xs text-gray-500 dark:text-gray-400">Quote #</span>
+                        <p className="font-semibold text-gray-900 dark:text-gray-100 tabular-nums">
+                          {strField(run.context || {}, "quote_number") || "—"}
+                        </p>
+                      </div>
+                      <div>
+                        <span className="text-xs text-gray-500 dark:text-gray-400">Site</span>
+                        <p className="font-semibold text-gray-900 dark:text-gray-100">{strField(run.context || {}, "site_name") || "—"}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {siteIdentifiers.length > 0 && (
                   <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-800">
                     <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Site identifiers</label>
@@ -746,52 +1100,8 @@ export default function AutonomousRunDetailPage() {
                 </div>
               </div>
 
-              {/* SIDEBAR — Offer metrics only */}
-              {offer && (
-                  <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm overflow-hidden xl:sticky xl:top-4">
-                    {offer.annual_savings != null && (
-                      <div className="px-4 py-3 bg-emerald-50 dark:bg-emerald-950/30 border-b border-emerald-100 dark:border-emerald-900 flex items-center justify-between">
-                        <span className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Annual savings</span>
-                        <span className="text-xl font-bold text-emerald-700 dark:text-emerald-300 tabular-nums">{formatMoney(offer.annual_savings)}</span>
-                      </div>
-                    )}
-                    <div className="grid grid-cols-2 divide-x divide-y divide-gray-100 dark:divide-gray-800">
-                      {offer.annual_usage_gj != null && (
-                        <div className="px-4 py-3">
-                          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Usage</p>
-                          <p className="text-sm font-bold text-gray-900 dark:text-gray-100 tabular-nums mt-1">{Number(offer.annual_usage_gj).toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} GJ/yr</p>
-                        </div>
-                      )}
-                      {offer.energy_charge_pct != null && (
-                        <div className="px-4 py-3">
-                          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Energy charge</p>
-                          <p className="text-sm font-bold text-gray-900 dark:text-gray-100 tabular-nums mt-1">{Number(offer.energy_charge_pct).toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%</p>
-                        </div>
-                      )}
-                      {offer.contracted_rate != null && (
-                        <div className="px-4 py-3">
-                          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Contracted rate</p>
-                          <p className="text-sm font-bold text-gray-900 dark:text-gray-100 tabular-nums mt-1">${Number(offer.contracted_rate).toLocaleString("en-AU", { minimumFractionDigits: 4, maximumFractionDigits: 4 })}</p>
-                        </div>
-                      )}
-                      {offer.offer_rate != null && (
-                        <div className="px-4 py-3">
-                          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Offer rate</p>
-                          <p className="text-sm font-bold text-gray-900 dark:text-gray-100 tabular-nums mt-1">${Number(offer.offer_rate).toLocaleString("en-AU", { minimumFractionDigits: 4, maximumFractionDigits: 4 })}</p>
-                        </div>
-                      )}
-                      {(offer.current_cost != null || offer.new_cost != null) && (
-                        <div className="col-span-2 px-4 py-3">
-                          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Cost</p>
-                          <p className="text-sm font-bold tabular-nums mt-1">
-                            <span className="line-through text-gray-400 mr-2">{offer.current_cost != null ? formatMoney(offer.current_cost) : "—"}</span>
-                            <span className="text-emerald-600 dark:text-emerald-400">→ {offer.new_cost != null ? formatMoney(offer.new_cost) : "—"}</span>
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
+              {/* SIDEBAR — sequence-specific metrics (gas / electricity snapshot / solar quote) */}
+              <SequenceMetricsSidebar run={run} offer={offer} />
 
             </div>
           </>

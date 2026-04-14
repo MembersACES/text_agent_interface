@@ -5,6 +5,7 @@ const nextConfig = {
     return [
       { source: '/clients', destination: '/crm-members', permanent: true },
       { source: '/clients/:id', destination: '/crm-members/:id', permanent: true },
+      { source: '/base-1/robot-data', destination: '/robot-dashboard', permanent: true },
     ];
   },
   images: {
