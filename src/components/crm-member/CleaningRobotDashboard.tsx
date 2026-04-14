@@ -55,6 +55,19 @@ function localInputToUnix(s: string): number {
   return Number.isNaN(t) ? Math.floor(Date.now() / 1000) : Math.floor(t / 1000);
 }
 
+function formatLocalDatetimeLabel(input: string): string {
+  const dt = new Date(input);
+  if (Number.isNaN(dt.getTime())) return "—";
+  return dt.toLocaleString(undefined, {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
 function pickReportId(row: Record<string, unknown>): string | null {
   for (const k of ["report_id", "reportId", "clean_report_id", "task_report_id", "id"]) {
     const v = row[k];
@@ -534,6 +547,11 @@ export function CleaningRobotDashboard({
     return Object.keys(first).slice(0, 8);
   }, [executionRows]);
 
+  const loadedPeriodLabel = useMemo(() => {
+    if (!fromLocal || !toLocal) return null;
+    return `${formatLocalDatetimeLabel(fromLocal)} -> ${formatLocalDatetimeLabel(toLocal)}`;
+  }, [fromLocal, toLocal]);
+
   async function openDetail(reportId: string) {
     if (!idToken) return;
     setSelectedReportId(reportId);
@@ -610,7 +628,7 @@ export function CleaningRobotDashboard({
           }}
         />
 
-        <div className="relative">
+        <div className="relative text-center">
           {/* eyebrow */}
           <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 backdrop-blur-sm">
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
@@ -623,7 +641,7 @@ export function CleaningRobotDashboard({
             Robot cleaning data
           </h1>
 
-          <div className="mt-5 flex flex-wrap items-center gap-2.5">
+          <div className="mt-5 flex flex-wrap items-center justify-center gap-2.5">
             {/* serial badge */}
             <span className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/8 px-4 py-2 font-mono text-sm font-semibold text-white backdrop-blur-sm">
               <span aria-hidden className="text-cyan-400">⬡</span>
@@ -710,14 +728,31 @@ export function CleaningRobotDashboard({
           <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-100 text-base dark:bg-indigo-900/50">🔍</span>
           <div>
             <p className="text-sm font-bold text-dark dark:text-white">Filters</p>
-            <p className="text-[11px] text-gray-500 dark:text-gray-400">Adjust the window, then apply. Hard refresh bypasses a short server cache (~45s).</p>
+            <p className="text-[11px] text-gray-500 dark:text-gray-400">
+              Default load is the last 24 hours. Change the window below, then apply. Hard refresh bypasses a short
+              server cache (~45s).
+            </p>
           </div>
+        </div>
+
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-indigo-200/70 bg-indigo-50/70 px-3 py-2 text-[11px] dark:border-indigo-900/60 dark:bg-indigo-950/30">
+          <span className="rounded-full bg-indigo-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+            Default
+          </span>
+          <span className="text-indigo-800 dark:text-indigo-200">Initial load window: Last 24 hours</span>
+          {loadedPeriodLabel && (
+            <span className="text-indigo-700 dark:text-indigo-300">
+              • Current loaded period: <span className="font-semibold">{loadedPeriodLabel}</span>
+            </span>
+          )}
         </div>
 
         <div className="flex flex-wrap items-end gap-3">
           {/* From */}
           <div className="min-w-[11rem] flex-1">
-            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">From (local)</label>
+            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              From
+            </label>
             <input
               type="datetime-local"
               value={fromLocal}
@@ -728,7 +763,9 @@ export function CleaningRobotDashboard({
 
           {/* To */}
           <div className="min-w-[11rem] flex-1">
-            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">To (local)</label>
+            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              To
+            </label>
             <input
               type="datetime-local"
               value={toLocal}
