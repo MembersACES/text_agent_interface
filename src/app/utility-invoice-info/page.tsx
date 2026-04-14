@@ -9,7 +9,7 @@ const tools = [
   { href: "/utility-invoice-info/waste", label: "Waste Invoice Information" },
   { href: "/utility-invoice-info/oil", label: "Oil Invoice Information" },
   { href: "/utility-invoice-info/cleaning", label: "Cleaning Invoice Information" },
-  { href: "/utility-invoice-info/robot", label: "Robot Cleaning Data" },
+  { href: "/utility-invoice-info/robot", label: "Robot Dashboard" },
 ];
 
 export default function UtilityInvoiceInfoPage() {

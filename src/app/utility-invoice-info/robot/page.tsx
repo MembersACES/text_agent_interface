@@ -1,29 +1,34 @@
 "use client";
-import InfoToolPage from "@/components/InfoToolPage";
+
 import { useSearchParams } from "next/navigation";
-import { useEffect, useRef } from "react";
-import { getApiBaseUrl } from "@/lib/utils";
+import { useSession } from "next-auth/react";
+import { CleaningRobotDashboard } from "@/components/crm-member/CleaningRobotDashboard";
 
 export default function RobotDataInfoPage() {
   const searchParams = useSearchParams();
-  const robotNumber = searchParams.get("robot_number") || "";
+  const robotNumber = (searchParams.get("robot_number") || "").trim();
   const businessName = searchParams.get("business_name") || "";
-  const autoSubmit = searchParams.get("autoSubmit") === "1";
-  const offerIdParam = searchParams.get("offerId");
-  const offerId = offerIdParam ? parseInt(offerIdParam, 10) : NaN;
-  const formRef = useRef<any>(null);
+  const shopIdParam = (searchParams.get("shop_id") || "").trim();
+
+  const { data: session, status } = useSession();
+  const idToken =
+    (session as { id_token?: string; accessToken?: string } | null)?.id_token ??
+    (session as { accessToken?: string } | null)?.accessToken;
 
   return (
-    <InfoToolPage
-      title="Robot Cleaning Data"
-      description="Enter a Robot Number to retrieve cleaning activity, map links, and related business information."
-      endpoint={`${getApiBaseUrl()}/api/get-robot-data`}
-      secondaryField={{ name: "robot_number", label: "Robot Number" }}
-      initialBusinessName={businessName}
-      initialSecondaryValue={robotNumber}
-      autoSubmit={autoSubmit}
-      formRef={formRef}
-      offerId={Number.isNaN(offerId) ? undefined : offerId}
-    />
+    <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+      {status === "loading" ? (
+        <p className="text-sm text-gray-600 dark:text-gray-400">Loading session…</p>
+      ) : !idToken ? (
+        <p className="text-sm text-red-600 dark:text-red-400">Sign in to view Pudu robot analytics.</p>
+      ) : (
+        <CleaningRobotDashboard
+          robotSerial={robotNumber}
+          initialShopId={shopIdParam || null}
+          idToken={idToken}
+          businessName={businessName || undefined}
+        />
+      )}
+    </div>
   );
 }

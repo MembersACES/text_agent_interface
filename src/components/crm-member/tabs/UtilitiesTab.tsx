@@ -88,7 +88,7 @@ function getUtilityRowsFromValue(
               : String(id ?? "");
         return {
           value: identifierStr,
-          retailer: o.retailer != null ? String(o.retailer) : "",
+          retailer: formatRetailerDisplay(o.retailer),
           extra: {
             contract_end_date: (o.ced as string) ?? undefined,
             data_requested: (o.data_requested as string) ?? undefined,
@@ -131,8 +131,26 @@ export function getUtilitiesCountFromBusinessInfo(
 
 function getRetailerForIndex(retailers: unknown, key: string, index: number): string {
   const r = (retailers as Record<string, unknown>)?.[key];
-  if (Array.isArray(r)) return (r[index] as string) ?? "";
+  if (Array.isArray(r)) return formatRetailerDisplay(r[index]);
   if (typeof r === "string") return r;
+  return "";
+}
+
+/** Airtable sometimes stores retailer as an object — avoid "[object Object]" in the UI */
+function formatRetailerDisplay(v: unknown): string {
+  if (v == null) return "";
+  if (typeof v === "string") return v;
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  if (typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    if (typeof o.name === "string") return o.name;
+    if (typeof o.label === "string") return o.label;
+    try {
+      return JSON.stringify(v);
+    } catch {
+      return "";
+    }
+  }
   return "";
 }
 
@@ -713,7 +731,7 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility }: U
                         )}
                         {retailerVal && (
                           <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-                            Retailer: {retailerVal}
+                            Retailer: {formatRetailerDisplay(retailerVal)}
                           </div>
                         )}
                         {extra && (
@@ -1107,6 +1125,7 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility }: U
           </div>
         )}
       </Modal>
+
     </>
   );
 }

@@ -17,39 +17,29 @@ type IncomingLogo = {
   base64?: unknown;
 };
 
-const VINYL_WRAP_SYSTEM_INSTRUCTIONS = `You are a professional vinyl wrap designer for commercial cleaning robots (Ecovacs floor cleaning robot).
+const VINYL_WRAP_SYSTEM_INSTRUCTIONS = `You are a professional vinyl wrap designer for the PUDU CC1 commercial cleaning robot.
 
-When given a client logo and brand colours, generate a photorealistic vinyl wrap mockup composite image with exactly 4 panels on a clean white background:
+When given a client logo and brand colours, generate a photorealistic vinyl wrap mockup composite image with exactly 4 panels on a clean white background in a 2x2 grid layout:
 
-TOP-LEFT: Flat die-cut template — TOP/FRONT wrap panel
-- Wide bow-tie/H shape, wider in the middle
-- U-shaped arch cutout at top centre (robot neck/sensor housing)
-- Two small rounded-rectangle sensor cutouts near bottom edge
-- Organic curved edges that flare at the corners
+TOP-LEFT: Flat die-cut template — FRONT SHELL wrap panel
+- Exact shape as shown in the PUDU CC1 spec sheet (Image 3)
 - Filled solid with the client's PRIMARY brand colour
-- Client logo centred on the shape in white (or brand contrast colour)
+- Client logo centred on the shape
 
-BOTTOM-LEFT: Flat die-cut template — BACK/SIDE wrap panel
-- Tall near-square rectangle with slightly rounded corners
-- Large rounded-rectangle cutout upper-centre (charging port)
-- Annotation: "Charging port" with arrow pointing to cutout, on the left outside the shape
+TOP-RIGHT: Flat die-cut template — BACK SHELL wrap panel
+- Exact shape as shown in the PUDU CC1 spec sheet (Image 3)
 - Filled solid with the client's PRIMARY brand colour
-- Client logo in lower half of panel
+- Client logo centred on the shape
 
-TOP-RIGHT: Photorealistic 3D render — FRONT angled view of the robot with wrap applied
-- Compact commercial floor-cleaning robot (Ecovacs style)
-- Navy/brand coloured vinyl wrap on all body panels
+BOTTOM-LEFT: Photorealistic 3D render — FRONT angled view of the PUDU CC1 robot with wrap applied
 - Client logo visible on front face
-- Black rounded top lid, grey mechanical base, side brushes, rubber wheels
 - Clean studio lighting, white background, soft shadow beneath
 
-BOTTOM-RIGHT: Photorealistic 3D render — BACK angled view of the robot with wrap applied
-- Same robot from rear angle
-- Charging port cutout visible on back panel
+BOTTOM-RIGHT: Photorealistic 3D render — BACK angled view of the PUDU CC1 robot with wrap applied
 - Client logo on rear face
 - Same studio lighting, white background
 
-Style: Professional commercial print mockup. Crisp flat template edges. Photorealistic 3D robot renders. Balanced 2x2 grid layout. White background throughout.`;
+Style: Professional commercial print mockup. Crisp flat die-cut template edges matching the spec sheet exactly. Photorealistic 3D robot renders. Balanced 2x2 grid layout. White background throughout.`;
 
 function unwrapN8nBody(raw: unknown): Record<string, unknown> {
   let o: Record<string, unknown>;
