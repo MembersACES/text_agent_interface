@@ -50,11 +50,24 @@ export default function RobotDataHubClient() {
 
   const [robotSelect, setRobotSelect] = useState("");
   const [manualSn, setManualSn] = useState("");
+  const [reportStartDate, setReportStartDate] = useState(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - 3);
+    return d.toISOString().slice(0, 10);
+  });
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportError, setReportError] = useState<string | null>(null);
+  const [reportSuccess, setReportSuccess] = useState<string | null>(null);
 
   const effectiveSn = useMemo(
     () => (manualSn.trim() || robotSelect.trim()).trim(),
     [manualSn, robotSelect]
   );
+  const selectedShopName = useMemo(() => {
+    const selected = shops.find((s) => shopIdFromRecord(s) === shopFilter.trim());
+    if (!selected) return "";
+    return String(selected.shop_name ?? selected.name ?? selected.shopName ?? "").trim();
+  }, [shops, shopFilter]);
 
   const [taskData, setTaskData] = useState<unknown>(null);
   const [taskLoading, setTaskLoading] = useState(false);
@@ -153,6 +166,56 @@ export default function RobotDataHubClient() {
     },
     [token, shopFilter, effectiveSn, taskLimit]
   );
+
+  const generateTrialSummaryReport = useCallback(async () => {
+    if (!token || !shopFilter.trim()) return;
+    setReportLoading(true);
+    setReportError(null);
+    setReportSuccess(null);
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/pudu/trial-summary-report`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          shop_id: shopFilter.trim(),
+          shop_name: selectedShopName || undefined,
+          start_date: reportStartDate || undefined,
+        }),
+      });
+
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        const detail =
+          (j as { detail?: string }).detail ??
+          (j as { message?: string }).message ??
+          `HTTP ${res.status}`;
+        throw new Error(detail);
+      }
+
+      const blob = await res.blob();
+      const contentDisposition = res.headers.get("content-disposition") ?? "";
+      const match = /filename="?([^"]+)"?/i.exec(contentDisposition);
+      const fallback = `trial-summary-${shopFilter.trim()}.pdf`;
+      const filename = match?.[1] ?? fallback;
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+
+      setReportSuccess("Report downloaded.");
+    } catch (e) {
+      setReportError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setReportLoading(false);
+    }
+  }, [token, shopFilter, selectedShopName, reportStartDate]);
 
   useEffect(() => {
     if (!shopFilter.trim() || !effectiveSn) {
@@ -283,6 +346,20 @@ export default function RobotDataHubClient() {
         idToken={token}
         variant="hub"
         hideShopIdField={Boolean(shopFilter.trim())}
+        hubTrialReport={
+          shopFilter.trim()
+            ? {
+                shopId: shopFilter.trim(),
+                shopName: selectedShopName,
+                startDate: reportStartDate,
+                onStartDateChange: setReportStartDate,
+                onGenerate: () => void generateTrialSummaryReport(),
+                loading: reportLoading,
+                error: reportError,
+                success: reportSuccess,
+              }
+            : undefined
+        }
       />
 
       <Card variant="elevated">

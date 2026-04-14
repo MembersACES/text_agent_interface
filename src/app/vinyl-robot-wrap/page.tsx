@@ -1230,7 +1230,7 @@ ${extraDetails ? `Notes: ${extraDetails}` : ""}`.trim();
       {showEditModal && (
         <div className="edit-modal-overlay" onClick={() => setShowEditModal(false)}>
           <div className="edit-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="edit-modal-title">Edit wrap</div>
+            <div className="edit-modal-title">Edit wrap(not working completely yet, if not try Generate again with different prompts)</div>
             <p className="edit-modal-help">
               Describe the changes you want (logo placement, colours, wording, sizing, etc).
             </p>
