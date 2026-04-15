@@ -104,9 +104,9 @@ const RESOURCES: Resource[] = [
     category: "Chatbot",
   },
   {
-    name: "Premium Waste Request Assistant",
+    name: "Waste Request Assistant",
     link: "https://premium-waste-request-assistant-711534973905.australia-southeast2.run.app/",
-    password: "CZAWasteRequest",
+    password: "1_223deEEF002!@",
     notes:
       "Carbon Zero Australasia request intake: classify waste requests (missed service, bin issues, new service, schedule changes, enquiries), collect site and contact details, and assign P1 / P2 / P3 priority with structured handoff. Text, voice, and form channels.",
     env: "production",
