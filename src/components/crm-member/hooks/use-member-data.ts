@@ -30,6 +30,7 @@ export interface UseMemberDataResult {
   setError: React.Dispatch<React.SetStateAction<string | null>>;
   refetch: () => Promise<void>;
   refetchTasks: () => Promise<void>;
+  refetchActivities: () => Promise<void>;
 }
 
 export function useMemberData(clientId: number | null): UseMemberDataResult {
@@ -63,6 +64,26 @@ export function useMemberData(clientId: number | null): UseMemberDataResult {
       setTasks(Array.isArray(data) ? data : []);
     } catch {
       setTasks([]);
+    }
+  }, [clientId, token]);
+
+  const refetchActivities = useCallback(async () => {
+    if (!clientId || !token) return;
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/clients/${clientId}/activities`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+      if (!res.ok) {
+        setActivities([]);
+        return;
+      }
+      const data: ClientActivity[] = await res.json();
+      setActivities(Array.isArray(data) ? data : []);
+    } catch {
+      setActivities([]);
     }
   }, [clientId, token]);
 
@@ -179,5 +200,6 @@ export function useMemberData(clientId: number | null): UseMemberDataResult {
     setError,
     refetch,
     refetchTasks,
+    refetchActivities,
   };
 }
