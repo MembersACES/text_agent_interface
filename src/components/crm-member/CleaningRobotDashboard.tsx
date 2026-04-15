@@ -5,6 +5,17 @@ import { createPortal } from "react-dom";
 import { getApiBaseUrl } from "@/lib/utils";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
+export type HubTrialReportControls = {
+  shopId: string;
+  shopName: string;
+  startDate: string;
+  onStartDateChange: (date: string) => void;
+  onGenerate: () => void;
+  loading: boolean;
+  error: string | null;
+  success: string | null;
+};
+
 export type CleaningRobotDashboardProps = {
   robotSerial: string;
   initialShopId?: string | null;
@@ -12,6 +23,8 @@ export type CleaningRobotDashboardProps = {
   businessName?: string;
   hideShopIdField?: boolean;
   variant?: "utility" | "hub";
+  /** Robot hub only: site-level PDF report; rendered below Period summary once data is loaded and the section is scrolled into view. */
+  hubTrialReport?: HubTrialReportControls | null;
 };
 
 type DashboardPayload = {
@@ -40,6 +53,19 @@ function toDatetimeLocalValue(ms: number): string {
 function localInputToUnix(s: string): number {
   const t = new Date(s).getTime();
   return Number.isNaN(t) ? Math.floor(Date.now() / 1000) : Math.floor(t / 1000);
+}
+
+function formatLocalDatetimeLabel(input: string): string {
+  const dt = new Date(input);
+  if (Number.isNaN(dt.getTime())) return "—";
+  return dt.toLocaleString(undefined, {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
 }
 
 function pickReportId(row: Record<string, unknown>): string | null {
@@ -315,6 +341,7 @@ export function CleaningRobotDashboard({
   businessName,
   hideShopIdField = false,
   variant = "utility",
+  hubTrialReport,
 }: CleaningRobotDashboardProps) {
   const [shopId, setShopId] = useState("");
   const [fromLocal, setFromLocal] = useState("");
@@ -332,6 +359,8 @@ export function CleaningRobotDashboard({
   const [detailJson, setDetailJson] = useState<unknown>(null);
   const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
   const nextExecOffsetRef = useRef(0);
+  const periodSummarySectionRef = useRef<HTMLElement | null>(null);
+  const [hubTrialReportReveal, setHubTrialReportReveal] = useState(false);
 
   useEffect(() => {
     nextExecOffsetRef.current = nextExecOffset;
@@ -453,6 +482,46 @@ export function CleaningRobotDashboard({
     return m;
   }, [data?.mode]);
 
+  useEffect(() => {
+    setHubTrialReportReveal(false);
+  }, [robotSerial, initialShopId, hubTrialReport?.shopId]);
+
+  useEffect(() => {
+    if (loading && variant === "hub" && (hubTrialReport?.shopId ?? "").trim()) {
+      setHubTrialReportReveal(false);
+    }
+  }, [loading, variant, hubTrialReport?.shopId]);
+
+  const hubTrialReportPeriodReady =
+    variant === "hub" &&
+    hubTrialReport != null &&
+    hubTrialReport.shopId.trim().length > 0 &&
+    modeSummary != null &&
+    !loading &&
+    data != null;
+
+  useEffect(() => {
+    if (!hubTrialReportPeriodReady) return;
+    const el = periodSummarySectionRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (!entry?.isIntersecting) return;
+        const ratio = entry.intersectionRatio;
+        const top = entry.boundingClientRect.top;
+        const vh = window.innerHeight || 800;
+        const scrolledIntoDash = top < vh * 0.78;
+        if (ratio >= 0.15 || scrolledIntoDash) {
+          setHubTrialReportReveal(true);
+        }
+      },
+      { threshold: [0, 0.08, 0.15, 0.3], rootMargin: "0px 0px -12% 0px" }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hubTrialReportPeriodReady, modeSummary, loading, data, robotSerial]);
+
   const pagingBars = useMemo(() => {
     const list = data?.paging_list ?? [];
     const nums: { label: string; value: number }[] = [];
@@ -477,6 +546,11 @@ export function CleaningRobotDashboard({
     if (!first) return [] as string[];
     return Object.keys(first).slice(0, 8);
   }, [executionRows]);
+
+  const loadedPeriodLabel = useMemo(() => {
+    if (!fromLocal || !toLocal) return null;
+    return `${formatLocalDatetimeLabel(fromLocal)} -> ${formatLocalDatetimeLabel(toLocal)}`;
+  }, [fromLocal, toLocal]);
 
   async function openDetail(reportId: string) {
     if (!idToken) return;
@@ -554,7 +628,7 @@ export function CleaningRobotDashboard({
           }}
         />
 
-        <div className="relative">
+        <div className="relative text-center">
           {/* eyebrow */}
           <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 backdrop-blur-sm">
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
@@ -567,7 +641,7 @@ export function CleaningRobotDashboard({
             Robot cleaning data
           </h1>
 
-          <div className="mt-5 flex flex-wrap items-center gap-2.5">
+          <div className="mt-5 flex flex-wrap items-center justify-center gap-2.5">
             {/* serial badge */}
             <span className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/8 px-4 py-2 font-mono text-sm font-semibold text-white backdrop-blur-sm">
               <span aria-hidden className="text-cyan-400">⬡</span>
@@ -654,14 +728,31 @@ export function CleaningRobotDashboard({
           <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-100 text-base dark:bg-indigo-900/50">🔍</span>
           <div>
             <p className="text-sm font-bold text-dark dark:text-white">Filters</p>
-            <p className="text-[11px] text-gray-500 dark:text-gray-400">Adjust the window, then apply. Hard refresh bypasses a short server cache (~45s).</p>
+            <p className="text-[11px] text-gray-500 dark:text-gray-400">
+              Default load is the last 24 hours. Change the window below, then apply. Hard refresh bypasses a short
+              server cache (~45s).
+            </p>
           </div>
+        </div>
+
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-indigo-200/70 bg-indigo-50/70 px-3 py-2 text-[11px] dark:border-indigo-900/60 dark:bg-indigo-950/30">
+          <span className="rounded-full bg-indigo-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+            Default
+          </span>
+          <span className="text-indigo-800 dark:text-indigo-200">Initial load window: Last 24 hours</span>
+          {loadedPeriodLabel && (
+            <span className="text-indigo-700 dark:text-indigo-300">
+              • Current loaded period: <span className="font-semibold">{loadedPeriodLabel}</span>
+            </span>
+          )}
         </div>
 
         <div className="flex flex-wrap items-end gap-3">
           {/* From */}
           <div className="min-w-[11rem] flex-1">
-            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">From (local)</label>
+            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              From
+            </label>
             <input
               type="datetime-local"
               value={fromLocal}
@@ -672,7 +763,9 @@ export function CleaningRobotDashboard({
 
           {/* To */}
           <div className="min-w-[11rem] flex-1">
-            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">To (local)</label>
+            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              To
+            </label>
             <input
               type="datetime-local"
               value={toLocal}
@@ -749,7 +842,7 @@ export function CleaningRobotDashboard({
 
       {/* ── PERIOD SUMMARY ────────────────────────────────────────────────── */}
       {modeSummary && (
-        <section>
+        <section ref={periodSummarySectionRef}>
           <div className="mb-4 flex items-center gap-2.5">
             <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-violet-100 text-base dark:bg-violet-900/40">📊</span>
             <div>
@@ -762,6 +855,48 @@ export function CleaningRobotDashboard({
               <MetricCard key={k} label={k} value={v} hint={metricHint(k)} />
             ))}
           </div>
+
+          {hubTrialReport &&
+            variant === "hub" &&
+            hubTrialReportPeriodReady &&
+            hubTrialReportReveal && (
+              <div className="mt-6 rounded-2xl border border-stroke/80 bg-white/95 p-5 shadow-sm dark:border-dark-3 dark:bg-gray-dark/90">
+                <p className="text-sm font-bold text-dark dark:text-white">Trial summary report</p>
+                <p className="mt-1 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">
+                  PDF for the whole site (all robots under this shop). Start date uses the same Melbourne calendar convention
+                  as the backend report. This block appears after the period summary finishes loading and you scroll it into view,
+                  so you can confirm the selected window has metrics before generating.
+                </p>
+                <div className="mt-4 flex flex-wrap items-end gap-3">
+                  <div className="min-w-[11rem]">
+                    <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                      Report start date
+                    </label>
+                    <input
+                      type="date"
+                      value={hubTrialReport.startDate}
+                      onChange={(e) => hubTrialReport.onStartDateChange(e.target.value)}
+                      disabled={hubTrialReport.loading}
+                      className="w-full rounded-xl border border-stroke bg-gray-2/50 px-3 py-2.5 text-sm text-dark shadow-sm transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 dark:border-dark-3 dark:bg-dark-2 dark:text-white disabled:opacity-50"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    disabled={hubTrialReport.loading || !hubTrialReport.shopId.trim()}
+                    onClick={() => hubTrialReport.onGenerate()}
+                    className="rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-indigo-500/20 transition hover:bg-indigo-700 hover:shadow-indigo-500/30 active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {hubTrialReport.loading ? "Generating…" : "Generate report"}
+                  </button>
+                </div>
+                {hubTrialReport.error && (
+                  <p className="mt-3 text-sm text-red-600 dark:text-red-400">{hubTrialReport.error}</p>
+                )}
+                {hubTrialReport.success && (
+                  <p className="mt-2 text-xs text-emerald-700 dark:text-emerald-300">{hubTrialReport.success}</p>
+                )}
+              </div>
+            )}
         </section>
       )}
 
