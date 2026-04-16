@@ -175,6 +175,23 @@ export default function AutonomousAgentPage() {
   const [typePromptsLoading, setTypePromptsLoading] = useState(false);
   const [typePromptsError, setTypePromptsError] = useState<string | null>(null);
   const [savingTypePrompts, setSavingTypePrompts] = useState(false);
+  const [triggeringFlows, setTriggeringFlows] = useState(false);
+
+  const triggerAutonomousFlows = async () => {
+    try {
+      setTriggeringFlows(true);
+      const res = await fetch("/api/autonomous/trigger-flows", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(typeof data.error === "string" ? data.error : "Trigger failed");
+      }
+      showToast("Autonomous flows triggered.", "success");
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : "Trigger failed", "error");
+    } finally {
+      setTriggeringFlows(false);
+    }
+  };
 
   // ── data fetching (unchanged) ─────────────────────────────────────────────
 
@@ -525,36 +542,48 @@ export default function AutonomousAgentPage() {
 
         {/* ── toolbar ── */}
         <div className="flex flex-wrap items-center justify-between gap-3">
-          {/* tab switcher */}
-          <div
-            className="inline-flex items-center rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-1 shadow-sm gap-0.5"
-            role="tablist"
-            aria-label="Autonomous sequence queue"
-          >
-            {(["running", "finished", "templates"] as AgentTab[]).map((t) => {
-              const labels: Record<AgentTab, string> = {
-                running: "Running",
-                finished: "Finished",
-                templates: "Sequence templates",
-              };
-              return (
-                <button
-                  key={t}
-                  type="button"
-                  role="tab"
-                  aria-selected={tab === t}
-                  onClick={() => setTab(t)}
-                  className={cn(
-                    "px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all",
-                    tab === t
-                      ? "bg-indigo-600 text-white shadow-sm"
-                      : "text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800",
-                  )}
-                >
-                  {labels[t]}
-                </button>
-              );
-            })}
+          <div className="flex flex-wrap items-center gap-3">
+            {/* tab switcher */}
+            <div
+              className="inline-flex items-center rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-1 shadow-sm gap-0.5"
+              role="tablist"
+              aria-label="Autonomous sequence queue"
+            >
+              {(["running", "finished", "templates"] as AgentTab[]).map((t) => {
+                const labels: Record<AgentTab, string> = {
+                  running: "Running",
+                  finished: "Finished",
+                  templates: "Sequence templates",
+                };
+                return (
+                  <button
+                    key={t}
+                    type="button"
+                    role="tab"
+                    aria-selected={tab === t}
+                    onClick={() => setTab(t)}
+                    className={cn(
+                      "px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all",
+                      tab === t
+                        ? "bg-indigo-600 text-white shadow-sm"
+                        : "text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800",
+                    )}
+                  >
+                    {labels[t]}
+                  </button>
+                );
+              })}
+            </div>
+
+            <button
+              type="button"
+              onClick={triggerAutonomousFlows}
+              disabled={triggeringFlows || !session}
+              className={btnSecondary}
+              title="Calls n8n to process due autonomous agent steps (email, voice, SMS)."
+            >
+              {triggeringFlows ? "Triggering…" : "Trigger Autonomous Flows"}
+            </button>
           </div>
 
           <Link
