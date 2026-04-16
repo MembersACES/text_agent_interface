@@ -21,6 +21,36 @@ export interface DocumentsTabProps {
   businessInfo: Record<string, unknown> | null;
   setBusinessInfo: React.Dispatch<React.SetStateAction<Record<string, unknown> | null>>;
   businessName?: string | null;
+  /** When set, successful uploads are logged to the CRM activity report. */
+  clientId?: number | null;
+  onMemberUploadLogged?: () => void;
+}
+
+/** Best-effort link from n8n / invoice API JSON for activity report. */
+function pickDocumentLinkFromUploadResponse(d: unknown): string | undefined {
+  if (!d || typeof d !== "object") return undefined;
+  const o = d as Record<string, unknown>;
+  const keys = [
+    "webViewLink",
+    "web_view_link",
+    "file_url",
+    "fileUrl",
+    "url",
+    "link",
+    "document_url",
+    "view_link",
+  ];
+  for (const k of keys) {
+    const v = o[k];
+    if (typeof v === "string" && (v.startsWith("http://") || v.startsWith("https://"))) {
+      return v;
+    }
+  }
+  const id = o.file_id ?? o.fileId ?? o.File_ID ?? o["File ID"] ?? o.id;
+  if (typeof id === "string" && /^[\w-]{10,}$/.test(id)) {
+    return `https://drive.google.com/file/d/${id}/view?usp=drivesdk`;
+  }
+  return undefined;
 }
 
 interface SimpleDoc { fileName: string; id: string; }
@@ -185,7 +215,13 @@ function Alert({ msg, successStart }: { msg: string; successStart: string }) {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
-export function DocumentsTab({ businessInfo, setBusinessInfo, businessName }: DocumentsTabProps) {
+export function DocumentsTab({
+  businessInfo,
+  setBusinessInfo,
+  businessName,
+  clientId = null,
+  onMemberUploadLogged,
+}: DocumentsTabProps) {
   const { data: session } = useSession();
   const token = (session as any)?.id_token ?? (session as any)?.accessToken;
   const info = businessInfo as any;
@@ -230,6 +266,48 @@ export function DocumentsTab({ businessInfo, setBusinessInfo, businessName }: Do
   const driveUrl = (info?.gdrive?.folder_url as string) || "";
   const driveFileUrl = (id: string) => `https://drive.google.com/file/d/${id}/view?usp=drivesdk`;
   const { loaUrl, sfaUrl, wipUrl, amortExcelUrl, amortPdfUrl } = getKeyDocumentsFromProcessed(processed);
+
+  const logMemberUpload = useCallback(
+    async (payload: {
+      upload_kind: string;
+      filename?: string | null;
+      document_link?: string | null;
+      filing_type?: string | null;
+      utility_key?: string | null;
+      metadata?: Record<string, unknown>;
+    }) => {
+      if (clientId == null || !token) return;
+      try {
+        const res = await fetch(
+          `${getApiBaseUrl()}/api/clients/${clientId}/member-upload-activity`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              upload_kind: payload.upload_kind,
+              filename: payload.filename ?? undefined,
+              document_link: payload.document_link?.trim() || undefined,
+              filing_type: payload.filing_type?.trim() || undefined,
+              utility_key: payload.utility_key?.trim() || undefined,
+              metadata: payload.metadata,
+            }),
+          },
+        );
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          console.warn("[member-upload-activity]", res.status, err);
+          return;
+        }
+        onMemberUploadLogged?.();
+      } catch (e) {
+        console.warn("[member-upload-activity]", e);
+      }
+    },
+    [clientId, token, onMemberUploadLogged],
+  );
 
   // ── Data fetching ──────────────────────────────────────────────────────────
 
@@ -380,6 +458,15 @@ export function DocumentsTab({ businessInfo, setBusinessInfo, businessName }: Do
         setDriveResult("File successfully uploaded!"); showToast("File uploaded successfully.","success");
         console.log("[C&I Contract API] Drive upload OK. driveContractKey:", driveContractKey);
         if (driveContractKey === "C&I Electricity" || driveContractKey === "C&I Gas") silentProcessContract(driveFile, driveContractKey);
+        void logMemberUpload({
+          upload_kind: "drive_filing",
+          filename: (data.filename as string) || driveFile?.name || undefined,
+          filing_type: driveFilingType,
+          utility_key: driveContractKey,
+          metadata: {
+            contract_status: driveContractStatus,
+          },
+        });
       } else { setDriveResult(`Error: ${data.message||"Upload failed"}`); showToast(data.message||"Upload failed","error"); }
     } catch (e: any) { setDriveResult(`Error: ${e?.message}`); showToast(e?.message,"error"); }
     finally { setDriveLoading(false); }
@@ -484,6 +571,13 @@ export function DocumentsTab({ businessInfo, setBusinessInfo, businessName }: Do
       if (res.ok) {
         setAddDocResult("Document uploaded successfully!");
         showToast("Document uploaded successfully.", "success");
+        const docLink = pickDocumentLinkFromUploadResponse(d);
+        void logMemberUpload({
+          upload_kind: "additional_document",
+          filename: `${business.name} - ${addDocType}${ext}`,
+          document_link: docLink,
+          metadata: { document_type_label: addDocType.trim() },
+        });
         const docTypeNorm = addDocType.trim().toLowerCase();
         console.log(
           "[C&I Contract API] Additional doc upload OK, checking type. docType:",
@@ -532,7 +626,16 @@ export function DocumentsTab({ businessInfo, setBusinessInfo, businessName }: Do
       const fd = new FormData(); fd.append("file", eoiFile);
       const res = await fetch("https://aces-invoice-api-672026052958.australia-southeast2.run.app/v1/eoi/process-eoi", { method: "POST", body: fd });
       const d = await res.json().catch(() => ({ message: res.statusText }));
-      if (res.ok) { setEoiResult("EOI successfully processed and uploaded!"); showToast("EOI uploaded successfully.","success"); setTimeout(() => fetchEOI(), 1500); }
+      if (res.ok) {
+        setEoiResult("EOI successfully processed and uploaded!");
+        showToast("EOI uploaded successfully.", "success");
+        void logMemberUpload({
+          upload_kind: "eoi",
+          filename: eoiFile.name,
+          document_link: pickDocumentLinkFromUploadResponse(d),
+        });
+        setTimeout(() => fetchEOI(), 1500);
+      }
       else { setEoiResult(`Upload failed: ${d.message||res.statusText}`); showToast(d.message||"EOI upload failed","error"); }
     } catch (e: any) { setEoiResult(`Error: ${e?.message}`); showToast(e?.message,"error"); }
     finally { setEoiLoading(false); }
@@ -545,7 +648,16 @@ export function DocumentsTab({ businessInfo, setBusinessInfo, businessName }: Do
       const fd = new FormData(); fd.append("file", file); fd.append("linked_business_name", business.name);
       const res = await fetch("https://aces-invoice-api-672026052958.australia-southeast2.run.app/v1/ef/process-ef", { method: "POST", body: fd });
       const d = await res.json().catch(() => ({ message: res.statusText }));
-      if (res.ok) { setEfResult("Engagement form uploaded successfully!"); showToast("Engagement form uploaded.","success"); setTimeout(() => fetchWIP(), 1000); }
+      if (res.ok) {
+        setEfResult("Engagement form uploaded successfully!");
+        showToast("Engagement form uploaded.", "success");
+        void logMemberUpload({
+          upload_kind: "engagement_form",
+          filename: file.name,
+          document_link: pickDocumentLinkFromUploadResponse(d),
+        });
+        setTimeout(() => fetchWIP(), 1000);
+      }
       else { setEfResult(`Error: ${d.message||res.statusText}`); showToast(d.message||"Upload failed","error"); }
     } catch (e: any) { setEfResult(`Error: ${e?.message}`); showToast(e?.message,"error"); }
     finally { setEfLoading(false); }

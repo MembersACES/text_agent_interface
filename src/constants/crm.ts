@@ -87,6 +87,7 @@ export const OFFER_ACTIVITY_TYPES = [
   "one_month_savings_invoice",
   "solar_cleaning_quote_generated",
   "solar_cleaning_quote_sent",
+  "member_document_upload",
 ] as const;
 
 export type OfferActivityType = (typeof OFFER_ACTIVITY_TYPES)[number];
@@ -115,5 +116,6 @@ export const OFFER_ACTIVITY_LABELS: Record<OfferActivityType, string> = {
   one_month_savings_invoice: "1st Month Savings Invoice generated",
   solar_cleaning_quote_generated: "Solar panel cleaning quote generated",
   solar_cleaning_quote_sent: "Solar panel cleaning quote sent to client",
+  member_document_upload: "Member document uploaded",
 };
 

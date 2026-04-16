@@ -63,6 +63,7 @@ export default function ClientDetailPage() {
     setBusinessInfo,
     setError,
     refetchTasks,
+    refetchActivities,
   } = useMemberData(clientId);
 
   const stageValue = client?.stage as ClientStage | undefined;
@@ -345,6 +346,8 @@ export default function ClientDetailPage() {
                     businessInfo={businessInfo}
                     setBusinessInfo={setBusinessInfo}
                     businessName={client?.business_name ?? null}
+                    clientId={clientId}
+                    onMemberUploadLogged={refetchActivities}
                   />
                 )}
 
