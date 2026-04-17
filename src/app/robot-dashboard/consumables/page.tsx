@@ -44,6 +44,11 @@ type BaselineRunSiteResult = {
   robot_results?: BaselineRunRobotResult[];
 };
 
+type BaselineRunDetails = {
+  sites?: BaselineRunSiteResult[];
+  robot_detail_summary?: { ok?: number; no_baseline?: number; error?: number };
+};
+
 type BaselineRunMeta = {
   id: number;
   run_scope: string;
@@ -55,6 +60,7 @@ type BaselineRunMeta = {
   finished_at?: string | null;
   initiated_by?: string | null;
   error_message?: string | null;
+  run_details?: BaselineRunDetails | null;
 };
 
 function shopIdFromRecord(r: ShopRow): string {
@@ -101,6 +107,27 @@ function formatDateTimeLabel(raw: string | null | undefined): string {
   return dt.toLocaleString();
 }
 
+/** Turns useless browser "Failed to fetch" into something actionable for long-running jobs. */
+function formatBaselineFetchError(e: unknown): string {
+  const msg = e instanceof Error ? e.message : String(e);
+  const m = msg.trim();
+  const looksNetwork =
+    m === "Failed to fetch" ||
+    m === "Load failed" ||
+    m === "NetworkError when attempting to fetch resource." ||
+    /failed to fetch/i.test(m) ||
+    (e instanceof TypeError && /fetch|network/i.test(m));
+  if (looksNetwork) {
+    return [
+      "The browser could not read the HTTP response (often a timeout or closed connection).",
+      "Global re-detect can take many minutes; reverse proxies or gateways sometimes cut the link even when the backend keeps running.",
+      "After deploy: details are saved on the server when the job finishes — refresh this page or wait for the status line below to update, then open the progress log.",
+      `Technical detail: ${m || "network error"}`,
+    ].join(" ");
+  }
+  return m || "Unknown error";
+}
+
 export default function RobotConsumablesPage() {
   const { data: session, status } = useSession();
   const token =
@@ -141,6 +168,15 @@ export default function RobotConsumablesPage() {
     const shop = shops.find((s) => shopIdFromRecord(s) === shopId);
     return shop ? shopNameFromRecord(shop) : "";
   }, [shops, shopId]);
+
+  /** Prefer this session’s POST response; else last completed global run persisted on the server (survives “Failed to fetch”). */
+  const displayBaselineLog = useMemo((): BaselineRunSiteResult[] => {
+    if (baselineRunLog.length > 0) return baselineRunLog;
+    if (!lastGlobalRun || lastGlobalRun.run_scope !== "all_sites") return [];
+    const sites = lastGlobalRun.run_details?.sites;
+    if (!Array.isArray(sites) || sites.length === 0) return [];
+    return sites as BaselineRunSiteResult[];
+  }, [baselineRunLog, lastGlobalRun]);
 
   const loadShops = useCallback(async () => {
     if (!token) return;
@@ -225,18 +261,20 @@ export default function RobotConsumablesPage() {
     }
   }, [shopId, sn, token, selectedProductCode]);
 
-  const loadBaselineRefreshStatus = useCallback(async () => {
-    if (!token) return;
+  const loadBaselineRefreshStatus = useCallback(async (): Promise<boolean> => {
+    if (!token) return false;
     try {
       const res = await fetch(`${getApiBaseUrl()}/api/pudu/consumables/baseline-refresh-status`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const body = await res.json().catch(() => ({}));
-      if (!res.ok) return;
+      if (!res.ok) return false;
       const latestGlobal = (body as { latest_global?: BaselineRunMeta | null }).latest_global ?? null;
       setLastGlobalRun(latestGlobal);
+      const sites = latestGlobal?.run_details?.sites;
+      return Array.isArray(sites) && sites.length > 0;
     } catch {
-      // Silent: status card is supplementary.
+      return false;
     }
   }, [token]);
 
@@ -421,7 +459,13 @@ export default function RobotConsumablesPage() {
       await loadConsumables();
       await loadBaselineRefreshStatus();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(formatBaselineFetchError(e));
+      const hasStored = await loadBaselineRefreshStatus();
+      if (hasStored) {
+        setSuccess(
+          "Per-site and per-robot rows below are from the last saved global run on the server (visible even when the browser drops the long request)."
+        );
+      }
     } finally {
       setRedetectingAllSites(false);
     }
@@ -491,6 +535,22 @@ export default function RobotConsumablesPage() {
               {lastGlobalRun.error_message ? (
                 <p className="mt-1 text-amber-800 dark:text-amber-200">{lastGlobalRun.error_message}</p>
               ) : null}
+              {(() => {
+                const rd = lastGlobalRun.run_details?.robot_detail_summary;
+                if (!rd) return null;
+                return (
+                  <p className="mt-1 text-gray-600 dark:text-gray-400">
+                    Per-robot (saved with this run):{" "}
+                    <span className="font-semibold text-emerald-700 dark:text-emerald-300">{Number(rd.ok ?? 0)} ok</span>
+                    {" · "}
+                    <span className="font-semibold text-amber-800 dark:text-amber-200">
+                      {Number(rd.no_baseline ?? 0)} no baseline
+                    </span>
+                    {" · "}
+                    <span className="font-semibold text-red-600 dark:text-red-400">{Number(rd.error ?? 0)} failed</span>
+                  </p>
+                );
+              })()}
               <p className="mt-0.5">
                 Started {formatDateTimeLabel(lastGlobalRun.started_at)} · Finished{" "}
                 {formatDateTimeLabel(lastGlobalRun.finished_at)}
@@ -556,18 +616,27 @@ export default function RobotConsumablesPage() {
             >
               {redetectingAllSites ? "Re-detecting all sites…" : "Re-detect baseline (all sites + robots)"}
             </button>
-            {error && <span className="text-xs text-red-600 dark:text-red-400">{error}</span>}
-            {success && <span className="text-xs text-emerald-700 dark:text-emerald-300">{success}</span>}
+            {error && (
+              <div className="max-w-3xl text-xs leading-snug text-red-600 dark:text-red-400">{error}</div>
+            )}
+            {success && (
+              <div className="max-w-3xl text-xs leading-snug text-emerald-700 dark:text-emerald-300">{success}</div>
+            )}
           </div>
 
-          {baselineRunLog.length > 0 && (
+          {displayBaselineLog.length > 0 && (
             <div className="rounded-xl border border-stroke dark:border-dark-3">
               <div className="border-b border-stroke bg-gray-50 px-3 py-2 dark:border-dark-3 dark:bg-dark-2">
                 <p className="text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">
                   Baseline re-detect progress log
                 </p>
                 <p className="mt-0.5 text-[11px] font-normal text-gray-500 dark:text-gray-400">
-                  Expand a site to see each robot: ok, no baseline (no first-run date from Pudu), or error. Failures do not stop the rest of the run.
+                  {baselineRunLog.length > 0
+                    ? "Results from the latest re-detect in this tab. Expand a site for each serial: ok, no baseline, or error."
+                    : "Loaded from the last completed global run on the server (same data after a browser timeout if the backend finished). Expand a site for each serial."}
+                </p>
+                <p className="mt-0.5 text-[11px] font-normal text-gray-500 dark:text-gray-400">
+                  Failures on one robot do not stop the rest of the run.
                 </p>
               </div>
               <div className="overflow-x-auto">
@@ -595,7 +664,7 @@ export default function RobotConsumablesPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-stroke dark:divide-dark-3">
-                    {baselineRunLog.map((r, i) => {
+                    {displayBaselineLog.map((r, i) => {
                       const rr = r.robot_results ?? [];
                       const okC = rr.filter((x) => x.status === "ok").length;
                       const nbC = rr.filter((x) => x.status === "no_baseline").length;
