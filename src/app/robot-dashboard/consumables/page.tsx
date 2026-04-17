@@ -150,6 +150,7 @@ export default function RobotConsumablesPage() {
   const [redetectingAllSites, setRedetectingAllSites] = useState(false);
   const [baselineRunLog, setBaselineRunLog] = useState<BaselineRunSiteResult[]>([]);
   const [lastGlobalRun, setLastGlobalRun] = useState<BaselineRunMeta | null>(null);
+  const [lastCompletedGlobalRun, setLastCompletedGlobalRun] = useState<BaselineRunMeta | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -171,11 +172,23 @@ export default function RobotConsumablesPage() {
   /** Prefer this session’s POST response; else last completed global run persisted on the server (survives “Failed to fetch”). */
   const displayBaselineLog = useMemo((): BaselineRunSiteResult[] => {
     if (baselineRunLog.length > 0) return baselineRunLog;
-    if (!lastGlobalRun || lastGlobalRun.run_scope !== "all_sites") return [];
-    const sites = lastGlobalRun.run_details?.sites;
-    if (!Array.isArray(sites) || sites.length === 0) return [];
-    return sites as BaselineRunSiteResult[];
-  }, [baselineRunLog, lastGlobalRun]);
+    const currentSites = lastGlobalRun?.run_details?.sites;
+    if (Array.isArray(currentSites) && currentSites.length > 0) {
+      return currentSites as BaselineRunSiteResult[];
+    }
+    const completedSites = lastCompletedGlobalRun?.run_details?.sites;
+    if (Array.isArray(completedSites) && completedSites.length > 0) {
+      return completedSites as BaselineRunSiteResult[];
+    }
+    return [];
+  }, [baselineRunLog, lastGlobalRun, lastCompletedGlobalRun]);
+
+  const showingPreviousCompletedLog =
+    baselineRunLog.length === 0 &&
+    lastGlobalRun?.status === "running" &&
+    (!Array.isArray(lastGlobalRun?.run_details?.sites) || lastGlobalRun.run_details.sites.length === 0) &&
+    Array.isArray(lastCompletedGlobalRun?.run_details?.sites) &&
+    lastCompletedGlobalRun.run_details.sites.length > 0;
 
   const loadShops = useCallback(async () => {
     if (!token) return;
@@ -269,9 +282,13 @@ export default function RobotConsumablesPage() {
       const body = await res.json().catch(() => ({}));
       if (!res.ok) return false;
       const latestGlobal = (body as { latest_global?: BaselineRunMeta | null }).latest_global ?? null;
+      const latestGlobalCompleted = (body as { latest_global_completed?: BaselineRunMeta | null }).latest_global_completed ?? null;
       setLastGlobalRun(latestGlobal);
-      const sites = latestGlobal?.run_details?.sites;
-      return Array.isArray(sites) && sites.length > 0;
+      setLastCompletedGlobalRun(latestGlobalCompleted);
+      const currentSites = latestGlobal?.run_details?.sites;
+      if (Array.isArray(currentSites) && currentSites.length > 0) return true;
+      const completedSites = latestGlobalCompleted?.run_details?.sites;
+      return Array.isArray(completedSites) && completedSites.length > 0;
     } catch {
       return false;
     }
@@ -534,6 +551,11 @@ export default function RobotConsumablesPage() {
                 <span className="font-semibold">{lastGlobalRun.total_count}</span> robots across{" "}
                 <span className="font-semibold">{lastGlobalRun.site_count}</span> site(s)
               </p>
+              {showingPreviousCompletedLog ? (
+                <p className="mt-1 text-[11px] text-indigo-700 dark:text-indigo-300">
+                  A newer run is currently in progress. The table below is showing the previous completed run until this one finishes.
+                </p>
+              ) : null}
               {lastGlobalRun.error_message ? (
                 <p className="mt-1 text-amber-800 dark:text-amber-200">{lastGlobalRun.error_message}</p>
               ) : null}
@@ -635,7 +657,9 @@ export default function RobotConsumablesPage() {
                 <p className="mt-0.5 text-[11px] font-normal text-gray-500 dark:text-gray-400">
                   {baselineRunLog.length > 0
                     ? "Results from the latest re-detect in this tab. Expand a site for each serial: ok, no baseline, or error."
-                    : "Loaded from the last completed global run on the server (same data after a browser timeout if the backend finished). Expand a site for each serial."}
+                    : showingPreviousCompletedLog
+                      ? "A new global run is still running, so this log is showing the previous completed run until fresh details are available."
+                      : "Loaded from the last completed global run on the server (same data after a browser timeout if the backend finished). Expand a site for each serial."}
                 </p>
                 <p className="mt-0.5 text-[11px] font-normal text-gray-500 dark:text-gray-400">
                   Failures on one robot do not stop the rest of the run.
