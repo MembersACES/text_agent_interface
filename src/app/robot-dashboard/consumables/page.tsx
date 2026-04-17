@@ -119,10 +119,9 @@ function formatBaselineFetchError(e: unknown): string {
     (e instanceof TypeError && /fetch|network/i.test(m));
   if (looksNetwork) {
     return [
-      "The browser could not read the HTTP response (often a timeout or closed connection).",
-      "Global re-detect can take many minutes; reverse proxies or gateways sometimes cut the link even when the backend keeps running.",
-      "After deploy: details are saved on the server when the job finishes — refresh this page or wait for the status line below to update, then open the progress log.",
-      `Technical detail: ${m || "network error"}`,
+      "The browser lost the HTTP response (timeouts and reverse proxies often cut long requests).",
+      "If the API still finished, refresh this page: the progress log fills from the last saved run, and the card below shows run id for log correlation.",
+      `Browser reported: ${m || "network error"}`,
     ].join(" ");
   }
   return m || "Unknown error";
@@ -526,6 +525,9 @@ export default function RobotConsumablesPage() {
           {lastGlobalRun && (
             <div className="rounded-xl border border-stroke bg-gray-50/70 px-3 py-2 text-xs text-gray-700 dark:border-dark-3 dark:bg-dark-2/60 dark:text-gray-300">
               <p className="font-semibold text-gray-800 dark:text-gray-100">Last global baseline refresh</p>
+              <p className="mt-0.5 font-mono text-[11px] text-gray-500 dark:text-gray-400">
+                Run id <span className="font-semibold text-gray-700 dark:text-gray-300">{lastGlobalRun.id}</span> — search API logs for this number alongside &quot;Consumables baseline all-sites&quot;.
+              </p>
               <p className="mt-1">
                 Status: <span className="font-semibold">{lastGlobalRun.status}</span> · Updated{" "}
                 <span className="font-semibold">{lastGlobalRun.updated_count}</span> of{" "}
