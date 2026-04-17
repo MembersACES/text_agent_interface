@@ -2,12 +2,23 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
+import Link from "next/link";
 import { cn, getApiBaseUrl } from "@/lib/utils";
 import { CleaningRobotDashboard } from "@/components/crm-member/CleaningRobotDashboard";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 type ShopRow = Record<string, unknown>;
 type RobotRow = Record<string, unknown>;
+type ConsumableStatusRow = {
+  id?: number;
+  mode_name?: string;
+  name?: string;
+  hours?: number | null;
+  last_replaced_at?: string | null;
+  replacement_interval_days?: number | null;
+  item_type?: string;
+  notes?: string;
+};
 
 function shopIdFromRecord(r: ShopRow): string {
   return String(r.shop_id ?? r.id ?? r.shopId ?? "").trim();
@@ -46,6 +57,70 @@ function shopDisplayName(r: ShopRow): string {
   return String(r.shop_name ?? r.name ?? r.shopName ?? "").trim();
 }
 
+function parseOptionalNumber(v: unknown): number | null {
+  if (v == null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function computeConsumableStatus(
+  row: ConsumableStatusRow,
+  lifetimeRuntimeHours: number | null
+): { status: "Due now" | "Due soon" | "OK" | "N/A"; detail: string } {
+  let hoursStatus: "Due now" | "Due soon" | "OK" | "N/A" = "N/A";
+  let hoursDetail = "No hour target";
+  const hLimit = parseOptionalNumber(row.hours);
+  if (hLimit != null && hLimit > 0 && lifetimeRuntimeHours != null) {
+    const remaining = hLimit - lifetimeRuntimeHours;
+    if (remaining <= 0) {
+      hoursStatus = "Due now";
+      hoursDetail = `Exceeded by ${Math.abs(remaining).toFixed(1)}h`;
+    } else if (remaining <= Math.max(25, hLimit * 0.1)) {
+      hoursStatus = "Due soon";
+      hoursDetail = `${remaining.toFixed(1)}h remaining`;
+    } else {
+      hoursStatus = "OK";
+      hoursDetail = `${remaining.toFixed(1)}h remaining`;
+    }
+  }
+
+  let dateStatus: "Due now" | "Due soon" | "OK" | "N/A" = "N/A";
+  let dateDetail = "No interval target";
+  const intervalDays = parseOptionalNumber(row.replacement_interval_days);
+  if (intervalDays != null && intervalDays > 0) {
+    if (!row.last_replaced_at) {
+      dateStatus = "Due soon";
+      dateDetail = "Last replaced missing";
+    } else {
+      const d = new Date(row.last_replaced_at);
+      if (!Number.isNaN(d.getTime())) {
+        const due = new Date(d);
+        due.setDate(due.getDate() + Math.round(intervalDays));
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const dueDay = new Date(due);
+        dueDay.setHours(0, 0, 0, 0);
+        const diffDays = Math.round((dueDay.getTime() - today.getTime()) / 86400000);
+        if (diffDays < 0) {
+          dateStatus = "Due now";
+          dateDetail = `${Math.abs(diffDays)}d overdue`;
+        } else if (diffDays <= Math.max(7, Math.round(intervalDays / 10))) {
+          dateStatus = "Due soon";
+          dateDetail = `${diffDays}d remaining`;
+        } else {
+          dateStatus = "OK";
+          dateDetail = `${diffDays}d remaining`;
+        }
+      }
+    }
+  }
+
+  const rank = (s: "Due now" | "Due soon" | "OK" | "N/A") =>
+    s === "Due now" ? 4 : s === "Due soon" ? 3 : s === "OK" ? 2 : 1;
+  const status = rank(hoursStatus) >= rank(dateStatus) ? hoursStatus : dateStatus;
+  return { status, detail: `${hoursDetail}; ${dateDetail}` };
+}
+
 export default function RobotDataHubClient() {
   const { data: session, status } = useSession();
   const token =
@@ -74,6 +149,11 @@ export default function RobotDataHubClient() {
   const [reportLoading, setReportLoading] = useState(false);
   const [reportError, setReportError] = useState<string | null>(null);
   const [reportSuccess, setReportSuccess] = useState<string | null>(null);
+  const [consumablesLoading, setConsumablesLoading] = useState(false);
+  const [consumablesError, setConsumablesError] = useState<string | null>(null);
+  const [consumablesRows, setConsumablesRows] = useState<ConsumableStatusRow[]>([]);
+  const [consumablesBaselineDate, setConsumablesBaselineDate] = useState<string>("");
+  const [consumablesLifetimeRuntimeH, setConsumablesLifetimeRuntimeH] = useState<number | null>(null);
 
   const effectiveSn = useMemo(() => robotSelect.trim(), [robotSelect]);
   const selectedShopName = useMemo(() => {
@@ -81,6 +161,11 @@ export default function RobotDataHubClient() {
     if (!selected) return "";
     return String(selected.shop_name ?? selected.name ?? selected.shopName ?? "").trim();
   }, [shops, shopFilter]);
+  const selectedRobotProductCode = useMemo(() => {
+    if (!effectiveSn) return "";
+    const robot = robots.find((r) => robotSnFromRecord(r) === effectiveSn);
+    return robot ? robotProductCodeFromRecord(robot) : "";
+  }, [robots, effectiveSn]);
 
   const loadShops = useCallback(async () => {
     if (!token) return;
@@ -207,6 +292,45 @@ export default function RobotDataHubClient() {
     }
   }, [token, shopFilter, selectedShopName, reportStartDate]);
 
+  const loadConsumablesStatus = useCallback(async () => {
+    if (!token || !shopFilter.trim() || !effectiveSn) {
+      setConsumablesRows([]);
+      setConsumablesError(null);
+      setConsumablesBaselineDate("");
+      setConsumablesLifetimeRuntimeH(null);
+      return;
+    }
+    setConsumablesLoading(true);
+    setConsumablesError(null);
+    try {
+      const params = new URLSearchParams({
+        shop_id: shopFilter.trim(),
+        sn: effectiveSn,
+      });
+      if (selectedRobotProductCode.trim()) params.set("product_code", selectedRobotProductCode.trim());
+      const res = await fetch(`${getApiBaseUrl()}/api/pudu/consumables?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((body as { detail?: string }).detail ?? res.statusText);
+      const items = Array.isArray((body as { items?: unknown[] }).items)
+        ? ((body as { items: ConsumableStatusRow[] }).items)
+        : [];
+      setConsumablesRows(items);
+      setConsumablesBaselineDate(String((body as { baseline_start_date?: string }).baseline_start_date ?? ""));
+      setConsumablesLifetimeRuntimeH(parseOptionalNumber((body as { lifetime_runtime_h?: unknown }).lifetime_runtime_h));
+    } catch (e) {
+      setConsumablesRows([]);
+      setConsumablesError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setConsumablesLoading(false);
+    }
+  }, [token, shopFilter, effectiveSn, selectedRobotProductCode]);
+
+  useEffect(() => {
+    void loadConsumablesStatus();
+  }, [loadConsumablesStatus]);
+
   const filteredShops = useMemo(() => {
     const q = siteQuery.trim().toLowerCase();
     return shops.filter((s) => {
@@ -235,6 +359,22 @@ export default function RobotDataHubClient() {
         .filter((r) => r.sn.length > 0),
     [robots]
   );
+
+  const consumablesStatusRows = useMemo(() => {
+    const ranked = consumablesRows.map((r) => {
+      const computed = computeConsumableStatus(r, consumablesLifetimeRuntimeH);
+      const score =
+        computed.status === "Due now" ? 4 : computed.status === "Due soon" ? 3 : computed.status === "OK" ? 2 : 1;
+      return {
+        row: r,
+        status: computed.status,
+        detail: computed.detail,
+        score,
+      };
+    });
+    ranked.sort((a, b) => b.score - a.score || String(a.row.name || "").localeCompare(String(b.row.name || "")));
+    return ranked;
+  }, [consumablesRows, consumablesLifetimeRuntimeH]);
 
   const selectSite = useCallback((shopId: string) => {
     setShopFilter(shopId);
@@ -277,16 +417,24 @@ export default function RobotDataHubClient() {
                 serial&apos;s runs.
               </CardDescription>
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                void loadShops();
-                void loadRobots();
-              }}
-              className="shrink-0 rounded-xl border border-white/15 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white backdrop-blur-sm transition hover:bg-white/15"
-            >
-              Refresh directory
-            </button>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  void loadShops();
+                  void loadRobots();
+                }}
+                className="shrink-0 rounded-xl border border-white/15 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white backdrop-blur-sm transition hover:bg-white/15"
+              >
+                Refresh directory
+              </button>
+              <Link
+                href="/robot-dashboard/consumables"
+                className="shrink-0 rounded-xl border border-indigo-300/40 bg-indigo-500/25 px-4 py-2.5 text-sm font-semibold text-indigo-50 backdrop-blur-sm transition hover:bg-indigo-500/35"
+              >
+                Consumables tracking
+              </Link>
+            </div>
           </div>
         </div>
         <CardContent className="space-y-4 p-4 sm:p-5">
@@ -493,6 +641,81 @@ export default function RobotDataHubClient() {
         }
         hideShopIdField={Boolean(shopFilter.trim())}
       />
+
+      {shopFilter.trim() && effectiveSn ? (
+        <Card variant="elevated">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <CardTitle className="text-base">Consumables status</CardTitle>
+                <CardDescription>
+                  Baseline {consumablesBaselineDate || "—"}; lifetime runtime{" "}
+                  {consumablesLifetimeRuntimeH != null ? `${consumablesLifetimeRuntimeH.toFixed(2)} h` : "—"}.
+                </CardDescription>
+              </div>
+              <Link
+                href="/robot-dashboard/consumables"
+                className="rounded-lg border border-indigo-300 px-2.5 py-1 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-50 dark:border-indigo-800 dark:text-indigo-300 dark:hover:bg-indigo-950/30"
+              >
+                Manage consumables
+              </Link>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {consumablesLoading ? (
+              <p className="text-sm text-gray-500">Loading consumables status…</p>
+            ) : consumablesError ? (
+              <p className="text-sm text-red-600 dark:text-red-400">{consumablesError}</p>
+            ) : consumablesStatusRows.length === 0 ? (
+              <p className="text-sm text-gray-500 dark:text-gray-400">No consumables configured for this robot yet.</p>
+            ) : (
+              <div className="overflow-hidden rounded-xl border border-stroke dark:border-dark-3">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-xs">
+                    <thead className="bg-gray-50 dark:bg-dark-2">
+                      <tr>
+                        {["Item", "Mode", "Type", "Hours", "Last replaced", "Interval (days)", "Status", "Detail"].map((c) => (
+                          <th key={c} className="whitespace-nowrap px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">
+                            {c}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-stroke dark:divide-dark-3">
+                      {consumablesStatusRows.slice(0, 20).map(({ row, status, detail }, i) => (
+                        <tr key={`${row.id ?? row.name ?? "row"}-${i}`} className="bg-white dark:bg-gray-dark">
+                          <td className="px-3 py-2 font-medium">{row.name || "—"}</td>
+                          <td className="px-3 py-2">{row.mode_name || "—"}</td>
+                          <td className="px-3 py-2">{row.item_type || "—"}</td>
+                          <td className="px-3 py-2">{row.hours ?? "—"}</td>
+                          <td className="px-3 py-2">{row.last_replaced_at || "—"}</td>
+                          <td className="px-3 py-2">{row.replacement_interval_days ?? "—"}</td>
+                          <td className="px-3 py-2">
+                            <span
+                              className={
+                                status === "Due now"
+                                  ? "rounded-full bg-red-100 px-2 py-0.5 font-semibold text-red-700 dark:bg-red-900/40 dark:text-red-300"
+                                  : status === "Due soon"
+                                    ? "rounded-full bg-amber-100 px-2 py-0.5 font-semibold text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
+                                    : status === "OK"
+                                      ? "rounded-full bg-emerald-100 px-2 py-0.5 font-semibold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
+                                      : "rounded-full bg-slate-100 px-2 py-0.5 font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                              }
+                            >
+                              {status}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-gray-600 dark:text-gray-300">{detail}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
     </div>
   );
 }
