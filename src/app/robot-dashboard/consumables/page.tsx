@@ -63,6 +63,42 @@ type BaselineRunMeta = {
   run_details?: BaselineRunDetails | null;
 };
 
+type HubItemStatus = "overdue" | "due_soon" | "ok" | "unknown";
+
+type ConsumablesHubSummary = {
+  total_items: number;
+  total_robots: number;
+  overdue_items: number;
+  due_soon_items: number;
+  ok_items: number;
+  unknown_items: number;
+  overdue_robots: number;
+  due_soon_robots: number;
+  unknown_robots: number;
+  due_soon_days: number;
+};
+
+type ConsumablesHubItem = {
+  id: number;
+  shop_id: string;
+  shop_name?: string | null;
+  robot_sn: string;
+  robot_label: string;
+  mode_name: string;
+  sku: string;
+  name: string;
+  item_type: string;
+  lifespan_per_unit: string;
+  replacement_interval_days?: number | null;
+  last_replaced_at?: string | null;
+  baseline_start_date?: string | null;
+  due_date?: string | null;
+  days_until_due?: number | null;
+  status: HubItemStatus;
+  status_reason: string;
+  notes: string;
+};
+
 function shopIdFromRecord(r: ShopRow): string {
   return String(r.shop_id ?? r.id ?? r.shopId ?? "").trim();
 }
@@ -105,6 +141,13 @@ function formatDateTimeLabel(raw: string | null | undefined): string {
   const dt = new Date(raw);
   if (Number.isNaN(dt.getTime())) return raw;
   return dt.toLocaleString();
+}
+
+function statusBadgeClass(status: HubItemStatus): string {
+  if (status === "overdue") return "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-300";
+  if (status === "due_soon") return "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200";
+  if (status === "ok") return "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300";
+  return "bg-gray-100 text-gray-700 dark:bg-dark-2 dark:text-gray-300";
 }
 
 /** Turns useless browser "Failed to fetch" into something actionable for long-running jobs. */
@@ -151,6 +194,13 @@ export default function RobotConsumablesPage() {
   const [baselineRunLog, setBaselineRunLog] = useState<BaselineRunSiteResult[]>([]);
   const [lastGlobalRun, setLastGlobalRun] = useState<BaselineRunMeta | null>(null);
   const [lastCompletedGlobalRun, setLastCompletedGlobalRun] = useState<BaselineRunMeta | null>(null);
+  const [hubSummary, setHubSummary] = useState<ConsumablesHubSummary | null>(null);
+  const [hubItems, setHubItems] = useState<ConsumablesHubItem[]>([]);
+  const [hubStatusFilter, setHubStatusFilter] = useState<"all" | "actionable" | HubItemStatus>("actionable");
+  const [hubSearch, setHubSearch] = useState("");
+  const [loadingHub, setLoadingHub] = useState(false);
+  const [markingHub, setMarkingHub] = useState(false);
+  const [selectedHubItemIds, setSelectedHubItemIds] = useState<number[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -189,6 +239,57 @@ export default function RobotConsumablesPage() {
     (!Array.isArray(lastGlobalRun?.run_details?.sites) || lastGlobalRun.run_details.sites.length === 0) &&
     Array.isArray(lastCompletedGlobalRun?.run_details?.sites) &&
     lastCompletedGlobalRun.run_details.sites.length > 0;
+
+  const filteredHubItems = useMemo(() => {
+    const q = hubSearch.trim().toLowerCase();
+    return hubItems.filter((row) => {
+      if (hubStatusFilter === "actionable") {
+        if (!(row.status === "overdue" || row.status === "due_soon")) return false;
+      } else if (hubStatusFilter !== "all" && row.status !== hubStatusFilter) {
+        return false;
+      }
+      if (!q) return true;
+      const bag = [
+        row.shop_name || "",
+        row.shop_id,
+        row.robot_label,
+        row.robot_sn,
+        row.mode_name,
+        row.name,
+        row.sku,
+        row.status_reason,
+      ]
+        .join(" ")
+        .toLowerCase();
+      return bag.includes(q);
+    });
+  }, [hubItems, hubStatusFilter, hubSearch]);
+
+  const selectedHubSet = useMemo(() => new Set(selectedHubItemIds), [selectedHubItemIds]);
+
+  const loadHub = useCallback(async () => {
+    if (!token) return;
+    setLoadingHub(true);
+    try {
+      const params = new URLSearchParams({ due_soon_days: "30" });
+      const res = await fetch(`${getApiBaseUrl()}/api/pudu/consumables/hub?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((body as { detail?: string }).detail ?? res.statusText);
+      const summary = ((body as { summary?: ConsumablesHubSummary }).summary ?? null) as ConsumablesHubSummary | null;
+      const rows = Array.isArray((body as { items?: unknown[] }).items)
+        ? ((body as { items: ConsumablesHubItem[] }).items)
+        : [];
+      setHubSummary(summary);
+      setHubItems(rows);
+      setSelectedHubItemIds((prev) => prev.filter((id) => rows.some((r) => r.id === id)));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoadingHub(false);
+    }
+  }, [token]);
 
   const loadShops = useCallback(async () => {
     if (!token) return;
@@ -298,7 +399,8 @@ export default function RobotConsumablesPage() {
     if (status !== "authenticated" || !token) return;
     void loadShops();
     void loadBaselineRefreshStatus();
-  }, [status, token, loadShops, loadBaselineRefreshStatus]);
+    void loadHub();
+  }, [status, token, loadShops, loadBaselineRefreshStatus, loadHub]);
 
   useEffect(() => {
     if (status !== "authenticated" || !token) return;
@@ -314,6 +416,36 @@ export default function RobotConsumablesPage() {
   useEffect(() => {
     void loadConsumables();
   }, [loadConsumables]);
+
+  function toggleHubSelection(id: number) {
+    setSelectedHubItemIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
+
+  async function markHubItemsReplaced(itemIds: number[]) {
+    if (!token || itemIds.length === 0) return;
+    setMarkingHub(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/pudu/consumables/mark-replaced`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ item_ids: itemIds }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((body as { detail?: string }).detail ?? res.statusText);
+      const updated = Number((body as { updated_count?: unknown }).updated_count ?? 0);
+      const replacedAt = String((body as { replaced_at?: unknown }).replaced_at ?? "");
+      setSelectedHubItemIds((prev) => prev.filter((id) => !itemIds.includes(id)));
+      setSuccess(`Marked ${updated} item(s) replaced at ${replacedAt || "today"}.`);
+      await loadHub();
+      await loadConsumables();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setMarkingHub(false);
+    }
+  }
 
   function updateRow(idx: number, key: keyof ConsumableRow, value: string) {
     setRows((prev) => prev.map((r, i) => (i === idx ? { ...r, [key]: value } : r)));
@@ -382,6 +514,7 @@ export default function RobotConsumablesPage() {
       setSuccess("Consumables saved.");
       setSource("database");
       await loadConsumables();
+      await loadHub();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -438,6 +571,7 @@ export default function RobotConsumablesPage() {
       );
       await loadConsumables();
       await loadBaselineRefreshStatus();
+      await loadHub();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -474,6 +608,7 @@ export default function RobotConsumablesPage() {
       setSuccess(`Global baseline re-detect completed: ${updated}/${total} robot(s) across ${sites} site(s).${rdLine}`);
       await loadConsumables();
       await loadBaselineRefreshStatus();
+      await loadHub();
     } catch (e) {
       setError(formatBaselineFetchError(e));
       const hasStored = await loadBaselineRefreshStatus();
@@ -581,6 +716,168 @@ export default function RobotConsumablesPage() {
               </p>
             </div>
           )}
+
+          <div className="rounded-xl border border-stroke dark:border-dark-3">
+            <div className="border-b border-stroke bg-gray-50 px-3 py-2 dark:border-dark-3 dark:bg-dark-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">
+                  Consumables hub overview (all robots)
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void loadHub()}
+                  disabled={loadingHub}
+                  className="rounded border border-stroke px-2 py-1 text-[11px] font-semibold hover:bg-gray-100 disabled:opacity-50 dark:border-dark-3 dark:hover:bg-dark-2"
+                >
+                  {loadingHub ? "Refreshing…" : "Refresh hub"}
+                </button>
+              </div>
+            </div>
+            <div className="space-y-3 p-3">
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+                <div className="rounded border border-red-200 bg-red-50 px-2 py-1.5 text-xs dark:border-red-900 dark:bg-red-950/20">
+                  <p className="text-[11px] text-gray-600 dark:text-gray-300">Overdue items</p>
+                  <p className="font-semibold text-red-700 dark:text-red-300">{hubSummary?.overdue_items ?? 0}</p>
+                </div>
+                <div className="rounded border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs dark:border-amber-900 dark:bg-amber-950/20">
+                  <p className="text-[11px] text-gray-600 dark:text-gray-300">Due soon ({hubSummary?.due_soon_days ?? 30}d)</p>
+                  <p className="font-semibold text-amber-800 dark:text-amber-200">{hubSummary?.due_soon_items ?? 0}</p>
+                </div>
+                <div className="rounded border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-xs dark:border-emerald-900 dark:bg-emerald-950/20">
+                  <p className="text-[11px] text-gray-600 dark:text-gray-300">Healthy</p>
+                  <p className="font-semibold text-emerald-700 dark:text-emerald-300">{hubSummary?.ok_items ?? 0}</p>
+                </div>
+                <div className="rounded border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs dark:border-dark-3 dark:bg-dark-2">
+                  <p className="text-[11px] text-gray-600 dark:text-gray-300">Unknown data</p>
+                  <p className="font-semibold text-gray-700 dark:text-gray-200">{hubSummary?.unknown_items ?? 0}</p>
+                </div>
+                <div className="rounded border border-indigo-200 bg-indigo-50 px-2 py-1.5 text-xs dark:border-indigo-900 dark:bg-indigo-950/20">
+                  <p className="text-[11px] text-gray-600 dark:text-gray-300">Robots tracked</p>
+                  <p className="font-semibold text-indigo-700 dark:text-indigo-300">{hubSummary?.total_robots ?? 0}</p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {(["actionable", "all", "overdue", "due_soon", "unknown", "ok"] as const).map((f) => (
+                  <button
+                    key={f}
+                    type="button"
+                    onClick={() => setHubStatusFilter(f)}
+                    className={`rounded border px-2 py-1 text-[11px] font-semibold ${
+                      hubStatusFilter === f
+                        ? "border-indigo-500 bg-indigo-50 text-indigo-700 dark:border-indigo-500 dark:bg-indigo-950/30 dark:text-indigo-300"
+                        : "border-stroke text-gray-600 hover:bg-gray-50 dark:border-dark-3 dark:text-gray-300 dark:hover:bg-dark-2"
+                    }`}
+                  >
+                    {f === "all"
+                      ? "All"
+                      : f === "actionable"
+                        ? "Actionable"
+                        : f === "due_soon"
+                          ? "Due soon"
+                          : f[0].toUpperCase() + f.slice(1)}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setSelectedHubItemIds(filteredHubItems.map((r) => r.id))}
+                  className="rounded border border-stroke px-2 py-1 text-[11px] font-semibold text-gray-600 hover:bg-gray-50 dark:border-dark-3 dark:text-gray-300 dark:hover:bg-dark-2"
+                >
+                  Select visible
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedHubItemIds([])}
+                  className="rounded border border-stroke px-2 py-1 text-[11px] font-semibold text-gray-600 hover:bg-gray-50 dark:border-dark-3 dark:text-gray-300 dark:hover:bg-dark-2"
+                >
+                  Clear
+                </button>
+                <button
+                  type="button"
+                  disabled={markingHub || selectedHubItemIds.length === 0}
+                  onClick={() => void markHubItemsReplaced(selectedHubItemIds)}
+                  className="rounded border border-emerald-500 px-2 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-50 dark:border-emerald-700 dark:text-emerald-300 dark:hover:bg-emerald-950/20"
+                >
+                  {markingHub ? "Marking…" : `Mark selected replaced (${selectedHubItemIds.length})`}
+                </button>
+                <input
+                  value={hubSearch}
+                  onChange={(e) => setHubSearch(e.target.value)}
+                  placeholder="Search site, robot, item…"
+                  className="ml-auto w-full max-w-xs rounded border border-stroke px-2 py-1.5 text-xs dark:border-dark-3 dark:bg-dark-2"
+                />
+              </div>
+
+              <div className="overflow-x-auto rounded border border-stroke dark:border-dark-3">
+                <table className="min-w-[1100px] text-xs">
+                  <thead className="bg-gray-50 dark:bg-dark-2">
+                    <tr>
+                      {["", "Status", "Site", "Robot", "Item", "Mode", "Last replaced", "Due date", "Days", "Reason", "Action"].map((h) => (
+                        <th key={h} className="whitespace-nowrap px-2 py-2 text-left font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-stroke dark:divide-dark-3">
+                    {loadingHub ? (
+                      <tr>
+                        <td colSpan={11} className="px-3 py-5 text-center text-gray-500">Loading hub…</td>
+                      </tr>
+                    ) : filteredHubItems.length === 0 ? (
+                      <tr>
+                        <td colSpan={11} className="px-3 py-5 text-center text-gray-500">No matching consumable rows.</td>
+                      </tr>
+                    ) : (
+                      filteredHubItems.map((r, i) => (
+                        <tr key={`${r.shop_id}-${r.robot_sn}-${r.sku}-${r.name}-${i}`} className="bg-white dark:bg-gray-dark">
+                          <td className="px-2 py-1.5">
+                            <input
+                              type="checkbox"
+                              checked={selectedHubSet.has(r.id)}
+                              onChange={() => toggleHubSelection(r.id)}
+                            />
+                          </td>
+                          <td className="px-2 py-1.5">
+                            <span className={`rounded px-1.5 py-0.5 text-[11px] font-semibold ${statusBadgeClass(r.status)}`}>
+                              {r.status === "due_soon" ? "due soon" : r.status}
+                            </span>
+                          </td>
+                          <td className="px-2 py-1.5">
+                            <div>{r.shop_name || "—"}</div>
+                            <div className="font-mono text-[11px] text-gray-500">{r.shop_id}</div>
+                          </td>
+                          <td className="px-2 py-1.5">
+                            <div>{r.robot_label || r.robot_sn}</div>
+                            <div className="font-mono text-[11px] text-gray-500">{r.robot_sn}</div>
+                          </td>
+                          <td className="px-2 py-1.5">
+                            <div>{r.name}</div>
+                            <div className="font-mono text-[11px] text-gray-500">{r.sku || "—"}</div>
+                          </td>
+                          <td className="px-2 py-1.5">{r.mode_name || "—"}</td>
+                          <td className="px-2 py-1.5 font-mono">{r.last_replaced_at || "—"}</td>
+                          <td className="px-2 py-1.5 font-mono">{r.due_date || "—"}</td>
+                          <td className="px-2 py-1.5 font-mono">{r.days_until_due == null ? "—" : String(r.days_until_due)}</td>
+                          <td className="max-w-[260px] break-words px-2 py-1.5 text-gray-600 dark:text-gray-300">{r.status_reason}</td>
+                          <td className="px-2 py-1.5">
+                            <button
+                              type="button"
+                              disabled={markingHub}
+                              onClick={() => void markHubItemsReplaced([r.id])}
+                              className="rounded border border-emerald-500 px-2 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-50 dark:border-emerald-700 dark:text-emerald-300 dark:hover:bg-emerald-950/20"
+                            >
+                              Mark replaced
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
 
           <div className="overflow-hidden rounded-xl border border-stroke dark:border-dark-3">
             <div className="overflow-x-auto">
