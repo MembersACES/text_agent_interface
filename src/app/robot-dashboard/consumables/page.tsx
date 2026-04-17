@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getApiBaseUrl } from "@/lib/utils";
@@ -25,12 +25,23 @@ type ConsumableRow = {
   notes: string;
 };
 
+type BaselineRunRobotResult = {
+  sn: string;
+  product_hint?: string | null;
+  baseline_start_date?: string | null;
+  baseline_source?: string | null;
+  status: "ok" | "no_baseline" | "error";
+  error?: string | null;
+};
+
 type BaselineRunSiteResult = {
   shop_id: string;
   shop_name?: string;
   updated_count: number;
   total_count: number;
   error?: string;
+  warning?: string;
+  robot_results?: BaselineRunRobotResult[];
 };
 
 type BaselineRunMeta = {
@@ -43,6 +54,7 @@ type BaselineRunMeta = {
   started_at?: string | null;
   finished_at?: string | null;
   initiated_by?: string | null;
+  error_message?: string | null;
 };
 
 function shopIdFromRecord(r: ShopRow): string {
@@ -338,15 +350,38 @@ export default function RobotConsumablesPage() {
       if (!res.ok) throw new Error((body as { detail?: string }).detail ?? res.statusText);
       const updated = Number((body as { updated_count?: unknown }).updated_count ?? 0);
       const total = Number((body as { total_count?: unknown }).total_count ?? 0);
+      const rawResults = Array.isArray((body as { results?: unknown[] }).results)
+        ? ((body as { results: Record<string, unknown>[] }).results)
+        : [];
+      const robot_results: BaselineRunRobotResult[] = rawResults.map((row) => {
+        const st = row.status;
+        const status: BaselineRunRobotResult["status"] =
+          st === "error" ? "error" : st === "no_baseline" ? "no_baseline" : "ok";
+        const bl = row.baseline_start_date != null ? String(row.baseline_start_date) : null;
+        return {
+          sn: String(row.sn ?? ""),
+          product_hint: row.product_hint != null ? String(row.product_hint) : null,
+          baseline_start_date: bl,
+          baseline_source: row.baseline_source != null ? String(row.baseline_source) : null,
+          status: row.status != null ? status : bl ? "ok" : "no_baseline",
+          error: row.error != null ? String(row.error) : null,
+        };
+      });
       setBaselineRunLog([
         {
           shop_id: shopId.trim(),
           shop_name: selectedShopName || undefined,
           updated_count: updated,
           total_count: total,
+          robot_results,
         },
       ]);
-      setSuccess(`Baseline re-detected for ${updated}/${total} robot(s) in this site.`);
+      const okC = robot_results.filter((x) => x.status === "ok").length;
+      const nbC = robot_results.filter((x) => x.status === "no_baseline").length;
+      const erC = robot_results.filter((x) => x.status === "error").length;
+      setSuccess(
+        `Baseline re-detected for ${updated}/${total} robot(s) in this site. Per-robot: ${okC} ok, ${nbC} no baseline, ${erC} failed.`
+      );
       await loadConsumables();
       await loadBaselineRefreshStatus();
     } catch (e) {
@@ -377,7 +412,12 @@ export default function RobotConsumablesPage() {
       setBaselineRunLog(siteRows);
       const runMeta = (body as { run?: BaselineRunMeta }).run;
       if (runMeta) setLastGlobalRun(runMeta);
-      setSuccess(`Global baseline re-detect completed: ${updated}/${total} robot(s) across ${sites} site(s).`);
+      const rd = (body as { robot_detail_summary?: { ok?: number; no_baseline?: number; error?: number } }).robot_detail_summary;
+      const rdLine =
+        rd != null
+          ? ` Per-robot: ${Number(rd.ok ?? 0)} ok, ${Number(rd.no_baseline ?? 0)} no baseline, ${Number(rd.error ?? 0)} failed.`
+          : "";
+      setSuccess(`Global baseline re-detect completed: ${updated}/${total} robot(s) across ${sites} site(s).${rdLine}`);
       await loadConsumables();
       await loadBaselineRefreshStatus();
     } catch (e) {
@@ -448,6 +488,9 @@ export default function RobotConsumablesPage() {
                 <span className="font-semibold">{lastGlobalRun.total_count}</span> robots across{" "}
                 <span className="font-semibold">{lastGlobalRun.site_count}</span> site(s)
               </p>
+              {lastGlobalRun.error_message ? (
+                <p className="mt-1 text-amber-800 dark:text-amber-200">{lastGlobalRun.error_message}</p>
+              ) : null}
               <p className="mt-0.5">
                 Started {formatDateTimeLabel(lastGlobalRun.started_at)} · Finished{" "}
                 {formatDateTimeLabel(lastGlobalRun.finished_at)}
@@ -523,6 +566,9 @@ export default function RobotConsumablesPage() {
                 <p className="text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">
                   Baseline re-detect progress log
                 </p>
+                <p className="mt-0.5 text-[11px] font-normal text-gray-500 dark:text-gray-400">
+                  Expand a site to see each robot: ok, no baseline (no first-run date from Pudu), or error. Failures do not stop the rest of the run.
+                </p>
               </div>
               <div className="overflow-x-auto">
                 <table className="min-w-full text-xs">
@@ -541,20 +587,95 @@ export default function RobotConsumablesPage() {
                         Total
                       </th>
                       <th className="px-3 py-2 text-left font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">
-                        Error
+                        Site / list issue
+                      </th>
+                      <th className="px-3 py-2 text-left font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">
+                        Per-robot
                       </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-stroke dark:divide-dark-3">
-                    {baselineRunLog.map((r, i) => (
-                      <tr key={`${r.shop_id}-${i}`} className="bg-white dark:bg-gray-dark">
-                        <td className="px-3 py-2">{r.shop_name || "—"}</td>
-                        <td className="px-3 py-2 font-mono">{r.shop_id}</td>
-                        <td className="px-3 py-2 font-semibold text-emerald-700 dark:text-emerald-300">{r.updated_count}</td>
-                        <td className="px-3 py-2">{r.total_count}</td>
-                        <td className="px-3 py-2 text-red-600 dark:text-red-400">{r.error || "—"}</td>
-                      </tr>
-                    ))}
+                    {baselineRunLog.map((r, i) => {
+                      const rr = r.robot_results ?? [];
+                      const okC = rr.filter((x) => x.status === "ok").length;
+                      const nbC = rr.filter((x) => x.status === "no_baseline").length;
+                      const erC = rr.filter((x) => x.status === "error").length;
+                      const siteIssue =
+                        r.error != null && r.error !== "" ? (
+                          <span className="text-red-600 dark:text-red-400">{r.error}</span>
+                        ) : r.warning != null && r.warning !== "" ? (
+                          <span className="text-amber-800 dark:text-amber-200">{r.warning}</span>
+                        ) : (
+                          "—"
+                        );
+                      return (
+                        <Fragment key={`${r.shop_id}-${i}`}>
+                          <tr className="bg-white dark:bg-gray-dark">
+                            <td className="px-3 py-2">{r.shop_name || "—"}</td>
+                            <td className="px-3 py-2 font-mono">{r.shop_id}</td>
+                            <td className="px-3 py-2 font-semibold text-emerald-700 dark:text-emerald-300">{r.updated_count}</td>
+                            <td className="px-3 py-2">{r.total_count}</td>
+                            <td className="max-w-[220px] break-words px-3 py-2">{siteIssue}</td>
+                            <td className="px-3 py-2">
+                              {rr.length === 0 ? (
+                                "—"
+                              ) : (
+                                <span className="text-gray-600 dark:text-gray-400">
+                                  {okC} ok · {nbC} no baseline · {erC} error
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                          {rr.length > 0 ? (
+                            <tr className="bg-gray-50/90 dark:bg-dark-2/40">
+                              <td colSpan={6} className="p-0">
+                                <details className="group border-t border-stroke dark:border-dark-3">
+                                  <summary className="cursor-pointer list-none px-3 py-2 text-[11px] font-medium text-indigo-700 marker:hidden hover:bg-indigo-50/60 dark:text-indigo-300 dark:hover:bg-indigo-950/20 [&::-webkit-details-marker]:hidden">
+                                    <span className="underline decoration-dotted group-open:no-underline">
+                                      Show {rr.length} robot(s) for this site
+                                    </span>
+                                  </summary>
+                                  <div className="overflow-x-auto border-t border-stroke px-2 pb-2 dark:border-dark-3">
+                                    <table className="min-w-[720px] w-full text-[11px]">
+                                      <thead>
+                                        <tr className="text-left text-gray-500 dark:text-gray-400">
+                                          <th className="px-2 py-1 font-semibold uppercase tracking-wide">Serial</th>
+                                          <th className="px-2 py-1 font-semibold uppercase tracking-wide">Product hint</th>
+                                          <th className="px-2 py-1 font-semibold uppercase tracking-wide">Status</th>
+                                          <th className="px-2 py-1 font-semibold uppercase tracking-wide">Baseline</th>
+                                          <th className="px-2 py-1 font-semibold uppercase tracking-wide">Error</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-stroke/80 dark:divide-dark-3">
+                                        {rr.map((bot) => (
+                                          <tr key={bot.sn} className="bg-white dark:bg-gray-dark">
+                                            <td className="px-2 py-1 font-mono">{bot.sn}</td>
+                                            <td className="px-2 py-1 font-mono">{bot.product_hint || "—"}</td>
+                                            <td className="px-2 py-1">
+                                              {bot.status === "ok" ? (
+                                                <span className="font-semibold text-emerald-700 dark:text-emerald-300">ok</span>
+                                              ) : bot.status === "no_baseline" ? (
+                                                <span className="font-semibold text-amber-800 dark:text-amber-200">no baseline</span>
+                                              ) : (
+                                                <span className="font-semibold text-red-600 dark:text-red-400">error</span>
+                                              )}
+                                            </td>
+                                            <td className="px-2 py-1 font-mono">{bot.baseline_start_date || "—"}</td>
+                                            <td className="max-w-[320px] break-words px-2 py-1 text-red-600 dark:text-red-400">
+                                              {bot.error || "—"}
+                                            </td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </details>
+                              </td>
+                            </tr>
+                          ) : null}
+                        </Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
