@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import type { ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { getApiBaseUrl } from "@/lib/utils";
@@ -75,6 +76,20 @@ function formatDate(dateString?: string | null) {
 }
 
 /** Normalize document_link for use as href: strip leading =, fix https:/ → https://. */
+const SOLAR_PANEL_CLEANING_UTILITY = "Solar panel cleaning";
+
+/** Same allowed types as member Additional Documents (DocumentsTab). */
+function validateSignedOfferUploadFile(file: File): string | null {
+  const n = file.name.toLowerCase();
+  const isPdf = n.endsWith(".pdf");
+  const isImage = n.endsWith(".png") || n.endsWith(".jpg") || n.endsWith(".jpeg");
+  const isOffice = [".xlsx", ".xls", ".docx", ".doc"].some((ext) => n.endsWith(ext));
+  if (!isPdf && !isImage && !isOffice) {
+    return "Please upload only PDF, image (PNG/JPG), Excel (.xlsx, .xls), or Word (.docx, .doc) files.";
+  }
+  return null;
+}
+
 function documentLinkHref(link: string | null | undefined): string | undefined {
   if (!link || typeof link !== "string") return undefined;
   let s = link.trim();
@@ -126,6 +141,10 @@ export default function OfferDetailPage() {
   const [addActivityNote, setAddActivityNote] = useState("");
   const [addActivityLink, setAddActivityLink] = useState("");
   const [addActivitySaving, setAddActivitySaving] = useState(false);
+
+  const signedOfferFileInputRef = useRef<HTMLInputElement>(null);
+  const [signedOfferUploading, setSignedOfferUploading] = useState(false);
+  const [signedOfferNotice, setSignedOfferNotice] = useState<string | null>(null);
 
   const documents = useMemo(() => {
     const items: {
@@ -456,6 +475,68 @@ export default function OfferDetailPage() {
     }
   };
 
+  const handleSignedOfferFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !offerId || !token) return;
+    const validationError = validateSignedOfferUploadFile(file);
+    if (validationError) {
+      setSignedOfferNotice(null);
+      setError(validationError);
+      return;
+    }
+    try {
+      setSignedOfferUploading(true);
+      setError(null);
+      setSignedOfferNotice(null);
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(
+        `${getApiBaseUrl()}/api/offers/${offerId}/solar-cleaning-signed-upload`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: fd,
+        },
+      );
+      const data = (await res.json().catch(() => ({}))) as {
+        detail?: string;
+        sheet_appended?: boolean;
+        sheet_error?: string | null;
+      };
+      if (!res.ok) {
+        throw new Error(
+          typeof data.detail === "string" ? data.detail : "Signed offer upload failed",
+        );
+      }
+      const actRes = await fetch(`${getApiBaseUrl()}/api/offers/${offerId}/activities`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+      if (actRes.ok) {
+        const list: OfferActivity[] = await actRes.json();
+        setActivities(list);
+      }
+      if (data.sheet_appended) {
+        setSignedOfferNotice("Signed offer uploaded and logged to the dashboard sheet.");
+      } else {
+        const se = data.sheet_error?.trim();
+        setSignedOfferNotice(
+          se
+            ? `Signed offer uploaded. Google Sheet row was not appended: ${se}`
+            : "Signed offer uploaded. Google Sheet row was not appended.",
+        );
+      }
+    } catch (err: unknown) {
+      setSignedOfferNotice(null);
+      setError(err instanceof Error ? err.message : "Signed offer upload failed");
+    } finally {
+      setSignedOfferUploading(false);
+    }
+  };
+
   const handleAddActivity = async () => {
     if (!offerId || !token) return;
     const note = addActivityNote.trim();
@@ -521,6 +602,11 @@ export default function OfferDetailPage() {
     <>
       <PageHeader pageName="Offer" title={offerTitle} description={offerDescription} />
       <div className="mt-4 space-y-4">
+        {signedOfferNotice && (
+          <div className="p-3 rounded-md bg-emerald-50 border border-emerald-200 text-sm text-emerald-800 dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-200">
+            {signedOfferNotice}
+          </div>
+        )}
         {error && (
           <div className="p-3 rounded-md bg-red-50 border border-red-200 text-sm text-red-700">
             {error}
@@ -854,15 +940,37 @@ export default function OfferDetailPage() {
 
               <div className="space-y-3">
                 <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
-                  <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-3 flex items-center justify-between">
+                  <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-3 flex items-center justify-between gap-2 flex-wrap">
                     <span>Documents & Links</span>
-                    <button
-                      type="button"
-                      onClick={() => setAddDocumentOpen(true)}
-                      className="text-xs font-medium text-primary hover:underline"
-                    >
-                      Add document or link
-                    </button>
+                    <span className="flex flex-wrap items-center gap-2 justify-end">
+                      {(offer.utility_type || "").trim() === SOLAR_PANEL_CLEANING_UTILITY &&
+                      offer.client_id ? (
+                        <>
+                          <input
+                            ref={signedOfferFileInputRef}
+                            type="file"
+                            className="hidden"
+                            accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls,.docx,.doc,application/pdf,image/*"
+                            onChange={handleSignedOfferFileChange}
+                          />
+                          <button
+                            type="button"
+                            disabled={signedOfferUploading}
+                            onClick={() => signedOfferFileInputRef.current?.click()}
+                            className="text-xs font-medium px-2 py-1 rounded-md border border-primary/30 text-primary hover:bg-primary/5 disabled:opacity-50"
+                          >
+                            {signedOfferUploading ? "Uploading…" : "Signed Offer Upload"}
+                          </button>
+                        </>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => setAddDocumentOpen(true)}
+                        className="text-xs font-medium text-primary hover:underline"
+                      >
+                        Add document or link
+                      </button>
+                    </span>
                   </h2>
                   {documents.length === 0 ? (
                     <p className="text-sm text-gray-500 dark:text-gray-400">
