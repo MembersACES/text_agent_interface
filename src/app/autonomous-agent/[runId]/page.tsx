@@ -491,20 +491,6 @@ function autonomousScheduleTimezoneLabel(tz: string): string {
   return tz === "Australia/Brisbane" ? "AEST (Australia/Brisbane)" : tz;
 }
 
-function proxyErrorMessage(data: any, fallback: string): string {
-  const base = (typeof data?.error === "string" && data.error) || fallback;
-  const upstreamUrl = typeof data?.upstream_url === "string" ? data.upstream_url : "";
-  const upstreamDetail =
-    (typeof data?.autonomous_response?.detail === "string" && data.autonomous_response.detail) ||
-    (typeof data?.autonomous_response?.error === "string" && data.autonomous_response.error) ||
-    (typeof data?.autonomous_response?.message === "string" && data.autonomous_response.message) ||
-    (typeof data?.detail === "string" && data.detail) ||
-    "";
-  return [base, upstreamUrl ? `URL: ${upstreamUrl}` : "", upstreamDetail ? `Detail: ${upstreamDetail}` : ""]
-    .filter(Boolean)
-    .join(" | ");
-}
-
 /** datetime-local (wall clock in run TZ) → UTC ISO for the API */
 function scheduleInputToIso(local: string, tz: string): string {
   const d = dayjs.tz(local, "YYYY-MM-DDTHH:mm", tz);
@@ -789,13 +775,21 @@ export default function AutonomousRunDetailPage() {
   };
 
   const handleStartSequenceNow = async () => {
-    if (!runId || !run || run.run_status !== "running") return;
+    if (!token || !runId || !run || run.run_status !== "running") return;
     setStartingNow(true);
     try {
-      const res = await fetch(`/api/autonomous/trigger-flows/run/${runId}`, { method: "POST" });
+      const res = await fetch(`${getAutonomousApiBaseUrl()}/run/run/${runId}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(proxyErrorMessage(data, "Start failed"));
+        const message =
+          (typeof data.detail === "string" && data.detail) ||
+          (typeof data.error === "string" && data.error) ||
+          (typeof data.message === "string" && data.message) ||
+          "Start failed";
+        throw new Error(message);
       }
       const msg =
         typeof data.message === "string" && data.message
@@ -816,13 +810,21 @@ export default function AutonomousRunDetailPage() {
   };
 
   const handleStartStepNow = async (stepId: number) => {
-    if (!runId || !run || run.run_status !== "running") return;
+    if (!token || !runId || !run || run.run_status !== "running") return;
     setStartingStepId(stepId);
     try {
-      const res = await fetch(`/api/autonomous/trigger-flows/step/${stepId}`, { method: "POST" });
+      const res = await fetch(`${getAutonomousApiBaseUrl()}/run/step/${stepId}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(proxyErrorMessage(data, "Step start failed"));
+        const message =
+          (typeof data.detail === "string" && data.detail) ||
+          (typeof data.error === "string" && data.error) ||
+          (typeof data.message === "string" && data.message) ||
+          "Step start failed";
+        throw new Error(message);
       }
       const msg =
         typeof data.message === "string" && data.message

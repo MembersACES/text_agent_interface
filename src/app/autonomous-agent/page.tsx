@@ -80,20 +80,6 @@ function formatDateTime(iso?: string | null) {
   }
 }
 
-function proxyErrorMessage(data: any, fallback: string): string {
-  const base = (typeof data?.error === "string" && data.error) || fallback;
-  const upstreamUrl = typeof data?.upstream_url === "string" ? data.upstream_url : "";
-  const upstreamDetail =
-    (typeof data?.autonomous_response?.detail === "string" && data.autonomous_response.detail) ||
-    (typeof data?.autonomous_response?.error === "string" && data.autonomous_response.error) ||
-    (typeof data?.autonomous_response?.message === "string" && data.autonomous_response.message) ||
-    (typeof data?.detail === "string" && data.detail) ||
-    "";
-  return [base, upstreamUrl ? `URL: ${upstreamUrl}` : "", upstreamDetail ? `Detail: ${upstreamDetail}` : ""]
-    .filter(Boolean)
-    .join(" | ");
-}
-
 const PAGE_SIZE = 20;
 
 const RESTARTABLE_SEQUENCE_TYPES = new Set([
@@ -482,12 +468,21 @@ export default function AutonomousAgentPage() {
   };
 
   const handleStartRunNow = async (runId: number) => {
+    if (!token) return;
     setStartingId(runId);
     try {
-      const res = await fetch(`/api/autonomous/trigger-flows/run/${runId}`, { method: "POST" });
+      const res = await fetch(`${getAutonomousApiBaseUrl()}/run/run/${runId}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(proxyErrorMessage(data, "Start failed"));
+        const message =
+          (typeof data.detail === "string" && data.detail) ||
+          (typeof data.error === "string" && data.error) ||
+          (typeof data.message === "string" && data.message) ||
+          "Start failed";
+        throw new Error(message);
       }
       const msg =
         typeof data.message === "string" && data.message
