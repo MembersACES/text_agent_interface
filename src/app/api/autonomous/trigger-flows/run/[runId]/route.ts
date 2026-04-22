@@ -62,6 +62,13 @@ export async function POST(
     );
 
     if (!upstream.ok) {
+      console.error("[autonomous-trigger-run] upstream failure", {
+        run_id: parsed,
+        autonomous_base: autonomousBase,
+        upstream_url: upstream.url,
+        status: upstream.status,
+        payload: upstream.payload,
+      });
       return NextResponse.json(
         {
           error: `Autonomous service returned ${upstream.status}`,
@@ -75,6 +82,10 @@ export async function POST(
     return NextResponse.json(upstream.payload ?? { ok: true });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Failed to trigger run";
+    console.error("[autonomous-trigger-run] unexpected error", {
+      message,
+      error,
+    });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

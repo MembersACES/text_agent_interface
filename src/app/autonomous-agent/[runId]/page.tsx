@@ -491,6 +491,20 @@ function autonomousScheduleTimezoneLabel(tz: string): string {
   return tz === "Australia/Brisbane" ? "AEST (Australia/Brisbane)" : tz;
 }
 
+function proxyErrorMessage(data: any, fallback: string): string {
+  const base = (typeof data?.error === "string" && data.error) || fallback;
+  const upstreamUrl = typeof data?.upstream_url === "string" ? data.upstream_url : "";
+  const upstreamDetail =
+    (typeof data?.autonomous_response?.detail === "string" && data.autonomous_response.detail) ||
+    (typeof data?.autonomous_response?.error === "string" && data.autonomous_response.error) ||
+    (typeof data?.autonomous_response?.message === "string" && data.autonomous_response.message) ||
+    (typeof data?.detail === "string" && data.detail) ||
+    "";
+  return [base, upstreamUrl ? `URL: ${upstreamUrl}` : "", upstreamDetail ? `Detail: ${upstreamDetail}` : ""]
+    .filter(Boolean)
+    .join(" | ");
+}
+
 /** datetime-local (wall clock in run TZ) → UTC ISO for the API */
 function scheduleInputToIso(local: string, tz: string): string {
   const d = dayjs.tz(local, "YYYY-MM-DDTHH:mm", tz);
@@ -781,11 +795,7 @@ export default function AutonomousRunDetailPage() {
       const res = await fetch(`/api/autonomous/trigger-flows/run/${runId}`, { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const message =
-          (typeof data.error === "string" && data.error) ||
-          (typeof data.detail === "string" && data.detail) ||
-          "Start failed";
-        throw new Error(message);
+        throw new Error(proxyErrorMessage(data, "Start failed"));
       }
       const msg =
         typeof data.message === "string" && data.message
@@ -812,11 +822,7 @@ export default function AutonomousRunDetailPage() {
       const res = await fetch(`/api/autonomous/trigger-flows/step/${stepId}`, { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const message =
-          (typeof data.error === "string" && data.error) ||
-          (typeof data.detail === "string" && data.detail) ||
-          "Step start failed";
-        throw new Error(message);
+        throw new Error(proxyErrorMessage(data, "Step start failed"));
       }
       const msg =
         typeof data.message === "string" && data.message
