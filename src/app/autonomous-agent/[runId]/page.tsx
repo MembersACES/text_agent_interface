@@ -438,11 +438,15 @@ function StatusBadge({ status, stopReason }: { status: string; stopReason?: stri
 function StepStatusPill({ status }: { status: string }) {
   const s = status.toLowerCase();
   const map: Record<string, string> = {
-    ready:     "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400",
-    running:   "bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300",
-    completed: "bg-sky-100 dark:bg-sky-950/50 text-sky-700 dark:text-sky-300",
-    skipped:   "bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300",
-    failed:    "bg-red-100 dark:bg-red-950/50 text-red-700 dark:text-red-300",
+    ready:        "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400",
+    "to_start":   "bg-slate-100 dark:bg-slate-900/50 text-slate-600 dark:text-slate-400",
+    running:      "bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300",
+    in_progress:  "bg-emerald-100 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300",
+    executed:     "bg-sky-100 dark:bg-sky-950/50 text-sky-700 dark:text-sky-300",
+    completed:    "bg-sky-100 dark:bg-sky-950/50 text-sky-700 dark:text-sky-300",
+    skipped:      "bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300",
+    error:        "bg-red-100 dark:bg-red-950/50 text-red-700 dark:text-red-300",
+    failed:       "bg-red-100 dark:bg-red-950/50 text-red-700 dark:text-red-300",
   };
   const cls = map[s] ?? "bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400";
   return (
@@ -920,7 +924,11 @@ export default function AutonomousRunDetailPage() {
 
   // Progress bar calc
   const stepsTotal = run?.steps.length ?? 0;
-  const stepsDone  = run?.steps.filter(s => s.step_status === "completed").length ?? 0;
+  const stepsDone =
+    run?.steps.filter((s) => {
+      const x = s.step_status.toLowerCase();
+      return x === "executed" || x === "completed";
+    }).length ?? 0;
   const pct        = stepsTotal > 0 ? Math.round((stepsDone / stepsTotal) * 100) : 0;
 
   return (
