@@ -1,39 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import {
+  getAutonomousRunnerTriggerBearer,
+  postAutonomousRunner,
+} from "@/lib/autonomous-runner-trigger";
 import { getAutonomousRunnerApiBaseUrl } from "@/lib/utils";
 
 function resolveRunnerBaseUrl(): string | null {
   return getAutonomousRunnerApiBaseUrl();
-}
-
-async function postWithFallback(
-  baseUrl: string,
-  paths: string[],
-  apiKey: string,
-): Promise<{ ok: boolean; status: number; url: string; payload: unknown }> {
-  let last: { ok: boolean; status: number; url: string; payload: unknown } | null = null;
-  for (const p of paths) {
-    const url = `${baseUrl}${p}`;
-    const upstreamRes = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-    });
-    const text = await upstreamRes.text();
-    let payload: unknown = null;
-    try {
-      payload = text ? JSON.parse(text) : null;
-    } catch {
-      payload = { raw: text };
-    }
-    const result = { ok: upstreamRes.ok, status: upstreamRes.status, url, payload };
-    if (upstreamRes.ok) return result;
-    last = result;
-  }
-  return last ?? { ok: false, status: 500, url: `${baseUrl}${paths[0] ?? ""}`, payload: null };
 }
 
 export async function POST(
@@ -52,7 +27,17 @@ export async function POST(
       return NextResponse.json({ error: "Invalid run id" }, { status: 400 });
     }
 
-    const apiKey = process.env.BACKEND_API_KEY || "test-key";
+    const bearer = getAutonomousRunnerTriggerBearer();
+    if (!bearer) {
+      return NextResponse.json(
+        {
+          error:
+            "Runner auth is not configured. Set AUTONOMOUS_RUNNER_API_KEY (recommended) or BACKEND_API_KEY on this service to the exact same value as autonomous_agent_backend's BACKEND_API_KEY (Cloud Run → autonomous service → Variables).",
+        },
+        { status: 503 },
+      );
+    }
+
     const runnerBase = resolveRunnerBaseUrl();
     if (!runnerBase) {
       return NextResponse.json(
@@ -63,7 +48,8 @@ export async function POST(
         { status: 503 },
       );
     }
-    const upstream = await postWithFallback(runnerBase, [`/run/run/${parsed}`, `/api/run/run/${parsed}`], apiKey);
+
+    const upstream = await postAutonomousRunner(runnerBase, `/run/run/${parsed}`, bearer);
 
     if (!upstream.ok) {
       console.error("[autonomous-trigger-run] upstream failure", {
@@ -73,9 +59,12 @@ export async function POST(
         status: upstream.status,
         payload: upstream.payload,
       });
+      const is401 = upstream.status === 401;
       return NextResponse.json(
         {
-          error: `Upstream returned ${upstream.status}`,
+          error: is401
+            ? "Autonomous runner rejected the bearer token (401). Set interface AUTONOMOUS_RUNNER_API_KEY or BACKEND_API_KEY to match autonomous_agent_backend BACKEND_API_KEY exactly."
+            : `Upstream returned ${upstream.status}`,
           upstream_url: upstream.url,
           autonomous_response: upstream.payload,
         },
