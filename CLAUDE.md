@@ -27,7 +27,7 @@ No test framework is configured — there are no test commands.
 - **Next.js 15** (App Router) with React 19, TypeScript, Tailwind CSS 3
 - **Auth**: NextAuth v4 with Google OAuth (JWT strategy). Domain-restricted to `acesolutions.com.au` (enforced in `src/app/providers.tsx` AuthGate)
 - **Styling**: Tailwind CSS with custom theme (Satoshi font, `primary: #5750F1`). Dark mode via `next-themes` (class strategy). Prettier plugin sorts Tailwind classes.
-- **Backend**: Separate FastAPI server. URL resolved dynamically in `src/lib/utils.ts` (`getApiBaseUrl`) — dev defaults to `localhost:8000`, prod/preview uses Cloud Run URLs. Autonomous sequence calls (`/api/autonomous/*`) use `getAutonomousApiBaseUrl()`; set `NEXT_PUBLIC_AUTONOMOUS_API_BASE_URL` when that API lives on a dedicated host (otherwise same as main API).
+- **Backend**: Separate FastAPI server. URL resolved dynamically in `src/lib/utils.ts` (`getApiBaseUrl`) — dev defaults to `localhost:8000`, prod/preview uses Cloud Run URLs. Autonomous sequence reads (`/api/autonomous/*`) use `getAutonomousApiBaseUrl()`. **Runner triggers** (`/api/autonomous/trigger-flows/...`) use `getAutonomousRunnerApiBaseUrl()` and only call `POST /run/run/*` / `POST /run/step/*` on that host — configure `AUTONOMOUS_RUNNER_API_URL` (or `AUTONOMOUS_API_URL` / `NEXT_PUBLIC_AUTONOMOUS_API_BASE_URL`) to the Cloud Run service that implements those routes, not the CRM monolith.
 
 ### Key Directory Layout
 - `src/app/` — Next.js App Router pages. Route groups: `(home)` for dashboard home

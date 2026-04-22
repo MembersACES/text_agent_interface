@@ -43,12 +43,33 @@ export function getApiBaseUrl(requestHost?: string): string {
 export function getAutonomousApiBaseUrl(requestHost?: string): string {
   const trim = (u: string) => u.replace(/\/$/, "");
   const publicUrl = process.env.NEXT_PUBLIC_AUTONOMOUS_API_BASE_URL?.trim();
-  if (publicUrl) return trim(publicUrl);
+  const serverOnly = process.env.AUTONOMOUS_API_URL?.trim();
+  // Server (API routes, SSR): prefer AUTONOMOUS_API_URL so Cloud Run runtime env
+  // reliably overrides NEXT_PUBLIC_* (which may not be present at runtime depending on build).
   if (typeof window === "undefined") {
-    const serverOnly = process.env.AUTONOMOUS_API_URL?.trim();
     if (serverOnly) return trim(serverOnly);
+    if (publicUrl) return trim(publicUrl);
+    return getApiBaseUrl(requestHost);
   }
+  // Browser: NEXT_PUBLIC_* is the supported override.
+  if (publicUrl) return trim(publicUrl);
   return getApiBaseUrl(requestHost);
+}
+
+/**
+ * Base URL for the autonomous *runner* service (`POST /run/run/{id}`, `POST /run/step/{id}`).
+ * Intentionally does not fall back to the main CRM API — set one of the env vars below
+ * to the Cloud Run service that implements those routes.
+ */
+export function getAutonomousRunnerApiBaseUrl(): string | null {
+  const trim = (u: string) => u.replace(/\/$/, "");
+  const runnerOnly = process.env.AUTONOMOUS_RUNNER_API_URL?.trim();
+  if (runnerOnly) return trim(runnerOnly);
+  const serverOnly = process.env.AUTONOMOUS_API_URL?.trim();
+  if (serverOnly) return trim(serverOnly);
+  const publicUrl = process.env.NEXT_PUBLIC_AUTONOMOUS_API_BASE_URL?.trim();
+  if (publicUrl) return trim(publicUrl);
+  return null;
 }
 
 export function getCanvaApiBaseUrl() {

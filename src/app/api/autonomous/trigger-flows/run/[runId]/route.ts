@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { getAutonomousApiBaseUrl } from "@/lib/utils";
+import { getAutonomousRunnerApiBaseUrl } from "@/lib/utils";
 
-function resolveAutonomousBaseUrl(req: NextRequest): string {
-  const host = req.headers.get("host") ?? undefined;
-  return getAutonomousApiBaseUrl(host).replace(/\/$/, "");
+function resolveRunnerBaseUrl(): string | null {
+  return getAutonomousRunnerApiBaseUrl();
 }
 
 async function postWithFallback(
@@ -54,24 +53,29 @@ export async function POST(
     }
 
     const apiKey = process.env.BACKEND_API_KEY || "test-key";
-    const autonomousBase = resolveAutonomousBaseUrl(req);
-    const upstream = await postWithFallback(
-      autonomousBase,
-      [`/run/run/${parsed}`, `/api/run/run/${parsed}`],
-      apiKey,
-    );
+    const runnerBase = resolveRunnerBaseUrl();
+    if (!runnerBase) {
+      return NextResponse.json(
+        {
+          error:
+            "Autonomous runner base URL is not configured. Set AUTONOMOUS_RUNNER_API_URL (recommended), AUTONOMOUS_API_URL, or NEXT_PUBLIC_AUTONOMOUS_API_BASE_URL to the service that exposes POST /run/run/{id} (this must not be the CRM monolith).",
+        },
+        { status: 503 },
+      );
+    }
+    const upstream = await postWithFallback(runnerBase, [`/run/run/${parsed}`, `/api/run/run/${parsed}`], apiKey);
 
     if (!upstream.ok) {
       console.error("[autonomous-trigger-run] upstream failure", {
         run_id: parsed,
-        autonomous_base: autonomousBase,
+        runner_base: runnerBase,
         upstream_url: upstream.url,
         status: upstream.status,
         payload: upstream.payload,
       });
       return NextResponse.json(
         {
-          error: `Autonomous service returned ${upstream.status}`,
+          error: `Upstream returned ${upstream.status}`,
           upstream_url: upstream.url,
           autonomous_response: upstream.payload,
         },
