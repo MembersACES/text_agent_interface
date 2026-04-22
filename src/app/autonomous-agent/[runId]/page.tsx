@@ -616,6 +616,8 @@ export default function AutonomousRunDetailPage() {
   const [contactPhone, setContactPhone] = useState("");
   const [siteIdentifiers, setSiteIdentifiers] = useState<string[]>([]);
   const [savingContext, setSavingContext] = useState(false);
+  const [startingNow, setStartingNow] = useState(false);
+  const [startingStepId, setStartingStepId] = useState<number | null>(null);
   const [stopping, setStopping] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [scheduleDrafts, setScheduleDrafts] = useState<Record<number, string>>({});
@@ -772,6 +774,68 @@ export default function AutonomousRunDetailPage() {
     } finally { setStopping(false); }
   };
 
+  const handleStartSequenceNow = async () => {
+    if (!runId || !run || run.run_status !== "running") return;
+    setStartingNow(true);
+    try {
+      const res = await fetch(`/api/autonomous/trigger-flows/run/${runId}`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const message =
+          (typeof data.error === "string" && data.error) ||
+          (typeof data.detail === "string" && data.detail) ||
+          "Start failed";
+        throw new Error(message);
+      }
+      const msg =
+        typeof data.message === "string" && data.message
+          ? data.message
+          : `Sequence #${runId} trigger sent.`;
+      showToast(msg, "success");
+      try {
+        const refreshed = await loadRun();
+        if (refreshed) applyContextFromRun(refreshed);
+      } catch {
+        // Non-blocking: trigger already succeeded.
+      }
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : "Start failed", "error");
+    } finally {
+      setStartingNow(false);
+    }
+  };
+
+  const handleStartStepNow = async (stepId: number) => {
+    if (!runId || !run || run.run_status !== "running") return;
+    setStartingStepId(stepId);
+    try {
+      const res = await fetch(`/api/autonomous/trigger-flows/step/${stepId}`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const message =
+          (typeof data.error === "string" && data.error) ||
+          (typeof data.detail === "string" && data.detail) ||
+          "Step start failed";
+        throw new Error(message);
+      }
+      const msg =
+        typeof data.message === "string" && data.message
+          ? data.message
+          : `Step #${stepId} trigger sent.`;
+      showToast(msg, "success");
+      try {
+        const refreshed = await loadRun();
+        if (refreshed) applyContextFromRun(refreshed);
+      } catch {
+        // Non-blocking: trigger already succeeded.
+      }
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : "Step start failed", "error");
+    } finally {
+      setStartingStepId(null);
+    }
+  };
+
   const handleDeleteSequence = async () => {
     if (!token || !runId || !run) return;
     if (
@@ -915,8 +979,18 @@ export default function AutonomousRunDetailPage() {
                 {isRunning && (
                   <button
                     type="button"
+                    onClick={handleStartSequenceNow}
+                    disabled={startingNow || stopping || deleting}
+                    className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 transition shadow-sm"
+                  >
+                    {startingNow ? <><span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />Starting…</> : <>▶ Start</>}
+                  </button>
+                )}
+                {isRunning && (
+                  <button
+                    type="button"
                     onClick={handleStopSequence}
-                    disabled={stopping || deleting}
+                    disabled={stopping || deleting || startingNow}
                     className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition shadow-sm"
                   >
                     {stopping ? <><span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />Stopping…</> : <>⏹ Stop sequence</>}
@@ -925,7 +999,7 @@ export default function AutonomousRunDetailPage() {
                 <button
                   type="button"
                   onClick={handleDeleteSequence}
-                  disabled={deleting || stopping}
+                  disabled={deleting || stopping || startingNow}
                   className="flex items-center gap-2 rounded-lg border border-red-200 dark:border-red-900 bg-white dark:bg-gray-900 px-4 py-2 text-sm font-semibold text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 disabled:opacity-50 transition"
                 >
                   {deleting ? (
@@ -1055,25 +1129,37 @@ export default function AutonomousRunDetailPage() {
                             <StepStatusPill status={s.step_status} />
                           </div>
                           {editable ? (
-                            <label className="block text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-                              Scheduled (local)
-                              <input
-                                type="datetime-local"
-                                value={scheduleDrafts[s.id] ?? ""}
-                                onChange={(e) =>
-                                  setScheduleDrafts((prev) =>
-                                    applySequentialCascadeToDrafts(
-                                      orderedSteps,
-                                      s.id,
-                                      e.target.value,
-                                      run.timezone,
-                                      prev,
-                                    ),
-                                  )
-                                }
-                                className={`${scheduleInputCls} mt-0.5 block w-full`}
-                              />
-                            </label>
+                            <div className="space-y-2">
+                              <label className="block text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                                Scheduled (local)
+                                <input
+                                  type="datetime-local"
+                                  value={scheduleDrafts[s.id] ?? ""}
+                                  onChange={(e) =>
+                                    setScheduleDrafts((prev) =>
+                                      applySequentialCascadeToDrafts(
+                                        orderedSteps,
+                                        s.id,
+                                        e.target.value,
+                                        run.timezone,
+                                        prev,
+                                      ),
+                                    )
+                                  }
+                                  className={`${scheduleInputCls} mt-0.5 block w-full`}
+                                />
+                              </label>
+                              {isRunning && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleStartStepNow(s.id)}
+                                  disabled={startingStepId === s.id || startingNow || stopping || deleting}
+                                  className="inline-flex items-center rounded-md border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-[11px] font-semibold px-2 py-1 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition disabled:opacity-40"
+                                >
+                                  {startingStepId === s.id ? "Starting…" : "Start now"}
+                                </button>
+                              )}
+                            </div>
                           ) : (
                             <p className="text-xs text-gray-400 dark:text-gray-500">{formatDt(s.scheduled_at)}</p>
                           )}
