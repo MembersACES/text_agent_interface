@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 
+function vinylWrapGeneratorMode(): "deterministic" | "n8n" {
+  const m = (process.env.VINYL_WRAP_GENERATOR_MODE || "deterministic").trim().toLowerCase();
+  return m === "n8n" ? "n8n" : "deterministic";
+}
+
 /**
  * n8n: ACES vinyl robot wrap edit/regenerate flow.
  * Expects file_id + edit_prompt and returns the same shape as generate.
@@ -79,6 +84,17 @@ export async function POST(req: NextRequest) {
     const session = await getServerSession(authOptions);
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    if (vinylWrapGeneratorMode() !== "n8n") {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "AI wrap editing is only available when VINYL_WRAP_GENERATOR_MODE=n8n. For the spec board, change colours or logo above and click Generate (or Regenerate spec board on the result panel).",
+        },
+        { status: 400 }
+      );
     }
 
     const bodyRaw = await req.json();

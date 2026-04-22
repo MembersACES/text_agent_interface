@@ -1,11 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
+import type { Session } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { getApiBaseUrl } from "@/lib/utils";
 
 /**
- * n8n: ACES vinyl robot wrap — 4-panel mockup generation.
- * Update this webhook URL if the workflow path changes.
+ * deterministic (default): FastAPI POST /api/vinyl-wrap/generate — SVG spec board.
+ * n8n: legacy webhook (ACES vinyl robot wrap — 4-panel mockup).
  */
+function vinylWrapGeneratorMode(): "deterministic" | "n8n" {
+  const m = (process.env.VINYL_WRAP_GENERATOR_MODE || "deterministic").trim().toLowerCase();
+  return m === "n8n" ? "n8n" : "deterministic";
+}
+
 const VINYL_ROBOT_WRAP_WEBHOOK_URL =
   "https://membersaces.app.n8n.cloud/webhook/vinyl-robot-wrap-generation";
 
@@ -98,6 +105,121 @@ function normalizeResponse(obj: Record<string, unknown>) {
   };
 }
 
+function stripDataUrlBase64(b64: string): string {
+  return b64.trim().replace(/^data:[^;]+;base64,/i, "");
+}
+
+/** Display name for spec board: trading-as if set, else legal business name. */
+function resolveClientNameForSpec(client: Record<string, unknown> | undefined): string {
+  const trading =
+    client && typeof client.trading_as === "string" ? client.trading_as.trim() : "";
+  const legal = client && typeof client.name === "string" ? client.name.trim() : "";
+  return trading || legal;
+}
+
+async function postDeterministicVinylWrap(req: NextRequest, body: Record<string, unknown>, session: Session) {
+  const client = typeof body.client === "object" && body.client !== null ? (body.client as Record<string, unknown>) : undefined;
+  const brand =
+    typeof body.brand === "object" && body.brand !== null ? (body.brand as Record<string, unknown>) : undefined;
+
+  const client_name = resolveClientNameForSpec(client);
+  if (!client_name) {
+    return NextResponse.json(
+      { success: false, error: "client.name or client.trading_as is required for spec board generation." },
+      { status: 400 }
+    );
+  }
+
+  const primary = typeof brand?.primary_colour === "string" ? brand.primary_colour.trim() : "";
+  const secondary = typeof brand?.secondary_colour === "string" ? brand.secondary_colour.trim() : "";
+  const textC = typeof brand?.text_colour === "string" ? brand.text_colour.trim() : "";
+  if (!primary || !secondary || !textC) {
+    return NextResponse.json(
+      { success: false, error: "brand.primary_colour, secondary_colour, and text_colour are required." },
+      { status: 400 }
+    );
+  }
+
+  const extraColours = Array.isArray(brand?.extra_colours) ? brand?.extra_colours : [];
+  const extra_details = typeof body.extra_details === "string" ? body.extra_details : "";
+
+  const logo = (body.logo ?? null) as IncomingLogo | null;
+  const logoFilename =
+    logo && typeof logo.filename === "string" && logo.filename.trim()
+      ? logo.filename.trim()
+      : "logo.png";
+  const logoMimeType =
+    logo && typeof logo.mime_type === "string" && logo.mime_type.trim()
+      ? logo.mime_type.trim()
+      : "application/octet-stream";
+  const logoBase64Raw =
+    logo && typeof logo.base64 === "string" && logo.base64.trim()
+      ? stripDataUrlBase64(logo.base64)
+      : "";
+  const logoBase64 = logoBase64Raw.trim();
+
+  const requestHost = req.headers.get("x-forwarded-host") || req.headers.get("host") || "";
+  const backendUrl = getApiBaseUrl(requestHost);
+  const token = (session as { id_token?: string; accessToken?: string })?.id_token ||
+    (session as { accessToken?: string })?.accessToken;
+  const apiKey = process.env.BACKEND_API_KEY || "test-key";
+  const authToken =
+    token && token !== "undefined" && typeof token === "string" ? token : apiKey;
+
+  const form = new FormData();
+  form.append("client_name", client_name);
+  form.append("primary_colour", primary);
+  form.append("secondary_colour", secondary);
+  form.append("text_colour", textC);
+  form.append("extra_colours_json", JSON.stringify(extraColours));
+  form.append("extra_details", extra_details);
+
+  if (logoBase64.length > 0) {
+    const logoBytes = Buffer.from(logoBase64, "base64");
+    const logoBlob = new Blob([logoBytes], { type: logoMimeType });
+    form.append("logo_file", logoBlob, logoFilename);
+  }
+
+  const res = await fetch(`${backendUrl}/api/vinyl-wrap/generate`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${authToken}`,
+    },
+    body: form,
+  });
+
+  const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!res.ok) {
+    const detail =
+      (typeof data.detail === "string" ? data.detail : null) ||
+      (typeof data.error === "string" ? data.error : null) ||
+      "Vinyl wrap generation failed";
+    return NextResponse.json({ success: false, error: detail }, { status: res.status });
+  }
+
+  const image_base64 =
+    typeof data.image_base64 === "string" ? stripDataUrlBase64(data.image_base64) : undefined;
+  const image_mime = typeof data.image_mime === "string" ? data.image_mime : "image/svg+xml";
+  const svg_text = typeof data.svg_text === "string" ? data.svg_text : undefined;
+  const filename = typeof data.filename === "string" ? data.filename : undefined;
+
+  if (!image_base64) {
+    return NextResponse.json(
+      { success: false, error: "Backend did not return image_base64." },
+      { status: 502 }
+    );
+  }
+
+  return NextResponse.json({
+    success: true,
+    image_base64,
+    image_mime,
+    svg_text,
+    filename,
+    generator_mode: "deterministic" as const,
+  });
+}
+
 export async function POST(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
@@ -110,6 +232,11 @@ export async function POST(req: NextRequest) {
       typeof bodyRaw === "object" && bodyRaw !== null
         ? (bodyRaw as Record<string, unknown>)
         : {};
+
+    if (vinylWrapGeneratorMode() === "deterministic") {
+      return postDeterministicVinylWrap(req, body, session);
+    }
+
     const logo = (body.logo ?? null) as IncomingLogo | null;
     const { logo: _ignoredLogo, ...restBody } = body;
 
@@ -212,6 +339,7 @@ export async function POST(req: NextRequest) {
       image_url: normalized.image_url,
       image_base64: normalized.image_base64,
       file_id: normalized.file_id,
+      generator_mode: "n8n" as const,
     });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : "Request failed";

@@ -13,8 +13,20 @@ interface GenerateResult {
   success: boolean;
   image_url?: string;
   image_base64?: string;
+  image_mime?: string;
   file_id?: string;
   error?: string;
+  svg_text?: string;
+  filename?: string;
+  generator_mode?: "deterministic" | "n8n";
+}
+
+/** Build a data URL for preview; supports raw base64 with separate MIME (SVG) or legacy PNG. */
+function buildPreviewDataUrl(image_base64: string | undefined, image_mime: string | undefined): string | null {
+  if (!image_base64) return null;
+  const raw = image_base64.replace(/^data:image\/[^;]+;base64,/i, "").trim();
+  const mime = (image_mime && image_mime.trim()) || "image/png";
+  return `data:${mime};base64,${raw}`;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -283,9 +295,10 @@ export default function VinylRobotWrapPage() {
     }
   }
 
-  const imageSrc = result?.image_base64
-    ? `data:image/png;base64,${result.image_base64}`
-    : result?.image_url ?? null;
+  const imageSrc = buildPreviewDataUrl(result?.image_base64, result?.image_mime) ?? result?.image_url ?? null;
+
+  const isSvgPreview =
+    result?.image_mime === "image/svg+xml" || result?.generator_mode === "deterministic";
 
   const promptPreview = `Client: ${businessName || "(none)"}
 Primary: ${primary} | Secondary: ${secondary} | Text: ${textColour}
@@ -294,7 +307,7 @@ Logo: ${logoFile ? logoFile.name : "none"}${logoDescription ? ` — ${logoDescri
 ${extraDetails ? `Notes: ${extraDetails}` : ""}`.trim();
 
   async function handleDownloadPdf() {
-    if (!imageSrc) return;
+    if (!imageSrc || isSvgPreview) return;
     try {
       const { jsPDF } = await import("jspdf/dist/jspdf.umd.min.js");
       const img = new Image();
@@ -1116,7 +1129,7 @@ ${extraDetails ? `Notes: ${extraDetails}` : ""}`.trim();
             {/* Prompt Preview */}
             <div className="vw-section">
               <button className="prompt-toggle" onClick={() => setShowPrompt(!showPrompt)}>
-                {showPrompt ? "▾" : "▸"} Prompt preview (sent to n8n)
+                {showPrompt ? "▾" : "▸"} Prompt / payload preview
               </button>
               {showPrompt && <div className="prompt-box">{promptPreview}</div>}
             </div>
@@ -1152,7 +1165,7 @@ ${extraDetails ? `Notes: ${extraDetails}` : ""}`.trim();
             {/* Result */}
             <div className="result-panel" ref={resultRef}>
               <div className="result-panel-header">
-                <span className="result-panel-title">Mockup Result</span>
+                <span className="result-panel-title">{isSvgPreview ? "Spec board" : "Mockup result"}</span>
                 {result?.image_url && (
                   <a
                     href={result.image_url}
@@ -1173,23 +1186,39 @@ ${extraDetails ? `Notes: ${extraDetails}` : ""}`.trim();
 
                 {status === "success" && imageSrc && (
                   <>
-                    <img src={imageSrc} alt="Vinyl wrap mockup" className="result-image" />
+                    <img
+                      src={imageSrc}
+                      alt={isSvgPreview ? "Vinyl wrap specification board" : "Vinyl wrap mockup"}
+                      className="result-image"
+                    />
                     <div className="result-actions">
                       <div className="result-actions-row">
-                        <a
-                          href={imageSrc}
-                          download={`${businessName || "vinyl-wrap"}-mockup.png`}
-                          className="btn-action btn-action-primary"
-                        >
-                          ⬇ Download PNG
-                        </a>
-                        <button
-                          type="button"
-                          className="btn-action btn-action-primary"
-                          onClick={handleDownloadPdf}
-                        >
-                          ⬇ Download PDF
-                        </button>
+                        {isSvgPreview ? (
+                          <a
+                            href={imageSrc}
+                            download={result?.filename ?? `${businessName || "vinyl-wrap"} - Vinyl Wrap Spec Board.svg`}
+                            className="btn-action btn-action-primary"
+                          >
+                            ⬇ Download SVG
+                          </a>
+                        ) : (
+                          <a
+                            href={imageSrc}
+                            download={`${businessName || "vinyl-wrap"}-mockup.png`}
+                            className="btn-action btn-action-primary"
+                          >
+                            ⬇ Download PNG
+                          </a>
+                        )}
+                        {!isSvgPreview && (
+                          <button
+                            type="button"
+                            className="btn-action btn-action-primary"
+                            onClick={handleDownloadPdf}
+                          >
+                            ⬇ Download PDF
+                          </button>
+                        )}
                       </div>
                       <div className="result-actions-row">
                         {result?.image_url && (
@@ -1202,14 +1231,24 @@ ${extraDetails ? `Notes: ${extraDetails}` : ""}`.trim();
                             ↗ View in Drive
                           </a>
                         )}
-                        <button
-                          type="button"
-                          className="btn-action btn-action-secondary"
-                          onClick={() => setShowEditModal(true)}
-                          disabled={!currentFileId || regenerating}
-                        >
-                          {regenerating ? "Regenerating…" : "Edit wrap"}
-                        </button>
+                        {isSvgPreview ? (
+                          <button
+                            type="button"
+                            className="btn-action btn-action-secondary"
+                            onClick={() => void handleGenerate()}
+                          >
+                            Regenerate spec board
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className="btn-action btn-action-secondary"
+                            onClick={() => setShowEditModal(true)}
+                            disabled={!currentFileId || regenerating}
+                          >
+                            {regenerating ? "Regenerating…" : "Edit wrap"}
+                          </button>
+                        )}
                       </div>
                     </div>
                   </>
