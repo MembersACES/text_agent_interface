@@ -163,6 +163,7 @@ export default function AutonomousAgentPage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [stoppingId, setStoppingId] = useState<number | null>(null);
+  const [startingId, setStartingId] = useState<number | null>(null);
   const [restartingId, setRestartingId] = useState<number | null>(null);
   const [templates, setTemplates] = useState<SequenceTemplate[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
@@ -464,6 +465,31 @@ export default function AutonomousAgentPage() {
     } catch (e: unknown) {
       showToast(e instanceof Error ? e.message : "Stop failed", "error");
     } finally { setStoppingId(null); }
+  };
+
+  const handleStartRunNow = async (runId: number) => {
+    setStartingId(runId);
+    try {
+      const res = await fetch(`/api/autonomous/trigger-flows/run/${runId}`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const message =
+          (typeof data.error === "string" && data.error) ||
+          (typeof data.detail === "string" && data.detail) ||
+          (typeof data.message === "string" && data.message) ||
+          "Start failed";
+        throw new Error(message);
+      }
+      const msg =
+        typeof data.message === "string" && data.message
+          ? data.message
+          : `Sequence #${runId} trigger sent.`;
+      showToast(msg, "success");
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : "Start failed", "error");
+    } finally {
+      setStartingId(null);
+    }
   };
 
   const handleRestartRun = async (runId: number) => {
@@ -955,8 +981,18 @@ export default function AutonomousAgentPage() {
                             Offer
                           </Link>
                           {tab === "running" && r.run_status === "running" && (
+                            <button
+                              type="button"
+                              disabled={startingId === r.id || stoppingId === r.id || deletingId === r.id || restartingId === r.id}
+                              onClick={() => handleStartRunNow(r.id)}
+                              className="inline-flex items-center rounded-md border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-[11px] font-semibold px-2 py-1 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition disabled:opacity-40"
+                            >
+                              {startingId === r.id ? "Starting…" : "Start"}
+                            </button>
+                          )}
+                          {tab === "running" && r.run_status === "running" && (
                             <button type="button"
-                              disabled={stoppingId === r.id || deletingId === r.id || restartingId === r.id}
+                              disabled={stoppingId === r.id || deletingId === r.id || restartingId === r.id || startingId === r.id}
                               onClick={() => handleStopRun(r.id)}
                               className="inline-flex items-center rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 text-[11px] font-semibold px-2 py-1 hover:bg-amber-100 dark:hover:bg-amber-900/50 transition disabled:opacity-40">
                               {stoppingId === r.id ? "Stopping…" : "Stop"}
@@ -973,7 +1009,7 @@ export default function AutonomousAgentPage() {
                               </button>
                             )}
                           <button type="button"
-                            disabled={deletingId === r.id || stoppingId === r.id || restartingId === r.id}
+                            disabled={deletingId === r.id || stoppingId === r.id || restartingId === r.id || startingId === r.id}
                             onClick={() => handleDeleteRun(r.id)}
                             className="inline-flex items-center rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 text-[11px] font-semibold px-2 py-1 hover:bg-red-100 dark:hover:bg-red-900/50 transition disabled:opacity-40">
                             {deletingId === r.id ? "Deleting…" : "Delete"}

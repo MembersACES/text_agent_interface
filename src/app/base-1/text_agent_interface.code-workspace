@@ -5,6 +5,9 @@
 		},
 		{
 			"path": "../../../../text_agent_backend"
+		},
+		{
+			"path": "../../../../autonomous_agent_backend"
 		}
 	],
 	"settings": {}
