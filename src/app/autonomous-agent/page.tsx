@@ -468,18 +468,14 @@ export default function AutonomousAgentPage() {
   };
 
   const handleStartRunNow = async (runId: number) => {
-    if (!token) return;
     setStartingId(runId);
     try {
-      const res = await fetch(`${getAutonomousApiBaseUrl()}/run/run/${runId}`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      });
+      const res = await fetch(`/api/autonomous/trigger-flows/run/${runId}`, { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         const message =
-          (typeof data.detail === "string" && data.detail) ||
           (typeof data.error === "string" && data.error) ||
+          (typeof data.detail === "string" && data.detail) ||
           (typeof data.message === "string" && data.message) ||
           "Start failed";
         throw new Error(message);

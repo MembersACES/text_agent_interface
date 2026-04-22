@@ -44,16 +44,6 @@ export function getAutonomousApiBaseUrl(requestHost?: string): string {
   const trim = (u: string) => u.replace(/\/$/, "");
   const publicUrl = process.env.NEXT_PUBLIC_AUTONOMOUS_API_BASE_URL?.trim();
   if (publicUrl) return trim(publicUrl);
-  // Safety override for Cloud Run dev frontend hostname when build-time env wasn't baked.
-  // Keeps autonomous calls on the dedicated autonomous service during dev testing.
-  const devAutonomousHost =
-    "https://autonomous-agent-backend-git-672026052958.australia-southeast2.run.app";
-  if (typeof window === "undefined") {
-    const host = requestHost ?? process.env.VERCEL_URL ?? "";
-    if (host.includes("acesagentinterfacedev")) return trim(devAutonomousHost);
-  } else if (window.location.hostname.includes("acesagentinterfacedev")) {
-    return trim(devAutonomousHost);
-  }
   if (typeof window === "undefined") {
     const serverOnly = process.env.AUTONOMOUS_API_URL?.trim();
     if (serverOnly) return trim(serverOnly);

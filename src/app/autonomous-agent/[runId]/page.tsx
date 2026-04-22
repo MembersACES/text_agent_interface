@@ -775,18 +775,15 @@ export default function AutonomousRunDetailPage() {
   };
 
   const handleStartSequenceNow = async () => {
-    if (!token || !runId || !run || run.run_status !== "running") return;
+    if (!runId || !run || run.run_status !== "running") return;
     setStartingNow(true);
     try {
-      const res = await fetch(`${getAutonomousApiBaseUrl()}/run/run/${runId}`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      });
+      const res = await fetch(`/api/autonomous/trigger-flows/run/${runId}`, { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         const message =
-          (typeof data.detail === "string" && data.detail) ||
           (typeof data.error === "string" && data.error) ||
+          (typeof data.detail === "string" && data.detail) ||
           (typeof data.message === "string" && data.message) ||
           "Start failed";
         throw new Error(message);
@@ -810,18 +807,15 @@ export default function AutonomousRunDetailPage() {
   };
 
   const handleStartStepNow = async (stepId: number) => {
-    if (!token || !runId || !run || run.run_status !== "running") return;
+    if (!runId || !run || run.run_status !== "running") return;
     setStartingStepId(stepId);
     try {
-      const res = await fetch(`${getAutonomousApiBaseUrl()}/run/step/${stepId}`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      });
+      const res = await fetch(`/api/autonomous/trigger-flows/step/${stepId}`, { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         const message =
-          (typeof data.detail === "string" && data.detail) ||
           (typeof data.error === "string" && data.error) ||
+          (typeof data.detail === "string" && data.detail) ||
           (typeof data.message === "string" && data.message) ||
           "Step start failed";
         throw new Error(message);
