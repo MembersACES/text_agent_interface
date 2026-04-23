@@ -142,6 +142,11 @@ async function postDeterministicVinylWrap(req: NextRequest, body: Record<string,
 
   const extraColours = Array.isArray(brand?.extra_colours) ? brand?.extra_colours : [];
   const extra_details = typeof body.extra_details === "string" ? body.extra_details : "";
+  const wrapStyleRaw =
+    brand && typeof (brand as { wrap_style?: unknown }).wrap_style === "string"
+      ? String((brand as { wrap_style: string }).wrap_style).trim().toLowerCase()
+      : "";
+  const wrap_style = wrapStyleRaw === "sports" ? "sports" : "commercial";
 
   const logo = (body.logo ?? null) as IncomingLogo | null;
   const logoFilename =
@@ -173,6 +178,7 @@ async function postDeterministicVinylWrap(req: NextRequest, body: Record<string,
   form.append("text_colour", textC);
   form.append("extra_colours_json", JSON.stringify(extraColours));
   form.append("extra_details", extra_details);
+  form.append("wrap_style", wrap_style);
 
   if (logoBase64.length > 0) {
     const logoBytes = Buffer.from(logoBase64, "base64");
@@ -210,13 +216,30 @@ async function postDeterministicVinylWrap(req: NextRequest, body: Record<string,
     );
   }
 
+  const variants = Array.isArray(data.variants)
+    ? (data.variants as Record<string, unknown>[]).map((v) => ({
+        id: typeof v.id === "string" ? v.id : "",
+        label: typeof v.label === "string" ? v.label : "",
+        layout_preset: typeof v.layout_preset === "string" ? v.layout_preset : undefined,
+        effective_wrap_style:
+          typeof v.effective_wrap_style === "string" ? v.effective_wrap_style : undefined,
+        image_base64:
+          typeof v.image_base64 === "string" ? stripDataUrlBase64(v.image_base64) : undefined,
+        image_mime: typeof v.image_mime === "string" ? v.image_mime : "image/svg+xml",
+        svg_text: typeof v.svg_text === "string" ? v.svg_text : undefined,
+        filename: typeof v.filename === "string" ? v.filename : undefined,
+      }))
+    : undefined;
+
   return NextResponse.json({
     success: true,
     image_base64,
     image_mime,
     svg_text,
     filename,
+    wrap_style,
     generator_mode: "deterministic" as const,
+    variants,
   });
 }
 
