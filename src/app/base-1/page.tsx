@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
 import { PageHeader } from "@/components/Layouts/PageHeader";
 import Base1Client from "./Base1Client";
@@ -11,6 +14,8 @@ const BASE1_AGENT_URL =
 const BASE1_AGENT_PASSWORD = "CZA12!";
 
 export default function Base1Page() {
+  const [openFormTrigger, setOpenFormTrigger] = useState(0);
+
   return (
     <>
       <PageHeader
@@ -22,19 +27,31 @@ export default function Base1Page() {
       <div className="mt-6 space-y-10">
         {/* Review Agent section */}
         <section aria-labelledby="base1-review-agent-heading" className="space-y-4">
-          <div>
-            <h2
-              id="base1-review-agent-heading"
-              className="text-lg font-semibold text-dark dark:text-white"
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h2
+                id="base1-review-agent-heading"
+                className="text-lg font-semibold text-dark dark:text-white"
+              >
+                Review Agent
+              </h2>
+              <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                View recent Base 1 runs, start a new Utility Bill review, and open Base 1 reports.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setOpenFormTrigger((prev) => prev + 1)}
+              className="inline-flex min-w-[240px] items-center justify-center rounded-lg bg-[#2d6b5a] px-6 py-2.5 text-sm font-semibold text-white shadow-md transition hover:bg-[#1a4d3e]"
             >
-              Review Agent
-            </h2>
-            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-              View recent Base 1 runs, start a new Utility Bill review, or open the Base 1 chat
-              agent.
-            </p>
+              Start New Base 1 Review →
+            </button>
           </div>
-          <Base1Client base1Url={BASE1_AGENT_URL} base1Password={BASE1_AGENT_PASSWORD} />
+          <Base1Client
+            base1Url={BASE1_AGENT_URL}
+            base1Password={BASE1_AGENT_PASSWORD}
+            openFormTrigger={openFormTrigger}
+          />
         </section>
 
         {/* Lead Pipeline section */}
