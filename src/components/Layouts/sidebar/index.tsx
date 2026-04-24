@@ -6,10 +6,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { ChevronDown, ChevronLeft } from "lucide-react";
+import { useSession } from "next-auth/react";
 import { NAV_DATA, ACES_BRAND } from "./data";
 import type { NavGroupItem, NavLinkItem } from "./data";
 import { MenuItem } from "./menu-item";
 import { useSidebarContext } from "./sidebar-context";
+import { canAccessInvoicing } from "@/lib/invoicing-access";
 
 const SECTION_COLLAPSED_KEY_PREFIX = "aces-sidebar-section-";
 
@@ -19,6 +21,7 @@ function isNavGroup(item: NavLinkItem | NavGroupItem): item is NavGroupItem {
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { data: session } = useSession();
   const { setIsOpen, isOpen, isMobile, toggleSidebar, isCollapsed } = useSidebarContext();
   const [sectionOpen, setSectionOpen] = useState<Record<string, boolean>>(() => {
     if (typeof window === "undefined") return {};
@@ -64,10 +67,30 @@ export function Sidebar() {
     );
   }, [pathname, isSectionOpen, setSectionExpanded]);
 
-  const sections = NAV_DATA.filter(
-    (section) =>
-      section.label !== "Development" || process.env.NODE_ENV !== "production",
-  );
+  const userEmail = session?.user?.email ?? null;
+  const hasInvoicingAccess = canAccessInvoicing(userEmail);
+  const sections = NAV_DATA
+    .map((section) => ({
+      ...section,
+      items: section.items
+        .map((item) => {
+          if (isNavGroup(item)) {
+            return {
+              ...item,
+              items: item.items.filter((sub) =>
+                sub.url === "/robot-dashboard/invoicing" ? hasInvoicingAccess : true
+              ),
+            };
+          }
+          if (item.url === "/robot-dashboard/invoicing" && !hasInvoicingAccess) return null;
+          return item;
+        })
+        .filter((item): item is NavLinkItem | NavGroupItem => Boolean(item)),
+    }))
+    .filter((section) =>
+      (section.label !== "Development" || process.env.NODE_ENV !== "production") &&
+      section.items.length > 0
+    );
 
   return (
     <>
