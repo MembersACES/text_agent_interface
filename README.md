@@ -94,7 +94,7 @@ cd 'C:\My Projects\text_agent_interface'
 npm install
 ```
 
-**Step 2: Set Up Environment Variables**
+**Step 2: Set Up Environment Variables***
 
 Create a `.env.local` file in the root of the frontend project. You will need to add the same Google Client ID and also a client secret for NextAuth.
 
