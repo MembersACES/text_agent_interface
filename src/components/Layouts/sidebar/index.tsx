@@ -6,6 +6,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { ChevronDown, ChevronLeft } from "lucide-react";
+import { useSession } from "next-auth/react";
 import { NAV_DATA, ACES_BRAND } from "./data";
 import type { NavGroupItem, NavLinkItem } from "./data";
 import { MenuItem } from "./menu-item";
@@ -19,7 +20,9 @@ function isNavGroup(item: NavLinkItem | NavGroupItem): item is NavGroupItem {
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { data: session, status } = useSession();
   const { setIsOpen, isOpen, isMobile, toggleSidebar, isCollapsed } = useSidebarContext();
+  const [invoicingAllowed, setInvoicingAllowed] = useState<boolean | null>(null);
   const [sectionOpen, setSectionOpen] = useState<Record<string, boolean>>(() => {
     if (typeof window === "undefined") return {};
     const initial: Record<string, boolean> = {};
@@ -64,10 +67,49 @@ export function Sidebar() {
     );
   }, [pathname, isSectionOpen, setSectionExpanded]);
 
-  const sections = NAV_DATA.filter(
-    (section) =>
-      section.label !== "Development" || process.env.NODE_ENV !== "production",
-  );
+  useEffect(() => {
+    if (status !== "authenticated" || !session?.user?.email) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/invoicing-access", { method: "GET" });
+        const body = (await res.json().catch(() => ({}))) as { allowed?: boolean };
+        if (cancelled) return;
+        setInvoicingAllowed(Boolean(body.allowed));
+      } catch {
+        if (!cancelled) setInvoicingAllowed(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [status, session?.user?.email]);
+
+  const hasInvoicingAccess = invoicingAllowed === true;
+  const sections = NAV_DATA
+    .map((section) => ({
+      ...section,
+      items: section.items
+        .map((item) => {
+          if (isNavGroup(item)) {
+            return {
+              ...item,
+              items: item.items.filter((sub) =>
+                sub.url === "/robot-dashboard/invoicing" ? hasInvoicingAccess : true
+              ),
+            };
+          }
+          if (item.url === "/robot-dashboard/invoicing" && !hasInvoicingAccess) return null;
+          return item;
+        })
+        .filter((item): item is NavLinkItem | NavGroupItem => Boolean(item)),
+    }))
+    .filter((section) =>
+      (section.label !== "Development" || process.env.NODE_ENV !== "production") &&
+      section.items.length > 0
+    );
 
   return (
     <>

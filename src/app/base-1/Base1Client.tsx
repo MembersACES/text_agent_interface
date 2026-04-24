@@ -3,8 +3,7 @@
 import React, { useMemo, useEffect, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import UtilityBillReviewForm from "./UtilityBillReviewForm";
-import { Card, CardContent } from "@/components/ui/card";
-import { FileText, MessageCircle, ExternalLink } from "lucide-react";
+import { ExternalLink } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -18,6 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 interface Base1ClientProps {
   base1Url: string;
   base1Password?: string;
+  openFormTrigger?: number;
 }
 
 type Base1Mode = "choice" | "form" | "chat";
@@ -40,6 +40,7 @@ function formatTimestamp(ts: string): string {
 export default function Base1Client({
   base1Url,
   base1Password = "",
+  openFormTrigger = 0,
 }: Base1ClientProps) {
   const { data: session } = useSession();
   const token = (session as any)?.id_token || (session as any)?.accessToken;
@@ -105,6 +106,12 @@ export default function Base1Client({
       retryLandingFetch();
     });
   }, [mode, token, retryLandingFetch]);
+
+  useEffect(() => {
+    if (openFormTrigger > 0) {
+      setMode("form");
+    }
+  }, [openFormTrigger]);
 
   if (mode === "form") {
     return (
@@ -258,46 +265,6 @@ export default function Base1Client({
             </Table>
           </div>
         )}
-      </div>
-
-      {/* Section 2: New Base 1 review */}
-      <div className="space-y-4">
-        <h2 className="text-lg font-semibold text-dark dark:text-white">New Base 1 review</h2>
-        <p className="text-sm text-gray-600 dark:text-gray-400">
-          Choose how you want to start your Base 1 review:
-        </p>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Card
-            className="cursor-pointer border-2 border-stroke transition hover:border-[#2d6b5a] hover:shadow-md dark:border-dark-3 dark:hover:border-[#2d6b5a]"
-            onClick={() => setMode("form")}
-          >
-            <CardContent className="flex flex-col items-center gap-3 p-6 text-center">
-              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[#2d6b5a]/10 text-[#2d6b5a]">
-                <FileText className="h-7 w-7" />
-              </div>
-              <h3 className="font-semibold text-dark dark:text-white">Utility Bill Review Form</h3>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                Fill out the form and upload your utility invoices to trigger a cost analysis.
-              </p>
-              <span className="text-sm font-medium text-[#2d6b5a]">Start form →</span>
-            </CardContent>
-          </Card>
-          <Card
-            className="cursor-pointer border-2 border-stroke transition hover:border-primary hover:shadow-md dark:border-dark-3 dark:hover:border-primary"
-            onClick={() => setMode("chat")}
-          >
-            <CardContent className="flex flex-col items-center gap-3 p-6 text-center">
-              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary">
-                <MessageCircle className="h-7 w-7" />
-              </div>
-              <h3 className="font-semibold text-dark dark:text-white">Chat with Base 1 Agent</h3>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                Open the conversational agent to discuss your utility review in chat.
-              </p>
-              <span className="text-sm font-medium text-primary">Open agent →</span>
-            </CardContent>
-          </Card>
-        </div>
       </div>
     </div>
   );
