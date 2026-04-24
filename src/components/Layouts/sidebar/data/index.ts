@@ -56,7 +56,7 @@ export const NAV_DATA: NavSection[] = [
       { title: "Invoice & Data Lodgement", url: "/document-lodgement", icon: FileUp },
       { title: "Base 1 Hub", url: "/base-1", icon: BarChart3 },
       { title: "Robot Dashboard", url: "/robot-dashboard", icon: Bot },
-      { title: "Invoicing", url: "/robot-dashboard/invoicing", icon: FileText },
+      { title: "Invoicing", url: "/invoicing", icon: FileText },
     ],
   },
   {

@@ -97,11 +97,11 @@ export function Sidebar() {
             return {
               ...item,
               items: item.items.filter((sub) =>
-                sub.url === "/robot-dashboard/invoicing" ? hasInvoicingAccess : true
+                sub.url === "/invoicing" ? hasInvoicingAccess : true
               ),
             };
           }
-          if (item.url === "/robot-dashboard/invoicing" && !hasInvoicingAccess) return null;
+          if (item.url === "/invoicing" && !hasInvoicingAccess) return null;
           return item;
         })
         .filter((item): item is NavLinkItem | NavGroupItem => Boolean(item)),

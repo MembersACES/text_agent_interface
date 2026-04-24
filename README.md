@@ -110,7 +110,7 @@ NEXTAUTH_URL="http://localhost:8080"
 # API Configuration
 NEXT_PUBLIC_API_BASE_URL="http://localhost:8000"
 
-# Optional: comma-separated allowlist for Robot Dashboard > Invoicing page
+# Optional: comma-separated allowlist for the Invoicing page (`/invoicing`)
 # Prefer the non-public name on Cloud Run (no rebuild required when the list changes):
 # INVOICING_ALLOWED_EMAILS="user1@acesolutions.com.au,user2@acesolutions.com.au"
 # Legacy (requires a rebuild in production, because it is compiled into the client):
