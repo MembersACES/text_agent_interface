@@ -94,7 +94,7 @@ cd 'C:\My Projects\text_agent_interface'
 npm install
 ```
 
-**Step 2: Set Up Environment Variables***
+**Step 2: Set Up Environment Variables**
 
 Create a `.env.local` file in the root of the frontend project. You will need to add the same Google Client ID and also a client secret for NextAuth.
 
@@ -111,6 +111,9 @@ NEXTAUTH_URL="http://localhost:8080"
 NEXT_PUBLIC_API_BASE_URL="http://localhost:8000"
 
 # Optional: comma-separated allowlist for Robot Dashboard > Invoicing page
+# Prefer the non-public name on Cloud Run (no rebuild required when the list changes):
+# INVOICING_ALLOWED_EMAILS="user1@acesolutions.com.au,user2@acesolutions.com.au"
+# Legacy (requires a rebuild in production, because it is compiled into the client):
 # NEXT_PUBLIC_INVOICING_ALLOWED_EMAILS="user1@acesolutions.com.au,user2@acesolutions.com.au"
 
 # Optional: autonomous sequences on a separate service (same /api/autonomous paths)

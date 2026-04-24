@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import {
   Card,
@@ -9,7 +9,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { canAccessInvoicing } from "@/lib/invoicing-access";
 
 type SheetEntry = {
   title: string;
@@ -255,8 +254,27 @@ function PageSkeleton() {
 
 export default function RobotDashboardInvoicingPage() {
   const { data: session, status } = useSession();
-  const email = session?.user?.email ?? null;
-  const isAllowed = canAccessInvoicing(email);
+  const [invoicingAllowed, setInvoicingAllowed] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (status !== "authenticated" || !session?.user?.email) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/invoicing-access", { method: "GET" });
+        const body = (await res.json().catch(() => ({}))) as { allowed?: boolean };
+        if (cancelled) return;
+        setInvoicingAllowed(Boolean(body.allowed));
+      } catch {
+        if (!cancelled) setInvoicingAllowed(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [status, session?.user?.email]);
 
   // Flatten while keeping a back-reference to each sheet's section
   const allSheets = useMemo(
@@ -310,7 +328,33 @@ export default function RobotDashboardInvoicingPage() {
     return <PageSkeleton />;
   }
 
-  if (!isAllowed) {
+  if (status === "unauthenticated") {
+    return (
+      <Card variant="elevated">
+        <CardHeader>
+          <CardTitle>Sign in required</CardTitle>
+          <CardDescription>Please sign in to access Invoicing.</CardDescription>
+        </CardHeader>
+      </Card>
+    );
+  }
+
+  if (status === "authenticated" && !session?.user?.email) {
+    return (
+      <Card variant="elevated">
+        <CardHeader>
+          <CardTitle>Access denied</CardTitle>
+          <CardDescription>Your account does not have an email on file.</CardDescription>
+        </CardHeader>
+      </Card>
+    );
+  }
+
+  if (status === "authenticated" && invoicingAllowed === null) {
+    return <PageSkeleton />;
+  }
+
+  if (status === "authenticated" && invoicingAllowed === false) {
     return (
       <Card variant="elevated">
         <CardHeader>

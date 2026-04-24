@@ -11,7 +11,6 @@ import { NAV_DATA, ACES_BRAND } from "./data";
 import type { NavGroupItem, NavLinkItem } from "./data";
 import { MenuItem } from "./menu-item";
 import { useSidebarContext } from "./sidebar-context";
-import { canAccessInvoicing } from "@/lib/invoicing-access";
 
 const SECTION_COLLAPSED_KEY_PREFIX = "aces-sidebar-section-";
 
@@ -21,8 +20,9 @@ function isNavGroup(item: NavLinkItem | NavGroupItem): item is NavGroupItem {
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const { setIsOpen, isOpen, isMobile, toggleSidebar, isCollapsed } = useSidebarContext();
+  const [invoicingAllowed, setInvoicingAllowed] = useState<boolean | null>(null);
   const [sectionOpen, setSectionOpen] = useState<Record<string, boolean>>(() => {
     if (typeof window === "undefined") return {};
     const initial: Record<string, boolean> = {};
@@ -67,8 +67,27 @@ export function Sidebar() {
     );
   }, [pathname, isSectionOpen, setSectionExpanded]);
 
-  const userEmail = session?.user?.email ?? null;
-  const hasInvoicingAccess = canAccessInvoicing(userEmail);
+  useEffect(() => {
+    if (status !== "authenticated" || !session?.user?.email) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/invoicing-access", { method: "GET" });
+        const body = (await res.json().catch(() => ({}))) as { allowed?: boolean };
+        if (cancelled) return;
+        setInvoicingAllowed(Boolean(body.allowed));
+      } catch {
+        if (!cancelled) setInvoicingAllowed(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [status, session?.user?.email]);
+
+  const hasInvoicingAccess = invoicingAllowed === true;
   const sections = NAV_DATA
     .map((section) => ({
       ...section,
