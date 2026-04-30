@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import BusinessDetailsDisplay from '../../components/BusinessDetailsDisplay';
 import IndustrySubfolderSelector from '../../components/IndustrySubfolderSelector';
 import { Alert } from '../../components/ui-elements/alert';
+import { notifyUtilityLinkedPostProcess } from '@/lib/utility-linked-notify';
 
 const LOA_OPTIONS = [
   "LOA"
@@ -450,6 +451,16 @@ export default function LoaUploadPage() {
         if (!res.ok) {
           const err = await res.json();
           throw new Error(err.detail || err.message || "Failed to confirm utility link");
+        }
+
+        try {
+          await notifyUtilityLinkedPostProcess({
+            business_name: businessDetails?.['Business Name'] || '',
+            utility_type: selectedUtility,
+            utility_details: utilityDetails,
+          });
+        } catch (notifyErr) {
+          console.warn("utility-linked post-process notify failed (non-fatal):", notifyErr);
         }
 
         setUtilitySuccessMessage(`${UTILITY_OPTIONS[selectedUtility as keyof typeof UTILITY_OPTIONS]} utility successfully linked to ${businessDetails?.['Business Name']}!`);
