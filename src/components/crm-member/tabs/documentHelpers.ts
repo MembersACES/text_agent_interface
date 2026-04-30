@@ -147,6 +147,18 @@ export type ContractLabel = (typeof CONTRACT_LABELS)[number];
 /** One linked file for a contract category (cells may hold comma-separated URLs / statuses). */
 export type ContractFileItem = { url: string; status?: string };
 
+function normalizeDriveContractUrl(value: string): string {
+  const token = value.trim();
+  if (!token) return token;
+  if (token.startsWith("http://") || token.startsWith("https://")) return token;
+
+  // Handle legacy malformed values like "<id>/view" from mixed ID/URL cells.
+  const firstSegment = token.split("/", 1)[0]?.trim() ?? "";
+  if (!firstSegment) return token;
+
+  return `https://drive.google.com/file/d/${firstSegment}/view?usp=drivesdk`;
+}
+
 /** Split comma-separated Google Drive URLs or IDs stored in a single sheet cell. */
 export function parseContractCell(
   rawUrl: unknown,
@@ -170,7 +182,7 @@ export function parseContractCell(
     : [];
 
   return urls.map((url, i) => ({
-    url,
+    url: normalizeDriveContractUrl(url),
     status: statuses[i] ?? statuses[0] ?? undefined,
   }));
 }
