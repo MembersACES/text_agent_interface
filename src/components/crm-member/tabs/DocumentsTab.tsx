@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { FileLink } from "../shared/FileLink";
 import { getApiBaseUrl } from "@/lib/utils";
+import { formatBackendErrorBody } from "@/lib/api-errors";
 import { useToast } from "@/components/ui/toast";
 import { combineFilesIntoPdf } from "@/lib/combineFiles";
 import {
@@ -453,21 +454,36 @@ export function DocumentsTab({
       const res = await fetch(`${getApiBaseUrl()}/api/drive-filing?token=${encodeURIComponent(token)}`, {
         method: "POST", headers: { Authorization: `Bearer ${token}` }, body: fd,
       });
-      const data = await res.json();
-      if (data.status === "success") {
+      let data: unknown = {};
+      try {
+        data = await res.json();
+      } catch {
+        data = {};
+      }
+      if (!res.ok) {
+        const msg = formatBackendErrorBody(data);
+        setDriveResult(`Error: ${msg}${res.status ? ` (HTTP ${res.status})` : ""}`);
+        showToast(msg, "error");
+        return;
+      }
+      const ok = data as { status?: string; message?: string; filename?: string };
+      if (ok.status === "success") {
         setDriveResult("File successfully uploaded!"); showToast("File uploaded successfully.","success");
         console.log("[C&I Contract API] Drive upload OK. driveContractKey:", driveContractKey);
         if (driveContractKey === "C&I Electricity" || driveContractKey === "C&I Gas") silentProcessContract(driveFile, driveContractKey);
         void logMemberUpload({
           upload_kind: "drive_filing",
-          filename: (data.filename as string) || driveFile?.name || undefined,
+          filename: ok.filename || driveFile?.name || undefined,
           filing_type: driveFilingType,
           utility_key: driveContractKey,
           metadata: {
             contract_status: driveContractStatus,
           },
         });
-      } else { setDriveResult(`Error: ${data.message||"Upload failed"}`); showToast(data.message||"Upload failed","error"); }
+      } else {
+        setDriveResult(`Error: ${formatBackendErrorBody(data)}`);
+        showToast(formatBackendErrorBody(data), "error");
+      }
     } catch (e: any) { setDriveResult(`Error: ${e?.message}`); showToast(e?.message,"error"); }
     finally { setDriveLoading(false); }
   };

@@ -31,8 +31,6 @@ import { SolutionsTab } from "@/components/crm-member/tabs/SolutionsTab";
 import { StrategyTab } from "@/components/crm-member/tabs/StrategyTab";
 
 import type { MemberTab } from "@/components/crm-member/types";
-import type { ClientStage } from "@/constants/crm";
-
 export default function ClientDetailPage() {
   const params = useParams();
   const searchParams = useSearchParams();
@@ -65,8 +63,6 @@ export default function ClientDetailPage() {
     refetchTasks,
     refetchActivities,
   } = useMemberData(clientId);
-
-  const stageValue = client?.stage as ClientStage | undefined;
 
   const actions = useMemberActions({
     clientId,
@@ -305,11 +301,6 @@ export default function ClientDetailPage() {
               <div className="px-4 py-3 lg:px-5 lg:py-4">
                 <MemberProfileHeader
                   client={client}
-                  stageValue={stageValue}
-                  savingStage={actions.savingStage}
-                  onStageChange={(value) => {
-                    actions.handleStageChange(value);
-                  }}
                   firstOfferId={offers[0]?.id ?? null}
                   businessInfo={businessInfo}
                   fetchBusinessInfo={fetchBusinessInfoForBase2}

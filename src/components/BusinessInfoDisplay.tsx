@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect } from "react";
 import { getApiBaseUrl, formatDateAustralian, formatDateDDMMYYYY, parseDateDDMMYYYYToISO } from "@/lib/utils";
+import { formatBackendErrorBody } from "@/lib/api-errors";
 import { displayDocName } from "@/components/crm-member/tabs/documentHelpers";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
@@ -1836,6 +1837,15 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
           </PrimaryButton>
           <PrimaryButton onClick={handleOpenBase2}>
             Base 2 Review
+          </PrimaryButton>
+          <PrimaryButton
+            onClick={() => {
+              const params = new URLSearchParams();
+              params.set("businessName", business.name || "");
+              window.open(`/ghg-reporting?${params.toString()}`, "_blank", "noopener,noreferrer");
+            }}
+          >
+            GHG
           </PrimaryButton>
         </div>
       </div>
@@ -4021,9 +4031,24 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                           headers: { Authorization: `Bearer ${token}` },
                           body: formData,
                         });
-                        
-                        const data = await res.json();
-                        if (data.status === 'success') {
+
+                        let data: unknown = {};
+                        try {
+                          data = await res.json();
+                        } catch {
+                          data = {};
+                        }
+
+                        if (!res.ok) {
+                          const hint = formatBackendErrorBody(data);
+                          setDriveModalResult(
+                            `Error: ${hint}${res.status ? ` (HTTP ${res.status})` : ""}`,
+                          );
+                          return;
+                        }
+
+                        const payload = data as { status?: string };
+                        if (payload.status === 'success') {
                           // NOTE: File IDs are now fetched directly from Google Sheets by the backend.
                           // File IDs will be updated when user clicks "Get Member Profile" again.
                           // Set the exact message that triggers modal close
@@ -4039,7 +4064,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                           const contractKey = driveModalContractKey;
                           console.log("[Signed Contract Upload] driveModalContractKey:", contractKey);
                           console.log("[Signed Contract Upload] driveModalFilingType:", driveModalFilingType);
-                          console.log("[Signed Contract Upload] backend drive-filing upload ok. Preparing contract API call. data.status:", data.status);
+                          console.log("[Signed Contract Upload] backend drive-filing upload ok. Preparing contract API call. data.status:", payload.status);
                           console.log("[Signed Contract Upload] fileForContractApi:", fileForContractApi ? { name: fileForContractApi.name, type: fileForContractApi.type, size: fileForContractApi.size } : null);
 
                           if (!contractKey || !ciContractApi[contractKey]) {
@@ -4117,10 +4142,12 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                                 }
                               }
                         } else {
-                          setDriveModalResult(`Error: ${data.message}`);
+                          setDriveModalResult(`Error: ${formatBackendErrorBody(data)}`);
                         }
                       } catch (err: any) {
-                        setDriveModalResult(`Error uploading file(s): ${err.message}`);
+                        setDriveModalResult(
+                          `Error uploading file(s): ${err instanceof Error ? err.message : String(err)}`,
+                        );
                       } finally {
                         setDriveModalLoading(false);
                       }

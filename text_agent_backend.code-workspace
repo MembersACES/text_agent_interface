@@ -1,0 +1,11 @@
+{
+	"folders": [
+		{
+			"path": "../text_agent_backend"
+		},
+		{
+			"path": "."
+		}
+	],
+	"settings": {}
+}

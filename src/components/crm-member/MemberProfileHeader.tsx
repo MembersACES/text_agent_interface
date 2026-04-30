@@ -2,16 +2,10 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
-import { StageBadge } from "./shared/StageBadge";
-import { CLIENT_STAGES, CLIENT_STAGE_LABELS } from "@/constants/crm";
 import type { Client } from "./types";
-import type { ClientStage } from "@/constants/crm";
 
 export interface MemberProfileHeaderProps {
   client: Client;
-  stageValue: ClientStage | undefined;
-  savingStage: boolean;
-  onStageChange: (value: ClientStage) => void;
   firstOfferId?: number | null;
   businessInfo?: Record<string, unknown> | null;
   /** When provided, called to load business info if missing when opening Base 2 (so Base 2 gets full URL like business-info). */
@@ -53,9 +47,6 @@ function IconBuilding() {
 
 export function MemberProfileHeader({
   client,
-  stageValue,
-  savingStage,
-  onStageChange,
   firstOfferId,
   businessInfo,
   fetchBusinessInfo,
@@ -122,6 +113,17 @@ export function MemberProfileHeader({
     }
     const url = `/base-2?${params.toString()}`;
     window.open(url, "_blank");
+  };
+
+  const handleOpenGhg = () => {
+    const params = new URLSearchParams();
+    let name = client.business_name ?? "";
+    if (businessInfo && typeof businessInfo === "object") {
+      const bd = businessInfo.business_details as Record<string, unknown> | undefined;
+      if (bd?.name && typeof bd.name === "string" && bd.name.trim()) name = bd.name.trim();
+    }
+    if (name) params.set("businessName", name);
+    window.open(`/ghg-reporting?${params.toString()}`, "_blank", "noopener,noreferrer");
   };
 
   const [showGenerateDocumentsMenu, setShowGenerateDocumentsMenu] = useState(false);
@@ -324,34 +326,8 @@ export function MemberProfileHeader({
             </div>
           </div>
 
-          {/* Right: stage + owner + action toolbar */}
+          {/* Right: action toolbar */}
           <div className="flex flex-wrap items-center gap-3 shrink-0">
-            {/* Stage selector — badge has more weight */}
-            <div>
-              <label className="block text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-1">
-                Stage
-              </label>
-              <div className="flex items-center gap-2">
-                <select
-                  value={stageValue ?? client.stage}
-                  onChange={(e) => onStageChange(e.target.value as ClientStage)}
-                  className="text-sm px-2.5 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary/50"
-                  disabled={savingStage}
-                >
-                  {CLIENT_STAGES.map((s) => (
-                    <option key={s} value={s}>
-                      {CLIENT_STAGE_LABELS[s] ?? s.replace(/_/g, " ")}
-                    </option>
-                  ))}
-                </select>
-                {stageValue != null && (
-                  <span className="scale-[1.05]">
-                    <StageBadge stage={stageValue as ClientStage} />
-                  </span>
-                )}
-              </div>
-            </div>
-
             {/* Generate Documents dropdown — CRM button style */}
             <div className="relative" ref={generateDocumentsMenuRef}>
               <button
@@ -436,6 +412,15 @@ export function MemberProfileHeader({
               >
                 <IconBase />
                 {base2Opening ? "Opening…" : "Base 2"}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleOpenGhg}
+                title="Open GHG Reporting for this business"
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-600 transition-colors"
+              >
+                GHG
               </button>
             </div>
           </div>

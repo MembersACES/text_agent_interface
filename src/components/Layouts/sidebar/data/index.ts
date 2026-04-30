@@ -57,6 +57,7 @@ export const NAV_DATA: NavSection[] = [
       { title: "Base 1 Hub", url: "/base-1", icon: BarChart3 },
       { title: "Robot Dashboard", url: "/robot-dashboard", icon: Bot },
       { title: "Invoicing", url: "/invoicing", icon: FileText },
+      { title: "GHG Reporting", url: "/ghg-reporting", icon: FileText },
     ],
   },
   {
