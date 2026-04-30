@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
+import { notifyUtilityLinkedPostProcess } from "@/lib/utility-linked-notify";
 
 const UTILITY_OPTIONS = {
   ELECTRICITY_CI: "ELECTRICITY C&I",
@@ -222,6 +223,16 @@ export default function UtilityLinkingPage() {
   
         const result = await res.json();
         console.log("🔗 Utility confirmation result:", result);
+
+        try {
+          await notifyUtilityLinkedPostProcess({
+            business_name: businessName,
+            utility_type: selectedUtility,
+            utility_details: utilityDetails,
+          });
+        } catch (notifyErr) {
+          console.warn("utility-linked post-process notify failed (non-fatal):", notifyErr);
+        }
         
         // Set success message instead of using alert
         setSuccessMessage(`${UTILITY_OPTIONS[selectedUtility as keyof typeof UTILITY_OPTIONS]} utility successfully linked to ${businessName}!`);
