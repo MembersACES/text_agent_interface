@@ -1,6 +1,7 @@
-import React, { useState, useCallback, useRef, useEffect } from "react";
+import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { getApiBaseUrl, formatDateAustralian, formatDateDDMMYYYY, parseDateDDMMYYYYToISO } from "@/lib/utils";
-import { displayDocName } from "@/components/crm-member/tabs/documentHelpers";
+import { formatBackendErrorBody } from "@/lib/api-errors";
+import { displayDocName, getContractsFromProcessed } from "@/components/crm-member/tabs/documentHelpers";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { combineFilesIntoPdf } from "@/lib/combineFiles";
@@ -98,44 +99,17 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
     return (value && typeof value === 'string') ? value : undefined;
   };
   const [selectedStructure, setSelectedStructure] = useState(businessType);
-  const contracts: { key: string; url?: string; status?: string }[] = [
-    { 
-      key: "C&I Electricity", 
-      url: getFileUrl("contract_C&I Electricity"),
-      status: info._processed_file_ids?.["contract_C&I Electricity_status"]
-    },
-    { 
-      key: "SME Electricity", 
-      url: getFileUrl("contract_SME Electricity"),
-      status: info._processed_file_ids?.["contract_SME Electricity_status"]
-    },
-    { 
-      key: "C&I Gas", 
-      url: getFileUrl("contract_C&I Gas"),
-      status: info._processed_file_ids?.["contract_C&I Gas_status"]
-    },
-    { 
-      key: "SME Gas", 
-      url: getFileUrl("contract_SME Gas"),
-      status: info._processed_file_ids?.["contract_SME Gas_status"]
-    },
-    { 
-      key: "Waste", 
-      url: getFileUrl("contract_Waste"),
-      status: info._processed_file_ids?.["contract_Waste_status"]
-    },
-    { 
-      key: "Oil", 
-      url: getFileUrl("contract_Oil"),
-      status: info._processed_file_ids?.["contract_Oil_status"]
-    },
-    { 
-      key: "DMA", 
-      url: getFileUrl("contract_DMA"),
-      status: info._processed_file_ids?.["contract_DMA_status"]
-    },
-  ];
-  
+  const contractGroups = useMemo(() => {
+    const list = getContractsFromProcessed(info._processed_file_ids || {});
+    return [...list].sort((a, b) => {
+      const aHas = a.items.some((i) => i.url);
+      const bHas = b.items.some((i) => i.url);
+      if (aHas && !bHas) return -1;
+      if (!aHas && bHas) return 1;
+      return 0;
+    });
+  }, [info._processed_file_ids]);
+
   const driveUrl = info.gdrive?.folder_url;
 
   // Linked Utilities
@@ -208,6 +182,9 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
   const [driveModalFilingType, setDriveModalFilingType] = useState("");
   const [driveModalBusinessName, setDriveModalBusinessName] = useState("");
   const [driveModalContractKey, setDriveModalContractKey] = useState<string | null>(null); // Track which contract is being filed
+  const [driveModalContractUpdateMode, setDriveModalContractUpdateMode] = useState<
+    "replace" | "append" | "append_multiple"
+  >("replace");
   const [driveModalFile, setDriveModalFile] = useState<File | null>(null);
   const [driveModalFiles, setDriveModalFiles] = useState<File[]>([]);
   const [driveModalMultipleFiles, setDriveModalMultipleFiles] = useState(false);
@@ -706,6 +683,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
         setDriveModalFile(null);
         setDriveModalFiles([]);
         setDriveModalMultipleFiles(false);
+        setDriveModalContractUpdateMode('replace');
         setDriveModalContractStatus('Pending Refresh');
         setDriveModalResult(null);
         setDriveModalContractKey(null);
@@ -1106,7 +1084,11 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
   // and returned in info._processed_file_ids. No need for duplicate frontend call.
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    if (driveModalMultipleFiles) {
+    const isSigned = driveModalFilingType.startsWith("signed_");
+    if (isSigned && driveModalContractUpdateMode === "append_multiple") {
+      setDriveModalFiles(files);
+      setDriveModalFile(null);
+    } else if (driveModalMultipleFiles && !isSigned) {
       setDriveModalFiles(files);
       setDriveModalFile(null);
     } else {
@@ -1532,6 +1514,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
     setDriveModalFile(null);
     setDriveModalFiles([]);
     setDriveModalMultipleFiles(false);
+    setDriveModalContractUpdateMode("replace");
     setDriveModalResult(null);
     setDriveModalContractKey(null);
   };
@@ -1622,13 +1605,6 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
     return info._processed_file_ids?.[docKey] 
         || info._processed_file_ids?.[normalizedDocKey] 
         || (specialMappedKey ? info._processed_file_ids?.[specialMappedKey] : undefined);
-  };
-
-  // Helper function to check if a contract has a file
-  const getContractFileUrl = (key: string) => {
-    const originalKey = `contract_${key}`;
-    const mappedKey = `contract_${key.replace('C&I', 'CI').replace('SME', 'SME').replace(' ', '_')}`;
-    return info._processed_file_ids?.[originalKey] || info._processed_file_ids?.[mappedKey];
   };
 
   return (
@@ -1723,7 +1699,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
               );
             })()}
             {[
-              { key: 'documents', label: 'Business Documents & Signed Agreements', count: Object.keys(docs).length + contracts.filter(c => c.url).length + Object.keys(info._processed_file_ids || {}).filter(key => key.startsWith('eoi_')).length, expandSection: null },
+              { key: 'documents', label: 'Business Documents & Signed Agreements', count: Object.keys(docs).length + contractGroups.reduce((n, g) => n + g.items.length, 0) + Object.keys(info._processed_file_ids || {}).filter(key => key.startsWith('eoi_')).length, expandSection: null },
               { key: 'utilities', label: 'Linked Utilities', count: Object.keys(linked).length, expandSection: null },
               { key: 'additional-utilities', label: 'Additional Utilities', count: null, expandSection: 'utilities' },
               { key: 'solutions-outcomes', label: 'Solutions & Outcomes', count: null, expandSection: 'dataReports' },
@@ -1836,6 +1812,15 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
           </PrimaryButton>
           <PrimaryButton onClick={handleOpenBase2}>
             Base 2 Review
+          </PrimaryButton>
+          <PrimaryButton
+            onClick={() => {
+              const params = new URLSearchParams();
+              params.set("businessName", business.name || "");
+              window.open(`/ghg-reporting?${params.toString()}`, "_blank", "noopener,noreferrer");
+            }}
+          >
+            GHG
           </PrimaryButton>
         </div>
       </div>
@@ -2095,6 +2080,10 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                                   if (filingType.includes('exit_map') || filingType.includes('exitmap') || filingType.includes('floor_plan_exit_map')) filingType = 'site_map_upload';
                                   setDriveModalFilingType(filingType);
                                   setDriveModalBusinessName(business.name || "");
+                                  setDriveModalContractKey(null);
+                                  setDriveModalContractUpdateMode("replace");
+                                  setDriveModalFile(null);
+                                  setDriveModalFiles([]);
                                   setShowDriveModal(true);
                                 }}
                               >
@@ -2109,6 +2098,10 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                                 onClick={() => {
                                   setDriveModalFilingType('amortisation_excel');
                                   setDriveModalBusinessName(business.name || "");
+                                  setDriveModalContractKey(null);
+                                  setDriveModalContractUpdateMode("replace");
+                                  setDriveModalFile(null);
+                                  setDriveModalFiles([]);
                                   setShowDriveModal(true);
                                 }}
                               >
@@ -2119,6 +2112,10 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                                 onClick={() => {
                                   setDriveModalFilingType('amortisation_pdf');
                                   setDriveModalBusinessName(business.name || "");
+                                  setDriveModalContractKey(null);
+                                  setDriveModalContractUpdateMode("replace");
+                                  setDriveModalFile(null);
+                                  setDriveModalFiles([]);
                                   setShowDriveModal(true);
                                 }}
                               >
@@ -2142,17 +2139,8 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-semibold text-gray-800 text-base">Signed Contracts</h3>
               </div>
-              <div className="space-y-2">
-                {contracts
-                  .sort((a, b) => {
-                    // Sort by file availability - files with URLs first
-                    const urlA = getContractFileUrl(a.key);
-                    const urlB = getContractFileUrl(b.key);
-                    if (urlA && !urlB) return -1;
-                    if (!urlA && urlB) return 1;
-                    return 0;
-                  })
-                  .map(({ key, status }) => {
+              <div className="space-y-3">
+                {contractGroups.map(({ key, items }) => {
                     const contractKeyMap: { [key: string]: string } = {
                       'C&I Electricity': 'signed_CI_E',
                       'SME Electricity': 'signed_SME_E',
@@ -2162,47 +2150,68 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                       'Oil': 'signed_OIL',
                       'DMA': 'signed_DMA',
                     };
-                    const url = getContractFileUrl(key);
-                    
-                    // Determine if it's ACES signed based on status
-                    const isACESSigned = status?.toLowerCase().includes('aces') || 
-                                         status?.toLowerCase().includes('signed via aces');
-                  
-                    return (
-                      <div key={key} className={`flex items-center justify-between p-2 rounded border transition-all ${url ? 'bg-green-50 border-green-200 hover:bg-green-100' : 'bg-slate-50 border-slate-200'}`}>
-                        <div className="flex-1">
+                    const hasAny = items.length > 0;
+                  return (
+                      <div
+                        key={key}
+                        className={`rounded border p-2 transition-all ${
+                          hasAny
+                            ? "bg-green-50 border-green-200 hover:bg-green-100"
+                            : "bg-slate-50 border-slate-200"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
                           <div className="text-sm font-medium">{key}</div>
-                          <div className="text-xs text-gray-500">
-                            {url ? (
-                              <div className="flex items-center gap-2">
-                                <FileLink label="View File" url={url} />
-                                {status && (
-                                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                                    isACESSigned 
-                                      ? 'bg-green-100 text-green-700' 
-                                      : 'bg-blue-100 text-blue-700'
-                                  }`}>
-                                    {isACESSigned ? '✓ ACES Signed' : status}
-                                  </span>
-                                )}
-                              </div>
-                            ) : (
-                              "Not available"
-                            )}
-                          </div>
-                        </div>
                         <SecondaryButton
                           size="sm"
                           onClick={() => {
                             const filingType = contractKeyMap[key as keyof typeof contractKeyMap] || key.toLowerCase().replace(/[^a-z0-9]+/g, '_');
                             setDriveModalFilingType(filingType);
                             setDriveModalBusinessName(business.name || "");
-                            setDriveModalContractKey(key); // Store the contract key for later use
+                            setDriveModalContractKey(key);
+                            setDriveModalContractUpdateMode("replace");
+                            setDriveModalFile(null);
+                            setDriveModalFiles([]);
                             setShowDriveModal(true);
                           }}
                         >
                           File
                         </SecondaryButton>
+                        </div>
+                        <div className="mt-2 space-y-1.5">
+                          {!hasAny && (
+                            <div className="text-xs text-gray-500">Not available</div>
+                          )}
+                          {items.map((item, idx) => {
+                            const isACESSigned =
+                              item.status?.toLowerCase().includes("aces") ||
+                              item.status?.toLowerCase().includes("signed via aces");
+                            return (
+                              <div
+                                key={`${key}-${idx}`}
+                                className="flex flex-wrap items-center gap-2 text-xs text-gray-500"
+                              >
+                                {items.length > 1 && (
+                                  <span className="text-[11px] text-gray-400 shrink-0">
+                                    #{idx + 1}
+                                  </span>
+                                )}
+                                <FileLink label="View File" url={item.url} />
+                                {item.status && (
+                                  <span
+                                    className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                                      isACESSigned
+                                        ? "bg-green-100 text-green-700"
+                                        : "bg-blue-100 text-blue-700"
+                                    }`}
+                                  >
+                                    {isACESSigned ? "✓ ACES Signed" : item.status}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                     );
                   })}
@@ -2925,6 +2934,10 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                             onClick={() => {
                               setDriveModalFilingType(filingType);
                               setDriveModalBusinessName(business.name || "");
+                              setDriveModalContractKey(null);
+                              setDriveModalContractUpdateMode("replace");
+                              setDriveModalFile(null);
+                              setDriveModalFiles([]);
                               setShowDriveModal(true);
                             }}
                           >
@@ -3845,6 +3858,63 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                   />
                 </div>
 
+                {/* Signed contract: replace vs append vs multiple files (comma-separated IDs in Sheets) */}
+                {driveModalFilingType.startsWith("signed_") && (
+                  <div className="mb-4 p-3 border border-amber-200 rounded bg-amber-50">
+                    <label className="font-semibold block mb-2">Upload mode</label>
+                    <div className="space-y-2">
+                      <label className="flex items-start cursor-pointer gap-2">
+                        <input
+                          type="radio"
+                          name="contractUpdateMode"
+                          checked={driveModalContractUpdateMode === "replace"}
+                          onChange={() => {
+                            setDriveModalContractUpdateMode("replace");
+                            setDriveModalFile(null);
+                            setDriveModalFiles([]);
+                          }}
+                          className="mt-1"
+                        />
+                        <span className="text-sm">
+                          Replace contract — overwrites the file ID(s) in this cell
+                        </span>
+                      </label>
+                      <label className="flex items-start cursor-pointer gap-2">
+                        <input
+                          type="radio"
+                          name="contractUpdateMode"
+                          checked={driveModalContractUpdateMode === "append"}
+                          onChange={() => {
+                            setDriveModalContractUpdateMode("append");
+                            setDriveModalFile(null);
+                            setDriveModalFiles([]);
+                          }}
+                          className="mt-1"
+                        />
+                        <span className="text-sm">
+                          Add to contract — appends one file ID (comma-separated in the same cell)
+                        </span>
+                      </label>
+                      <label className="flex items-start cursor-pointer gap-2">
+                        <input
+                          type="radio"
+                          name="contractUpdateMode"
+                          checked={driveModalContractUpdateMode === "append_multiple"}
+                          onChange={() => {
+                            setDriveModalContractUpdateMode("append_multiple");
+                            setDriveModalFile(null);
+                            setDriveModalFiles([]);
+                          }}
+                          className="mt-1"
+                        />
+                        <span className="text-sm">
+                          Multiple files — upload several contracts at once; all file IDs are appended (comma-separated)
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+                )}
+
                 {/* NEW: Add Contract Status Selection - Only show for signed contracts */}
                 {driveModalFilingType.startsWith('signed_') && (
                   <div className="mb-4 p-3 border border-blue-200 rounded bg-blue-50">
@@ -3882,7 +3952,8 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                 )}
 
                 {/* Multiple Files Checkbox - only show for floor plan related files */}
-                {(driveModalFilingType.includes('site_map') || driveModalFilingType.includes('floor') || driveModalFilingType.includes('exit')) && (
+                {!driveModalFilingType.startsWith("signed_") &&
+                (driveModalFilingType.includes('site_map') || driveModalFilingType.includes('floor') || driveModalFilingType.includes('exit')) && (
                   <div className="mb-4">
                     <label className="flex items-center">
                       <input
@@ -3904,24 +3975,45 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                 
                 <div className="mb-6">
                   <label className="font-semibold">
-                    {driveModalMultipleFiles ? 'Files:' : 'File:'}
+                    {driveModalFilingType.startsWith("signed_") &&
+                    driveModalContractUpdateMode === "append_multiple"
+                      ? "Files:"
+                      : driveModalMultipleFiles && !driveModalFilingType.startsWith("signed_")
+                        ? "Files:"
+                        : "File:"}
                   </label>
-                  <input 
-                    type="file" 
-                    multiple={driveModalMultipleFiles}
+                  <input
+                    type="file"
+                    multiple={
+                      (driveModalFilingType.startsWith("signed_") &&
+                        driveModalContractUpdateMode === "append_multiple") ||
+                      (!driveModalFilingType.startsWith("signed_") && driveModalMultipleFiles)
+                    }
                     onChange={handleFileChange}
-                    className="ml-2" 
+                    className="ml-2"
                   />
-                  {driveModalMultipleFiles && driveModalFiles.length > 0 && (
-                    <div className="mt-2 text-sm text-gray-600">
-                      Selected files: {driveModalFiles.map(f => f.name).join(', ')}
-                    </div>
-                  )}
-                  {!driveModalMultipleFiles && driveModalFile && (
-                    <div className="mt-2 text-sm text-gray-600">
-                      Selected file: {driveModalFile.name}
-                    </div>
-                  )}
+                  {driveModalFilingType.startsWith("signed_") &&
+                    driveModalContractUpdateMode === "append_multiple" &&
+                    driveModalFiles.length > 0 && (
+                      <div className="mt-2 text-sm text-gray-600">
+                        Selected files: {driveModalFiles.map((f) => f.name).join(", ")}
+                      </div>
+                    )}
+                  {!driveModalFilingType.startsWith("signed_") &&
+                    driveModalMultipleFiles &&
+                    driveModalFiles.length > 0 && (
+                      <div className="mt-2 text-sm text-gray-600">
+                        Selected files: {driveModalFiles.map((f) => f.name).join(", ")}
+                      </div>
+                    )}
+                  {((!driveModalFilingType.startsWith("signed_") && !driveModalMultipleFiles) ||
+                    (driveModalFilingType.startsWith("signed_") &&
+                      driveModalContractUpdateMode !== "append_multiple")) &&
+                    driveModalFile && (
+                      <div className="mt-2 text-sm text-gray-600">
+                        Selected file: {driveModalFile.name}
+                      </div>
+                    )}
                 </div>
                 
                 {driveModalResult && (
@@ -3988,144 +4080,174 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                   <button
                     className="px-4 py-2 rounded bg-blue-600 text-white font-semibold hover:bg-blue-700 focus:outline-none"
                     onClick={async () => {
-                      const filesToUpload = driveModalMultipleFiles ? driveModalFiles : (driveModalFile ? [driveModalFile] : []);
-                      
+                      const isSigned = driveModalFilingType.startsWith("signed_");
+                      let filesToUpload: File[] = [];
+                      if (isSigned && driveModalContractUpdateMode === "append_multiple") {
+                        filesToUpload = driveModalFiles;
+                      } else if (!isSigned && driveModalMultipleFiles) {
+                        filesToUpload =
+                          driveModalFiles.length > 0
+                            ? driveModalFiles
+                            : driveModalFile
+                              ? [driveModalFile]
+                              : [];
+                      } else {
+                        filesToUpload = driveModalFile ? [driveModalFile] : [];
+                      }
+
                       if (filesToUpload.length === 0) return;
-                      
+
                       setDriveModalLoading(true);
                       setDriveModalResult(null);
-                      
+
                       try {
                         let fileForContractApi: File | null = null;
                         const formData = new FormData();
-                        formData.append('business_name', driveModalBusinessName);
-                        formData.append('filing_type', driveModalFilingType);
+                        formData.append("business_name", driveModalBusinessName);
+                        formData.append("filing_type", driveModalFilingType);
                         formData.append("gdrive_url", info?.gdrive?.folder_url || "");
-                        
-                        // NEW: Add contract status if it's a signed contract
-                        if (driveModalFilingType.startsWith('signed_')) {
-                          formData.append('contract_status', driveModalContractStatus);
+
+                        if (isSigned) {
+                          formData.append("contract_status", driveModalContractStatus);
+                          formData.append("contract_update_mode", driveModalContractUpdateMode);
                         }
-                        
-                        if (driveModalMultipleFiles && filesToUpload.length > 1) {
+
+                        if (!isSigned && driveModalMultipleFiles && filesToUpload.length > 1) {
                           const combined = await combineFilesIntoPdf(filesToUpload);
-                          formData.append("file", combined);
+                          formData.append("files", combined);
                           fileForContractApi = combined;
                         } else {
-                          formData.append("file", filesToUpload[0]);
-                          fileForContractApi = filesToUpload[0];
+                          for (const f of filesToUpload) {
+                            formData.append("files", f);
+                          }
+                          fileForContractApi = filesToUpload[0] ?? null;
                         }
-                        
+
                         const res = await fetch(`${getApiBaseUrl()}/api/drive-filing?token=${encodeURIComponent(token)}`, {
-                          method: 'POST',
+                          method: "POST",
                           headers: { Authorization: `Bearer ${token}` },
                           body: formData,
                         });
-                        
-                        const data = await res.json();
-                        if (data.status === 'success') {
-                          // NOTE: File IDs are now fetched directly from Google Sheets by the backend.
-                          // File IDs will be updated when user clicks "Get Member Profile" again.
-                          // Set the exact message that triggers modal close
-                          setDriveModalResult('File successfully uploaded! Click "Get Member Profile" to refresh file links.');
 
-                          // C&I contract silent automation (Electricity/Gas).
-                          // This is intentionally "fire-and-forget", but we log everything so we can diagnose failures.
+                        let data: unknown = {};
+                        try {
+                          data = await res.json();
+                        } catch {
+                          data = {};
+                        }
+
+                        if (!res.ok) {
+                          const hint = formatBackendErrorBody(data);
+                          setDriveModalResult(
+                            `Error: ${hint}${res.status ? ` (HTTP ${res.status})` : ""}`,
+                          );
+                          return;
+                        }
+
+                        const payload = data as { status?: string };
+                        if (payload.status === "success") {
+                          setDriveModalResult(
+                            'File successfully uploaded! Click "Get Member Profile" to refresh file links.',
+                          );
+
                           const ciContractApi: Record<string, string> = {
-                            "C&I Electricity": "https://aces-invoice-api-672026052958.australia-southeast2.run.app/v1/ci-electricity-contract/process-contract",
-                            "C&I Gas": "https://aces-invoice-api-672026052958.australia-southeast2.run.app/v1/ci-gas-contract/process-contract",
+                            "C&I Electricity":
+                              "https://aces-invoice-api-672026052958.australia-southeast2.run.app/v1/ci-electricity-contract/process-contract",
+                            "C&I Gas":
+                              "https://aces-invoice-api-672026052958.australia-southeast2.run.app/v1/ci-gas-contract/process-contract",
                           };
 
                           const contractKey = driveModalContractKey;
-                          console.log("[Signed Contract Upload] driveModalContractKey:", contractKey);
-                          console.log("[Signed Contract Upload] driveModalFilingType:", driveModalFilingType);
-                          console.log("[Signed Contract Upload] backend drive-filing upload ok. Preparing contract API call. data.status:", data.status);
-                          console.log("[Signed Contract Upload] fileForContractApi:", fileForContractApi ? { name: fileForContractApi.name, type: fileForContractApi.type, size: fileForContractApi.size } : null);
-
-                          if (!contractKey || !ciContractApi[contractKey]) {
-                            console.log("[C&I Contract API] Skipped: contractKey not C&I Electricity/Gas or missing.", { contractKey, hasUrl: !!(contractKey && ciContractApi[contractKey]) });
-                          } else if (!fileForContractApi) {
-                            console.error("[C&I Contract API] Skipped: no fileForContractApi available.", { contractKey });
-                          } else if (!fileForContractApi.name.toLowerCase().endsWith(".pdf")) {
-                            console.error("[C&I Contract API] Skipped: file is not a PDF.", { contractKey, fileName: fileForContractApi.name });
-                          } else {
-                            const url = ciContractApi[contractKey];
-                            console.log("[C&I Contract API] Calling:", { contractKey, url, fileName: fileForContractApi.name });
-                            const fd = new FormData();
-                            fd.append("file", fileForContractApi);
-                            fetch(url, { method: "POST", body: fd })
-                              .then(async (contractRes) => {
-                                const text = await contractRes.text().catch(() => "");
-                                let body: unknown = null;
-                                try {
-                                  body = text ? JSON.parse(text) : null;
-                                } catch {
-                                  body = text || null;
-                                }
-                                console.log("[C&I Contract API] Response:", {
-                                  contractKey,
-                                  url,
-                                  status: contractRes.status,
-                                  statusText: contractRes.statusText,
-                                  body,
+                          if (contractKey && ciContractApi[contractKey]) {
+                            for (const f of filesToUpload) {
+                              if (!f.name.toLowerCase().endsWith(".pdf")) continue;
+                              const url = ciContractApi[contractKey];
+                              const fd = new FormData();
+                              fd.append("file", f);
+                              fetch(url, { method: "POST", body: fd })
+                                .then(async (contractRes) => {
+                                  const text = await contractRes.text().catch(() => "");
+                                  let body: unknown = null;
+                                  try {
+                                    body = text ? JSON.parse(text) : null;
+                                  } catch {
+                                    body = text || null;
+                                  }
+                                  console.log("[C&I Contract API] Response:", {
+                                    contractKey,
+                                    url,
+                                    status: contractRes.status,
+                                    statusText: contractRes.statusText,
+                                    body,
+                                  });
+                                })
+                                .catch((err) => {
+                                  console.error("[C&I Contract API] Error calling:", {
+                                    contractKey,
+                                    url,
+                                    err,
+                                  });
                                 });
-                              })
-                              .catch((err) => {
-                                console.error("[C&I Contract API] Error calling:", { contractKey, url, err });
-                              });
+                            }
                           }
-                          
-                          // Store the file in sessionStorage for potential lodgement transfer
-                              // Only do this for signed contracts
-                              if (driveModalFilingType.startsWith('signed_') && filesToUpload.length > 0) {
-                                const fileToStore = fileForContractApi ?? filesToUpload[0]; // Prefer combined file if we merged
-                                try {
-                                  const reader = new FileReader();
-                                  reader.onloadend = () => {
-                                    const base64String = reader.result as string;
-                                    const fileData = {
-                                      name: fileToStore.name,
-                                      type: fileToStore.type || 'application/pdf',
-                                      size: fileToStore.size,
-                                      data: base64String,
-                                      timestamp: Date.now()
-                                    };
-                                    
-                                    // Check size limit
-                                    const maxSize = 7 * 1024 * 1024; // 7MB
-                                    if (fileToStore.size <= maxSize) {
-                                      try {
-                                        sessionStorage.setItem('lodgementFileTransfer', JSON.stringify(fileData));
-                                        console.log('💾 File stored for lodgement transfer:', fileToStore.name);
-                                        console.log('💾 File data size in storage:', JSON.stringify(fileData).length, 'bytes');
-                                        // Verify it was stored
-                                        const verify = sessionStorage.getItem('lodgementFileTransfer');
-                                        console.log('💾 Verification - file in storage:', !!verify);
-                                      } catch (storageError: any) {
-                                        console.warn('Could not store file for transfer:', storageError);
-                                      }
-                                    } else {
-                                      console.warn('File too large to store:', fileToStore.size);
-                                    }
-                                  };
-                                  reader.onerror = () => {
-                                    console.warn('Error reading file for transfer storage');
-                                  };
-                                  reader.readAsDataURL(fileToStore);
-                                } catch (error) {
-                                  console.warn('Error preparing file for transfer:', error);
+
+                          if (driveModalFilingType.startsWith("signed_") && filesToUpload.length > 0) {
+                            const fileToStore = fileForContractApi ?? filesToUpload[0];
+                            try {
+                              const reader = new FileReader();
+                              reader.onloadend = () => {
+                                const base64String = reader.result as string;
+                                const fileData = {
+                                  name: fileToStore.name,
+                                  type: fileToStore.type || "application/pdf",
+                                  size: fileToStore.size,
+                                  data: base64String,
+                                  timestamp: Date.now(),
+                                };
+
+                                const maxSize = 7 * 1024 * 1024;
+                                if (fileToStore.size <= maxSize) {
+                                  try {
+                                    sessionStorage.setItem(
+                                      "lodgementFileTransfer",
+                                      JSON.stringify(fileData),
+                                    );
+                                  } catch (storageError: unknown) {
+                                    console.warn("Could not store file for transfer:", storageError);
+                                  }
+                                } else {
+                                  console.warn("File too large to store:", fileToStore.size);
                                 }
-                              }
+                              };
+                              reader.onerror = () => {
+                                console.warn("Error reading file for transfer storage");
+                              };
+                              reader.readAsDataURL(fileToStore);
+                            } catch (error) {
+                              console.warn("Error preparing file for transfer:", error);
+                            }
+                          }
                         } else {
-                          setDriveModalResult(`Error: ${data.message}`);
+                          setDriveModalResult(`Error: ${formatBackendErrorBody(data)}`);
                         }
-                      } catch (err: any) {
-                        setDriveModalResult(`Error uploading file(s): ${err.message}`);
+                      } catch (err: unknown) {
+                        setDriveModalResult(
+                          `Error uploading file(s): ${err instanceof Error ? err.message : String(err)}`,
+                        );
                       } finally {
                         setDriveModalLoading(false);
                       }
                     }}
-                    disabled={(driveModalMultipleFiles ? driveModalFiles.length === 0 : !driveModalFile) || driveModalLoading}
+                    disabled={
+                      driveModalLoading ||
+                      (driveModalFilingType.startsWith("signed_")
+                        ? driveModalContractUpdateMode === "append_multiple"
+                          ? driveModalFiles.length === 0
+                          : !driveModalFile
+                        : driveModalMultipleFiles
+                          ? driveModalFiles.length === 0
+                          : !driveModalFile)
+                    }
                   >
                     {driveModalLoading ? 'Uploading...' : 'Upload'}
                   </button>

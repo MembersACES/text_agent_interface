@@ -179,7 +179,8 @@ export function OverviewTab({
   const contracts = getContractsFromBusinessInfo(
     businessInfo as Record<string, unknown> | null
   );
-  const hasContracts = contracts.some((c) => !!c.url);
+  const contractFileTotal = contracts.reduce((n, c) => n + c.items.length, 0);
+  const hasContracts = contractFileTotal > 0;
   const { loaUrl, sfaUrl, wipUrl, amortExcelUrl, amortPdfUrl } =
     getKeyDocumentsFromBusinessInfo(
       businessInfo as Record<string, unknown> | null
@@ -300,9 +301,7 @@ export function OverviewTab({
                           <span>
                             <span className="text-gray-400 dark:text-gray-500 mr-1.5">Signed</span>
                             <span className="font-semibold text-gray-900 dark:text-gray-100">
-                              {hasContracts
-                                ? contracts.filter((c) => c.url).length
-                                : 0}
+                              {hasContracts ? contractFileTotal : 0}
                             </span>
                           </span>
                           <span>
@@ -328,18 +327,27 @@ export function OverviewTab({
                           </p>
                           <ul className="space-y-1.5">
                             {contracts
-                              .filter((c) => c.url)
-                              .slice(0, 3)
-                              .map((c) => (
+                              .flatMap((c) =>
+                                c.items.map((item, idx) => ({
+                                  url: item.url,
+                                  label:
+                                    c.items.length > 1
+                                      ? `${c.key} (#${idx + 1})`
+                                      : c.key,
+                                  rowKey: `${c.key}-${idx}`,
+                                })),
+                              )
+                              .slice(0, 6)
+                              .map(({ rowKey, label, url }) => (
                                 <li
-                                  key={c.key}
+                                  key={rowKey}
                                   className="flex items-center justify-between gap-2"
                                 >
                                   <span className="truncate text-[11px] text-gray-700 dark:text-gray-200">
-                                    {c.key}
+                                    {label}
                                   </span>
                                   <a
-                                    href={c.url}
+                                    href={url}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="text-[11px] font-semibold text-primary hover:underline"

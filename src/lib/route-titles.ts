@@ -11,6 +11,7 @@ const ROUTE_TITLES: Record<string, string> = {
   "/base-1": "Base 1 Review Agent",
   "/robot-dashboard": "Robot Dashboard",
   "/invoicing": "Invoicing",
+  "/ghg-reporting": "GHG Reporting",
   "/robot-dashboard/consumables": "Consumables Tracking",
   "/resources": "Links & Passwords",
   "/resources/floating-agent": "Floating Agent",

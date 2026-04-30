@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { useSession } from "next-auth/react";
 import ReactMarkdown from 'react-markdown';
 import { getApiBaseUrl } from "@/lib/utils";
+import { formatBackendErrorBody } from "@/lib/api-errors";
 
 // Normalize document link before sending to API: strip leading =, fix https:/ → https://.
 function normalizeDocumentLink(link: string | undefined): string | undefined {
@@ -6887,7 +6888,7 @@ export default function InfoToolPage({ title, description, endpoint, extraFields
         if (secondaryField && secondaryValue) formData.append(secondaryField.name, secondaryValue);
         if (secondaryField) formData.append(secondaryField.name, secondaryValue);
         extraFields.forEach((f) => formData.append(f.name, fields[f.name] || ""));
-        formData.append("file", file);
+        formData.append("files", file);
   
         res = await fetch(endpoint, {
           method: "POST",
@@ -6917,12 +6918,18 @@ export default function InfoToolPage({ title, description, endpoint, extraFields
       clearTimeout(timeoutId);
   
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(
-          typeof err.detail === "string"
-            ? err.detail
-            : JSON.stringify(err.detail || err)
-        );
+        let errBody: unknown = null;
+        try {
+          errBody = await res.json();
+        } catch {
+          errBody = null;
+        }
+        const message = formatBackendErrorBody(errBody);
+        const text =
+          message !== "Request failed."
+            ? message
+            : (res.statusText || "Request failed");
+        throw new Error(res.status ? `${text} (HTTP ${res.status})` : text);
       }
   
       const data = await res.json();

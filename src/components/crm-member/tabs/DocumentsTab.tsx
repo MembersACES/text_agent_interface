@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { FileLink } from "../shared/FileLink";
 import { getApiBaseUrl } from "@/lib/utils";
+import { formatBackendErrorBody } from "@/lib/api-errors";
 import { useToast } from "@/components/ui/toast";
 import { combineFilesIntoPdf } from "@/lib/combineFiles";
 import {
@@ -243,6 +244,10 @@ export function DocumentsTab({
   const [driveBizName, setDriveBizName] = useState("");
   const [driveContractKey, setDriveContractKey] = useState<string | null>(null);
   const [driveContractStatus, setDriveContractStatus] = useState("Signed via ACES");
+  const [driveContractUpdateMode, setDriveContractUpdateMode] = useState<
+    "replace" | "append" | "append_multiple"
+  >("replace");
+  const [driveBatchFiles, setDriveBatchFiles] = useState<File[]>([]);
   const [driveFile, setDriveFile] = useState<File | null>(null);
   const [driveLoading, setDriveLoading] = useState(false);
   const [driveResult, setDriveResult] = useState<string | null>(null);
@@ -415,8 +420,8 @@ export function DocumentsTab({
   const contracts = getContractsFromProcessed(processed);
 
   const sortedContracts = [...contracts].sort((a, b) => {
-    const aHas = !!a.url;
-    const bHas = !!b.url;
+    const aHas = a.items.length > 0;
+    const bHas = b.items.length > 0;
     if (aHas === bHas) return 0;
     return aHas ? -1 : 1;
   });
@@ -439,37 +444,95 @@ export function DocumentsTab({
 
   // ── Upload handlers ────────────────────────────────────────────────────────
 
-  const resetDrive = () => { setShowDriveModal(false); setDriveFile(null); setDriveResult(null); setDriveContractKey(null); };
+  const resetDrive = () => {
+    setShowDriveModal(false);
+    setDriveFile(null);
+    setDriveBatchFiles([]);
+    setDriveContractUpdateMode("replace");
+    setDriveResult(null);
+    setDriveContractKey(null);
+  };
 
   const uploadDrive = async () => {
-    if (!driveFile || !token) { setDriveResult("Please select a file and ensure you are signed in."); return; }
-    setDriveLoading(true); setDriveResult(null);
+    if (!token) {
+      setDriveResult("Please sign in.");
+      return;
+    }
+    const isSigned = driveFilingType.startsWith("signed_");
+    const filesToUpload: File[] =
+      isSigned && driveContractUpdateMode === "append_multiple"
+        ? driveBatchFiles
+        : driveFile
+          ? [driveFile]
+          : [];
+    if (filesToUpload.length === 0) {
+      setDriveResult("Please select a file and ensure you are signed in.");
+      return;
+    }
+    setDriveLoading(true);
+    setDriveResult(null);
     try {
       const fd = new FormData();
-      fd.append("business_name", driveBizName); fd.append("filing_type", driveFilingType);
+      fd.append("business_name", driveBizName);
+      fd.append("filing_type", driveFilingType);
       fd.append("gdrive_url", driveUrl);
-      if (driveFilingType.startsWith("signed_")) fd.append("contract_status", driveContractStatus);
-      fd.append("file", driveFile);
+      if (isSigned) {
+        fd.append("contract_status", driveContractStatus);
+        fd.append("contract_update_mode", driveContractUpdateMode);
+      }
+      for (const f of filesToUpload) {
+        fd.append("files", f);
+      }
       const res = await fetch(`${getApiBaseUrl()}/api/drive-filing?token=${encodeURIComponent(token)}`, {
-        method: "POST", headers: { Authorization: `Bearer ${token}` }, body: fd,
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
       });
-      const data = await res.json();
-      if (data.status === "success") {
-        setDriveResult("File successfully uploaded!"); showToast("File uploaded successfully.","success");
-        console.log("[C&I Contract API] Drive upload OK. driveContractKey:", driveContractKey);
-        if (driveContractKey === "C&I Electricity" || driveContractKey === "C&I Gas") silentProcessContract(driveFile, driveContractKey);
+      let data: unknown = {};
+      try {
+        data = await res.json();
+      } catch {
+        data = {};
+      }
+      if (!res.ok) {
+        const msg = formatBackendErrorBody(data);
+        setDriveResult(`Error: ${msg}${res.status ? ` (HTTP ${res.status})` : ""}`);
+        showToast(msg, "error");
+        return;
+      }
+      const ok = data as { status?: string; message?: string; filename?: string };
+      if (ok.status === "success") {
+        setDriveResult("File successfully uploaded!");
+        showToast("File uploaded successfully.", "success");
+        if (
+          driveContractKey === "C&I Electricity" ||
+          driveContractKey === "C&I Gas"
+        ) {
+          for (const f of filesToUpload) {
+            silentProcessContract(f, driveContractKey);
+          }
+        }
         void logMemberUpload({
           upload_kind: "drive_filing",
-          filename: (data.filename as string) || driveFile?.name || undefined,
+          filename: ok.filename || filesToUpload[0]?.name || undefined,
           filing_type: driveFilingType,
           utility_key: driveContractKey,
           metadata: {
             contract_status: driveContractStatus,
+            contract_update_mode: driveContractUpdateMode,
           },
         });
-      } else { setDriveResult(`Error: ${data.message||"Upload failed"}`); showToast(data.message||"Upload failed","error"); }
-    } catch (e: any) { setDriveResult(`Error: ${e?.message}`); showToast(e?.message,"error"); }
-    finally { setDriveLoading(false); }
+      } else {
+        setDriveResult(`Error: ${formatBackendErrorBody(data)}`);
+        showToast(formatBackendErrorBody(data), "error");
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setDriveResult(`Error: ${msg}`);
+      showToast(msg, "error");
+    } finally {
+      setDriveLoading(false);
+    }
   };
 
   const uploadAddDoc = async () => {
@@ -669,7 +732,7 @@ export function DocumentsTab({
     k.startsWith("eoi_")
   );
 
-  const contractCount = contracts.filter((c) => c.url).length;
+  const contractCount = contracts.reduce((n, c) => n + c.items.length, 0);
 
   const businessDocsCount =
     Object.keys(docs)
@@ -937,6 +1000,8 @@ export function DocumentsTab({
                               setDriveFilingType(filingType);
                               setDriveBizName(business?.name || "");
                               setDriveContractKey(null);
+                              setDriveContractUpdateMode("replace");
+                              setDriveBatchFiles([]);
                               setDriveResult(null);
                               setDriveFile(null);
                               setShowDriveModal(true);
@@ -960,50 +1025,21 @@ export function DocumentsTab({
             {sortedContracts.map((c) => (
               <div
                 key={c.key}
-                className="flex items-center justify-between gap-3 px-5 py-3.5 hover:bg-gray-50/50 dark:hover:bg-white/[0.02] transition-colors"
+                className="px-5 py-3.5 hover:bg-gray-50/50 dark:hover:bg-white/[0.02] transition-colors"
               >
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <span
-                    className={`w-2 h-2 rounded-full shrink-0 ${
-                      c.url ? "bg-emerald-400" : "bg-gray-200 dark:bg-gray-700"
-                    }`}
-                  />
-                  <span className="text-sm font-medium text-gray-800 dark:text-gray-200">
-                    {c.key}
-                  </span>
-                  <span className="text-[11px] text-gray-400 truncate">
-                    {c.status || (c.url ? "" : "Not available")}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  {c.url ? (
-                    <a
-                      href={c.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={openBtn}
-                    >
-                      <svg
-                        className="w-3 h-3"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth={2}
-                        viewBox="0 0 24 24"
-                        aria-hidden
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                        />
-                      </svg>
-                      Open Contract
-                    </a>
-                  ) : (
-                    <span className="text-[11px] text-gray-300 dark:text-gray-700 px-2">
-                      No file
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span
+                      className={`w-2 h-2 rounded-full shrink-0 mt-1.5 ${
+                        c.items.length > 0
+                          ? "bg-emerald-400"
+                          : "bg-gray-200 dark:bg-gray-700"
+                      }`}
+                    />
+                    <span className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                      {c.key}
                     </span>
-                  )}
+                  </div>
                   <button
                     type="button"
                     onClick={() => {
@@ -1013,14 +1049,58 @@ export function DocumentsTab({
                       );
                       setDriveBizName(business?.name || "");
                       setDriveContractKey(c.key);
+                      setDriveContractUpdateMode("replace");
                       setDriveResult(null);
                       setDriveFile(null);
+                      setDriveBatchFiles([]);
                       setShowDriveModal(true);
                     }}
                     className={ghostBtn}
                   >
                     File
                   </button>
+                </div>
+                <div className="mt-2 ml-4 space-y-1.5">
+                  {c.items.length === 0 && (
+                    <span className="text-[11px] text-gray-400">Not available</span>
+                  )}
+                  {c.items.map((item, idx) => (
+                    <div
+                      key={`${c.key}-${idx}`}
+                      className="flex flex-wrap items-center gap-2 text-[11px] text-gray-500 dark:text-gray-400"
+                    >
+                      {c.items.length > 1 && (
+                        <span className="text-gray-400 shrink-0">#{idx + 1}</span>
+                      )}
+                      {item.url ? (
+                        <a
+                          href={item.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={openBtn}
+                        >
+                          <svg
+                            className="w-3 h-3"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth={2}
+                            viewBox="0 0 24 24"
+                            aria-hidden
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                            />
+                          </svg>
+                          Open Contract
+                        </a>
+                      ) : null}
+                      {item.status ? (
+                        <span className="truncate text-gray-400">{item.status}</span>
+                      ) : null}
+                    </div>
+                  ))}
                 </div>
               </div>
             ))}
@@ -1179,6 +1259,34 @@ export function DocumentsTab({
           <p className="text-sm text-gray-500 font-mono">{driveFilingType}</p>
         </MField>
         {driveFilingType.startsWith("signed_") && (
+          <MField label="Upload mode">
+            <div className="flex flex-col gap-2 mt-0.5 text-sm text-gray-700 dark:text-gray-300">
+              {(
+                [
+                  ["replace", "Replace contract — overwrites stored file ID(s)"],
+                  ["append", "Add to contract — append one file ID (comma-separated)"],
+                  ["append_multiple", "Multiple files — append all file IDs at once"],
+                ] as const
+              ).map(([mode, label]) => (
+                <label key={mode} className="flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="driveContractMode"
+                    checked={driveContractUpdateMode === mode}
+                    onChange={() => {
+                      setDriveContractUpdateMode(mode);
+                      setDriveFile(null);
+                      setDriveBatchFiles([]);
+                    }}
+                    className="accent-gray-900 dark:accent-white mt-1"
+                  />
+                  <span>{label}</span>
+                </label>
+              ))}
+            </div>
+          </MField>
+        )}
+        {driveFilingType.startsWith("signed_") && (
           <MField label="Contract Status">
             <div className="flex gap-5 mt-0.5">
               {["Signed via ACES","Existing Contract"].map((v) => (
@@ -1190,8 +1298,40 @@ export function DocumentsTab({
             </div>
           </MField>
         )}
-        <MField label="File">
-          <FileDropInput onChange={setDriveFile} file={driveFile} />
+        <MField
+          label={
+            driveFilingType.startsWith("signed_") &&
+            driveContractUpdateMode === "append_multiple"
+              ? "Files"
+              : "File"
+          }
+        >
+          {driveFilingType.startsWith("signed_") &&
+          driveContractUpdateMode === "append_multiple" ? (
+            <div className="rounded-lg border-2 border-dashed border-gray-200 dark:border-gray-700 px-3 py-2.5">
+              <input
+                type="file"
+                multiple
+                onChange={(e) =>
+                  setDriveBatchFiles(
+                    e.target.files ? Array.from(e.target.files) : [],
+                  )
+                }
+                className="block w-full text-xs text-gray-500 file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-medium file:bg-gray-100 dark:file:bg-gray-800 file:text-gray-700 dark:file:text-gray-200 hover:file:bg-gray-200 dark:hover:file:bg-gray-700 file:cursor-pointer file:transition-colors"
+              />
+              {driveBatchFiles.length > 0 && (
+                <ul className="mt-1 text-[11px] text-gray-400 space-y-0.5 max-h-24 overflow-auto">
+                  {driveBatchFiles.map((f) => (
+                    <li key={f.name + f.size} className="truncate">
+                      {f.name}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ) : (
+            <FileDropInput onChange={setDriveFile} file={driveFile} />
+          )}
         </MField>
         {driveResult && <Alert msg={driveResult} successStart="File successfully" />}
         {driveResult?.includes("success") && driveFilingType.startsWith("signed_") && driveContractKey && (
@@ -1214,7 +1354,18 @@ export function DocumentsTab({
             </a>
           </div>
         )}
-        <MFooter onCancel={resetDrive} onSubmit={uploadDrive} label="Upload" disabled={!driveFile} loading={driveLoading} />
+        <MFooter
+          onCancel={resetDrive}
+          onSubmit={uploadDrive}
+          label="Upload"
+          disabled={
+            driveFilingType.startsWith("signed_") &&
+            driveContractUpdateMode === "append_multiple"
+              ? driveBatchFiles.length === 0
+              : !driveFile
+          }
+          loading={driveLoading}
+        />
       </Modal>
 
       {/* ── Additional doc modal ── */}

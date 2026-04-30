@@ -144,11 +144,44 @@ const CONTRACT_LABELS = [
 
 export type ContractLabel = (typeof CONTRACT_LABELS)[number];
 
+/** One linked file for a contract category (cells may hold comma-separated URLs / statuses). */
+export type ContractFileItem = { url: string; status?: string };
+
+/** Split comma-separated Google Drive URLs or IDs stored in a single sheet cell. */
+export function parseContractCell(
+  rawUrl: unknown,
+  rawStatus: unknown
+): ContractFileItem[] {
+  if (rawUrl == null || rawUrl === "") return [];
+  const urlStr = String(rawUrl).trim();
+  if (!urlStr) return [];
+
+  const urls = urlStr
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const statusStr =
+    rawStatus != null && rawStatus !== ""
+      ? String(rawStatus).trim()
+      : "";
+  const statuses = statusStr
+    ? statusStr.split(",").map((s) => s.trim())
+    : [];
+
+  return urls.map((url, i) => ({
+    url,
+    status: statuses[i] ?? statuses[0] ?? undefined,
+  }));
+}
+
 export function getContractsFromProcessed(processed: ProcessedFileMap) {
   return CONTRACT_LABELS.map((key) => ({
     key,
-    url: processed[`contract_${key}`] as string | undefined,
-    status: processed[`contract_${key}_status`] as string | undefined,
+    items: parseContractCell(
+      processed[`contract_${key}`],
+      processed[`contract_${key}_status`]
+    ),
   }));
 }
 
