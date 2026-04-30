@@ -6888,7 +6888,7 @@ export default function InfoToolPage({ title, description, endpoint, extraFields
         if (secondaryField && secondaryValue) formData.append(secondaryField.name, secondaryValue);
         if (secondaryField) formData.append(secondaryField.name, secondaryValue);
         extraFields.forEach((f) => formData.append(f.name, fields[f.name] || ""));
-        formData.append("file", file);
+        formData.append("files", file);
   
         res = await fetch(endpoint, {
           method: "POST",
