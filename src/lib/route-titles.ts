@@ -12,6 +12,7 @@ const ROUTE_TITLES: Record<string, string> = {
   "/robot-dashboard": "Robot Dashboard",
   "/invoicing": "Invoicing",
   "/ghg-reporting": "GHG Reporting",
+  "/personal-assistant": "Personal Assistant",
   "/robot-dashboard/consumables": "Consumables Tracking",
   "/resources": "Links & Passwords",
   "/resources/floating-agent": "Floating Agent",

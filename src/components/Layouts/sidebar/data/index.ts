@@ -15,6 +15,7 @@ import {
   LayoutGrid,
   Lightbulb,
   Lock,
+  Sparkles,
   Users,
   AlertTriangle,
 } from "lucide-react";
@@ -58,6 +59,7 @@ export const NAV_DATA: NavSection[] = [
       { title: "Robot Dashboard", url: "/robot-dashboard", icon: Bot },
       { title: "Invoicing", url: "/invoicing", icon: FileText },
       { title: "GHG Reporting", url: "/ghg-reporting", icon: FileText },
+      { title: "Personal Assistant", url: "/personal-assistant", icon: Sparkles },
     ],
   },
   {

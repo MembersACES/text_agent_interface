@@ -23,6 +23,7 @@ export function Sidebar() {
   const { data: session, status } = useSession();
   const { setIsOpen, isOpen, isMobile, toggleSidebar, isCollapsed } = useSidebarContext();
   const [invoicingAllowed, setInvoicingAllowed] = useState<boolean | null>(null);
+  const [personalAssistantAllowed, setPersonalAssistantAllowed] = useState<boolean | null>(null);
   const [sectionOpen, setSectionOpen] = useState<Record<string, boolean>>(() => {
     if (typeof window === "undefined") return {};
     const initial: Record<string, boolean> = {};
@@ -73,12 +74,24 @@ export function Sidebar() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch("/api/invoicing-access", { method: "GET" });
-        const body = (await res.json().catch(() => ({}))) as { allowed?: boolean };
+        const [invRes, paRes] = await Promise.all([
+          fetch("/api/invoicing-access", { method: "GET" }),
+          fetch("/api/personal-assistant-access", { method: "GET" }),
+        ]);
+        const [invBody, paBody] = await Promise.all([
+          invRes.json().catch(() => ({})),
+          paRes.json().catch(() => ({})),
+        ]);
         if (cancelled) return;
-        setInvoicingAllowed(Boolean(body.allowed));
+        setInvoicingAllowed(Boolean((invBody as { allowed?: boolean }).allowed));
+        setPersonalAssistantAllowed(
+          Boolean((paBody as { allowed?: boolean }).allowed),
+        );
       } catch {
-        if (!cancelled) setInvoicingAllowed(false);
+        if (!cancelled) {
+          setInvoicingAllowed(false);
+          setPersonalAssistantAllowed(false);
+        }
       }
     })();
 
@@ -88,6 +101,14 @@ export function Sidebar() {
   }, [status, session?.user?.email]);
 
   const hasInvoicingAccess = invoicingAllowed === true;
+  const hasPersonalAssistantAccess = personalAssistantAllowed === true;
+
+  function canSeeRestrictedNavUrl(url: string): boolean {
+    if (url === "/invoicing") return hasInvoicingAccess;
+    if (url === "/personal-assistant") return hasPersonalAssistantAccess;
+    return true;
+  }
+
   const sections = NAV_DATA
     .map((section) => ({
       ...section,
@@ -96,12 +117,10 @@ export function Sidebar() {
           if (isNavGroup(item)) {
             return {
               ...item,
-              items: item.items.filter((sub) =>
-                sub.url === "/invoicing" ? hasInvoicingAccess : true
-              ),
+              items: item.items.filter((sub) => canSeeRestrictedNavUrl(sub.url)),
             };
           }
-          if (item.url === "/invoicing" && !hasInvoicingAccess) return null;
+          if (!canSeeRestrictedNavUrl(item.url)) return null;
           return item;
         })
         .filter((item): item is NavLinkItem | NavGroupItem => Boolean(item)),

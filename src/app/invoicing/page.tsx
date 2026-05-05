@@ -9,6 +9,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { getApiBaseUrl } from "@/lib/utils";
 
 type SheetEntry = {
   title: string;
@@ -165,7 +166,7 @@ const SHEET_SECTIONS: SheetSection[] = [
           "https://docs.google.com/spreadsheets/d/13KUaL34dV8TCUtcExCZI9tC8yAb2XiYK3-MyVLglphE/edit",
         status: "Recurring",
         tabs: [
-          { name: "Invoices Sent", gid: "204183407" },
+          { name: "Database Sheet", gid: "204183407" },
           { name: "Commission Figures", gid: "1703322444" },
           { name: "Gas Commission Up to Date", gid: "0" },
           { name: "Already Invoiced", gid: "1411900023" },
@@ -178,7 +179,7 @@ const SHEET_SECTIONS: SheetSection[] = [
           "https://docs.google.com/spreadsheets/d/1cqi0rFfcD8fLFehPIg6IDHJqwRL1AHR3b-_t2Gsyz7k/edit",
         status: "Recurring",
         tabs: [
-          { name: "Invoices Sent", gid: "204183407" },
+          { name: "Database Sheet", gid: "204183407" },
           { name: "Commission Figures", gid: "1703322444" },
           { name: "Commission Up to Date", gid: "0" },
           { name: "Already Invoiced", gid: "1411900023" },
@@ -190,7 +191,7 @@ const SHEET_SECTIONS: SheetSection[] = [
           "https://docs.google.com/spreadsheets/d/16t1eFN8gIXr-EmcI08POzEMfCNwO3LazHYB2RSKDmk0/edit",
         status: "Recurring",
         tabs: [
-          { name: "Invoices Sent", gid: "204183407" },
+          { name: "Database Sheet", gid: "204183407" },
           { name: "Commission Figures", gid: "1703322444" },
           { name: "Gas Commission Up to Date", gid: "0" },
           { name: "Already Invoiced", gid: "1411900023" },
@@ -241,6 +242,35 @@ const PREVIEW_HEIGHTS = {
 } as const;
 type PreviewHeight = keyof typeof PREVIEW_HEIGHTS;
 
+/** GID for the Commission Figures tab (Origin / Alinta retailer workbooks). */
+const COMMISSION_FIGURES_GID = "1703322444";
+/** GID for Trojan Oil tab "All Data" (unique client count). */
+const TROJAN_OIL_ALL_DATA_GID = "2013429471";
+
+/** Default sub-tab when opening a sheet (null = use first tab in config). */
+function defaultInvoicingTabGid(itemTitle: string): string | null {
+  if (
+    itemTitle === "Origin Gas" ||
+    itemTitle === "Origin Electricity" ||
+    itemTitle === "Alinta Gas"
+  ) {
+    return COMMISSION_FIGURES_GID;
+  }
+  if (itemTitle === "Trojan Oil") {
+    return TROJAN_OIL_ALL_DATA_GID;
+  }
+  return null;
+}
+
+function retailerKeyForCommissionFiguresCount(
+  itemTitle: string
+): "origin-gas" | "origin-elec" | "alinta-gas" | null {
+  if (itemTitle === "Origin Gas") return "origin-gas";
+  if (itemTitle === "Origin Electricity") return "origin-elec";
+  if (itemTitle === "Alinta Gas") return "alinta-gas";
+  return null;
+}
+
 // --- Skeleton loader for the auth-loading state ---
 function PageSkeleton() {
   return (
@@ -255,6 +285,18 @@ function PageSkeleton() {
 export default function RobotDashboardInvoicingPage() {
   const { data: session, status } = useSession();
   const [invoicingAllowed, setInvoicingAllowed] = useState<boolean | null>(null);
+  const [commissionFiguresClientCount, setCommissionFiguresClientCount] = useState<
+    number | null
+  >(null);
+  const [commissionFiguresCountLoading, setCommissionFiguresCountLoading] =
+    useState(false);
+  const [commissionFiguresCountError, setCommissionFiguresCountError] = useState(false);
+
+  const [trojanUniqueClientCount, setTrojanUniqueClientCount] = useState<
+    number | null
+  >(null);
+  const [trojanUniqueCountLoading, setTrojanUniqueCountLoading] = useState(false);
+  const [trojanUniqueCountError, setTrojanUniqueCountError] = useState(false);
 
   useEffect(() => {
     if (status !== "authenticated" || !session?.user?.email) return;
@@ -318,10 +360,146 @@ export default function RobotDashboardInvoicingPage() {
     ? toSheetUrl(selected.item.sheetIdOrUrl, effectiveGid)
     : "";
 
-  // When switching sheets, reset the active tab so the new sheet opens to its first tab
+  const commissionFiguresRetailerKey = selected
+    ? retailerKeyForCommissionFiguresCount(selected.item.title)
+    : null;
+  const showCommissionFiguresClientCount =
+    effectiveGid === COMMISSION_FIGURES_GID && commissionFiguresRetailerKey !== null;
+
+  const showTrojanUniqueClients =
+    selected?.item.title === "Trojan Oil" && effectiveGid === TROJAN_OIL_ALL_DATA_GID;
+
+  useEffect(() => {
+    if (!showCommissionFiguresClientCount || !commissionFiguresRetailerKey) {
+      setCommissionFiguresClientCount(null);
+      setCommissionFiguresCountError(false);
+      setCommissionFiguresCountLoading(false);
+      return;
+    }
+    if (status !== "authenticated") return;
+
+    const token =
+      (session as { id_token?: string; accessToken?: string } | null)?.id_token ??
+      (session as { id_token?: string; accessToken?: string } | null)?.accessToken;
+    if (!token) {
+      setCommissionFiguresClientCount(null);
+      setCommissionFiguresCountError(true);
+      return;
+    }
+
+    let cancelled = false;
+    setCommissionFiguresCountLoading(true);
+    setCommissionFiguresCountError(false);
+
+    (async () => {
+      try {
+        const u = new URL(
+          `${getApiBaseUrl()}/api/invoicing/commission-figures-client-count`
+        );
+        u.searchParams.set("retailer", commissionFiguresRetailerKey);
+        const res = await fetch(u.toString(), {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const body = (await res.json().catch(() => ({}))) as {
+          client_count?: number;
+          detail?: string | string[];
+        };
+        if (cancelled) return;
+        if (!res.ok) {
+          setCommissionFiguresClientCount(null);
+          setCommissionFiguresCountError(true);
+          return;
+        }
+        setCommissionFiguresClientCount(
+          typeof body.client_count === "number" ? body.client_count : null
+        );
+      } catch {
+        if (!cancelled) {
+          setCommissionFiguresClientCount(null);
+          setCommissionFiguresCountError(true);
+        }
+      } finally {
+        if (!cancelled) setCommissionFiguresCountLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    showCommissionFiguresClientCount,
+    commissionFiguresRetailerKey,
+    status,
+    session,
+  ]);
+
+  useEffect(() => {
+    if (!showTrojanUniqueClients) {
+      setTrojanUniqueClientCount(null);
+      setTrojanUniqueCountError(false);
+      setTrojanUniqueCountLoading(false);
+      return;
+    }
+    if (status !== "authenticated") return;
+
+    const token =
+      (session as { id_token?: string; accessToken?: string } | null)?.id_token ??
+      (session as { id_token?: string; accessToken?: string } | null)?.accessToken;
+    if (!token) {
+      setTrojanUniqueClientCount(null);
+      setTrojanUniqueCountError(true);
+      return;
+    }
+
+    let cancelled = false;
+    setTrojanUniqueCountLoading(true);
+    setTrojanUniqueCountError(false);
+
+    (async () => {
+      try {
+        const res = await fetch(
+          `${getApiBaseUrl()}/api/invoicing/trojan-oil-unique-clients`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        const body = (await res.json().catch(() => ({}))) as {
+          unique_client_count?: number;
+        };
+        if (cancelled) return;
+        if (!res.ok) {
+          setTrojanUniqueClientCount(null);
+          setTrojanUniqueCountError(true);
+          return;
+        }
+        setTrojanUniqueClientCount(
+          typeof body.unique_client_count === "number"
+            ? body.unique_client_count
+            : null
+        );
+      } catch {
+        if (!cancelled) {
+          setTrojanUniqueClientCount(null);
+          setTrojanUniqueCountError(true);
+        }
+      } finally {
+        if (!cancelled) setTrojanUniqueCountLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [showTrojanUniqueClients, status, session]);
+
+  // When switching sheets: open the primary tab for big retailer workbooks
+  // (Commission Figures, Trojan All Data) so counts load without an extra click.
   function selectSheet(key: string) {
     setSelectedKey(key);
-    setActiveTabGid(null);
+    const match = allSheets.find(
+      (s) => `${s.section.sectionTitle}::${s.item.title}` === key
+    );
+    setActiveTabGid(
+      match ? defaultInvoicingTabGid(match.item.title) : null
+    );
   }
 
   if (status === "loading") {
@@ -547,6 +725,57 @@ export default function RobotDashboardInvoicingPage() {
       {/* ---------- Full-width preview ---------- */}
       <Card variant="elevated">
         <CardContent>
+          {showCommissionFiguresClientCount ? (
+            <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-indigo-100 bg-indigo-50/80 px-3 py-2 text-sm dark:border-indigo-900/50 dark:bg-indigo-950/30">
+              <span className="font-semibold text-indigo-900 dark:text-indigo-100">
+                Commission Figures
+              </span>
+              <span className="text-gray-600 dark:text-gray-400">
+                {commissionFiguresCountLoading ? (
+                  "Loading client count…"
+                ) : commissionFiguresCountError ? (
+                  "Could not load client count (check backend Sheets access)."
+                ) : commissionFiguresClientCount !== null ? (
+                  <>
+                    <span className="font-bold tabular-nums text-dark dark:text-white">
+                      {commissionFiguresClientCount}
+                    </span>
+                    <span>
+                      {commissionFiguresClientCount === 1 ? "client" : "clients"} in this
+                      tab
+                    </span>
+                  </>
+                ) : (
+                  "—"
+                )}
+              </span>
+            </div>
+          ) : showTrojanUniqueClients ? (
+            <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-amber-100 bg-amber-50/90 px-3 py-2 text-sm dark:border-amber-900/40 dark:bg-amber-950/25">
+              <span className="font-semibold text-amber-900 dark:text-amber-100">
+                All Data
+              </span>
+              <span className="text-gray-600 dark:text-gray-400">
+                {trojanUniqueCountLoading ? (
+                  "Loading unique clients…"
+                ) : trojanUniqueCountError ? (
+                  "Could not load count (check backend Sheets access for Trojan Oil)."
+                ) : trojanUniqueClientCount !== null ? (
+                  <>
+                    <span className="font-bold tabular-nums text-dark dark:text-white">
+                      {trojanUniqueClientCount}
+                    </span>
+                    <span>
+                      unique{" "}
+                      {trojanUniqueClientCount === 1 ? "client" : "clients"} (column A)
+                    </span>
+                  </>
+                ) : (
+                  "—"
+                )}
+              </span>
+            </div>
+          ) : null}
           {previewUrl ? (
             <iframe
               key={previewUrl}
