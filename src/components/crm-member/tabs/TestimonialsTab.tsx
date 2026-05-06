@@ -77,6 +77,11 @@ const openBtn =
   "text-primary bg-primary/5 hover:bg-primary/10 border border-primary/20 " +
   "transition-colors shrink-0";
 
+const deleteBtn =
+  "inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-medium " +
+  "text-red-600 dark:text-red-400 bg-red-500/5 hover:bg-red-500/10 border border-red-500/20 " +
+  "transition-colors shrink-0 disabled:opacity-50 disabled:pointer-events-none";
+
 export function TestimonialsTab({ businessInfo }: TestimonialsTabProps) {
   const biz = (businessInfo as any)?.business_details ?? {};
   const contact = (businessInfo as any)?.contact_information ?? {};
@@ -123,6 +128,7 @@ export function TestimonialsTab({ businessInfo }: TestimonialsTabProps) {
   const [quickSolutionTypeId, setQuickSolutionTypeId] = useState<string>("");
   const [quickSavingsText, setQuickSavingsText] = useState<string>("");
   const [quickGenerating, setQuickGenerating] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
   const { showToast } = useToast();
 
   const fetchTestimonials = useCallback(async () => {
@@ -235,6 +241,31 @@ export function TestimonialsTab({ businessInfo }: TestimonialsTabProps) {
       }
     } catch {
       showToast("Failed to update status.", "error");
+    }
+  };
+
+  const handleDeleteTestimonial = async (id: number, fileName: string) => {
+    if (
+      !window.confirm(
+        `Delete this testimonial record from the CRM?\n\n${fileName}\n\nThe Google Drive file will not be removed.`
+      )
+    ) {
+      return;
+    }
+    setDeletingId(id);
+    try {
+      const res = await fetch(`/api/testimonials/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        setList((prev) => prev.filter((t) => t.id !== id));
+        showToast("Testimonial removed from CRM.", "success");
+      } else {
+        const data = await res.json().catch(() => ({}));
+        showToast(data.error || "Failed to delete testimonial.", "error");
+      }
+    } catch {
+      showToast("Failed to delete testimonial.", "error");
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -447,6 +478,14 @@ export function TestimonialsTab({ businessInfo }: TestimonialsTabProps) {
                   >
                     Open
                   </a>
+                  <button
+                    type="button"
+                    className={deleteBtn}
+                    disabled={deletingId === t.id}
+                    onClick={() => handleDeleteTestimonial(t.id, t.file_name)}
+                  >
+                    {deletingId === t.id ? "Deleting…" : "Delete"}
+                  </button>
                 </div>
               </div>
             ))}

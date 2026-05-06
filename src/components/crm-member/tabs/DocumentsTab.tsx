@@ -227,6 +227,10 @@ export function DocumentsTab({
   const token = (session as any)?.id_token ?? (session as any)?.accessToken;
   const info = businessInfo as any;
   const business = info?.business_details || {};
+  const contact = info?.contact_information || {};
+  const rep = info?.representative_details || {};
+  const linked = info?.Linked_Details?.linked_utilities || {};
+  const retailers = info?.Linked_Details?.utility_retailers || {};
   const processed = info?._processed_file_ids || {};
   const docs: Record<string, any> =
     info && typeof info.business_documents === "object" && info.business_documents !== null && !Array.isArray(info.business_documents)
@@ -269,6 +273,45 @@ export function DocumentsTab({
 
   const { showToast } = useToast();
   const driveUrl = (info?.gdrive?.folder_url as string) || "";
+
+  /** Same as BusinessInfoDisplay: open interactive site profiling with pre-filled context. */
+  const openSiteProfiling = useCallback(() => {
+    const params = new URLSearchParams();
+    if (business?.name) params.set("businessName", String(business.name));
+    const businessInfoToPass = {
+      name: business.name,
+      address: contact.postal_address,
+      siteAddress: contact.site_address,
+      industry: business.industry,
+      website: business.website,
+      phone: contact.telephone,
+      email: contact.email,
+      googleDriveLink: driveUrl,
+      utilities: linked,
+      retailers,
+      abn: business.abn,
+      tradingName: business.trading_name,
+      contactName: rep.contact_name,
+      position: rep.position,
+    };
+    params.set("businessInfo", encodeURIComponent(JSON.stringify(businessInfoToPass)));
+    window.open(`/site-profiling?${params.toString()}`, "_blank", "noopener,noreferrer");
+  }, [
+    business?.name,
+    business?.industry,
+    business?.website,
+    business?.abn,
+    business?.trading_name,
+    contact.postal_address,
+    contact.site_address,
+    contact.telephone,
+    contact.email,
+    driveUrl,
+    linked,
+    retailers,
+    rep.contact_name,
+    rep.position,
+  ]);
   const driveFileUrl = (id: string) => `https://drive.google.com/file/d/${id}/view?usp=drivesdk`;
   const { loaUrl, sfaUrl, wipUrl, amortExcelUrl, amortPdfUrl } = getKeyDocumentsFromProcessed(processed);
 
@@ -980,36 +1023,48 @@ export function DocumentsTab({
                           </div>
                         </div>
                         {!isWip && !isAmort && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              let filingType = doc
-                                .toLowerCase()
-                                .replace(/[^a-z0-9]+/g, "_");
-                              if (filingType === "site_profling")
-                                filingType = "site_profiling";
-                              if (filingType === "service_fee_agreement")
-                                filingType = "savings";
-                              if (
-                                filingType.includes("exit_map") ||
-                                filingType.includes("exitmap") ||
-                                filingType.includes("floor_plan_exit_map")
-                              ) {
-                                filingType = "site_map_upload";
-                              }
-                              setDriveFilingType(filingType);
-                              setDriveBizName(business?.name || "");
-                              setDriveContractKey(null);
-                              setDriveContractUpdateMode("replace");
-                              setDriveBatchFiles([]);
-                              setDriveResult(null);
-                              setDriveFile(null);
-                              setShowDriveModal(true);
-                            }}
-                            className={ghostBtn}
-                          >
-                            File
-                          </button>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                let filingType = doc
+                                  .toLowerCase()
+                                  .replace(/[^a-z0-9]+/g, "_");
+                                if (filingType === "site_profling")
+                                  filingType = "site_profiling";
+                                if (filingType === "service_fee_agreement")
+                                  filingType = "savings";
+                                if (
+                                  filingType.includes("exit_map") ||
+                                  filingType.includes("exitmap") ||
+                                  filingType.includes("floor_plan_exit_map")
+                                ) {
+                                  filingType = "site_map_upload";
+                                }
+                                setDriveFilingType(filingType);
+                                setDriveBizName(business?.name || "");
+                                setDriveContractKey(null);
+                                setDriveContractUpdateMode("replace");
+                                setDriveBatchFiles([]);
+                                setDriveResult(null);
+                                setDriveFile(null);
+                                setShowDriveModal(true);
+                              }}
+                              className={ghostBtn}
+                            >
+                              File
+                            </button>
+                            {(doc === "Site Profling" ||
+                              doc === "Site Profiling") && (
+                              <button
+                                type="button"
+                                onClick={openSiteProfiling}
+                                className={ghostBtn}
+                              >
+                                New
+                              </button>
+                            )}
+                          </div>
                         )}
                       </div>
                     );
