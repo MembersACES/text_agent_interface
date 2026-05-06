@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { getApiBaseUrl } from "@/lib/utils";
 
 /**
- * API Route: Update testimonial (status and/or invoice_number)
+ * API Route: Update testimonial (status, invoice_number, file_id, file_name)
  */
 
 export async function PATCH(

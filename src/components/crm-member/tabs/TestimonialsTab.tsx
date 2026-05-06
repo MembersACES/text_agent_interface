@@ -82,6 +82,11 @@ const deleteBtn =
   "text-red-600 dark:text-red-400 bg-red-500/5 hover:bg-red-500/10 border border-red-500/20 " +
   "transition-colors shrink-0 disabled:opacity-50 disabled:pointer-events-none";
 
+const editBtn =
+  "inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-medium " +
+  "text-gray-700 dark:text-gray-200 bg-gray-500/5 hover:bg-gray-500/10 border border-gray-300 dark:border-gray-600 " +
+  "transition-colors shrink-0";
+
 export function TestimonialsTab({ businessInfo }: TestimonialsTabProps) {
   const biz = (businessInfo as any)?.business_details ?? {};
   const contact = (businessInfo as any)?.contact_information ?? {};
@@ -129,6 +134,10 @@ export function TestimonialsTab({ businessInfo }: TestimonialsTabProps) {
   const [quickSavingsText, setQuickSavingsText] = useState<string>("");
   const [quickGenerating, setQuickGenerating] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [editTarget, setEditTarget] = useState<TestimonialItem | null>(null);
+  const [editFileId, setEditFileId] = useState("");
+  const [editFileName, setEditFileName] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
   const { showToast } = useToast();
 
   const fetchTestimonials = useCallback(async () => {
@@ -241,6 +250,55 @@ export function TestimonialsTab({ businessInfo }: TestimonialsTabProps) {
       }
     } catch {
       showToast("Failed to update status.", "error");
+    }
+  };
+
+  const openEditDocument = (t: TestimonialItem) => {
+    setEditTarget(t);
+    setEditFileId(t.file_id);
+    setEditFileName(t.file_name);
+  };
+
+  const handleSaveEditDocument = async () => {
+    if (!editTarget) return;
+    const fid = editFileId.trim();
+    const fn = editFileName.trim();
+    if (!fid || !fn) {
+      showToast("File ID and display name are required.", "error");
+      return;
+    }
+    setSavingEdit(true);
+    try {
+      const res = await fetch(`/api/testimonials/${editTarget.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ file_id: fid, file_name: fn }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const d = data.detail;
+        const detailMsg =
+          typeof d === "string"
+            ? d
+            : Array.isArray(d) && d[0]?.msg
+              ? d[0].msg
+              : undefined;
+        showToast(data.error || detailMsg || "Failed to update document link.", "error");
+        return;
+      }
+      setList((prev) =>
+        prev.map((row) =>
+          row.id === editTarget.id
+            ? { ...row, file_id: data.file_id ?? fid, file_name: data.file_name ?? fn }
+            : row
+        )
+      );
+      showToast("Document link updated.", "success");
+      setEditTarget(null);
+    } catch {
+      showToast("Failed to update document link.", "error");
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -480,6 +538,13 @@ export function TestimonialsTab({ businessInfo }: TestimonialsTabProps) {
                   </a>
                   <button
                     type="button"
+                    className={editBtn}
+                    onClick={() => openEditDocument(t)}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
                     className={deleteBtn}
                     disabled={deletingId === t.id}
                     onClick={() => handleDeleteTestimonial(t.id, t.file_name)}
@@ -492,6 +557,76 @@ export function TestimonialsTab({ businessInfo }: TestimonialsTabProps) {
           </div>
         )}
       </CardContent>
+
+      {editTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-[2px]"
+          onClick={() => {
+            if (!savingEdit) setEditTarget(null);
+          }}
+        >
+          <div
+            className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 w-full max-w-md mx-4 overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-800">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                Update document link
+              </h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                Point this testimonial to the correct Google Drive file. Paste a view link or the file ID
+                string. Display name appears in the list only.
+              </p>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              <div>
+                <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider block mb-1.5">
+                  Google Drive file ID or link
+                </label>
+                <input
+                  type="text"
+                  value={editFileId}
+                  onChange={(e) => setEditFileId(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 font-mono"
+                  placeholder="https://drive.google.com/file/d/…/view or raw ID"
+                  autoComplete="off"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider block mb-1.5">
+                  Display name
+                </label>
+                <input
+                  type="text"
+                  value={editFileName}
+                  onChange={(e) => setEditFileName(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100"
+                  placeholder="e.g. Testimonial – Business name"
+                  maxLength={512}
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                  disabled={savingEdit}
+                  onClick={() => setEditTarget(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-white bg-primary hover:opacity-90 disabled:opacity-50"
+                  disabled={savingEdit}
+                  onClick={handleSaveEditDocument}
+                >
+                  {savingEdit ? "Saving…" : "Save"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Quick generate testimonial modal (no 1st Month Savings calc) */}
       {showQuickGenerate && (
