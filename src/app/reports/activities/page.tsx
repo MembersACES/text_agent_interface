@@ -16,8 +16,8 @@ const MAX_ACTIVITIES = 100;
 const CUSTOM_ACTIVITY_TYPES = new Set([
   "note_added",
   "task_created",
-  "task_status_changed",
-  "task_updated",
+  "task_edited",
+  "task_completed",
   "testimonial_activity",
 ]);
 
@@ -33,6 +33,7 @@ function defaultDateRange(): { after: string; before: string } {
 interface ActivityItem {
   id: number;
   offer_id: number;
+  task_id?: number | null;
   client_id?: number | null;
   business_name?: string | null;
   activity_type: string;
@@ -46,8 +47,8 @@ interface ActivityItem {
 function activityTypeLabel(type: string): string {
   if (type === "note_added") return "Note added";
   if (type === "task_created") return "Task created";
-  if (type === "task_status_changed") return "Task status changed";
-  if (type === "task_updated") return "Task updated";
+  if (type === "task_edited") return "Task edited";
+  if (type === "task_completed") return "Task completed";
   if (type === "testimonial_activity") return "Testimonial activity";
   return OFFER_ACTIVITY_LABELS[type as OfferActivityType] ?? type;
 }
@@ -251,14 +252,9 @@ export default function ActivityReportPage() {
         }
 
         if (clientIdNum && clientName) {
-          const [notesRes, tasksRes] = await Promise.all([
-            fetch(`${getApiBaseUrl()}/api/clients/${clientIdNum}/notes`, {
-              headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-            }),
-            fetch(`${getApiBaseUrl()}/api/clients/${clientIdNum}/tasks`, {
-              headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-            }),
-          ]);
+          const notesRes = await fetch(`${getApiBaseUrl()}/api/clients/${clientIdNum}/notes`, {
+            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          });
           const afterDate = new Date(effectiveAfter);
           const beforeEnd = new Date(effectiveBefore);
           beforeEnd.setDate(beforeEnd.getDate() + 1);
@@ -282,28 +278,8 @@ export default function ActivityReportPage() {
               }
             });
           }
-          if (tasksRes.ok) {
-            const tasks: Array<{ id: number; title: string; created_at?: string; assigned_by?: string }> = await tasksRes.json();
-            (Array.isArray(tasks) ? tasks : []).forEach((t) => {
-              const created = t.created_at ? new Date(t.created_at) : null;
-              if (created && created >= afterDate && created < beforeEnd && (!filterActivityType || filterActivityType === "task_created")) {
-                list.push({
-                  id: 2000000 + t.id,
-                  offer_id: 0,
-                  client_id: clientIdNum,
-                  business_name: clientName,
-                  activity_type: "task_created",
-                  document_link: null,
-                  created_at: t.created_at!,
-                  created_by: t.assigned_by ?? null,
-                  offer_display: t.title ?? "Task",
-                });
-              }
-            });
-          }
           list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
           if (filterActivityType === "note_added") list = list.filter((a) => a.activity_type === "note_added");
-          else if (filterActivityType === "task_created") list = list.filter((a) => a.activity_type === "task_created");
         }
         if (filterActivityType && CUSTOM_ACTIVITY_TYPES.has(filterActivityType)) {
           list = list.filter((a) => a.activity_type === filterActivityType);
@@ -345,8 +321,8 @@ export default function ActivityReportPage() {
               <option value="">All types</option>
               <option value="note_added">Note added</option>
               <option value="task_created">Task created</option>
-              <option value="task_status_changed">Task status changed</option>
-              <option value="task_updated">Task updated</option>
+              <option value="task_edited">Task edited</option>
+              <option value="task_completed">Task completed</option>
               <option value="testimonial_activity">Testimonial activity</option>
               {OFFER_ACTIVITY_TYPES.map((t) => (
                 <option key={t} value={t}>{OFFER_ACTIVITY_LABELS[t as OfferActivityType] ?? t}</option>
@@ -406,7 +382,7 @@ export default function ActivityReportPage() {
                     <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Date</th>
                     <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Type</th>
                     <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Client</th>
-                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Offer</th>
+                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Details</th>
                     <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Created by</th>
                     <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Document</th>
                     <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Actions</th>
@@ -437,6 +413,14 @@ export default function ActivityReportPage() {
                               <>{a.offer_display} <span className="text-gray-500 dark:text-gray-400">(Offer #{a.offer_id})</span></>
                             ) : (
                               <>Offer #{a.offer_id}</>
+                            )}
+                          </Link>
+                        ) : a.task_id ? (
+                          <Link href={`/tasks?task_id=${a.task_id}`} className="text-primary hover:underline">
+                            {a.offer_display ? (
+                              <>{a.offer_display} <span className="text-gray-500 dark:text-gray-400">(Task #{a.task_id})</span></>
+                            ) : (
+                              <>Task #{a.task_id}</>
                             )}
                           </Link>
                         ) : (

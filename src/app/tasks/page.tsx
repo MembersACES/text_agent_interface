@@ -1,7 +1,8 @@
 "use client";
 
 import { useSession } from "next-auth/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { getApiBaseUrl } from "@/lib/utils";
 import Breadcrumb from "@/components/Breadcrumbs/Breadcrumb";
 import { TaskModal } from "@/components/tasks/TaskModal";
@@ -62,6 +63,8 @@ type SortOrder = "asc" | "desc";
 export default function TasksPage() {
   const { data: session } = useSession();
   const token = (session as any)?.id_token || (session as any)?.accessToken;
+  const searchParams = useSearchParams();
+  const openedFromQueryRef = useRef(false);
   
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
@@ -754,6 +757,17 @@ export default function TasksPage() {
   };
 
   const sortedTasks = getSortedTasks();
+
+  useEffect(() => {
+    const taskIdParam = searchParams.get("task_id");
+    if (!taskIdParam || openedFromQueryRef.current || tasks.length === 0) return;
+    const taskId = parseInt(taskIdParam, 10);
+    if (!Number.isFinite(taskId)) return;
+    const target = tasks.find((t) => t.id === taskId);
+    if (!target) return;
+    openedFromQueryRef.current = true;
+    openEditModal(target);
+  }, [searchParams, tasks]);
 
   return (
     <>
