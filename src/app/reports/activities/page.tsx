@@ -13,6 +13,13 @@ import {
 } from "@/constants/crm";
 
 const MAX_ACTIVITIES = 100;
+const CUSTOM_ACTIVITY_TYPES = new Set([
+  "note_added",
+  "task_created",
+  "task_status_changed",
+  "task_updated",
+  "testimonial_activity",
+]);
 
 function defaultDateRange(): { after: string; before: string } {
   const now = new Date();
@@ -39,7 +46,9 @@ interface ActivityItem {
 function activityTypeLabel(type: string): string {
   if (type === "note_added") return "Note added";
   if (type === "task_created") return "Task created";
+  if (type === "task_status_changed") return "Task status changed";
   if (type === "task_updated") return "Task updated";
+  if (type === "testimonial_activity") return "Testimonial activity";
   return OFFER_ACTIVITY_LABELS[type as OfferActivityType] ?? type;
 }
 
@@ -198,21 +207,32 @@ export default function ActivityReportPage() {
         const params = new URLSearchParams();
         params.set("limit", String(MAX_ACTIVITIES));
         if (filterClientId) params.set("client_id", filterClientId);
-        if (filterActivityType && filterActivityType !== "note_added" && filterActivityType !== "task_created") {
+        if (filterActivityType && !CUSTOM_ACTIVITY_TYPES.has(filterActivityType)) {
           params.set("activity_type", filterActivityType);
         }
         params.set("created_after", effectiveAfter);
         params.set("created_before", effectiveBefore);
-        const res = await fetch(
-          `${getApiBaseUrl()}/api/reports/activities/list?${params.toString()}`,
-          { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } }
-        );
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
+        const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+        const [offerRes, testimonialsRes, tasksHistoryRes] = await Promise.all([
+          fetch(`${getApiBaseUrl()}/api/reports/activities/list?${params.toString()}`, { headers }),
+          fetch(`${getApiBaseUrl()}/api/reports/activities/testimonials?${params.toString()}`, { headers }),
+          fetch(`${getApiBaseUrl()}/api/reports/activities/tasks?${params.toString()}`, { headers }),
+        ]);
+
+        if (!offerRes.ok) {
+          const data = await offerRes.json().catch(() => ({}));
           throw new Error(data.detail || "Failed to load activities");
         }
-        const data = await res.json();
-        let list: ActivityItem[] = Array.isArray(data) ? data : [];
+        const [offerData, testimonialsData, tasksHistoryData] = await Promise.all([
+          offerRes.json().catch(() => []),
+          testimonialsRes.ok ? testimonialsRes.json().catch(() => []) : Promise.resolve([]),
+          tasksHistoryRes.ok ? tasksHistoryRes.json().catch(() => []) : Promise.resolve([]),
+        ]);
+        let list: ActivityItem[] = [
+          ...(Array.isArray(offerData) ? offerData : []),
+          ...(Array.isArray(testimonialsData) ? testimonialsData : []),
+          ...(Array.isArray(tasksHistoryData) ? tasksHistoryData : []),
+        ];
 
         const clientIdNum = filterClientId ? parseInt(filterClientId, 10) : 0;
         let clientName: string | null = clientIdNum ? clients.find((c) => c.id === clientIdNum)?.business_name ?? null : null;
@@ -285,6 +305,10 @@ export default function ActivityReportPage() {
           if (filterActivityType === "note_added") list = list.filter((a) => a.activity_type === "note_added");
           else if (filterActivityType === "task_created") list = list.filter((a) => a.activity_type === "task_created");
         }
+        if (filterActivityType && CUSTOM_ACTIVITY_TYPES.has(filterActivityType)) {
+          list = list.filter((a) => a.activity_type === filterActivityType);
+        }
+        list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
         setActivities(list);
       } catch (e: any) {
@@ -319,12 +343,11 @@ export default function ActivityReportPage() {
               className="px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm"
             >
               <option value="">All types</option>
-              {filterClientId && (
-                <>
-                  <option value="note_added">Note added</option>
-                  <option value="task_created">Task created</option>
-                </>
-              )}
+              <option value="note_added">Note added</option>
+              <option value="task_created">Task created</option>
+              <option value="task_status_changed">Task status changed</option>
+              <option value="task_updated">Task updated</option>
+              <option value="testimonial_activity">Testimonial activity</option>
               {OFFER_ACTIVITY_TYPES.map((t) => (
                 <option key={t} value={t}>{OFFER_ACTIVITY_LABELS[t as OfferActivityType] ?? t}</option>
               ))}
@@ -408,13 +431,17 @@ export default function ActivityReportPage() {
                         )}
                       </td>
                       <td className="px-4 py-2 text-sm">
-                        <Link href={`/offers/${a.offer_id}`} className="text-primary hover:underline">
-                          {a.offer_display ? (
-                            <>{a.offer_display} <span className="text-gray-500 dark:text-gray-400">(Offer #{a.offer_id})</span></>
-                          ) : (
-                            <>Offer #{a.offer_id}</>
-                          )}
-                        </Link>
+                        {a.offer_id > 0 ? (
+                          <Link href={`/offers/${a.offer_id}`} className="text-primary hover:underline">
+                            {a.offer_display ? (
+                              <>{a.offer_display} <span className="text-gray-500 dark:text-gray-400">(Offer #{a.offer_id})</span></>
+                            ) : (
+                              <>Offer #{a.offer_id}</>
+                            )}
+                          </Link>
+                        ) : (
+                          <span className="text-gray-700 dark:text-gray-300">{a.offer_display ?? "—"}</span>
+                        )}
                       </td>
                       <td className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300">
                         {a.created_by ?? "—"}
@@ -434,7 +461,7 @@ export default function ActivityReportPage() {
                         )}
                       </td>
                       <td className="px-4 py-2 text-sm">
-                        {a.offer_id > 0 && a.activity_type !== "note_added" && a.activity_type !== "task_created" ? (
+                        {a.offer_id > 0 ? (
                           <button
                             type="button"
                             onClick={() => {
