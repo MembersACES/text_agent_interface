@@ -55,6 +55,7 @@ const SiteProfilingForm = ({
   businessInfo: BusinessInfo | null;
 }) => {
   const [step, setStep] = useState<string>("site_ownership");
+  const [stepHistory, setStepHistory] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [submitStatus, setSubmitStatus] = useState<string>("");
   const [responses, setResponses] = useState<SiteProfilingResponses>({ 
@@ -73,9 +74,23 @@ const SiteProfilingForm = ({
   const [editingType, setEditingType] = useState<'staff' | 'business' | null>(null);
   const [tempHours, setTempHours] = useState<string>("");
 
+  const goToStep = (nextStep: string) => {
+    setStepHistory((prev) => [...prev, step]);
+    setStep(nextStep);
+  };
+
+  const goBack = () => {
+    setStepHistory((prev) => {
+      if (prev.length === 0) return prev;
+      const previousStep = prev[prev.length - 1];
+      setStep(previousStep);
+      return prev.slice(0, -1);
+    });
+  };
+
   const handleSelect = (field: string, value: string, nextStep: string) => {
     setResponses((prev: SiteProfilingResponses) => ({ ...prev, [field]: value }));
-    setStep(nextStep);
+    goToStep(nextStep);
   };
 
   const handleMultiToggle = (section: string, field: string) => {
@@ -340,7 +355,7 @@ const SiteProfilingForm = ({
         </button>
         <button
           className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
-          onClick={() => setStep("utilities_summary")}
+          onClick={() => goToStep("utilities_summary")}
         >
           ✅ Confirm All Hours
         </button>
@@ -398,22 +413,49 @@ const SiteProfilingForm = ({
     
     // Convert the utilities object into an array format for display
     const utilityArray = Object.entries(utilities).map(([type, details]) => {
-      let identifiers = [];
-      if (typeof details === "string") {
-        identifiers = details.split(",").map(s => s.trim()).filter(Boolean);
-      } else if (Array.isArray(details)) {
-        identifiers = details;
-      } else {
-        identifiers = [String(details)];
-      }
-      
-      // Get retailer info
       const retailerInfo = retailers[type];
-      let retailerList = [];
-      if (Array.isArray(retailerInfo)) {
-        retailerList = retailerInfo;
-      } else if (typeof retailerInfo === 'string') {
-        retailerList = [retailerInfo];
+      const retailerList = Array.isArray(retailerInfo)
+        ? retailerInfo
+        : typeof retailerInfo === "string"
+          ? [retailerInfo]
+          : [];
+      const toIdentifierString = (value: unknown): string => {
+        if (value == null) return "";
+        if (typeof value === "string") return value.trim();
+        if (typeof value === "number" || typeof value === "boolean") return String(value);
+        if (typeof value === "object" && "identifier" in (value as Record<string, unknown>)) {
+          const identifierValue = (value as Record<string, unknown>).identifier;
+          return identifierValue == null ? "" : String(identifierValue).trim();
+        }
+        return "";
+      };
+      let identifiers: Array<{ value: string; retailer?: string }> = [];
+
+      if (typeof details === "string") {
+        identifiers = details
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
+          .map((value, idx) => ({ value, retailer: retailerList[idx] }));
+      } else if (Array.isArray(details)) {
+        identifiers = details
+          .map((entry, idx) => {
+            const value = toIdentifierString(entry) || "—";
+            const objectRetailer = entry && typeof entry === "object"
+              ? (entry as Record<string, unknown>).retailer
+              : undefined;
+            const fallbackRetailer = retailerList[idx];
+            return {
+              value,
+              retailer: typeof objectRetailer === "string" ? objectRetailer : fallbackRetailer,
+            };
+          })
+          .filter((entry) => Boolean(entry.value));
+      } else {
+        const singleValue = toIdentifierString(details);
+        if (singleValue) {
+          identifiers = [{ value: singleValue, retailer: retailerList[0] }];
+        }
       }
       
       return {
@@ -446,11 +488,11 @@ const SiteProfilingForm = ({
                            utility.type.includes('Gas') ? 'MRIN' :
                            utility.type === 'Waste' ? 'Account Number' :
                            utility.type === 'Oil' ? 'Account Name' : 'ID'}:
-                        </strong> {identifier}
+                        </strong> {identifier.value}
                       </div>
-                      {utility.retailers[idx] && (
+                      {identifier.retailer && (
                         <div className="text-blue-500">
-                          <strong>Retailer:</strong> {utility.retailers[idx]}
+                          <strong>Retailer:</strong> {identifier.retailer}
                         </div>
                       )}
                     </div>
@@ -494,7 +536,7 @@ const SiteProfilingForm = ({
         </div>
         <button
           className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700"
-          onClick={() => setStep("offer_provided")}
+          onClick={() => goToStep("offer_provided")}
         >
           ➡️ Continue to Offer Provided
         </button>
@@ -531,7 +573,7 @@ const SiteProfilingForm = ({
 
       <button
         className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700"
-        onClick={() => setStep(nextStep)}
+        onClick={() => goToStep(nextStep)}
       >
         ➡️ Continue to Next Section
       </button>
@@ -551,6 +593,16 @@ const SiteProfilingForm = ({
             </div>
           )}
         </div>
+        {stepHistory.length > 0 && (
+          <div className="mb-6">
+            <button
+              className="bg-gray-200 text-gray-800 px-4 py-2 rounded hover:bg-gray-300"
+              onClick={goBack}
+            >
+              ← Back
+            </button>
+          </div>
+        )}
 
         {/* Site Ownership */}
         {step === "site_ownership" && (
@@ -743,7 +795,7 @@ const SiteProfilingForm = ({
                   ? 'bg-blue-600 text-white hover:bg-blue-700'
                   : 'bg-gray-300 text-gray-500 cursor-not-allowed'
               }`}
-              onClick={() => setStep("kitchen_info")}
+              onClick={() => goToStep("kitchen_info")}
               disabled={!responses.years_in_industry}
             >
               ➡️ Continue to Kitchen Information
@@ -804,7 +856,7 @@ const SiteProfilingForm = ({
                   ? 'bg-blue-600 text-white hover:bg-blue-700'
                   : 'bg-gray-300 text-gray-500 cursor-not-allowed'
               }`}
-              onClick={() => setStep("operating_hours")}
+              onClick={() => goToStep("operating_hours")}
               disabled={!responses.kitchen_location}
             >
               ➡️ Continue to Operating Hours
@@ -984,6 +1036,7 @@ const SiteProfilingForm = ({
                 className="bg-gray-500 text-white px-6 py-2 rounded hover:bg-gray-600"
                 onClick={() => {
                   setStep("site_ownership");
+                  setStepHistory([]);
                   setSubmitStatus("");
                   setResponses({ 
                     businessName,

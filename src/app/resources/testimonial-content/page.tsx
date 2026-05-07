@@ -32,6 +32,7 @@ const DROPDOWN_ORDER = [
   "sme_gas",
   "waste",
   "resource_recovery",
+  "dma",
   "automated_cleaning_robot",
 ];
 

@@ -19,6 +19,7 @@ export const SOLUTION_TYPE_LABELS: Record<string, string> = {
   sme_gas: "SME Gas Reviews",
   waste: "Waste Reviews",
   resource_recovery: "Oil / Resource Recovery",
+  dma: "Direct Metering Agreement",
   automated_cleaning_robot: "Automated Cleaning Robot",
 };
 
@@ -176,6 +177,25 @@ export const DEFAULT_TESTIMONIAL_SOLUTION_CONTENT: TestimonialSolutionContentIte
       "Resource recovery transforms waste streams into cost-saving opportunities.",
     esg_scope_for_solution: "SCOPE 3",
     sdg_impact_for_solution: "SDG 6, 12, 13",
+  },
+
+  {
+    ...emptyItem("dma", "Direct Metering Agreement"),
+    key_outcome_metrics: "DMA metering cost reduction",
+    key_challenge_of_solution:
+      "Direct Metering Agreement charges were uncompetitive versus expected metering rates.",
+    key_approach_of_solution:
+      "Forensic review of metering line items and the agreement against benchmarks.",
+    key_outcome_of_solution:
+      "Lower metering costs quantified with a clear annual and multi-year saving.",
+    key_outcome_dotpoints_1: "Annual metering spend and net saving identified.",
+    key_outcome_dotpoints_2: "Agreement and invoice-led review—not retail-only benchmarking.",
+    key_outcome_dotpoints_3: "Savings articulated for budgeting and approvals.",
+    key_outcome_dotpoints_4: "Transparent metrics for CFO and committees.",
+    key_outcome_dotpoints_5: "ESG: typically minimal GHG change where savings are metering-commercial.",
+    conclusion: "DMA reviews deliver concise, defensible metering savings on a single-page summary.",
+    esg_scope_for_solution: "SCOPE 3",
+    sdg_impact_for_solution: "SDG 12",
   },
 
   {
