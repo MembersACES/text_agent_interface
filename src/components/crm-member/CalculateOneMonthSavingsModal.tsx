@@ -39,8 +39,13 @@ export interface CalculateOneMonthSavingsModalProps {
   businessInfo: Record<string, unknown> | null;
   isOpen: boolean;
   onClose: () => void;
-  /** Called when user clicks "Generate Testimonial"; receives current result and selected option value so parent can call generate API */
-  onGenerateTestimonial: (result: CalculateResult, optionValue: string) => void;
+  /** Called when user clicks "Generate Testimonial"; receives current result, selected option, and selected display name details */
+  onGenerateTestimonial: (
+    result: CalculateResult,
+    optionValue: string,
+    testimonialBusinessName: string,
+    testimonialBusinessNameSource: "business_name" | "trading_as"
+  ) => void;
   /** When provided and calculation succeeded, show "Generate invoice" button that opens 1st Month Savings with prefilled line */
   onOpenInvoiceWithResult?: (result: CalculateResult, optionValue: string) => void;
   /** When modal opens, set utility dropdown to this value */
@@ -58,6 +63,27 @@ export function CalculateOneMonthSavingsModal({
   initialOption = "",
   initialAgreementMonth = "",
 }: CalculateOneMonthSavingsModalProps) {
+  const businessName: string = (businessInfo as any)?.business_details?.name ?? "";
+  const tradingName: string = (businessInfo as any)?.business_details?.trading_name ?? "";
+  const businessNameOptions = useMemo(() => {
+    const options: { value: string; label: string; source: "business_name" | "trading_as" }[] = [];
+    if (businessName.trim()) {
+      options.push({
+        value: businessName.trim(),
+        label: `Business name - ${businessName.trim()}`,
+        source: "business_name",
+      });
+    }
+    if (tradingName.trim() && tradingName.trim() !== businessName.trim()) {
+      options.push({
+        value: tradingName.trim(),
+        label: `Trading as - ${tradingName.trim()}`,
+        source: "trading_as",
+      });
+    }
+    return options;
+  }, [businessName, tradingName]);
+
   const linkedUtilityOptions = useMemo(() => {
     const linked = (businessInfo as any)?.Linked_Details?.linked_utilities as Record<string, string | string[]> | undefined;
     if (!linked) return [];
@@ -80,6 +106,7 @@ export function CalculateOneMonthSavingsModal({
   const [calculateResult, setCalculateResult] = useState<CalculateResult | null>(null);
   const [calculateDetailsExpanded, setCalculateDetailsExpanded] = useState(false);
   const [editedDetailValues, setEditedDetailValues] = useState<{ pre: Record<string, string>; post: Record<string, string> }>({ pre: {}, post: {} });
+  const [testimonialBusinessName, setTestimonialBusinessName] = useState("");
 
   useEffect(() => {
     if (isOpen) {
@@ -88,10 +115,9 @@ export function CalculateOneMonthSavingsModal({
       setCalculateResult(null);
       setCalculateDetailsExpanded(false);
       setEditedDetailValues({ pre: {}, post: {} });
+      setTestimonialBusinessName(businessNameOptions[0]?.value ?? "");
     }
-  }, [isOpen, initialOption, initialAgreementMonth]);
-
-  const businessName: string = (businessInfo as any)?.business_details?.name ?? "";
+  }, [isOpen, initialOption, initialAgreementMonth, businessNameOptions]);
 
   const runCalculate = async () => {
     if (!calculateOption || !calculateAgreementMonth || !businessName) return;
@@ -151,6 +177,28 @@ export function CalculateOneMonthSavingsModal({
           </p>
         </div>
         <div className="px-5 py-4 space-y-4 overflow-y-auto flex-1 min-h-0">
+          <div>
+            <label className="block text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">
+              Business name for testimonial
+            </label>
+            <select
+              value={testimonialBusinessName}
+              onChange={(e) => setTestimonialBusinessName(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100"
+            >
+              <option value="">Select name</option>
+              {businessNameOptions.map((opt) => (
+                <option key={`${opt.source}-${opt.value}`} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+            {businessNameOptions.length <= 1 && (
+              <p className="text-[11px] text-gray-400 mt-1">
+                Only one business name option found in Business Info.
+              </p>
+            )}
+          </div>
           <div>
             <label className="block text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">
               Utility (linked)
@@ -369,7 +417,18 @@ export function CalculateOneMonthSavingsModal({
           {calculateResult?.success && (
             <button
               type="button"
-              onClick={() => onGenerateTestimonial(calculateResult, calculateOption)}
+              onClick={() => {
+                const selectedOption =
+                  businessNameOptions.find((opt) => opt.value === testimonialBusinessName) ??
+                  businessNameOptions[0];
+                onGenerateTestimonial(
+                  calculateResult,
+                  calculateOption,
+                  selectedOption?.value ?? businessName,
+                  selectedOption?.source ?? "business_name"
+                );
+              }}
+              disabled={!testimonialBusinessName}
               className="px-3 py-1.5 rounded-md text-xs font-semibold bg-primary text-white hover:opacity-90"
             >
               Generate Testimonial

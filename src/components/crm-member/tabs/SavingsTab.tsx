@@ -232,7 +232,12 @@ export function SavingsTab({ businessInfo }: SavingsTabProps) {
   const router = useRouter();
   const { showToast } = useToast();
 
-  const handleGenerateTestimonial = async (result: CalculateResult, optionValue: string) => {
+  const handleGenerateTestimonial = async (
+    result: CalculateResult,
+    optionValue: string,
+    testimonialBusinessName: string,
+    testimonialBusinessNameSource: "business_name" | "trading_as"
+  ) => {
     const opt = linkedUtilityOptions.find((o) => o.value === optionValue);
     if (!opt || !result?.success || result.savings_amount == null) return;
     const solutionTypeId = UTILITY_TO_SOLUTION_TYPE[opt.utilityType] ?? opt.utilityType.replace(/\s+/g, "_").toLowerCase();
@@ -243,6 +248,8 @@ export function SavingsTab({ businessInfo }: SavingsTabProps) {
         body: JSON.stringify({
           business_name: businessName,
           trading_as: tradingName || undefined,
+          testimonial_business_name: testimonialBusinessName || undefined,
+          testimonial_business_name_source: testimonialBusinessNameSource,
           contact_name: rep.contact_name || undefined,
           position: rep.position || undefined,
           email: contact.email || undefined,

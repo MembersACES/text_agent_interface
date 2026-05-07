@@ -132,6 +132,8 @@ export function TestimonialsTab({ businessInfo }: TestimonialsTabProps) {
   const [showQuickGenerate, setShowQuickGenerate] = useState(false);
   const [quickSolutionTypeId, setQuickSolutionTypeId] = useState<string>("");
   const [quickSavingsText, setQuickSavingsText] = useState<string>("");
+  const [quickBusinessNameSource, setQuickBusinessNameSource] = useState<"business_name" | "trading_as">("business_name");
+  const [quickSelectedBusinessName, setQuickSelectedBusinessName] = useState<string>("");
   const [quickGenerating, setQuickGenerating] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [editTarget, setEditTarget] = useState<TestimonialItem | null>(null);
@@ -329,6 +331,25 @@ export function TestimonialsTab({ businessInfo }: TestimonialsTabProps) {
 
   const driveFileUrl = (fileId: string) => `https://drive.google.com/file/d/${fileId}/view`;
 
+  const testimonialBusinessNameOptions = useMemo(() => {
+    const options: { value: string; label: string; source: "business_name" | "trading_as" }[] = [];
+    if (businessName.trim()) {
+      options.push({
+        value: businessName.trim(),
+        label: `Business name - ${businessName.trim()}`,
+        source: "business_name",
+      });
+    }
+    if (tradingName.trim() && tradingName.trim() !== businessName.trim()) {
+      options.push({
+        value: tradingName.trim(),
+        label: `Trading as - ${tradingName.trim()}`,
+        source: "trading_as",
+      });
+    }
+    return options;
+  }, [businessName, tradingName]);
+
   const openOneMonthSavingsWithCalculatedLine = (result: CalculateResult, optionValue: string) => {
     if (!businessName || !result?.success || result.savings_amount == null) return;
     const opt = linkedUtilityOptions.find((o) => o.value === optionValue);
@@ -351,7 +372,12 @@ export function TestimonialsTab({ businessInfo }: TestimonialsTabProps) {
     setCalculateModalOpen(false);
   };
 
-  const handleGenerateTestimonial = async (result: CalculateResult, optionValue: string) => {
+  const handleGenerateTestimonial = async (
+    result: CalculateResult,
+    optionValue: string,
+    testimonialBusinessName: string,
+    testimonialBusinessNameSource: "business_name" | "trading_as"
+  ) => {
     const opt = linkedUtilityOptions.find((o) => o.value === optionValue);
     if (!opt || !result?.success || result.savings_amount == null) return;
     const solutionTypeId = UTILITY_TO_SOLUTION_TYPE[opt.utilityType] ?? opt.utilityType.replace(/\s+/g, "_").toLowerCase();
@@ -362,6 +388,8 @@ export function TestimonialsTab({ businessInfo }: TestimonialsTabProps) {
         body: JSON.stringify({
           business_name: businessName,
           trading_as: tradingName || undefined,
+          testimonial_business_name: testimonialBusinessName || undefined,
+          testimonial_business_name_source: testimonialBusinessNameSource,
           contact_name: rep.contact_name || undefined,
           position: rep.position || undefined,
           email: contact.email || undefined,
@@ -389,7 +417,7 @@ export function TestimonialsTab({ businessInfo }: TestimonialsTabProps) {
   };
 
   const handleQuickGenerate = async () => {
-    if (!businessName || !quickSolutionTypeId) return;
+    if (!businessName || !quickSolutionTypeId || !quickSelectedBusinessName) return;
     const savingsVal = quickSavingsText.trim()
       ? Number.parseFloat(quickSavingsText.trim().replace(/[^0-9.-]+/g, ""))
       : 0;
@@ -401,6 +429,8 @@ export function TestimonialsTab({ businessInfo }: TestimonialsTabProps) {
         body: JSON.stringify({
           business_name: businessName,
           trading_as: tradingName || undefined,
+          testimonial_business_name: quickSelectedBusinessName || undefined,
+          testimonial_business_name_source: quickBusinessNameSource,
           contact_name: rep.contact_name || undefined,
           position: rep.position || undefined,
           email: contact.email || undefined,
@@ -423,6 +453,8 @@ export function TestimonialsTab({ businessInfo }: TestimonialsTabProps) {
       setShowQuickGenerate(false);
       setQuickSolutionTypeId("");
       setQuickSavingsText("");
+      setQuickBusinessNameSource("business_name");
+      setQuickSelectedBusinessName(testimonialBusinessNameOptions[0]?.value ?? businessName);
       fetchTestimonials();
     } catch (e: unknown) {
       showToast(e instanceof Error ? e.message : "Failed to generate testimonial", "error");
@@ -460,6 +492,9 @@ export function TestimonialsTab({ businessInfo }: TestimonialsTabProps) {
                 setShowQuickGenerate(true);
                 setQuickSolutionTypeId("");
                 setQuickSavingsText("");
+                const initial = testimonialBusinessNameOptions[0];
+                setQuickBusinessNameSource(initial?.source ?? "business_name");
+                setQuickSelectedBusinessName(initial?.value ?? businessName);
               }}
               className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
             >
@@ -637,6 +672,8 @@ export function TestimonialsTab({ businessInfo }: TestimonialsTabProps) {
               setShowQuickGenerate(false);
               setQuickSolutionTypeId("");
               setQuickSavingsText("");
+              setQuickBusinessNameSource("business_name");
+              setQuickSelectedBusinessName(testimonialBusinessNameOptions[0]?.value ?? businessName);
             }
           }}
         >
@@ -654,6 +691,28 @@ export function TestimonialsTab({ businessInfo }: TestimonialsTabProps) {
               </p>
             </div>
             <div className="px-6 py-5 space-y-4">
+              <div>
+                <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
+                  Business name for testimonial
+                </p>
+                <select
+                  value={quickSelectedBusinessName}
+                  onChange={(e) => {
+                    const selectedValue = e.target.value;
+                    setQuickSelectedBusinessName(selectedValue);
+                    const selected = testimonialBusinessNameOptions.find((opt) => opt.value === selectedValue);
+                    setQuickBusinessNameSource(selected?.source ?? "business_name");
+                  }}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100"
+                >
+                  <option value="">Select name</option>
+                  {testimonialBusinessNameOptions.map((opt) => (
+                    <option key={`${opt.source}-${opt.value}`} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div>
                 <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
                   Testimonial type
@@ -692,6 +751,8 @@ export function TestimonialsTab({ businessInfo }: TestimonialsTabProps) {
                     setShowQuickGenerate(false);
                     setQuickSolutionTypeId("");
                     setQuickSavingsText("");
+                    setQuickBusinessNameSource("business_name");
+                    setQuickSelectedBusinessName(testimonialBusinessNameOptions[0]?.value ?? businessName);
                   }
                 }}
                 className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700"
@@ -701,7 +762,7 @@ export function TestimonialsTab({ businessInfo }: TestimonialsTabProps) {
               <button
                 type="button"
                 onClick={handleQuickGenerate}
-                disabled={!quickSolutionTypeId || quickGenerating}
+                disabled={!quickSolutionTypeId || !quickSelectedBusinessName || quickGenerating}
                 className="px-3.5 py-1.5 rounded-md text-xs font-semibold bg-gray-900 dark:bg-white text-white dark:text-gray-900 hover:opacity-90 disabled:opacity-40"
               >
                 {quickGenerating ? "Generating…" : "Generate"}
