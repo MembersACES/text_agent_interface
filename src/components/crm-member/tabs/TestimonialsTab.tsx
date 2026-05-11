@@ -7,7 +7,10 @@ import {
   CalculateOneMonthSavingsModal,
   type CalculateResult,
 } from "@/components/crm-member/CalculateOneMonthSavingsModal";
-import { SOLUTION_TYPE_LABELS } from "@/lib/testimonial-solution-content";
+import {
+  SOLUTION_TYPE_LABELS,
+  SOLAR_PANEL_CLEANING_SOLUTION_TYPE_ID,
+} from "@/lib/testimonial-solution-content";
 
 export interface TestimonialItem {
   id: number;
@@ -132,6 +135,7 @@ export function TestimonialsTab({ businessInfo }: TestimonialsTabProps) {
   const [showQuickGenerate, setShowQuickGenerate] = useState(false);
   const [quickSolutionTypeId, setQuickSolutionTypeId] = useState<string>("");
   const [quickSavingsText, setQuickSavingsText] = useState<string>("");
+  const [quickPvSystemSize, setQuickPvSystemSize] = useState<string>("");
   const [quickBusinessNameSource, setQuickBusinessNameSource] = useState<"business_name" | "trading_as">("business_name");
   const [quickSelectedBusinessName, setQuickSelectedBusinessName] = useState<string>("");
   const [quickGenerating, setQuickGenerating] = useState(false);
@@ -418,6 +422,13 @@ export function TestimonialsTab({ businessInfo }: TestimonialsTabProps) {
 
   const handleQuickGenerate = async () => {
     if (!businessName || !quickSolutionTypeId || !quickSelectedBusinessName) return;
+    if (
+      quickSolutionTypeId === SOLAR_PANEL_CLEANING_SOLUTION_TYPE_ID &&
+      !quickPvSystemSize.trim()
+    ) {
+      showToast("Enter PV system size for Solar Panel Cleaning (e.g. 99.6 kW).", "error");
+      return;
+    }
     const savingsVal = quickSavingsText.trim()
       ? Number.parseFloat(quickSavingsText.trim().replace(/[^0-9.-]+/g, ""))
       : 0;
@@ -441,6 +452,9 @@ export function TestimonialsTab({ businessInfo }: TestimonialsTabProps) {
           abn: biz.abn || undefined,
           postal_address: postalAddress || undefined,
           site_address: siteAddress || undefined,
+          ...(quickSolutionTypeId === SOLAR_PANEL_CLEANING_SOLUTION_TYPE_ID && quickPvSystemSize.trim()
+            ? { pv_system_size: quickPvSystemSize.trim() }
+            : {}),
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -453,6 +467,7 @@ export function TestimonialsTab({ businessInfo }: TestimonialsTabProps) {
       setShowQuickGenerate(false);
       setQuickSolutionTypeId("");
       setQuickSavingsText("");
+      setQuickPvSystemSize("");
       setQuickBusinessNameSource("business_name");
       setQuickSelectedBusinessName(testimonialBusinessNameOptions[0]?.value ?? businessName);
       fetchTestimonials();
@@ -492,6 +507,7 @@ export function TestimonialsTab({ businessInfo }: TestimonialsTabProps) {
                 setShowQuickGenerate(true);
                 setQuickSolutionTypeId("");
                 setQuickSavingsText("");
+                setQuickPvSystemSize("");
                 const initial = testimonialBusinessNameOptions[0];
                 setQuickBusinessNameSource(initial?.source ?? "business_name");
                 setQuickSelectedBusinessName(initial?.value ?? businessName);
@@ -672,6 +688,7 @@ export function TestimonialsTab({ businessInfo }: TestimonialsTabProps) {
               setShowQuickGenerate(false);
               setQuickSolutionTypeId("");
               setQuickSavingsText("");
+              setQuickPvSystemSize("");
               setQuickBusinessNameSource("business_name");
               setQuickSelectedBusinessName(testimonialBusinessNameOptions[0]?.value ?? businessName);
             }
@@ -719,7 +736,11 @@ export function TestimonialsTab({ businessInfo }: TestimonialsTabProps) {
                 </p>
                 <select
                   value={quickSolutionTypeId}
-                  onChange={(e) => setQuickSolutionTypeId(e.target.value)}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setQuickSolutionTypeId(v);
+                    if (v !== SOLAR_PANEL_CLEANING_SOLUTION_TYPE_ID) setQuickPvSystemSize("");
+                  }}
                   className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100"
                 >
                   <option value="">Select testimonial type</option>
@@ -730,6 +751,25 @@ export function TestimonialsTab({ businessInfo }: TestimonialsTabProps) {
                   ))}
                 </select>
               </div>
+              {quickSolutionTypeId === SOLAR_PANEL_CLEANING_SOLUTION_TYPE_ID && (
+                <div>
+                  <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
+                    PV system size <span className="text-red-500">*</span>
+                  </p>
+                  <input
+                    type="text"
+                    value={quickPvSystemSize}
+                    onChange={(e) => setQuickPvSystemSize(e.target.value)}
+                    placeholder="e.g. 99.6 kW"
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100"
+                  />
+                  <p className="text-[11px] text-gray-400 mt-1">
+                    We build <span className="font-mono text-[10px]">key_outcome_metrics</span> as{" "}
+                    <span className="italic">your entry — saved headline</span>, so the Doc subtitle still uses only{" "}
+                    <span className="font-mono text-[10px]">key_outcome_metrics — business_name</span>.
+                  </p>
+                </div>
+              )}
               <div>
                 <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
                   Any savings (optional)
@@ -751,6 +791,7 @@ export function TestimonialsTab({ businessInfo }: TestimonialsTabProps) {
                     setShowQuickGenerate(false);
                     setQuickSolutionTypeId("");
                     setQuickSavingsText("");
+                    setQuickPvSystemSize("");
                     setQuickBusinessNameSource("business_name");
                     setQuickSelectedBusinessName(testimonialBusinessNameOptions[0]?.value ?? businessName);
                   }
@@ -762,7 +803,13 @@ export function TestimonialsTab({ businessInfo }: TestimonialsTabProps) {
               <button
                 type="button"
                 onClick={handleQuickGenerate}
-                disabled={!quickSolutionTypeId || !quickSelectedBusinessName || quickGenerating}
+                disabled={
+                  !quickSolutionTypeId ||
+                  !quickSelectedBusinessName ||
+                  quickGenerating ||
+                  (quickSolutionTypeId === SOLAR_PANEL_CLEANING_SOLUTION_TYPE_ID &&
+                    !quickPvSystemSize.trim())
+                }
                 className="px-3.5 py-1.5 rounded-md text-xs font-semibold bg-gray-900 dark:bg-white text-white dark:text-gray-900 hover:opacity-90 disabled:opacity-40"
               >
                 {quickGenerating ? "Generating…" : "Generate"}

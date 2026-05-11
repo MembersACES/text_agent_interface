@@ -6,7 +6,9 @@ import { getApiBaseUrl } from "@/lib/utils";
 /**
  * POST: Generate testimonial document via backend (n8n webhook).
  * Body: business_name, trading_as, contact_name, position, email, telephone,
- * client_folder_url, solution_type (id e.g. ci_electricity), savings_amount, optional abn, postal_address, site_address.
+ * client_folder_url, solution_type (id e.g. ci_electricity), savings_amount, optional abn,
+ * postal_address, site_address. For solar_panel_cleaning include pv_system_size (e.g. "99.6 kW");
+ * backend prefixes it into key_outcome_metrics for the subtitle line—no separate template placeholder.
  */
 export async function POST(req: NextRequest) {
   try {
