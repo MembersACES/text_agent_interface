@@ -7,7 +7,10 @@ import {
   CalculateOneMonthSavingsModal,
   type CalculateResult,
 } from "@/components/crm-member/CalculateOneMonthSavingsModal";
-import { SOLUTION_TYPE_LABELS } from "@/lib/testimonial-solution-content";
+import {
+  SOLUTION_TYPE_LABELS,
+  SOLAR_PANEL_CLEANING_SOLUTION_TYPE_ID,
+} from "@/lib/testimonial-solution-content";
 
 export interface TestimonialItem {
   id: number;
@@ -82,6 +85,11 @@ const deleteBtn =
   "text-red-600 dark:text-red-400 bg-red-500/5 hover:bg-red-500/10 border border-red-500/20 " +
   "transition-colors shrink-0 disabled:opacity-50 disabled:pointer-events-none";
 
+/** Parse numeric fields in testimonial quick-generate (allows commas). */
+function parseQuickFloat(raw: string): number {
+  return Number.parseFloat(String(raw).trim().replace(/,/g, ""));
+}
+
 const editBtn =
   "inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-medium " +
   "text-gray-700 dark:text-gray-200 bg-gray-500/5 hover:bg-gray-500/10 border border-gray-300 dark:border-gray-600 " +
@@ -132,6 +140,9 @@ export function TestimonialsTab({ businessInfo }: TestimonialsTabProps) {
   const [showQuickGenerate, setShowQuickGenerate] = useState(false);
   const [quickSolutionTypeId, setQuickSolutionTypeId] = useState<string>("");
   const [quickSavingsText, setQuickSavingsText] = useState<string>("");
+  const [quickSolarSystemSize, setQuickSolarSystemSize] = useState<string>("");
+  const [quickSolarPreDailyKwh, setQuickSolarPreDailyKwh] = useState<string>("");
+  const [quickSolarPostDailyKwh, setQuickSolarPostDailyKwh] = useState<string>("");
   const [quickBusinessNameSource, setQuickBusinessNameSource] = useState<"business_name" | "trading_as">("business_name");
   const [quickSelectedBusinessName, setQuickSelectedBusinessName] = useState<string>("");
   const [quickGenerating, setQuickGenerating] = useState(false);
@@ -418,6 +429,29 @@ export function TestimonialsTab({ businessInfo }: TestimonialsTabProps) {
 
   const handleQuickGenerate = async () => {
     if (!businessName || !quickSolutionTypeId || !quickSelectedBusinessName) return;
+    if (quickSolutionTypeId === SOLAR_PANEL_CLEANING_SOLUTION_TYPE_ID) {
+      const pre = parseQuickFloat(quickSolarPreDailyKwh);
+      const post = parseQuickFloat(quickSolarPostDailyKwh);
+      if (
+        !quickSolarSystemSize.trim() ||
+        !Number.isFinite(pre) ||
+        !Number.isFinite(post)
+      ) {
+        showToast(
+          "Solar Panel Cleaning requires system size, pre clean daily generation (kWh), and post clean daily generation (kWh).",
+          "error"
+        );
+        return;
+      }
+      if (pre <= 0) {
+        showToast("Pre clean daily generation must be greater than zero.", "error");
+        return;
+      }
+      if (post <= pre) {
+        showToast("Post clean daily generation must be greater than pre clean.", "error");
+        return;
+      }
+    }
     const savingsVal = quickSavingsText.trim()
       ? Number.parseFloat(quickSavingsText.trim().replace(/[^0-9.-]+/g, ""))
       : 0;
@@ -437,10 +471,22 @@ export function TestimonialsTab({ businessInfo }: TestimonialsTabProps) {
           telephone: contact.telephone || undefined,
           client_folder_url: driveUrl || undefined,
           solution_type: quickSolutionTypeId,
-          savings_amount: Number.isFinite(savingsVal) ? savingsVal : 0,
+          savings_amount:
+            quickSolutionTypeId === SOLAR_PANEL_CLEANING_SOLUTION_TYPE_ID
+              ? 0
+              : Number.isFinite(savingsVal)
+                ? savingsVal
+                : 0,
           abn: biz.abn || undefined,
           postal_address: postalAddress || undefined,
           site_address: siteAddress || undefined,
+          ...(quickSolutionTypeId === SOLAR_PANEL_CLEANING_SOLUTION_TYPE_ID
+            ? {
+                pv_system_size: quickSolarSystemSize.trim(),
+                solar_pre_daily_generation_kwh: parseQuickFloat(quickSolarPreDailyKwh),
+                solar_post_daily_generation_kwh: parseQuickFloat(quickSolarPostDailyKwh),
+              }
+            : {}),
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -453,6 +499,9 @@ export function TestimonialsTab({ businessInfo }: TestimonialsTabProps) {
       setShowQuickGenerate(false);
       setQuickSolutionTypeId("");
       setQuickSavingsText("");
+      setQuickSolarSystemSize("");
+      setQuickSolarPreDailyKwh("");
+      setQuickSolarPostDailyKwh("");
       setQuickBusinessNameSource("business_name");
       setQuickSelectedBusinessName(testimonialBusinessNameOptions[0]?.value ?? businessName);
       fetchTestimonials();
@@ -492,6 +541,9 @@ export function TestimonialsTab({ businessInfo }: TestimonialsTabProps) {
                 setShowQuickGenerate(true);
                 setQuickSolutionTypeId("");
                 setQuickSavingsText("");
+                setQuickSolarSystemSize("");
+                setQuickSolarPreDailyKwh("");
+                setQuickSolarPostDailyKwh("");
                 const initial = testimonialBusinessNameOptions[0];
                 setQuickBusinessNameSource(initial?.source ?? "business_name");
                 setQuickSelectedBusinessName(initial?.value ?? businessName);
@@ -672,6 +724,9 @@ export function TestimonialsTab({ businessInfo }: TestimonialsTabProps) {
               setShowQuickGenerate(false);
               setQuickSolutionTypeId("");
               setQuickSavingsText("");
+              setQuickSolarSystemSize("");
+              setQuickSolarPreDailyKwh("");
+              setQuickSolarPostDailyKwh("");
               setQuickBusinessNameSource("business_name");
               setQuickSelectedBusinessName(testimonialBusinessNameOptions[0]?.value ?? businessName);
             }
@@ -686,8 +741,8 @@ export function TestimonialsTab({ businessInfo }: TestimonialsTabProps) {
                 Generate testimonial
               </h3>
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                Choose a testimonial type and optional savings amount to generate a testimonial
-                without running the 1st Month Savings calculator.
+                Choose a testimonial type and complete the fields. For types other than Solar Panel Cleaning you can
+                add optional savings; solar uses pre/post daily generation instead.
               </p>
             </div>
             <div className="px-6 py-5 space-y-4">
@@ -719,7 +774,17 @@ export function TestimonialsTab({ businessInfo }: TestimonialsTabProps) {
                 </p>
                 <select
                   value={quickSolutionTypeId}
-                  onChange={(e) => setQuickSolutionTypeId(e.target.value)}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setQuickSolutionTypeId(v);
+                    if (v === SOLAR_PANEL_CLEANING_SOLUTION_TYPE_ID) {
+                      setQuickSavingsText("");
+                    } else {
+                      setQuickSolarSystemSize("");
+                      setQuickSolarPreDailyKwh("");
+                      setQuickSolarPostDailyKwh("");
+                    }
+                  }}
                   className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100"
                 >
                   <option value="">Select testimonial type</option>
@@ -730,18 +795,70 @@ export function TestimonialsTab({ businessInfo }: TestimonialsTabProps) {
                   ))}
                 </select>
               </div>
-              <div>
-                <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
-                  Any savings (optional)
-                </p>
-                <input
-                  type="text"
-                  value={quickSavingsText}
-                  onChange={(e) => setQuickSavingsText(e.target.value)}
-                  placeholder="e.g. 1200 or $1,200 per month"
-                  className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100"
-                />
-              </div>
+              {quickSolutionTypeId === SOLAR_PANEL_CLEANING_SOLUTION_TYPE_ID && (
+                <div className="space-y-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-800/50 p-3">
+                  <p className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Solar panel cleaning <span className="text-red-500">*</span>
+                  </p>
+                  <div>
+                    <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
+                      Solar system size
+                    </p>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={quickSolarSystemSize}
+                      onChange={(e) => setQuickSolarSystemSize(e.target.value)}
+                      placeholder="e.g. 99 (kW added automatically)"
+                      className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100"
+                    />
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
+                      Pre clean daily generation (kWh)
+                    </p>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={quickSolarPreDailyKwh}
+                      onChange={(e) => setQuickSolarPreDailyKwh(e.target.value)}
+                      placeholder="e.g. 289.83"
+                      className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100"
+                    />
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
+                      Post clean daily generation (kWh)
+                    </p>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={quickSolarPostDailyKwh}
+                      onChange={(e) => setQuickSolarPostDailyKwh(e.target.value)}
+                      placeholder="e.g. 327.07"
+                      className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100"
+                    />
+                  </div>
+                  <p className="text-[11px] text-gray-400">
+                    Yield, % increase, annual grid kWh, and CO₂ fields are calculated for n8n (0.75 kg CO₂-e per kWh).
+                    Post must exceed pre.
+                  </p>
+                </div>
+              )}
+              {quickSolutionTypeId !== SOLAR_PANEL_CLEANING_SOLUTION_TYPE_ID && (
+                <div>
+                  <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
+                    Any savings (optional)
+                  </p>
+                  <input
+                    type="text"
+                    value={quickSavingsText}
+                    onChange={(e) => setQuickSavingsText(e.target.value)}
+                    placeholder="e.g. 1200 or $1,200 per month"
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100"
+                  />
+                </div>
+              )}
             </div>
             <div className="px-6 py-4 border-t border-gray-100 dark:border-gray-800 flex justify-end gap-2">
               <button
@@ -751,6 +868,9 @@ export function TestimonialsTab({ businessInfo }: TestimonialsTabProps) {
                     setShowQuickGenerate(false);
                     setQuickSolutionTypeId("");
                     setQuickSavingsText("");
+                    setQuickSolarSystemSize("");
+                    setQuickSolarPreDailyKwh("");
+                    setQuickSolarPostDailyKwh("");
                     setQuickBusinessNameSource("business_name");
                     setQuickSelectedBusinessName(testimonialBusinessNameOptions[0]?.value ?? businessName);
                   }
@@ -762,7 +882,23 @@ export function TestimonialsTab({ businessInfo }: TestimonialsTabProps) {
               <button
                 type="button"
                 onClick={handleQuickGenerate}
-                disabled={!quickSolutionTypeId || !quickSelectedBusinessName || quickGenerating}
+                disabled={
+                  !quickSolutionTypeId ||
+                  !quickSelectedBusinessName ||
+                  quickGenerating ||
+                  (quickSolutionTypeId === SOLAR_PANEL_CLEANING_SOLUTION_TYPE_ID &&
+                    (() => {
+                      const pre = parseQuickFloat(quickSolarPreDailyKwh);
+                      const post = parseQuickFloat(quickSolarPostDailyKwh);
+                      return (
+                        !quickSolarSystemSize.trim() ||
+                        !Number.isFinite(pre) ||
+                        !Number.isFinite(post) ||
+                        pre <= 0 ||
+                        post <= pre
+                      );
+                    })())
+                }
                 className="px-3.5 py-1.5 rounded-md text-xs font-semibold bg-gray-900 dark:bg-white text-white dark:text-gray-900 hover:opacity-90 disabled:opacity-40"
               >
                 {quickGenerating ? "Generating…" : "Generate"}

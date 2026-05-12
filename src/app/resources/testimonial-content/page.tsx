@@ -34,6 +34,7 @@ const DROPDOWN_ORDER = [
   "resource_recovery",
   "dma",
   "automated_cleaning_robot",
+  "solar_panel_cleaning",
 ];
 
 export default function TestimonialContentPage() {

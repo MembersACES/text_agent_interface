@@ -1427,8 +1427,10 @@ export default function Base2Page() {
         setSending(sendingKey); setError(null); setSuccess(false);
         let webhookUrl = '';
         let payload: any = { user_email: session?.user?.email || '', user_name: session?.user?.name || '', user_id: (session?.user as any)?.id || '', full_invoice_data: util.invoiceData, timestamp: new Date().toISOString() };
-        if (businessInfo) { payload.business_name = businessInfo.name || ''; payload.business_abn = businessInfo.abn || ''; payload.business_trading_name = businessInfo.trading_name || ''; payload.business_industry = businessInfo.industry || ''; payload.business_website = businessInfo.website || ''; payload.postal_address = businessInfo.postal_address || ''; payload.site_address = businessInfo.site_address || ''; payload.contact_phone = businessInfo.telephone || ''; payload.contact_email = businessInfo.email || ''; payload.contact_name = businessInfo.contact_name || ''; payload.contact_position = businessInfo.position || ''; }
+        const clientEmailOnRecord = defaultWebhookRecipient(businessInfo, businessInfoData).contactEmail.trim();
+        if (businessInfo) { payload.business_name = businessInfo.name || ''; payload.business_abn = businessInfo.abn || ''; payload.business_trading_name = businessInfo.trading_name || ''; payload.business_industry = businessInfo.industry || ''; payload.business_website = businessInfo.website || ''; payload.postal_address = businessInfo.postal_address || ''; payload.site_address = businessInfo.site_address || ''; payload.contact_phone = businessInfo.telephone || ''; payload.contact_email = clientEmailOnRecord; payload.contact_name = businessInfo.contact_name || ''; payload.contact_position = businessInfo.position || ''; }
         if (webhookRecipient) { payload.contact_name = webhookRecipient.contactName; payload.contact_email = webhookRecipient.contactEmail; }
+        if (clientEmailOnRecord) payload.client_email = clientEmailOnRecord;
         if (action === 'dma' && util.utilityType === 'C&I Electricity') {
           webhookUrl = 'https://membersaces.app.n8n.cloud/webhook/generate-dma-comparaison-review-b2';
           const details = util.invoiceData?.electricity_ci_invoice_details || {}; const fullData = details?.full_invoice_data || {};
