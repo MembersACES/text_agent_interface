@@ -108,9 +108,10 @@ export default function Base1Client({
   }, [mode, token, retryLandingFetch]);
 
   useEffect(() => {
-    if (openFormTrigger > 0) {
+    if (openFormTrigger <= 0) return;
+    void Promise.resolve().then(() => {
       setMode("form");
-    }
+    });
   }, [openFormTrigger]);
 
   if (mode === "form") {

@@ -111,6 +111,10 @@ interface UtilityComparison {
   smeAirtablePeriodCoverage?: SmeAirtablePeriodCoverage | null;
   ciGasInvoiceReviewDays?: number;
   ciGasAnnualConsumptionGJ?: number;
+  /** Required for C&I electricity comparison / DMA ($/MWh). */
+  ciElectricityCommissionAudPerMwh?: number;
+  /** Required for C&I gas and SME → C&I gas (`ci_offer`) comparison ($/GJ). */
+  ciGasCommissionAudPerGj?: number;
   oilFrequency?: string;
   wasteFrequency?: string;
   cleaningFrequency?: string;
@@ -480,6 +484,10 @@ function buildComparisonSnapshot(
       energy_charge_pct: normalizeMoneyToNumber(result.energy_charge_pct) ?? null,
       contracted_rate: normalizeMoneyToNumber(result.contracted_rate) ?? null,
       offer_rate: normalizeMoneyToNumber(result.offer_rate) ?? null,
+      commission_aud_per_gj:
+        util.ciGasCommissionAudPerGj != null && Number.isFinite(util.ciGasCommissionAudPerGj)
+          ? util.ciGasCommissionAudPerGj
+          : null,
     };
   }
   const peakU = util.peakUsage != null ? Number(util.peakUsage) : 0;
@@ -494,6 +502,10 @@ function buildComparisonSnapshot(
     current_offpeak_cpkwh: util.currentOffPeakRate ?? normalizeMoneyToNumber(result.off_peak_rate_invoice) ?? null,
     offer_peak_cpkwh: util.comparisonPeakRate ?? normalizeMoneyToNumber(result.offer1PeakRate) ?? null,
     offer_offpeak_cpkwh: util.comparisonOffPeakRate ?? normalizeMoneyToNumber(result.offer1OffPeakRate) ?? null,
+    commission_aud_per_mwh:
+      util.ciElectricityCommissionAudPerMwh != null && Number.isFinite(util.ciElectricityCommissionAudPerMwh)
+        ? util.ciElectricityCommissionAudPerMwh
+        : null,
   };
 }
 
@@ -1238,6 +1250,23 @@ export default function Base2Page() {
     }));
   };
 
+  const updateOptionalCommission = (
+    utilityType: string,
+    identifier: string,
+    field: "ciElectricityCommissionAudPerMwh" | "ciGasCommissionAudPerGj",
+    value: string,
+  ) => {
+    setUtilityComparisons((prev) =>
+      prev.map((u) => {
+        if (u.utilityType !== utilityType || u.identifier !== identifier) return u;
+        const t = value.trim();
+        if (t === "") return { ...u, [field]: undefined };
+        const n = parseFloat(t);
+        return { ...u, [field]: Number.isFinite(n) ? n : undefined };
+      }),
+    );
+  };
+
   const updateUsage = (utilityType: string, identifier: string, field: keyof UtilityComparison, value: string) => {
     setUtilityComparisons(prev => prev.map(u => {
       if (u.utilityType === utilityType && u.identifier === identifier) {
@@ -1424,6 +1453,29 @@ export default function Base2Page() {
     if (!token || !session) { alert('Please log in to generate comparisons'); return; }
     const utilitiesToProcess = generateAll ? utilityComparisons.filter((u) => { if (u.utilityType !== comparison.utilityType || u.loading || u.error) return false; if (comparison.utilityType === "SME Gas") { const m = comparison.smeGasComparisonMode ?? "invoice_blocks"; const um = u.smeGasComparisonMode ?? "invoice_blocks"; return m === um; } return true; }) : [comparison];
     if (utilitiesToProcess.length === 0) { alert('No utilities available to generate'); return; }
+    for (const u of utilitiesToProcess) {
+      if (u.utilityType === "C&I Electricity") {
+        const c = u.ciElectricityCommissionAudPerMwh;
+        if (c == null || !Number.isFinite(c) || c <= 0) {
+          alert(`C&I electricity: commission ($/MWh) is required for NMI ${u.identifier}.`);
+          return;
+        }
+      }
+      if (u.utilityType === "C&I Gas") {
+        const c = u.ciGasCommissionAudPerGj;
+        if (c == null || !Number.isFinite(c) || c <= 0) {
+          alert(`C&I gas: commission ($/GJ) is required for MRIN ${u.identifier}.`);
+          return;
+        }
+      }
+      if (u.utilityType === "SME Gas" && (u.smeGasComparisonMode ?? "invoice_blocks") === "ci_offer") {
+        const c = u.ciGasCommissionAudPerGj;
+        if (c == null || !Number.isFinite(c) || c <= 0) {
+          alert(`SME → C&I gas: commission ($/GJ) is required for MRIN ${u.identifier}.`);
+          return;
+        }
+      }
+    }
     const results: string[] = []; const errors: string[] = []; const successResults: { util: UtilityComparison; result: any }[] = [];
     for (const util of utilitiesToProcess) {
       const sendingKey = `${util.utilityType}-${util.identifier}-${action}`;
@@ -1443,6 +1495,8 @@ export default function Base2Page() {
           payload.metering_rate = (util.currentMeterDaily ?? util.currentMeteringDaily ?? 0).toFixed(2); payload.metering_rate_annual = (util.currentMeterAnnual ?? util.currentMeteringAnnual ?? 0).toFixed(2); payload.vas_rate = (util.currentVasDaily ?? 0).toFixed(2); payload.vas_rate_annual = (util.currentVasAnnual ?? 0).toFixed(2); payload.combined_annual_cost = (util.currentMeteringAnnual ?? 0).toFixed(2);
           payload.comparison_meter_annual = (util.comparisonMeterAnnual ?? 600).toFixed(2); payload.comparison_vas_annual = (util.comparisonVasAnnual ?? 300).toFixed(2); payload.comparison_meter_daily = (util.comparisonMeterDaily ?? 600 / 365).toFixed(4); payload.comparison_vas_daily = (util.comparisonVasDaily ?? 300 / 365).toFixed(4); payload.dma_price = (util.comparisonMeterAnnual ?? 600).toFixed(2); payload.vas_price = (util.comparisonVasAnnual ?? 300).toFixed(2); payload.proposed_annual_cost = (util.comparisonMeteringAnnual ?? 900).toFixed(2);
           if (util.currentMeteringAnnual != null && util.comparisonMeteringAnnual != null) payload.annual_savings = (util.currentMeteringAnnual - util.comparisonMeteringAnnual).toFixed(2);
+          payload.commission_aud_per_mwh = util.ciElectricityCommissionAudPerMwh!.toFixed(4);
+          payload.commission_unit_electricity = "$/MWh";
         } else if (util.utilityType === 'C&I Electricity') {
           webhookUrl = 'https://membersaces.app.n8n.cloud/webhook/generate-electricity-ci-comparaison-b2';
           const details = util.invoiceData?.electricity_ci_invoice_details || {}; const fullData = details?.full_invoice_data || {};
@@ -1451,6 +1505,8 @@ export default function Base2Page() {
           payload.peak_usage_invoice = util.peakUsage?.toFixed(0) || '0'; payload.off_peak_usage_invoice = util.offPeakUsage?.toFixed(0) || '0'; payload.shoulder_usage_invoice = '0'; payload.total_monthly_usage = util.monthlyUsage?.toFixed(0) || '0';
           payload.offer1PeakRate = util.comparisonPeakRate?.toFixed(2) || '0'; payload.offer1OffPeakRate = util.comparisonOffPeakRate?.toFixed(2) || '0'; payload.offer1ShoulderRate = util.comparisonShoulderRate?.toFixed(2) || '0'; payload.offer1Retailer = 'Comparison Offer'; payload.offer1Validity = '12 months'; payload.offer1Type = 'smoothed'; payload.offer1PeriodYears = '1'; payload.offer1StartDate = new Date().toISOString().split('T')[0];
           payload.current_daily_supply = util.currentDailySupply?.toFixed(2) || '0'; payload.comparison_daily_supply = util.comparisonDailySupply?.toFixed(2) || '0'; payload.current_demand_charge = util.currentDemandCharge?.toFixed(2) || '0'; payload.comparison_demand_charge = util.comparisonDemandCharge?.toFixed(2) || '0'; payload.demand_quantity = util.demandQuantity?.toFixed(2) || '0';
+          payload.commission_aud_per_mwh = util.ciElectricityCommissionAudPerMwh!.toFixed(4);
+          payload.commission_unit_electricity = "$/MWh";
         } else if (util.utilityType === 'C&I Gas') {
           webhookUrl = 'https://membersaces.app.n8n.cloud/webhook/generate-gas-ci-comparaison-b2';
           const details = util.invoiceData?.gas_ci_invoice_details || {}; const fullData = details?.full_invoice_data || {};
@@ -1460,6 +1516,8 @@ export default function Base2Page() {
           payload.gas_usage_invoice = gasUsageStr; payload.total_monthly_usage = gasUsageStr;
           payload.offer1GasRate = util.comparisonGasRate?.toFixed(4) || '0'; payload.offer1Retailer = 'Comparison Offer'; payload.offer1Validity = '12 months'; payload.offer1Type = 'smoothed'; payload.offer1PeriodYears = '1'; payload.offer1StartDate = new Date().toISOString().split('T')[0];
           payload.current_daily_supply = util.currentDailySupply?.toFixed(2) || '0'; payload.comparison_daily_supply = util.comparisonDailySupply?.toFixed(2) || '0';
+          payload.commission_aud_per_gj = util.ciGasCommissionAudPerGj!.toFixed(4);
+          payload.commission_unit_gas = "$/GJ";
         } else if (util.utilityType === "SME Gas") {
           if (util.smeGasComparisonMode !== "ci_offer") { errors.push(`${util.identifier}: Select "C&I-style comparison (SME → C&I)" to generate this comparison.`); setSending(null); continue; }
           webhookUrl = "https://membersaces.app.n8n.cloud/webhook/generate-gas-sme-ci-comparaison-b2";
@@ -1497,6 +1555,8 @@ export default function Base2Page() {
             pcBill != null && Number.isFinite(pcBill) ? pcBill.toFixed(2) : "";
           payload.sme_gas_airtable_annual_gj_calendar_window =
             pcCal != null && Number.isFinite(pcCal) ? pcCal.toFixed(2) : "";
+          payload.commission_aud_per_gj = util.ciGasCommissionAudPerGj!.toFixed(4);
+          payload.commission_unit_gas = "$/GJ";
         } else { errors.push(`${util.identifier}: Comparison generation not yet supported for this utility type`); setSending(null); continue; }
         const response = await fetch(webhookUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(payload) });
         const responseText = await response.text();
@@ -1754,6 +1814,44 @@ export default function Base2Page() {
             <td className={`${tdBase} text-right`}>{savingsPct(comparison.comparisonDemandCharge && comparison.comparisonDemandCharge > 0 && currentDemand > 0 && currentDemandAnnual > 0 ? (demandSavings / currentDemandAnnual) * 100 : undefined)}</td>
           </tr>
         );
+        rows.push(
+          <tr key="commission-mwh" className="hover:bg-gray-50/50">
+            <td className={labelTd}>
+              Commission <span className="text-gray-400">($/MWh)</span>
+              <span className="ml-1 text-rose-600 font-semibold" title="Required before generating comparison or DMA">
+                *
+              </span>
+            </td>
+            <td className={`${tdBase} text-center text-gray-300 text-xs`}>—</td>
+            <td className={`${tdBase} text-center text-gray-300 text-xs`}>—</td>
+            <td className={tdBase}>
+              <input
+                type="number"
+                step="0.0001"
+                min={0.0001}
+                required
+                value={
+                  comparison.ciElectricityCommissionAudPerMwh != null &&
+                  Number.isFinite(comparison.ciElectricityCommissionAudPerMwh)
+                    ? comparison.ciElectricityCommissionAudPerMwh
+                    : ""
+                }
+                onChange={(e) =>
+                  updateOptionalCommission(
+                    comparison.utilityType,
+                    comparison.identifier,
+                    "ciElectricityCommissionAudPerMwh",
+                    e.target.value,
+                  )
+                }
+                className={inputCls}
+                placeholder="Required"
+              />
+            </td>
+            <td className={`${tdBase} text-center text-gray-300 text-xs`}>—</td>
+            <td className={`${tdBase} text-center text-gray-300 text-xs`}>—</td>
+          </tr>,
+        );
       }
     }
 
@@ -1819,6 +1917,49 @@ export default function Base2Page() {
           <td className={`${tdBase} text-right`}>{savingsPct(savings?.usageSavingsPercent)}</td>
         </tr>
       );
+      if (
+        comparison.utilityType === "C&I Gas" ||
+        (comparison.utilityType === "SME Gas" &&
+          (comparison.smeGasComparisonMode ?? "invoice_blocks") === "ci_offer")
+      ) {
+        rows.push(
+          <tr key="commission-gj" className="hover:bg-gray-50/50">
+            <td className={labelTd}>
+              Commission <span className="text-gray-400">($/GJ)</span>
+              <span className="ml-1 text-rose-600 font-semibold" title="Required before generating comparison">
+                *
+              </span>
+            </td>
+            <td className={`${tdBase} text-center text-gray-300 text-xs`}>—</td>
+            <td className={`${tdBase} text-center text-gray-300 text-xs`}>—</td>
+            <td className={tdBase}>
+              <input
+                type="number"
+                step="0.0001"
+                min={0.0001}
+                required
+                value={
+                  comparison.ciGasCommissionAudPerGj != null && Number.isFinite(comparison.ciGasCommissionAudPerGj)
+                    ? comparison.ciGasCommissionAudPerGj
+                    : ""
+                }
+                onChange={(e) =>
+                  updateOptionalCommission(
+                    comparison.utilityType,
+                    comparison.identifier,
+                    "ciGasCommissionAudPerGj",
+                    e.target.value,
+                  )
+                }
+                className={inputCls}
+                placeholder="Required"
+              />
+            </td>
+            <td className={`${tdBase} text-center text-gray-300 text-xs`}>—</td>
+            <td className={`${tdBase} text-center text-gray-300 text-xs`}>—</td>
+          </tr>,
+        );
+      }
       const showSmeGasSupplyRow = comparison.utilityType !== "C&I Gas" && !(comparison.utilityType === "SME Gas" && (comparison.smeGasComparisonMode ?? "invoice_blocks") === "ci_offer");
       if (showSmeGasSupplyRow) {
         rows.push(
