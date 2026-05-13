@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
-import { getApiBaseUrl } from "@/lib/utils";
+import { getApiBaseUrl, getSendClientDocumentN8nWebhookUrl, parseGoogleDriveOrDocsFileId } from "@/lib/utils";
+import { useToast } from "@/components/ui/toast";
 import { useSearchParams } from "next/navigation";
 import { PageHeader } from "@/components/Layouts/PageHeader";
 
@@ -23,6 +24,19 @@ interface BusinessInfo {
 interface DocumentFormData extends BusinessInfo {
   expression_type?: string;
   engagement_form_type?: string;
+}
+
+/** Last successfully generated EOI or engagement form — used for “Send document” → n8n. */
+type ClientDocSendKind = "eoi" | "engagement-form";
+
+interface LastClientDocSendContext {
+  kind: ClientDocSendKind;
+  document_link: string;
+  client_folder_url: string;
+  business_name: string;
+  google_file_id: string | null;
+  expression_type: string | null;
+  engagement_form_type: string | null;
 }
 
 type DocumentCategory = "business-documents" | "eoi" | "engagement-forms";
@@ -82,6 +96,7 @@ const DOCUMENT_TYPES = {
 
 export default function DocumentGenerationPage() {
   const { data: session } = useSession();
+  const { showToast } = useToast();
   const token = (session as any)?.id_token || (session as any)?.accessToken;
 
   const [businessQuery, setBusinessQuery] = useState("");
@@ -118,6 +133,11 @@ export default function DocumentGenerationPage() {
   const [loading, setLoading] = useState(false);
   const [businessLoading, setBusinessLoading] = useState(false);
   const [result, setResult] = useState("");
+  const [lastClientDocSendContext, setLastClientDocSendContext] = useState<LastClientDocSendContext | null>(null);
+  const [sendDocumentModalOpen, setSendDocumentModalOpen] = useState(false);
+  const [sendDocumentRecipientName, setSendDocumentRecipientName] = useState("");
+  const [sendDocumentRecipientEmail, setSendDocumentRecipientEmail] = useState("");
+  const [sendDocumentSubmitting, setSendDocumentSubmitting] = useState(false);
   const searchParams = useSearchParams();
   
   // Get category filter from URL
@@ -305,6 +325,7 @@ export default function DocumentGenerationPage() {
     setSelectedBusinessDocumentType("");
     setSelectedDocumentCategory("");
     setResult("");
+    setLastClientDocSendContext(null);
     sessionStorage.removeItem('selectedBusinessInfo');
   };
 
@@ -389,7 +410,39 @@ export default function DocumentGenerationPage() {
 
       if (response.ok && data.status === "success") {
         setResult(`✅ ${data.message}\n\n📄 **Document Link:** ${data.document_link}\n📁 **Member Folder:** ${data.client_folder_url}`);
-        
+
+        if (selectedDocumentCategory === "eoi") {
+          const docLink = typeof data.document_link === "string" ? data.document_link : "";
+          setLastClientDocSendContext({
+            kind: "eoi",
+            document_link: docLink,
+            client_folder_url:
+              typeof data.client_folder_url === "string"
+                ? data.client_folder_url
+                : editableBusinessInfo?.client_folder_url ?? "",
+            business_name: editableBusinessInfo?.business_name ?? "",
+            google_file_id: parseGoogleDriveOrDocsFileId(docLink),
+            expression_type: selectedEoiType,
+            engagement_form_type: null,
+          });
+        } else if (selectedDocumentCategory === "engagement-forms") {
+          const docLink = typeof data.document_link === "string" ? data.document_link : "";
+          setLastClientDocSendContext({
+            kind: "engagement-form",
+            document_link: docLink,
+            client_folder_url:
+              typeof data.client_folder_url === "string"
+                ? data.client_folder_url
+                : editableBusinessInfo?.client_folder_url ?? "",
+            business_name: editableBusinessInfo?.business_name ?? "",
+            google_file_id: parseGoogleDriveOrDocsFileId(docLink),
+            expression_type: null,
+            engagement_form_type: selectedEngagementFormType,
+          });
+        } else {
+          setLastClientDocSendContext(null);
+        }
+
         // Reset selections but keep business info
         setSelectedEoiType("");
         setSelectedEngagementFormType("");
@@ -412,6 +465,64 @@ export default function DocumentGenerationPage() {
     (selectedDocumentCategory !== "business-documents" || selectedBusinessDocumentType) &&
     (selectedDocumentCategory !== "eoi" || selectedEoiType) &&
     (selectedDocumentCategory !== "engagement-forms" || selectedEngagementFormType);
+
+  const openSendDocumentModal = () => {
+    if (!lastClientDocSendContext) return;
+    setSendDocumentRecipientName(editableBusinessInfo?.contact_name?.trim() ?? "");
+    setSendDocumentRecipientEmail(editableBusinessInfo?.email?.trim() ?? "");
+    setSendDocumentModalOpen(true);
+  };
+
+  const handleSendDocumentSubmit = async () => {
+    if (!lastClientDocSendContext) return;
+    const email = sendDocumentRecipientEmail.trim();
+    const name = sendDocumentRecipientName.trim();
+    if (!name) {
+      showToast("Please enter the recipient name.", "error");
+      return;
+    }
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      showToast("Please enter a valid recipient email.", "error");
+      return;
+    }
+    setSendDocumentSubmitting(true);
+    try {
+      const { kind, expression_type, engagement_form_type, ...rest } = lastClientDocSendContext;
+      const document_kind = kind === "eoi" ? "eoi" : "engagement_form";
+      const payload = {
+        event: "send_client_document",
+        document_kind,
+        recipient_contact_name: name,
+        recipient_contact_email: email,
+        business_name: rest.business_name,
+        expression_type,
+        engagement_form_type,
+        document_link: rest.document_link,
+        google_file_id: rest.google_file_id,
+        client_folder_url: rest.client_folder_url,
+        sent_by_email: session?.user?.email ?? "",
+        sent_by_name: session?.user?.name ?? "",
+        timestamp: new Date().toISOString(),
+      };
+      const res = await fetch(getSendClientDocumentN8nWebhookUrl(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        showToast("Document send workflow triggered.", "success");
+        setSendDocumentModalOpen(false);
+      } else {
+        const text = await res.text().catch(() => "");
+        showToast(`n8n returned ${res.status}${text ? `: ${text.slice(0, 200)}` : ""}`, "error");
+      }
+    } catch (e) {
+      console.error(e);
+      showToast("Failed to reach send workflow. Check the network or webhook URL.", "error");
+    } finally {
+      setSendDocumentSubmitting(false);
+    }
+  };
 
   return (
     <div className="max-w-4xl mx-auto mt-10 p-6 pb-28 bg-white dark:bg-gray-dark rounded-lg shadow-lg">
@@ -710,6 +821,20 @@ export default function DocumentGenerationPage() {
                 .replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-blue-600 underline">$1</a>')
             }}
           />
+          {lastClientDocSendContext && (
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={openSendDocumentModal}
+                className="px-5 py-2.5 rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors"
+              >
+                Send document
+              </button>
+              <p className="text-xs text-gray-600 dark:text-gray-400 max-w-md">
+                Email the generated {lastClientDocSendContext.kind === "eoi" ? "EOI" : "engagement form"} via your n8n workflow (recipient confirmed in the next step).
+              </p>
+            </div>
+          )}
         </div>
       )}
 
@@ -720,17 +845,90 @@ export default function DocumentGenerationPage() {
           <li>1. Search for an existing business by name</li>
           <li>2. Review and edit the business details if needed</li>
           <li>3. Select document category (Business Documents, EOI, or Engagement Forms)</li>
-          <li>4. Choose the specific document type or EOI type</li>
-          <li>5. Click "Generate" to create your document</li>
+          <li>4. Choose the specific document type, EOI type, or engagement form type</li>
+          <li>5. Click &quot;Generate&quot; to create your document</li>
+          <li>6. After a successful EOI or engagement form, use &quot;Send document&quot; to email it via n8n (configure the webhook in env or n8n)</li>
         </ol>
         
         <div className="mt-4 p-3 bg-blue-50 rounded border border-blue-200">
           <p className="text-sm text-blue-700">
             💡 <strong>Note:</strong> This page is for existing clients with business information already in the system. 
-            For new clients, use the "New Client Creation" page to fill out all details manually.
+            For new clients, use the &quot;New Client Creation&quot; page to fill out all details manually.
           </p>
         </div>
       </div>
+
+      {/* Send document — recipient confirmation (n8n webhook) */}
+      {sendDocumentModalOpen && lastClientDocSendContext && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+          aria-modal="true"
+          role="dialog"
+        >
+          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl max-w-md w-full p-6 border border-gray-200 dark:border-gray-700">
+            <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-1">
+              {lastClientDocSendContext.kind === "eoi"
+                ? "Send Expression of Interest"
+                : "Send engagement form"}
+            </h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+              Confirm or edit the client contact before triggering the email workflow.
+            </p>
+            <div className="space-y-3 mb-5">
+              <div>
+                <label htmlFor="doc-send-recipient-name" className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">
+                  Client name
+                </label>
+                <input
+                  id="doc-send-recipient-name"
+                  type="text"
+                  value={sendDocumentRecipientName}
+                  onChange={(e) => setSendDocumentRecipientName(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  placeholder="Contact name"
+                  autoComplete="name"
+                />
+              </div>
+              <div>
+                <label htmlFor="doc-send-recipient-email" className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">
+                  Email
+                </label>
+                <input
+                  id="doc-send-recipient-email"
+                  type="email"
+                  value={sendDocumentRecipientEmail}
+                  onChange={(e) => setSendDocumentRecipientEmail(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  placeholder="name@example.com"
+                  autoComplete="email"
+                />
+              </div>
+            </div>
+            <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-4">
+              Override URL with <span className="font-mono">NEXT_PUBLIC_N8N_SEND_CLIENT_DOC_WEBHOOK</span> (or{" "}
+              <span className="font-mono">NEXT_PUBLIC_N8N_SEND_EOI_WEBHOOK</span>).
+            </p>
+            <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setSendDocumentModalOpen(false)}
+                disabled={sendDocumentSubmitting}
+                className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors order-2 sm:order-1 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSendDocumentSubmit}
+                disabled={sendDocumentSubmitting}
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors order-1 sm:order-2 disabled:opacity-50"
+              >
+                {sendDocumentSubmitting ? "Sending…" : "Send document"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

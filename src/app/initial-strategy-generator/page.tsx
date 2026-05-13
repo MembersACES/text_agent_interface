@@ -44,6 +44,23 @@ interface GenerationResult {
 
 export default function InitialStrategyGeneratorPage() {
   const { data: session, status } = useSession();
+  const token = (session as any)?.id_token || (session as any)?.accessToken;
+
+  useEffect(() => {
+    console.log("=== SESSION DEBUG ===");
+    console.log("Session status:", status);
+    console.log("Raw session object:", JSON.stringify(session, null, 2));
+    if (session) {
+      console.log("Session keys:", Object.keys(session));
+      console.log("User object:", (session as any)?.user);
+      console.log("AccessToken:", (session as any)?.accessToken);
+      console.log("ID Token:", (session as any)?.id_token);
+      console.log("Account:", (session as any)?.account);
+    }
+    console.log("Final token being used:", token);
+    console.log("====================");
+  }, [session, status, token]);
+
   console.log("Session status:", status);
   console.log("Session data:", session);
   const searchParams = useSearchParams();
@@ -528,23 +545,6 @@ export default function InitialStrategyGeneratorPage() {
       </div>
     );
   }
-  
-  const token = (session as any)?.id_token || (session as any)?.accessToken;
-   
-  useEffect(() => {
-    console.log("=== SESSION DEBUG ===");
-    console.log("Session status:", status);
-    console.log("Raw session object:", JSON.stringify(session, null, 2));
-    if (session) {
-      console.log("Session keys:", Object.keys(session));
-      console.log("User object:", (session as any)?.user);
-      console.log("AccessToken:", (session as any)?.accessToken);
-      console.log("ID Token:", (session as any)?.id_token);
-      console.log("Account:", (session as any)?.account);
-    }
-    console.log("Final token being used:", token);
-    console.log("====================");
-  }, [session, status, token]);
 
   // Check for refresh token error
   if ((session as any)?.error === "RefreshAccessTokenError") {
