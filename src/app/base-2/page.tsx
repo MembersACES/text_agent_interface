@@ -143,6 +143,12 @@ interface UtilityComparison {
   };
 }
 
+/**
+ * Default SME→C&I gas energy share (energy ÷ invoice) when the API has no usable samples.
+ * Keep aligned with backend `AIRTABLE_CI_GAS_REF_DEFAULT_ENERGY_SHARE` (airtable_client.py).
+ */
+const DEFAULT_SME_CI_ENERGY_SHARE = 0.75;
+
 // ─── Visual helpers ────────────────────────────────────────────────────────────
 
 const UTILITY_CONFIG: Record<string, { color: string; bg: string; text: string; icon: string; label: string }> = {
@@ -224,11 +230,13 @@ function normalizeAustralianPostcodeInput(raw: string | undefined): string {
 
 function formatSmeCiMatchStrategy(strategy: string | null | undefined): string | null {
   if (!strategy) return null;
+  if (strategy === "postcode_band") return "Numeric postcode band";
   if (strategy === "exact_postcode") return "Exact postcode match";
   if (strategy === "prefix_3digit") return "Same area match";
   if (strategy === "nearest_numeric_postcode") return "Nearby postcode estimate";
   if (strategy === "global_dataset_median") return "Portfolio-wide estimate";
-  if (strategy === "default_share") return "Default estimate";
+  if (strategy === "default_share")
+    return `Standard default (${Math.round(DEFAULT_SME_CI_ENERGY_SHARE * 100)}%)`;
   return "Estimated reference";
 }
 
@@ -332,7 +340,7 @@ function formatSmeCiMatchedPostcodesWithBusinesses(
 function getSmeCiFallbackExplanation(comparison: UtilityComparison): string | null {
   if (comparison.smeCiReferenceError) return null;
   const strategy = comparison.smeCiReferenceMatchStrategy;
-  if (!strategy || strategy === "exact_postcode") return null;
+  if (!strategy || strategy === "exact_postcode" || strategy === "postcode_band") return null;
   const postcode = normalizeAustralianPostcodeInput(comparison.smeGasPostcode);
   const pcs = comparison.smeCiReferenceMatchedPostcodes;
   const pcList = formatSmeCiMatchedPostcodesWithBusinesses(pcs, comparison.smeCiReferenceMatchedPostcodeReference);
@@ -352,7 +360,8 @@ function getSmeCiFallbackExplanation(comparison: UtilityComparison): string | nu
     return "No local postcode matches were available, so this uses a broader C&I portfolio estimate.";
   }
   if (strategy === "default_share") {
-    return "Not enough reference data was available, so this uses a default energy portion.";
+    const pct = Math.round(DEFAULT_SME_CI_ENERGY_SHARE * 100);
+    return `No C&I gas reference data with usable amounts was found in the numeric postcode window around ${postcode || "this site"}. Defaulting to standard ${pct}% energy portion of the invoice.`;
   }
   return null;
 }
@@ -391,7 +400,7 @@ function withSmeGasCiDerivedRates(u: UtilityComparison): UtilityComparison {
   const next: UtilityComparison = { ...u, smeGasBundledRatePerGJ: bundled };
   const mode = next.smeGasComparisonMode ?? "invoice_blocks";
   if (mode === "ci_offer" && bundled != null && bundled > 0) {
-    const share = next.smeCiEnergyShareOfInvoice ?? 0.72;
+    const share = next.smeCiEnergyShareOfInvoice ?? DEFAULT_SME_CI_ENERGY_SHARE;
     next.currentGasRate = parseFloat((bundled * share).toFixed(4));
     if (next.currentGasRate > 0) {
       next.comparisonGasRate = DEFAULT_CI_GAS_COMPARISON_RATE_PER_GJ;
@@ -666,7 +675,8 @@ export default function Base2Page() {
       if (!res.ok) {
         throw new Error(typeof data.detail === "string" ? data.detail : "Reference fetch failed");
       }
-      const med = typeof data.median_energy_share === "number" ? data.median_energy_share : 0.72;
+      const med =
+        typeof data.median_energy_share === "number" ? data.median_energy_share : DEFAULT_SME_CI_ENERGY_SHARE;
       const sampleCount = typeof data.sample_count === "number" ? data.sample_count : 0;
       const usedFallback = data.used_fallback === true;
       const msg = typeof data.message === "string" ? data.message : null;
@@ -854,12 +864,7 @@ export default function Base2Page() {
   useEffect(() => {
     if (!token || !smeCiGasReferenceKey) return;
     const list = utilityComparisonsRef.current;
-    const run = async () => {
-      for (const c of list) {
-        await fetchSmeCiGasReferenceFor(c);
-      }
-    };
-    void run();
+    void Promise.all(list.map((c) => fetchSmeCiGasReferenceFor(c)));
   }, [token, smeCiGasReferenceKey]);
 
   useEffect(() => {
@@ -1800,7 +1805,7 @@ export default function Base2Page() {
                   }
                   onChange={(e) => updateUsage(comparison.utilityType, comparison.identifier, "smeCiEnergyShareOfInvoice", e.target.value)}
                   className={inputCls}
-                  placeholder="0.72"
+                  placeholder={String(DEFAULT_SME_CI_ENERGY_SHARE)}
                 />
                 <label className="block text-[10px] uppercase tracking-wide text-gray-400">Annual (GJ/yr)</label>
                 <input type="number" step="0.01" value={comparison.smeGasAnnualConsumptionGJ ?? ""} onChange={(e) => updateUsage(comparison.utilityType, comparison.identifier, "smeGasAnnualConsumptionGJ", e.target.value)} className={inputCls} placeholder="Optional" />
