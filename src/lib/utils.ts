@@ -133,3 +133,31 @@ export function parseDateDDMMYYYYToISO(input: string | undefined | null): string
   if (Number.isNaN(date.getTime()) || date.getUTCDate() !== d || date.getUTCMonth() + 1 !== m) return "";
   return iso;
 }
+
+/**
+ * n8n webhook for emailing a generated EOI or engagement form (document generation page).
+ * Prefer `NEXT_PUBLIC_N8N_SEND_CLIENT_DOC_WEBHOOK`; falls back to `NEXT_PUBLIC_N8N_SEND_EOI_WEBHOOK`.
+ */
+export function getSendClientDocumentN8nWebhookUrl(): string {
+  const fromEnv =
+    process.env.NEXT_PUBLIC_N8N_SEND_CLIENT_DOC_WEBHOOK?.trim() ||
+    process.env.NEXT_PUBLIC_N8N_SEND_EOI_WEBHOOK?.trim();
+  if (fromEnv) return fromEnv;
+  return "https://membersaces.app.n8n.cloud/webhook-test/send-eoi";
+}
+
+/** @deprecated Use {@link getSendClientDocumentN8nWebhookUrl} — same URL resolution. */
+export function getSendEoiN8nWebhookUrl(): string {
+  return getSendClientDocumentN8nWebhookUrl();
+}
+
+/** Best-effort Google Docs / Drive file id from a share or edit URL. */
+export function parseGoogleDriveOrDocsFileId(url: string | null | undefined): string | null {
+  if (!url || typeof url !== "string") return null;
+  const u = url.trim();
+  const docOrFile =
+    u.match(/\/document\/d\/([a-zA-Z0-9_-]+)/)?.[1] ?? u.match(/\/file\/d\/([a-zA-Z0-9_-]+)/)?.[1] ?? null;
+  if (docOrFile) return docOrFile;
+  const idParam = u.match(/[?&]id=([a-zA-Z0-9_-]+)/)?.[1];
+  return idParam ?? null;
+}
