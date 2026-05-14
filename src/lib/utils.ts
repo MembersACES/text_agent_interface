@@ -143,7 +143,7 @@ export function getSendClientDocumentN8nWebhookUrl(): string {
     process.env.NEXT_PUBLIC_N8N_SEND_CLIENT_DOC_WEBHOOK?.trim() ||
     process.env.NEXT_PUBLIC_N8N_SEND_EOI_WEBHOOK?.trim();
   if (fromEnv) return fromEnv;
-  return "https://membersaces.app.n8n.cloud/webhook-test/send-eoi";
+  return "https://membersaces.app.n8n.cloud/webhook/send-eoi";
 }
 
 /** @deprecated Use {@link getSendClientDocumentN8nWebhookUrl} — same URL resolution. */
