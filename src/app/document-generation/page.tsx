@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { getApiBaseUrl, getSendClientDocumentN8nWebhookUrl, parseGoogleDriveOrDocsFileId } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
@@ -37,6 +37,67 @@ interface LastClientDocSendContext {
   google_file_id: string | null;
   expression_type: string | null;
   engagement_form_type: string | null;
+}
+
+/** Matches backend `EngagementFormType.SOLAR_PANEL_CLEANING` display name — only type with n8n send wired up for now. */
+const N8N_SEND_ELIGIBLE_ENGAGEMENT_FORM_TYPE = "Solar Panel Cleaning";
+
+function canSendClientDocViaN8n(ctx: LastClientDocSendContext | null): boolean {
+  if (!ctx) return false;
+  return (
+    ctx.kind === "engagement-form" &&
+    ctx.engagement_form_type === N8N_SEND_ELIGIBLE_ENGAGEMENT_FORM_TYPE
+  );
+}
+
+type StaffUserForCc = { id: number; email: string; name?: string; full_name?: string };
+
+const SIMPLE_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Split manual CC input on commas, semicolons, or newlines; validate each token. */
+function parseManualCcInput(raw: string): { emails: string[]; invalidTokens: string[] } {
+  const tokens = raw
+    .split(/[\n,;]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const emails: string[] = [];
+  const invalidTokens: string[] = [];
+  const seen = new Set<string>();
+  for (const t of tokens) {
+    if (!SIMPLE_EMAIL_RE.test(t)) {
+      invalidTokens.push(t);
+      continue;
+    }
+    const lower = t.toLowerCase();
+    if (seen.has(lower)) continue;
+    seen.add(lower);
+    emails.push(t);
+  }
+  return { emails, invalidTokens };
+}
+
+/** Team checkboxes + manual field, deduped; drops primary recipient if duplicated in CC. */
+function buildCcEmailList(
+  teamSelected: Record<string, boolean>,
+  manualRaw: string,
+  primaryRecipientEmail: string
+): { cc_emails: string[]; invalidTokens: string[] } {
+  const { emails: manualEmails, invalidTokens } = parseManualCcInput(manualRaw);
+  const teamEmails = Object.entries(teamSelected)
+    .filter(([, on]) => on)
+    .map(([email]) => email.trim())
+    .filter((e) => SIMPLE_EMAIL_RE.test(e));
+  const recipientLower = primaryRecipientEmail.trim().toLowerCase();
+  const seen = new Set<string>();
+  const cc_emails: string[] = [];
+  for (const e of [...teamEmails, ...manualEmails]) {
+    const lo = e.toLowerCase();
+    if (lo === recipientLower) continue;
+    if (seen.has(lo)) continue;
+    seen.add(lo);
+    cc_emails.push(e);
+  }
+  return { cc_emails, invalidTokens };
 }
 
 type DocumentCategory = "business-documents" | "eoi" | "engagement-forms";
@@ -138,6 +199,9 @@ export default function DocumentGenerationPage() {
   const [sendDocumentRecipientName, setSendDocumentRecipientName] = useState("");
   const [sendDocumentRecipientEmail, setSendDocumentRecipientEmail] = useState("");
   const [sendDocumentSubmitting, setSendDocumentSubmitting] = useState(false);
+  const [sendDocumentStaffUsers, setSendDocumentStaffUsers] = useState<StaffUserForCc[]>([]);
+  const [sendDocumentCcTeam, setSendDocumentCcTeam] = useState<Record<string, boolean>>({});
+  const [sendDocumentCcManual, setSendDocumentCcManual] = useState("");
   const searchParams = useSearchParams();
   
   // Get category filter from URL
@@ -204,6 +268,26 @@ export default function DocumentGenerationPage() {
 
     fetchEngagementFormTypes();
   }, [token]);
+
+  const fetchSendModalStaffUsers = useCallback(async () => {
+    if (!token) return;
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/users`, {
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (Array.isArray(data)) setSendDocumentStaffUsers(data as StaffUserForCc[]);
+    } catch {
+      /* ignore */
+    }
+  }, [token]);
+
+  useEffect(() => {
+    if (!sendDocumentModalOpen) return;
+    setSendDocumentStaffUsers([]);
+    fetchSendModalStaffUsers();
+  }, [sendDocumentModalOpen, fetchSendModalStaffUsers]);
 
   // Fetch business information
   const fetchBusinessInfo = async () => {
@@ -467,14 +551,16 @@ export default function DocumentGenerationPage() {
     (selectedDocumentCategory !== "engagement-forms" || selectedEngagementFormType);
 
   const openSendDocumentModal = () => {
-    if (!lastClientDocSendContext) return;
+    if (!lastClientDocSendContext || !canSendClientDocViaN8n(lastClientDocSendContext)) return;
     setSendDocumentRecipientName(editableBusinessInfo?.contact_name?.trim() ?? "");
     setSendDocumentRecipientEmail(editableBusinessInfo?.email?.trim() ?? "");
+    setSendDocumentCcTeam({});
+    setSendDocumentCcManual("");
     setSendDocumentModalOpen(true);
   };
 
   const handleSendDocumentSubmit = async () => {
-    if (!lastClientDocSendContext) return;
+    if (!lastClientDocSendContext || !canSendClientDocViaN8n(lastClientDocSendContext)) return;
     const email = sendDocumentRecipientEmail.trim();
     const name = sendDocumentRecipientName.trim();
     if (!name) {
@@ -483,6 +569,14 @@ export default function DocumentGenerationPage() {
     }
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       showToast("Please enter a valid recipient email.", "error");
+      return;
+    }
+    const { cc_emails, invalidTokens } = buildCcEmailList(sendDocumentCcTeam, sendDocumentCcManual, email);
+    if (invalidTokens.length > 0) {
+      showToast(
+        `Invalid CC ${invalidTokens.length === 1 ? "address" : "addresses"}: ${invalidTokens.slice(0, 3).join(", ")}${invalidTokens.length > 3 ? "…" : ""}`,
+        "error",
+      );
       return;
     }
     setSendDocumentSubmitting(true);
@@ -494,6 +588,7 @@ export default function DocumentGenerationPage() {
         document_kind,
         recipient_contact_name: name,
         recipient_contact_email: email,
+        cc_emails,
         business_name: rest.business_name,
         expression_type,
         engagement_form_type,
@@ -823,15 +918,28 @@ export default function DocumentGenerationPage() {
           />
           {lastClientDocSendContext && (
             <div className="mt-4 flex flex-wrap items-center gap-3">
-              <button
-                type="button"
-                onClick={openSendDocumentModal}
-                className="px-5 py-2.5 rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors"
-              >
-                Send document
-              </button>
+              {canSendClientDocViaN8n(lastClientDocSendContext) && (
+                <button
+                  type="button"
+                  onClick={openSendDocumentModal}
+                  className="px-5 py-2.5 rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors"
+                >
+                  Send document
+                </button>
+              )}
               <p className="text-xs text-gray-600 dark:text-gray-400 max-w-md">
-                Email the generated {lastClientDocSendContext.kind === "eoi" ? "EOI" : "engagement form"} via your n8n workflow (recipient confirmed in the next step).
+                {canSendClientDocViaN8n(lastClientDocSendContext) ? (
+                  <>
+                    Email this Solar Panel Cleaning engagement form via your n8n workflow (recipient confirmed in the
+                    next step).
+                  </>
+                ) : (
+                  <>
+                    Sending by email is only available for the <strong>Solar Panel Cleaning</strong> engagement form
+                    for now — that is the only document type with an n8n workflow configured. EOIs and other engagement
+                    forms cannot be sent from here yet.
+                  </>
+                )}
               </p>
             </div>
           )}
@@ -847,7 +955,10 @@ export default function DocumentGenerationPage() {
           <li>3. Select document category (Business Documents, EOI, or Engagement Forms)</li>
           <li>4. Choose the specific document type, EOI type, or engagement form type</li>
           <li>5. Click &quot;Generate&quot; to create your document</li>
-          <li>6. After a successful EOI or engagement form, use &quot;Send document&quot; to email it via n8n (configure the webhook in env or n8n)</li>
+          <li>
+            6. After a successful <strong>Solar Panel Cleaning</strong> engagement form, use &quot;Send document&quot;
+            to email it via n8n (other EOIs and engagement forms do not have send wired up yet)
+          </li>
         </ol>
         
         <div className="mt-4 p-3 bg-blue-50 rounded border border-blue-200">
@@ -865,11 +976,9 @@ export default function DocumentGenerationPage() {
           aria-modal="true"
           role="dialog"
         >
-          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl max-w-md w-full p-6 border border-gray-200 dark:border-gray-700">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl max-w-lg w-full p-6 border border-gray-200 dark:border-gray-700 max-h-[90vh] overflow-y-auto">
             <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-1">
-              {lastClientDocSendContext.kind === "eoi"
-                ? "Send Expression of Interest"
-                : "Send engagement form"}
+              Send Solar Panel Cleaning engagement form
             </h3>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
               Confirm or edit the client contact before triggering the email workflow.
@@ -903,11 +1012,53 @@ export default function DocumentGenerationPage() {
                   autoComplete="email"
                 />
               </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">
+                  CC — ACES team
+                </label>
+                <div className="rounded-xl border border-gray-200 dark:border-gray-700 divide-y divide-gray-100 dark:divide-gray-800 max-h-36 overflow-y-auto">
+                  {sendDocumentStaffUsers.length === 0 ? (
+                    <div className="px-3 py-2.5 text-xs text-gray-400 dark:text-gray-500">Loading users…</div>
+                  ) : (
+                    sendDocumentStaffUsers.map((u) => (
+                      <label
+                        key={u.id}
+                        className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors"
+                      >
+                        <input
+                          type="checkbox"
+                          className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-400 dark:border-gray-600 dark:bg-gray-800"
+                          checked={!!sendDocumentCcTeam[u.email]}
+                          onChange={(e) =>
+                            setSendDocumentCcTeam((prev) => ({ ...prev, [u.email]: e.target.checked }))
+                          }
+                        />
+                        <span className="text-sm text-gray-700 dark:text-gray-300">
+                          {u.full_name || u.name || u.email}
+                        </span>
+                      </label>
+                    ))
+                  )}
+                </div>
+              </div>
+              <div>
+                <label htmlFor="doc-send-cc-manual" className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">
+                  CC — additional (optional)
+                </label>
+                <textarea
+                  id="doc-send-cc-manual"
+                  value={sendDocumentCcManual}
+                  onChange={(e) => setSendDocumentCcManual(e.target.value)}
+                  rows={2}
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-y min-h-[2.75rem]"
+                  placeholder="One per line, or comma / semicolon separated"
+                  autoComplete="off"
+                />
+                <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                  Multiple addresses supported. Duplicates and the primary “To” address are ignored.
+                </p>
+              </div>
             </div>
-            <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-4">
-              Override URL with <span className="font-mono">NEXT_PUBLIC_N8N_SEND_CLIENT_DOC_WEBHOOK</span> (or{" "}
-              <span className="font-mono">NEXT_PUBLIC_N8N_SEND_EOI_WEBHOOK</span>).
-            </p>
             <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
               <button
                 type="button"
