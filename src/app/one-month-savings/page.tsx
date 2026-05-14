@@ -128,6 +128,15 @@ export default function OneMonthSavingsPage() {
   const [sendHtmlBody, setSendHtmlBody] = useState("");
   const [sendRequestPayload, setSendRequestPayload] = useState<SendInvoiceRequest | null>(null);
 
+  /** Latest generated PDF bytes for optional local download (not stored in React state). */
+  const lastGeneratedPdfRef = useRef<{ bytes: Uint8Array; filename: string } | null>(null);
+  /** Shown under “Generate Invoice” so users can open Drive or download without auto-download. */
+  const [lastGeneratedBanner, setLastGeneratedBanner] = useState<{
+    invoice_number: string;
+    filename: string;
+    drive_file_id: string | null;
+  } | null>(null);
+
   // Testimonial soft guard: warn if no approved testimonial before 1st Month Savings invoice
   const [testimonialCheck, setTestimonialCheck] = useState<{ has_approved: boolean; count: number } | null>(null);
   const [testimonialCheckLoading, setTestimonialCheckLoading] = useState(false);
@@ -456,6 +465,12 @@ export default function OneMonthSavingsPage() {
 
   const handleSendToClient = async () => {
     if (!sendRequestPayload) return;
+    if (!sendRequestPayload.invoice_file_id?.trim()) {
+      setResult(
+        "Cannot send: Google Drive file ID is missing. Fix the Drive upload (see message after generate), then generate the invoice again."
+      );
+      return;
+    }
     if (!sendClientEmail.trim()) {
       setResult("Please provide a client email address before sending.");
       return;
@@ -540,6 +555,8 @@ export default function OneMonthSavingsPage() {
 
     setGenerating(true);
     setResult("");
+    setLastGeneratedBanner(null);
+    lastGeneratedPdfRef.current = null;
 
     try {
       const pdfDoc = await PDFDocument.create();
@@ -745,19 +762,10 @@ export default function OneMonthSavingsPage() {
       y -= 12;
       page.drawText("Terms of sale: 14 Days Net of Invoice Date", { x: leftMargin, y, size: 9, font });
 
-      // Generate PDF bytes
+      // Generate PDF bytes (optional local download via button — no auto-download)
       const pdfBytes = await pdfDoc.save();
-
-      // Create download link
-      // Uint8Array is compatible with Blob, but TypeScript needs explicit typing
-      const blob = new Blob([pdfBytes as BlobPart], { type: "application/pdf" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
       const filename = `${businessInfo.business_name} - ${invoiceNumber}.pdf`;
-      link.download = filename;
-      link.click();
-      URL.revokeObjectURL(url);
+      lastGeneratedPdfRef.current = { bytes: pdfBytes, filename };
 
       let generatedPdfBase64 = "";
 
@@ -908,7 +916,17 @@ export default function OneMonthSavingsPage() {
       });
       setSendModalOpen(true);
 
-      setResult(`Invoice ${invoiceNumber} generated and downloaded successfully!${uploadResult}`);
+      setLastGeneratedBanner({
+        invoice_number: invoiceNumber,
+        filename,
+        drive_file_id: invoiceFileId.trim() || null,
+      });
+
+      setResult(
+        invoiceFileId.trim()
+          ? `Invoice ${invoiceNumber} generated successfully.${uploadResult} Use “Open in Google Drive” below to confirm the file, then send to the client when ready.`
+          : `Invoice ${invoiceNumber} generated, but Google Drive did not return a file ID.${uploadResult} Fix Drive access and generate again before sending — client email is disabled until a file ID exists.`
+      );
 
       // Refresh history
       fetchInvoiceHistory();
@@ -933,6 +951,20 @@ export default function OneMonthSavingsPage() {
     setResult("");
     setTestimonialCheck(null);
     setTestimonialWarningDismissed(false);
+    setLastGeneratedBanner(null);
+    lastGeneratedPdfRef.current = null;
+  };
+
+  const handleDownloadLastGeneratedPdf = () => {
+    const ref = lastGeneratedPdfRef.current;
+    if (!ref?.bytes?.length) return;
+    const blob = new Blob([ref.bytes as BlobPart], { type: "application/pdf" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = ref.filename;
+    link.click();
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -1165,13 +1197,50 @@ export default function OneMonthSavingsPage() {
 
                 {result && (
                   <div
-                    className={`mt-4 p-4 rounded-lg ${
-                      result.includes("successfully") || result.includes("found") || result.includes("loaded")
-                        ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
-                        : "bg-red-50 text-red-800 border border-red-200"
+                    className={`mt-4 p-4 rounded-lg border ${
+                      result.includes("Send failed") ||
+                      result.includes("Error generating") ||
+                      result.includes("Please add") ||
+                      result.includes("Please provide")
+                        ? "bg-red-50 text-red-800 border-red-200"
+                        : result.includes("did not return a file ID") || result.startsWith("Cannot send:")
+                          ? "bg-amber-50 text-amber-900 border-amber-200"
+                          : "bg-emerald-50 text-emerald-800 border-emerald-200"
                     }`}
                   >
                     {result}
+                  </div>
+                )}
+
+                {lastGeneratedBanner && (
+                  <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-3">
+                    <p className="text-sm font-medium text-gray-800">
+                      Invoice {lastGeneratedBanner.invoice_number}
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleDownloadLastGeneratedPdf}
+                        className="inline-flex items-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 shadow-sm hover:bg-gray-50"
+                      >
+                        Download PDF
+                      </button>
+                      {lastGeneratedBanner.drive_file_id ? (
+                        <a
+                          href={`https://drive.google.com/file/d/${lastGeneratedBanner.drive_file_id}/view`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700"
+                        >
+                          Open in Google Drive
+                        </a>
+                      ) : (
+                        <span className="text-sm text-amber-800">
+                          No Drive file ID — check upload errors above and folder permissions before sending to the
+                          client.
+                        </span>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -1303,6 +1372,28 @@ export default function OneMonthSavingsPage() {
               </p>
             </div>
 
+            {sendRequestPayload.invoice_file_id?.trim() ? (
+              <div className="mx-6 mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+                <a
+                  href={`https://drive.google.com/file/d/${sendRequestPayload.invoice_file_id}/view`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-emerald-800 underline hover:text-emerald-950"
+                >
+                  Open invoice in Google Drive
+                </a>
+                <p className="mt-1 text-xs text-emerald-800/90">
+                  Confirm this opens the correct PDF. The Drive file ID is included in the webhook payload when you send.
+                </p>
+              </div>
+            ) : (
+              <div className="mx-6 mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+                <strong>Google Drive file ID is missing.</strong> Sending to the client is disabled until the PDF
+                uploads successfully. Regenerate the invoice after fixing Drive access (see the message under Generate
+                Invoice).
+              </div>
+            )}
+
             <div className="p-6 space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
@@ -1350,8 +1441,13 @@ export default function OneMonthSavingsPage() {
               <button
                 type="button"
                 onClick={handleSendToClient}
-                className="px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
-                disabled={sendingToClient}
+                className="px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={sendingToClient || !sendRequestPayload.invoice_file_id?.trim()}
+                title={
+                  !sendRequestPayload.invoice_file_id?.trim()
+                    ? "Fix Google Drive upload and regenerate the invoice to enable send"
+                    : undefined
+                }
               >
                 {sendingToClient ? "Sending..." : "Send"}
               </button>
