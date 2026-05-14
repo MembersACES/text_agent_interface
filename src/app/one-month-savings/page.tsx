@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import Breadcrumb from "@/components/Breadcrumbs/Breadcrumb";
+import { useToast } from "@/components/ui/toast";
 
 // EGB Company Details (from invoice template)
 const EGB_DETAILS = {
@@ -97,6 +98,7 @@ interface SendInvoiceRequest {
 }
 
 export default function OneMonthSavingsPage() {
+  const { showToast } = useToast();
   const { data: session } = useSession();
   const token = (session as any)?.id_token || (session as any)?.accessToken;
   const searchParams = useSearchParams();
@@ -515,6 +517,11 @@ export default function OneMonthSavingsPage() {
         throw new Error(data?.error || "Failed to send invoice to client");
       }
 
+      showToast(
+        `Send workflow triggered for ${finalClientEmail}. Webhook returned OK — n8n should process the email next.`,
+        "success"
+      );
+
       // Mark invoice as Sent after successful send request
       const statusRes = await fetch("/api/one-month-savings/status", {
         method: "PATCH",
@@ -541,7 +548,9 @@ export default function OneMonthSavingsPage() {
         `Invoice ${sendRequestPayload.invoice_number} generated and sent request submitted for ${finalClientEmail}.`
       );
     } catch (error: any) {
-      setResult(`Send failed: ${error.message}`);
+      const msg = error?.message || "Send failed";
+      setResult(`Send failed: ${msg}`);
+      showToast(msg, "error");
     } finally {
       setSendingToClient(false);
     }
