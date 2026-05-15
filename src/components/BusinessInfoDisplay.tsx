@@ -115,7 +115,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
   // Linked Utilities
   const linked = info.Linked_Details?.linked_utilities || {};
   const retailers = info.Linked_Details?.utility_retailers || {};
-  const linkedUtilityExtra = (info.Linked_Details as Record<string, unknown>)?.linked_utility_extra as Record<string, Array<{ contract_end_date?: string; data_requested?: string; data_recieved?: string | boolean }>> | undefined;
+  const linkedUtilityExtra = (info.Linked_Details as Record<string, unknown>)?.linked_utility_extra as Record<string, Array<{ contract_end_date?: string; dma_end_date?: string; data_requested?: string; data_recieved?: string | boolean }>> | undefined;
 
   type DiscrepancyRow = {
     discrepancy_type: string;
@@ -133,7 +133,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
   };
 
   /** Normalize linked_utilities to rows with identifier + optional retailer + extra. Handles n8n format (array of objects) and legacy (array of strings). */
-  type UtilityRow = { identifier: string; retailer?: string; extra?: { contract_end_date?: string; data_requested?: string; data_recieved?: string | boolean } };
+  type UtilityRow = { identifier: string; retailer?: string; extra?: { contract_end_date?: string; dma_end_date?: string; data_requested?: string; data_recieved?: string | boolean } };
   const toSafeIdentifier = (v: unknown): string => {
     if (v == null) return "";
     if (typeof v === "string") return v === "[object Object]" ? "" : v;
@@ -161,6 +161,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
           retailer: o.retailer != null ? String(o.retailer) : undefined,
           extra: {
             contract_end_date: (o.ced as string) ?? undefined,
+            dma_end_date: (o.dma_end_date as string) ?? undefined,
             data_requested: (o.data_requested as string) ?? undefined,
             data_recieved: (o.data_received as string | boolean) ?? (o.data_recieved as string | boolean) ?? undefined,
           },
@@ -226,6 +227,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
     displayKey: string;
     identifier: string;
     contract_end_date: string;
+    dma_end_date: string;
     data_requested: string;
     data_recieved: boolean;
   } | null>(null);
@@ -760,8 +762,9 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
     setUtilityEditError(null);
     setUtilityEditLoading(true);
     const contractEndIso = parseDateDDMMYYYYToISO(utilityEdit.contract_end_date);
+    const dmaEndIso = parseDateDDMMYYYYToISO(utilityEdit.dma_end_date);
     const dataRequestedIso = parseDateDDMMYYYYToISO(utilityEdit.data_requested);
-    if ((utilityEdit.contract_end_date && !contractEndIso) || (utilityEdit.data_requested && !dataRequestedIso)) {
+    if ((utilityEdit.contract_end_date && !contractEndIso) || (utilityEdit.dma_end_date && !dmaEndIso) || (utilityEdit.data_requested && !dataRequestedIso)) {
       setUtilityEditError("Invalid date format. Use dd-mm-yyyy (e.g. 31-12-2027).");
       setUtilityEditLoading(false);
       return;
@@ -780,6 +783,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
           data_requested: dataRequestedIso || undefined,
           data_recieved: utilityEdit.data_recieved,
           contract_end_date: contractEndIso || undefined,
+          dma_end_date: dmaEndIso || undefined,
         }),
       });
       if (!res.ok) {
@@ -790,6 +794,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
       if (typeof setInfo === "function" && info) {
         const ld = (info as Record<string, unknown>).Linked_Details as Record<string, unknown> | undefined ?? {};
         const lu = (ld.linked_utilities as Record<string, unknown[]>) ?? {};
+        const lue = (ld.linked_utility_extra as Record<string, Array<Record<string, unknown>>>) ?? {};
         const key = utilityEdit.displayKey;
         const arr = lu[key];
         if (Array.isArray(arr)) {
@@ -805,11 +810,28 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
               next[idx] = {
                 ...(cur as Record<string, unknown>),
                 ced: contractEndIso || undefined,
+                dma_end_date: dmaEndIso || undefined,
                 data_requested: dataRequestedIso || undefined,
                 data_received: utilityEdit.data_recieved,
               };
             }
-            setInfo({ ...info, Linked_Details: { ...ld, linked_utilities: { ...lu, [key]: next } } });
+            const extraArr = Array.isArray(lue[key]) ? [...lue[key]] : [];
+            while (extraArr.length <= idx) extraArr.push({});
+            extraArr[idx] = {
+              ...(extraArr[idx] ?? {}),
+              contract_end_date: contractEndIso || undefined,
+              dma_end_date: dmaEndIso || undefined,
+              data_requested: dataRequestedIso || undefined,
+              data_recieved: utilityEdit.data_recieved,
+            };
+            setInfo({
+              ...info,
+              Linked_Details: {
+                ...ld,
+                linked_utilities: { ...lu, [key]: next },
+                linked_utility_extra: { ...lue, [key]: extraArr },
+              },
+            });
           }
         }
       }
@@ -2668,12 +2690,13 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                               <div className="text-xs text-gray-500 mb-2">Retailer: {retailer}</div>
                             )}
                             {(() => {
-                              const hasDates = extra && (extra.contract_end_date != null || extra.data_requested != null || extra.data_recieved != null);
+                              const hasDates = extra && (extra.contract_end_date != null || extra.dma_end_date != null || extra.data_requested != null || extra.data_recieved != null);
                               const dataReceivedLabel = extra?.data_recieved === true || extra?.data_recieved === "Yes" || (typeof extra?.data_recieved === "string" && (extra.data_recieved as string).length > 0) ? "Received" : "Not received";
                               const canEditDates = realKey === "C&I Electricity" || realKey === "C&I Gas";
                               return hasDates ? (
                                 <div className="text-xs text-gray-600 mb-2 space-y-0.5">
                                   {extra?.contract_end_date != null && extra.contract_end_date !== "" && <div>Contract end: {formatDateAustralian(extra.contract_end_date)}</div>}
+                                  {realKey === "C&I Electricity" && extra?.dma_end_date != null && extra.dma_end_date !== "" && <div>DMA end: {formatDateAustralian(extra.dma_end_date)}</div>}
                                   {extra?.data_requested != null && extra.data_requested !== "" && <div>Data requested: {formatDateAustralian(extra.data_requested)}</div>}
                                   <div>Data received: {dataReceivedLabel}</div>
                                   {canEditDates && (
@@ -2683,6 +2706,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                                         displayKey: realKey,
                                         identifier,
                                         contract_end_date: formatDateDDMMYYYY(extra?.contract_end_date),
+                                        dma_end_date: formatDateDDMMYYYY(extra?.dma_end_date),
                                         data_requested: formatDateDDMMYYYY(extra?.data_requested),
                                         data_recieved: dataReceivedLabel === "Received",
                                       })}
@@ -2700,6 +2724,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                                       displayKey: realKey,
                                       identifier,
                                       contract_end_date: "",
+                                      dma_end_date: "",
                                       data_requested: "",
                                       data_recieved: false,
                                     })}
@@ -3835,6 +3860,18 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                 placeholder="e.g. 31-12-2027"
               />
             </div>
+            {utilityEdit.displayKey === "C&I Electricity" && (
+              <div>
+                <label className="font-medium text-gray-700 block mb-1">DMA end date (dd-mm-yyyy)</label>
+                <input
+                  type="text"
+                  value={utilityEdit.dma_end_date}
+                  onChange={(e) => setUtilityEdit((p) => (p ? { ...p, dma_end_date: e.target.value } : null))}
+                  className="w-full px-2 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                  placeholder="e.g. 31-12-2027"
+                />
+              </div>
+            )}
             <div>
               <label className="font-medium text-gray-700 block mb-1">Data requested (dd-mm-yyyy)</label>
               <input
