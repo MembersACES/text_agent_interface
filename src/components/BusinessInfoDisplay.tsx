@@ -2789,6 +2789,35 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                                   Quote Request
                                 </SecondaryButton>
                               )}
+                              {tool !== "cleaning" && key === "C&I Electricity" && tool === "ci-electricity" && (
+                                <SecondaryButton
+                                  size="sm"
+                                  className="flex-1"
+                                  onClick={() => {
+                                    const businessInfoToPass = {
+                                      business_name: business.name,
+                                      abn: business.abn,
+                                      trading_name: business.trading_name,
+                                      email: contact.email,
+                                      telephone: contact.telephone,
+                                      postal_address: contact.postal_address,
+                                      site_address: contact.site_address,
+                                      contact_name: rep.contact_name,
+                                      googleDriveLink: driveUrl,
+                                      loaLink: info._processed_file_ids?.["business_LOA"],
+                                    };
+
+                                    const params = new URLSearchParams();
+                                    params.set("businessInfo", encodeURIComponent(JSON.stringify(businessInfoToPass)));
+                                    params.set("utility", mapUtilityKey(key));
+                                    params.set("identifier", identifier);
+
+                                    window.open(`/blend-and-extend?${params.toString()}`, "_blank");
+                                  }}
+                                >
+                                  B&E
+                                </SecondaryButton>
+                              )}
                               {/* DMA Quick Access button - only for C&I Electricity */}
                               {key === "C&I Electricity" && tool === "ci-electricity" && (
                                 <SecondaryButton

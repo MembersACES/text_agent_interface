@@ -58,6 +58,8 @@ const ROUTE_TITLES: Record<string, string> = {
   "/forms/form-layout": "Form Layout",
   "/ui-elements/alerts": "Alerts",
   "/ui-elements/buttons": "Buttons",
+  "/quote-request": "Quote request",
+  "/blend-and-extend": "Blend & extend (B&E)",
   "/auth/sign-in": "Sign in",
 };
 
