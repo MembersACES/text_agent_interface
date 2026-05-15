@@ -298,7 +298,7 @@ export default function UtilityBillReviewForm() {
             </div>
             <div>
               <label htmlFor="email" className={labelClass}>
-                Email Address (this will recieve the Base 1 review report & email) <span className="text-red-600">*</span>
+                Member Email Address <span className="text-red-600">*</span>
               </label>
               <input
                 id="email"

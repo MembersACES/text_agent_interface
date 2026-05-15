@@ -50,7 +50,7 @@ function offerDueFourBusinessDaysFromToday(): Date {
 }
 
 function blendExtendQuoteDetails(): string {
-  return "Blend and extend — term and pricing to be agreed with the retailer.";
+  return "Additional 1, 2 & 3 Years";
 }
 
 export default function BlendExtendRequestPage() {
