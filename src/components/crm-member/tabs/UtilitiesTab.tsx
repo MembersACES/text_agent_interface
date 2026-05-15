@@ -486,6 +486,27 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility }: U
     window.open(`/quote-request?${params.toString()}`, "_blank");
   }
 
+  function handleBlendExtend(config: UtilityConfigItem, identifier: string) {
+    const businessInfoToPass = {
+      business_name: businessName,
+      abn: business.abn,
+      trading_name: business.trading_name,
+      email: contact.email,
+      telephone: contact.telephone,
+      postal_address: contact.postal_address,
+      site_address: contact.site_address,
+      contact_name: rep.contact_name,
+      googleDriveLink: driveUrl,
+      loaLink,
+    };
+    const utility = mapUtilityKey(config.key);
+    const params = new URLSearchParams();
+    params.set("businessInfo", encodeURIComponent(JSON.stringify(businessInfoToPass)));
+    params.set("utility", utility);
+    params.set("identifier", identifier);
+    window.open(`/blend-and-extend?${params.toString()}`, "_blank");
+  }
+
   function handleDma(config: UtilityConfigItem, identifier: string) {
     const invoiceBusinessName = businessName;
     const url = buildAccountInfoUrl(config.tool, config.param, identifier, invoiceBusinessName, true);
@@ -801,6 +822,17 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility }: U
                               Quote Request
                             </button>
                           )}
+                          {row.config.tool !== "cleaning" &&
+                            row.displayKey === "C&I Electricity" &&
+                            row.config.tool === "ci-electricity" && (
+                              <button
+                                type="button"
+                                onClick={() => handleBlendExtend(row.config, identifier)}
+                                className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
+                              >
+                                B&E
+                              </button>
+                            )}
                           {row.config.key === "C&I Electricity" && row.config.tool === "ci-electricity" && (
                             <button
                               type="button"

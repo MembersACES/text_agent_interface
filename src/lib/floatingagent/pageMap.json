@@ -45,6 +45,10 @@
       "Quote Request": {
         "path": "/quote-request",
         "description": "Request quotes for services and solutions"
+      },
+      "Blend & extend (B&E)": {
+        "path": "/blend-and-extend",
+        "description": "Blend and extend request to the current C&I electricity retailer only"
       }
     }
   },
