@@ -93,6 +93,7 @@ const channelIcon: Record<string, string> = {
   email: "✉",
   sms: "💬",
   voice: "📞",
+  engagement_form_generation: "📄",
 };
 
 function ChannelBadge({ channel }: { channel: string }) {
@@ -101,6 +102,8 @@ function ChannelBadge({ channel }: { channel: string }) {
     email: "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-800",
     sms: "bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-950/40 dark:text-violet-300 dark:border-violet-800",
     voice: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800",
+    engagement_form_generation:
+      "bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-800",
   };
   const cls = colours[channel.toLowerCase()] ?? "bg-gray-50 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700";
   return (

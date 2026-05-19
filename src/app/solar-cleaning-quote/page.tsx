@@ -583,20 +583,27 @@ export default function SolarCleaningQuotePage() {
     } catch (e) { console.warn("[Solar quote CRM] sent activity error:", e); }
   };
 
-  const startSolarAutonomousSequence = async (emailId?: string | null) => {
-    if (!token) return;
-    const oid = await ensureSolarCleaningCrmOfferId();
-    if (oid == null) return;
-    const clientNum = clientId ? Number(clientId) : NaN;
+  const SOLAR_ENGAGEMENT_FORM_SEQUENCE = "solar_panel_cleaning_engagement_form_v1";
+  const SOLAR_FOLLOWUP_SEQUENCE = "solar_panel_cleaning_followup_v1";
+
+  const buildSolarAutonomousContext = (emailId?: string | null): Record<string, unknown> => {
     const normalizedEmailId = (emailId || "").trim() || null;
     const context: Record<string, unknown> = {
       source: "solar_cleaning_quote_page",
       contact_name: sendName.trim() || null,
       contact_email: sendEmail.trim() || null,
+      contact_phone: null,
       business_name: (businessName || clientName).trim() || null,
+      client_name: clientName.trim() || null,
       quote_number: quoteNumber.trim() || null,
       site_name: siteName.trim() || null,
       site_contact: contactName.trim() || null,
+      site_address: siteAddress.trim() || null,
+      client_folder_url: clientFolderUrl.trim() || null,
+      engagement_form_type: "Solar Panel Cleaning",
+      quote_google_doc_id: generateResult?.quote_google_doc_id ?? null,
+      quote_pdf_file_id: generateResult?.quote_pdf_file_id ?? null,
+      quote_doc_url: generateResult?.quote_doc_url ?? null,
     };
     if (normalizedEmailId) {
       context.email_id = normalizedEmailId;
@@ -621,11 +628,24 @@ export default function SolarCleaningQuotePage() {
         total_inc_gst: formatAudDisplay(p.total),
       };
     }
+    return context;
+  };
+
+  const startSolarAutonomousSequence = async (
+    sequenceType: string,
+    emailId?: string | null,
+  ) => {
+    if (!token) return;
+    const oid = await ensureSolarCleaningCrmOfferId();
+    if (oid == null) return;
+    const clientNum = clientId ? Number(clientId) : NaN;
+    const normalizedEmailId = (emailId || "").trim() || null;
+    const context = buildSolarAutonomousContext(emailId);
     const res = await fetch(`${getAutonomousApiBaseUrl()}/api/autonomous/sequences/start`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        sequence_type: "solar_panel_cleaning_followup_v1",
+        sequence_type: sequenceType,
         offer_id: oid,
         client_id: Number.isFinite(clientNum) && clientNum > 0 ? clientNum : null,
         crm_activity_id: null,
@@ -638,7 +658,7 @@ export default function SolarCleaningQuotePage() {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       throw new Error(
-        (data as { detail?: string }).detail || "Email sent, but failed to start autonomous sequence",
+        (data as { detail?: string }).detail || "Failed to start autonomous sequence",
       );
     }
   };
@@ -738,16 +758,24 @@ export default function SolarCleaningQuotePage() {
 
   const dismissSendFollowUpPrompt = () => setSendFollowUpPrompt(null);
 
-  const confirmSendFollowUpPrompt = async () => {
+  const confirmSendAutonomousSequences = async (mode: "engagement" | "followup" | "both") => {
     if (!sendFollowUpPrompt) return;
     setSendFollowUpBusy(true);
     const { emailId, baseMsg } = sendFollowUpPrompt;
+    const notes: string[] = [];
     try {
-      await startSolarAutonomousSequence(emailId);
-      setResultMsg(`${baseMsg} Autonomous follow-up sequence started.`);
+      if (mode === "engagement" || mode === "both") {
+        await startSolarAutonomousSequence(SOLAR_ENGAGEMENT_FORM_SEQUENCE, emailId);
+        notes.push("engagement form generation scheduled");
+      }
+      if (mode === "followup" || mode === "both") {
+        await startSolarAutonomousSequence(SOLAR_FOLLOWUP_SEQUENCE, emailId);
+        notes.push("outreach follow-up scheduled");
+      }
+      setResultMsg(`${baseMsg} Autonomous: ${notes.join("; ")}.`);
     } catch (seqErr) {
       setResultMsg(
-        `${baseMsg} Note: ${seqErr instanceof Error ? seqErr.message : "Could not start follow-up sequence."}`,
+        `${baseMsg} Note: ${seqErr instanceof Error ? seqErr.message : "Could not start autonomous sequence(s)."}`,
       );
     } finally {
       setSendFollowUpBusy(false);
@@ -1195,11 +1223,35 @@ export default function SolarCleaningQuotePage() {
       {sendFollowUpPrompt && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/45 backdrop-blur-sm p-4">
           <div className="w-full max-w-md rounded-2xl bg-white dark:bg-gray-900 shadow-2xl border border-gray-200 dark:border-gray-700 p-6">
-            <h3 className="text-base font-bold text-gray-900 dark:text-gray-100 mb-1">Start autonomous follow-up?</h3>
+            <h3 className="text-base font-bold text-gray-900 dark:text-gray-100 mb-1">Start autonomous sequences?</h3>
             <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-              Schedule the solar panel cleaning outreach sequence (email, voice, follow-up emails) for this offer in the Autonomous Agent.
+              Quote sent to client. Schedule the Solar Panel Cleaning engagement form, outreach follow-up (email, voice, SMS), or both — runs appear in Autonomous Agent.
             </p>
-            <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => void confirmSendAutonomousSequences("engagement")}
+                disabled={sendFollowUpBusy}
+                className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold disabled:opacity-50"
+              >
+                {sendFollowUpBusy ? "Starting…" : "Generate engagement form"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmSendAutonomousSequences("followup")}
+                disabled={sendFollowUpBusy}
+                className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold disabled:opacity-50"
+              >
+                {sendFollowUpBusy ? "Starting…" : "Start outreach follow-up"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmSendAutonomousSequences("both")}
+                disabled={sendFollowUpBusy}
+                className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 text-sm font-semibold hover:bg-amber-50 dark:hover:bg-amber-950/30 disabled:opacity-50"
+              >
+                {sendFollowUpBusy ? "Starting…" : "Both sequences"}
+              </button>
               <button
                 type="button"
                 onClick={dismissSendFollowUpPrompt}
@@ -1207,24 +1259,6 @@ export default function SolarCleaningQuotePage() {
                 className="px-4 py-2.5 rounded-lg border border-gray-200 dark:border-gray-600 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
               >
                 Not now
-              </button>
-              <button
-                type="button"
-                onClick={() => void confirmSendFollowUpPrompt()}
-                disabled={sendFollowUpBusy}
-                className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold disabled:opacity-50"
-              >
-                {sendFollowUpBusy ? (
-                  <>
-                    <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-                    </svg>
-                    Starting…
-                  </>
-                ) : (
-                  "Start sequence"
-                )}
               </button>
             </div>
           </div>
