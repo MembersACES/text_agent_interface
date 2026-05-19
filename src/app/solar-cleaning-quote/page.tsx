@@ -583,7 +583,7 @@ export default function SolarCleaningQuotePage() {
     } catch (e) { console.warn("[Solar quote CRM] sent activity error:", e); }
   };
 
-  const SOLAR_ENGAGEMENT_FORM_SEQUENCE = "solar_panel_cleaning_engagement_form_v1";
+  /** Solar quote page only — outreach after quote sent (not Document Generation engagement form). */
   const SOLAR_FOLLOWUP_SEQUENCE = "solar_panel_cleaning_followup_v1";
 
   const buildSolarAutonomousContext = (emailId?: string | null): Record<string, unknown> => {
@@ -758,24 +758,16 @@ export default function SolarCleaningQuotePage() {
 
   const dismissSendFollowUpPrompt = () => setSendFollowUpPrompt(null);
 
-  const confirmSendAutonomousSequences = async (mode: "engagement" | "followup" | "both") => {
+  const confirmSendFollowUpPrompt = async () => {
     if (!sendFollowUpPrompt) return;
     setSendFollowUpBusy(true);
     const { emailId, baseMsg } = sendFollowUpPrompt;
-    const notes: string[] = [];
     try {
-      if (mode === "engagement" || mode === "both") {
-        await startSolarAutonomousSequence(SOLAR_ENGAGEMENT_FORM_SEQUENCE, emailId);
-        notes.push("engagement form generation scheduled");
-      }
-      if (mode === "followup" || mode === "both") {
-        await startSolarAutonomousSequence(SOLAR_FOLLOWUP_SEQUENCE, emailId);
-        notes.push("outreach follow-up scheduled");
-      }
-      setResultMsg(`${baseMsg} Autonomous: ${notes.join("; ")}.`);
+      await startSolarAutonomousSequence(SOLAR_FOLLOWUP_SEQUENCE, emailId);
+      setResultMsg(`${baseMsg} Autonomous outreach follow-up sequence started.`);
     } catch (seqErr) {
       setResultMsg(
-        `${baseMsg} Note: ${seqErr instanceof Error ? seqErr.message : "Could not start autonomous sequence(s)."}`,
+        `${baseMsg} Note: ${seqErr instanceof Error ? seqErr.message : "Could not start follow-up sequence."}`,
       );
     } finally {
       setSendFollowUpBusy(false);
@@ -1223,35 +1215,13 @@ export default function SolarCleaningQuotePage() {
       {sendFollowUpPrompt && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/45 backdrop-blur-sm p-4">
           <div className="w-full max-w-md rounded-2xl bg-white dark:bg-gray-900 shadow-2xl border border-gray-200 dark:border-gray-700 p-6">
-            <h3 className="text-base font-bold text-gray-900 dark:text-gray-100 mb-1">Start autonomous sequences?</h3>
+            <h3 className="text-base font-bold text-gray-900 dark:text-gray-100 mb-1">Start autonomous follow-up?</h3>
             <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-              Quote sent to client. Schedule the Solar Panel Cleaning engagement form, outreach follow-up (email, voice, SMS), or both — runs appear in Autonomous Agent.
+              Quote sent to client. Schedule the solar panel cleaning <strong>outreach</strong> sequence (email, voice,
+              SMS) — <code className="text-xs">solar_panel_cleaning_followup_v1</code>. Engagement form automation is on
+              Document Generation, not here.
             </p>
-            <div className="flex flex-col gap-2">
-              <button
-                type="button"
-                onClick={() => void confirmSendAutonomousSequences("engagement")}
-                disabled={sendFollowUpBusy}
-                className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold disabled:opacity-50"
-              >
-                {sendFollowUpBusy ? "Starting…" : "Generate engagement form"}
-              </button>
-              <button
-                type="button"
-                onClick={() => void confirmSendAutonomousSequences("followup")}
-                disabled={sendFollowUpBusy}
-                className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold disabled:opacity-50"
-              >
-                {sendFollowUpBusy ? "Starting…" : "Start outreach follow-up"}
-              </button>
-              <button
-                type="button"
-                onClick={() => void confirmSendAutonomousSequences("both")}
-                disabled={sendFollowUpBusy}
-                className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 text-sm font-semibold hover:bg-amber-50 dark:hover:bg-amber-950/30 disabled:opacity-50"
-              >
-                {sendFollowUpBusy ? "Starting…" : "Both sequences"}
-              </button>
+            <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
               <button
                 type="button"
                 onClick={dismissSendFollowUpPrompt}
@@ -1259,6 +1229,24 @@ export default function SolarCleaningQuotePage() {
                 className="px-4 py-2.5 rounded-lg border border-gray-200 dark:border-gray-600 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
               >
                 Not now
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmSendFollowUpPrompt()}
+                disabled={sendFollowUpBusy}
+                className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold disabled:opacity-50"
+              >
+                {sendFollowUpBusy ? (
+                  <>
+                    <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                    </svg>
+                    Starting…
+                  </>
+                ) : (
+                  "Start outreach follow-up"
+                )}
               </button>
             </div>
           </div>

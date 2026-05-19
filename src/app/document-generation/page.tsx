@@ -1,8 +1,13 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useSession } from "next-auth/react";
-import { getApiBaseUrl, getSendClientDocumentN8nWebhookUrl, parseGoogleDriveOrDocsFileId } from "@/lib/utils";
+import {
+  getApiBaseUrl,
+  getAutonomousApiBaseUrl,
+  getSendClientDocumentN8nWebhookUrl,
+  parseGoogleDriveOrDocsFileId,
+} from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 import { useSearchParams } from "next/navigation";
 import { PageHeader } from "@/components/Layouts/PageHeader";
@@ -41,6 +46,46 @@ interface LastClientDocSendContext {
 
 /** Matches backend `EngagementFormType.SOLAR_PANEL_CLEANING` display name — only type with n8n send wired up for now. */
 const N8N_SEND_ELIGIBLE_ENGAGEMENT_FORM_TYPE = "Solar Panel Cleaning";
+
+/** Document Generation → Autonomous Agent: Solar Panel Cleaning — Engagement Form v1 */
+const SOLAR_ENGAGEMENT_FORM_SEQUENCE = "solar_panel_cleaning_engagement_form_v1";
+
+function extractEmailIdFromWebhookResponse(webhookResponse: unknown): string | null {
+  const readFromObject = (obj: Record<string, unknown>): string | null => {
+    const direct =
+      (typeof obj.email_id === "string" && obj.email_id.trim()) ||
+      (typeof obj.email_ID === "string" && obj.email_ID.trim()) ||
+      null;
+    if (direct) return direct;
+    for (const value of Object.values(obj)) {
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          if (item && typeof item === "object") {
+            const nested = readFromObject(item as Record<string, unknown>);
+            if (nested) return nested;
+          }
+        }
+      } else if (value && typeof value === "object") {
+        const nested = readFromObject(value as Record<string, unknown>);
+        if (nested) return nested;
+      }
+    }
+    return null;
+  };
+  if (Array.isArray(webhookResponse)) {
+    for (const item of webhookResponse) {
+      if (item && typeof item === "object") {
+        const found = readFromObject(item as Record<string, unknown>);
+        if (found) return found;
+      }
+    }
+    return null;
+  }
+  if (webhookResponse && typeof webhookResponse === "object") {
+    return readFromObject(webhookResponse as Record<string, unknown>);
+  }
+  return null;
+}
 
 function canSendClientDocViaN8n(ctx: LastClientDocSendContext | null): boolean {
   if (!ctx) return false;
@@ -202,6 +247,14 @@ export default function DocumentGenerationPage() {
   const [sendDocumentStaffUsers, setSendDocumentStaffUsers] = useState<StaffUserForCc[]>([]);
   const [sendDocumentCcTeam, setSendDocumentCcTeam] = useState<Record<string, boolean>>({});
   const [sendDocumentCcManual, setSendDocumentCcManual] = useState("");
+  const [sendAutonomousPrompt, setSendAutonomousPrompt] = useState<{
+    emailId: string | null;
+    baseMsg: string;
+    recipientName: string;
+    recipientEmail: string;
+  } | null>(null);
+  const [sendAutonomousBusy, setSendAutonomousBusy] = useState(false);
+  const crmOfferIdRef = useRef<number | null>(null);
   const searchParams = useSearchParams();
   
   // Get category filter from URL
@@ -550,6 +603,178 @@ export default function DocumentGenerationPage() {
     (selectedDocumentCategory !== "eoi" || selectedEoiType) &&
     (selectedDocumentCategory !== "engagement-forms" || selectedEngagementFormType);
 
+  const resolveClientIdForAutonomous = async (): Promise<number | null> => {
+    const fromForm = editableBusinessInfo?.client_id;
+    if (typeof fromForm === "number" && fromForm > 0) return fromForm;
+    const bn = editableBusinessInfo?.business_name?.trim();
+    if (!bn || !token) return null;
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/get-business-info`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ business_name: bn }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && typeof data.client_id === "number" && data.client_id > 0) {
+        setEditableBusinessInfo((prev) => (prev ? { ...prev, client_id: data.client_id } : prev));
+        return data.client_id;
+      }
+    } catch {
+      /* ignore */
+    }
+    return null;
+  };
+
+  const ensureSolarCleaningCrmOfferId = async (): Promise<number | null> => {
+    if (crmOfferIdRef.current != null) return crmOfferIdRef.current;
+    if (!token) return null;
+    const clientNum = await resolveClientIdForAutonomous();
+    const business = editableBusinessInfo?.business_name?.trim() || lastClientDocSendContext?.business_name?.trim();
+    if (!business) return null;
+    try {
+      const createRes = await fetch(`${getApiBaseUrl()}/api/offers`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          client_id: clientNum && clientNum > 0 ? clientNum : null,
+          status: "requested",
+          business_name: business,
+          utility_type: "Solar panel cleaning",
+        }),
+      });
+      if (!createRes.ok) {
+        console.warn("[Doc gen CRM] create offer failed:", await createRes.text());
+        return null;
+      }
+      const created = (await createRes.json()) as { id?: number };
+      const id = typeof created?.id === "number" ? created.id : null;
+      if (id != null) crmOfferIdRef.current = id;
+      return id;
+    } catch (e) {
+      console.warn("[Doc gen CRM] create offer error:", e);
+      return null;
+    }
+  };
+
+  const recordEngagementFormSentInCrm = async (
+    recipientEmail: string,
+    recipientName: string,
+    docLink: string | undefined,
+  ) => {
+    const email = session?.user?.email;
+    if (!email || !token) return;
+    const oid = await ensureSolarCleaningCrmOfferId();
+    if (oid == null) return;
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/offers/${oid}/activities`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          activity_type: "engagement_form_sent",
+          document_link: docLink,
+          metadata: {
+            source: "document_generation_page",
+            form_type: N8N_SEND_ELIGIBLE_ENGAGEMENT_FORM_TYPE,
+            recipient_email: recipientEmail,
+            recipient_name: recipientName,
+          },
+          created_by: email,
+        }),
+      });
+      if (!res.ok) console.warn("[Doc gen CRM] engagement_form_sent:", res.status, await res.text());
+    } catch (e) {
+      console.warn("[Doc gen CRM] engagement_form_sent error:", e);
+    }
+  };
+
+  const buildSolarAutonomousContext = (
+    recipientName: string,
+    recipientEmail: string,
+    emailId?: string | null,
+  ): Record<string, unknown> => {
+    const info = editableBusinessInfo;
+    const ctx = lastClientDocSendContext;
+    const normalizedEmailId = (emailId || "").trim() || null;
+    const context: Record<string, unknown> = {
+      source: "document_generation_page",
+      contact_name: recipientName.trim() || info?.contact_name?.trim() || null,
+      contact_email: recipientEmail.trim() || info?.email?.trim() || null,
+      contact_phone: info?.telephone?.trim() || null,
+      business_name: info?.business_name?.trim() || ctx?.business_name?.trim() || null,
+      site_address: info?.site_address?.trim() || null,
+      client_folder_url: info?.client_folder_url?.trim() || ctx?.client_folder_url?.trim() || null,
+      engagement_form_type: ctx?.engagement_form_type || N8N_SEND_ELIGIBLE_ENGAGEMENT_FORM_TYPE,
+      engagement_form_document_link: ctx?.document_link || null,
+      google_file_id: ctx?.google_file_id || null,
+    };
+    if (normalizedEmailId) {
+      context.email_id = normalizedEmailId;
+      context.email_ID = normalizedEmailId;
+    }
+    return context;
+  };
+
+  const startSolarAutonomousSequence = async (
+    sequenceType: string,
+    recipientName: string,
+    recipientEmail: string,
+    emailId?: string | null,
+  ) => {
+    if (!token) throw new Error("Sign in required to start autonomous sequences.");
+    const oid = await ensureSolarCleaningCrmOfferId();
+    if (oid == null) {
+      throw new Error("Could not link a CRM offer for this business. Try reloading business info from search.");
+    }
+    const clientNum = await resolveClientIdForAutonomous();
+    const context = buildSolarAutonomousContext(recipientName, recipientEmail, emailId);
+    const res = await fetch(`${getAutonomousApiBaseUrl()}/api/autonomous/sequences/start`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sequence_type: sequenceType,
+        offer_id: oid,
+        client_id: clientNum && clientNum > 0 ? clientNum : null,
+        crm_activity_id: null,
+        anchor_at: new Date().toISOString(),
+        timezone: "Australia/Brisbane",
+        email_id: (emailId || "").trim() || null,
+        context,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(
+        typeof data.detail === "string" ? data.detail : "Failed to start autonomous sequence",
+      );
+    }
+  };
+
+  const confirmStartEngagementFormSequence = async () => {
+    if (!sendAutonomousPrompt) return;
+    setSendAutonomousBusy(true);
+    const { emailId, baseMsg, recipientName, recipientEmail } = sendAutonomousPrompt;
+    try {
+      await startSolarAutonomousSequence(
+        SOLAR_ENGAGEMENT_FORM_SEQUENCE,
+        recipientName,
+        recipientEmail,
+        emailId,
+      );
+      setResult(
+        `${baseMsg}\n\n✅ Autonomous sequence started: Solar Panel Cleaning — Engagement Form v1 (see Autonomous Agent).`,
+      );
+      showToast("Engagement form autonomous sequence started.", "success");
+    } catch (seqErr) {
+      const note =
+        seqErr instanceof Error ? seqErr.message : "Could not start engagement form sequence.";
+      setResult(`${baseMsg}\n\n⚠️ ${note}`);
+      showToast(note, "error");
+    } finally {
+      setSendAutonomousBusy(false);
+      setSendAutonomousPrompt(null);
+    }
+  };
+
   const openSendDocumentModal = () => {
     if (!lastClientDocSendContext || !canSendClientDocViaN8n(lastClientDocSendContext)) return;
     setSendDocumentRecipientName(editableBusinessInfo?.contact_name?.trim() ?? "");
@@ -604,12 +829,39 @@ export default function DocumentGenerationPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
+      const responseText = await res.text().catch(() => "");
+      let webhookResponse: unknown = null;
+      if (responseText) {
+        try {
+          webhookResponse = JSON.parse(responseText);
+        } catch {
+          webhookResponse = { raw: responseText };
+        }
+      }
       if (res.ok) {
-        showToast("Document send workflow triggered.", "success");
+        const baseMsg = `✅ Engagement form emailed to ${email}.`;
+        showToast("Document send workflow completed.", "success");
         setSendDocumentModalOpen(false);
+        await recordEngagementFormSentInCrm(
+          email,
+          name,
+          rest.document_link || undefined,
+        );
+        if (
+          engagement_form_type === N8N_SEND_ELIGIBLE_ENGAGEMENT_FORM_TYPE &&
+          kind === "engagement-form"
+        ) {
+          const emailId = extractEmailIdFromWebhookResponse(webhookResponse);
+          setSendAutonomousPrompt({
+            emailId,
+            baseMsg,
+            recipientName: name,
+            recipientEmail: email,
+          });
+        }
+        setResult((prev) => (prev.trim() ? `${prev.trim()}\n\n${baseMsg}` : baseMsg));
       } else {
-        const text = await res.text().catch(() => "");
-        showToast(`n8n returned ${res.status}${text ? `: ${text.slice(0, 200)}` : ""}`, "error");
+        showToast(`n8n returned ${res.status}${responseText ? `: ${responseText.slice(0, 200)}` : ""}`, "error");
       }
     } catch (e) {
       console.error(e);
@@ -957,7 +1209,8 @@ export default function DocumentGenerationPage() {
           <li>5. Click &quot;Generate&quot; to create your document</li>
           <li>
             6. After a successful <strong>Solar Panel Cleaning</strong> engagement form, use &quot;Send document&quot;
-            to email it via n8n (other EOIs and engagement forms do not have send wired up yet)
+            to email it via n8n; you can then start the <strong>Engagement Form v1</strong> autonomous sequence (other
+            EOIs and engagement forms do not have send or autonomous wired up yet)
           </li>
         </ol>
         
@@ -1075,6 +1328,45 @@ export default function DocumentGenerationPage() {
                 className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors order-1 sm:order-2 disabled:opacity-50"
               >
                 {sendDocumentSubmitting ? "Sending…" : "Send document"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {sendAutonomousPrompt && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/45 backdrop-blur-sm p-4"
+          aria-modal="true"
+          role="dialog"
+        >
+          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-gray-900 shadow-2xl border border-gray-200 dark:border-gray-700 p-6">
+            <h3 className="text-base font-bold text-gray-900 dark:text-gray-100 mb-1">
+              Start autonomous engagement form sequence?
+            </h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+              The form was emailed to the client. Start{" "}
+              <strong>Solar Panel Cleaning — Engagement Form v1</strong> (
+              <code className="text-xs">solar_panel_cleaning_engagement_form_v1</code>) in Autonomous Agent. This is
+              not the solar quote outreach sequence (
+              <code className="text-xs">solar_panel_cleaning_followup_v1</code>).
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => void confirmStartEngagementFormSequence()}
+                disabled={sendAutonomousBusy}
+                className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold disabled:opacity-50"
+              >
+                {sendAutonomousBusy ? "Starting…" : "Start Engagement Form v1"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setSendAutonomousPrompt(null)}
+                disabled={sendAutonomousBusy}
+                className="px-4 py-2.5 rounded-lg border border-gray-200 dark:border-gray-600 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
+              >
+                Not now
               </button>
             </div>
           </div>
