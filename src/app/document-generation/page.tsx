@@ -52,41 +52,59 @@ const SOLAR_ENGAGEMENT_FORM_SEQUENCE = "solar_panel_cleaning_engagement_form_v1"
 const SOLAR_ENGAGEMENT_FORM_EMAIL_COUNT = 3;
 const SOLAR_ENGAGEMENT_FORM_BUSINESS_DAY_GAP = 2;
 
-function extractEmailIdFromWebhookResponse(webhookResponse: unknown): string | null {
-  const readFromObject = (obj: Record<string, unknown>): string | null => {
-    const direct =
+const SOLAR_ENGAGEMENT_INITIAL_EMAIL_SUBJECT =
+  "Solar cleaning — quick win to protect performance and your solar investment";
+
+export type GmailSendMetadata = {
+  messageId: string | null;
+  threadId: string | null;
+};
+
+/** Gmail Send node returns `id` + `threadId`; n8n may nest them in the webhook response. */
+export function extractGmailSendMetadata(webhookResponse: unknown): GmailSendMetadata {
+  const empty: GmailSendMetadata = { messageId: null, threadId: null };
+  const readFromObject = (obj: Record<string, unknown>): GmailSendMetadata => {
+    const messageId =
+      (typeof obj.id === "string" && obj.id.trim()) ||
+      (typeof obj.messageId === "string" && obj.messageId.trim()) ||
       (typeof obj.email_id === "string" && obj.email_id.trim()) ||
       (typeof obj.email_ID === "string" && obj.email_ID.trim()) ||
+      (typeof obj.gmail_message_id === "string" && obj.gmail_message_id.trim()) ||
       null;
-    if (direct) return direct;
+    const threadId =
+      (typeof obj.threadId === "string" && obj.threadId.trim()) ||
+      (typeof obj.thread_id === "string" && obj.thread_id.trim()) ||
+      (typeof obj.gmail_thread_id === "string" && obj.gmail_thread_id.trim()) ||
+      null;
+    if (messageId || threadId) return { messageId, threadId };
     for (const value of Object.values(obj)) {
       if (Array.isArray(value)) {
         for (const item of value) {
           if (item && typeof item === "object") {
             const nested = readFromObject(item as Record<string, unknown>);
-            if (nested) return nested;
+            if (nested.messageId || nested.threadId) return nested;
           }
         }
       } else if (value && typeof value === "object") {
         const nested = readFromObject(value as Record<string, unknown>);
-        if (nested) return nested;
+        if (nested.messageId || nested.threadId) return nested;
       }
     }
-    return null;
+    return empty;
   };
   if (Array.isArray(webhookResponse)) {
     for (const item of webhookResponse) {
       if (item && typeof item === "object") {
         const found = readFromObject(item as Record<string, unknown>);
-        if (found) return found;
+        if (found.messageId || found.threadId) return found;
       }
     }
-    return null;
+    return empty;
   }
   if (webhookResponse && typeof webhookResponse === "object") {
     return readFromObject(webhookResponse as Record<string, unknown>);
   }
-  return null;
+  return empty;
 }
 
 function canSendClientDocViaN8n(ctx: LastClientDocSendContext | null): boolean {
@@ -250,7 +268,8 @@ export default function DocumentGenerationPage() {
   const [sendDocumentCcTeam, setSendDocumentCcTeam] = useState<Record<string, boolean>>({});
   const [sendDocumentCcManual, setSendDocumentCcManual] = useState("");
   const [sendAutonomousPrompt, setSendAutonomousPrompt] = useState<{
-    emailId: string | null;
+    messageId: string | null;
+    threadId: string | null;
     baseMsg: string;
     recipientName: string;
     recipientEmail: string;
@@ -692,13 +711,15 @@ export default function DocumentGenerationPage() {
   const buildSolarAutonomousContext = (
     recipientName: string,
     recipientEmail: string,
-    emailId?: string | null,
+    gmail: GmailSendMetadata,
   ): Record<string, unknown> => {
     const info = editableBusinessInfo;
     const ctx = lastClientDocSendContext;
-    const normalizedEmailId = (emailId || "").trim() || null;
+    const messageId = (gmail.messageId || "").trim() || null;
+    const threadId = (gmail.threadId || "").trim() || null;
     const context: Record<string, unknown> = {
       source: "document_generation_page",
+      sequence_type: SOLAR_ENGAGEMENT_FORM_SEQUENCE,
       contact_name: recipientName.trim() || info?.contact_name?.trim() || null,
       contact_email: recipientEmail.trim() || info?.email?.trim() || null,
       contact_phone: info?.telephone?.trim() || null,
@@ -706,40 +727,53 @@ export default function DocumentGenerationPage() {
       site_address: info?.site_address?.trim() || null,
       client_folder_url: info?.client_folder_url?.trim() || ctx?.client_folder_url?.trim() || null,
       engagement_form_type: ctx?.engagement_form_type || N8N_SEND_ELIGIBLE_ENGAGEMENT_FORM_TYPE,
-      engagement_form_document_link: ctx?.document_link || null,
       google_file_id: ctx?.google_file_id || null,
+      reply_in_thread: true,
+      omit_validity: true,
+      omit_document_links: true,
+      initial_email_subject: SOLAR_ENGAGEMENT_INITIAL_EMAIL_SUBJECT,
+      use_html_signature: true,
     };
-    if (normalizedEmailId) {
-      context.email_id = normalizedEmailId;
-      context.email_ID = normalizedEmailId;
+    if (messageId) {
+      context.email_id = messageId;
+      context.email_ID = messageId;
+      context.gmail_message_id = messageId;
+    }
+    if (threadId) {
+      context.gmail_thread_id = threadId;
+      context.thread_id = threadId;
     }
     return context;
   };
 
   const startSolarAutonomousSequence = async (
-    sequenceType: string,
     recipientName: string,
     recipientEmail: string,
-    emailId?: string | null,
+    gmail: GmailSendMetadata,
   ) => {
     if (!token) throw new Error("Sign in required to start autonomous sequences.");
+    if (!gmail.messageId && !gmail.threadId) {
+      throw new Error(
+        "Could not capture Gmail thread from the send workflow. Update the send-eoi n8n flow to return Gmail message id and threadId in the webhook response, then send again.",
+      );
+    }
     const oid = await ensureSolarCleaningCrmOfferId();
     if (oid == null) {
       throw new Error("Could not link a CRM offer for this business. Try reloading business info from search.");
     }
     const clientNum = await resolveClientIdForAutonomous();
-    const context = buildSolarAutonomousContext(recipientName, recipientEmail, emailId);
+    const context = buildSolarAutonomousContext(recipientName, recipientEmail, gmail);
     const res = await fetch(`${getAutonomousApiBaseUrl()}/api/autonomous/sequences/start`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        sequence_type: sequenceType,
+        sequence_type: SOLAR_ENGAGEMENT_FORM_SEQUENCE,
         offer_id: oid,
         client_id: clientNum && clientNum > 0 ? clientNum : null,
         crm_activity_id: null,
         anchor_at: new Date().toISOString(),
         timezone: "Australia/Brisbane",
-        email_id: (emailId || "").trim() || null,
+        email_id: (gmail.messageId || "").trim() || null,
         context,
       }),
     });
@@ -754,14 +788,9 @@ export default function DocumentGenerationPage() {
   const confirmStartEngagementFormSequence = async () => {
     if (!sendAutonomousPrompt) return;
     setSendAutonomousBusy(true);
-    const { emailId, baseMsg, recipientName, recipientEmail } = sendAutonomousPrompt;
+    const { messageId, threadId, baseMsg, recipientName, recipientEmail } = sendAutonomousPrompt;
     try {
-      await startSolarAutonomousSequence(
-        SOLAR_ENGAGEMENT_FORM_SEQUENCE,
-        recipientName,
-        recipientEmail,
-        emailId,
-      );
+      await startSolarAutonomousSequence(recipientName, recipientEmail, { messageId, threadId });
       setResult(
         `${baseMsg}\n\n✅ Autonomous sequence started: ${SOLAR_ENGAGEMENT_FORM_EMAIL_COUNT} follow-up emails (every ${SOLAR_ENGAGEMENT_FORM_BUSINESS_DAY_GAP} business days) — see Autonomous Agent.`,
       );
@@ -853,13 +882,20 @@ export default function DocumentGenerationPage() {
           engagement_form_type === N8N_SEND_ELIGIBLE_ENGAGEMENT_FORM_TYPE &&
           kind === "engagement-form"
         ) {
-          const emailId = extractEmailIdFromWebhookResponse(webhookResponse);
+          const gmailMeta = extractGmailSendMetadata(webhookResponse);
           setSendAutonomousPrompt({
-            emailId,
+            messageId: gmailMeta.messageId,
+            threadId: gmailMeta.threadId,
             baseMsg,
             recipientName: name,
             recipientEmail: email,
           });
+          if (!gmailMeta.messageId && !gmailMeta.threadId) {
+            showToast(
+              "Send succeeded, but Gmail thread id was not returned — fix send-eoi n8n response before starting follow-ups.",
+              "error",
+            );
+          }
         }
         setResult((prev) => (prev.trim() ? `${prev.trim()}\n\n${baseMsg}` : baseMsg));
       } else {
@@ -1349,11 +1385,10 @@ export default function DocumentGenerationPage() {
               Schedule follow-up emails?
             </h3>
             <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-              The engagement form was already emailed via n8n. Start{" "}
-              <strong>Solar Panel Cleaning — Engagement Form v1</strong> to send{" "}
-              <strong>{SOLAR_ENGAGEMENT_FORM_EMAIL_COUNT} more emails</strong> — each{" "}
-              {SOLAR_ENGAGEMENT_FORM_BUSINESS_DAY_GAP} business days apart (09:00 AEST). Not the solar quote outreach
-              sequence.
+              The engagement form was already emailed via n8n (with attachments). Follow-ups will{" "}
+              <strong>reply on that Gmail thread</strong> — no new emails, no Drive links, no validity dates.{" "}
+              <strong>{SOLAR_ENGAGEMENT_FORM_EMAIL_COUNT} emails</strong>, each{" "}
+              {SOLAR_ENGAGEMENT_FORM_BUSINESS_DAY_GAP} business days apart (09:00 AEST).
             </p>
             <div className="flex flex-col gap-2">
               <button
