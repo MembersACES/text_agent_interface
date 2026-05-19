@@ -47,8 +47,10 @@ interface LastClientDocSendContext {
 /** Matches backend `EngagementFormType.SOLAR_PANEL_CLEANING` display name — only type with n8n send wired up for now. */
 const N8N_SEND_ELIGIBLE_ENGAGEMENT_FORM_TYPE = "Solar Panel Cleaning";
 
-/** Document Generation → Autonomous Agent: Solar Panel Cleaning — Engagement Form v1 */
+/** Document Generation → three follow-up emails every 2 business days after n8n sends the form. */
 const SOLAR_ENGAGEMENT_FORM_SEQUENCE = "solar_panel_cleaning_engagement_form_v1";
+const SOLAR_ENGAGEMENT_FORM_EMAIL_COUNT = 3;
+const SOLAR_ENGAGEMENT_FORM_BUSINESS_DAY_GAP = 2;
 
 function extractEmailIdFromWebhookResponse(webhookResponse: unknown): string | null {
   const readFromObject = (obj: Record<string, unknown>): string | null => {
@@ -761,9 +763,9 @@ export default function DocumentGenerationPage() {
         emailId,
       );
       setResult(
-        `${baseMsg}\n\n✅ Autonomous sequence started: Solar Panel Cleaning — Engagement Form v1 (see Autonomous Agent).`,
+        `${baseMsg}\n\n✅ Autonomous sequence started: ${SOLAR_ENGAGEMENT_FORM_EMAIL_COUNT} follow-up emails (every ${SOLAR_ENGAGEMENT_FORM_BUSINESS_DAY_GAP} business days) — see Autonomous Agent.`,
       );
-      showToast("Engagement form autonomous sequence started.", "success");
+      showToast("Engagement form follow-up email sequence started.", "success");
     } catch (seqErr) {
       const note =
         seqErr instanceof Error ? seqErr.message : "Could not start engagement form sequence.";
@@ -1209,8 +1211,10 @@ export default function DocumentGenerationPage() {
           <li>5. Click &quot;Generate&quot; to create your document</li>
           <li>
             6. After a successful <strong>Solar Panel Cleaning</strong> engagement form, use &quot;Send document&quot;
-            to email it via n8n; you can then start the <strong>Engagement Form v1</strong> autonomous sequence (other
-            EOIs and engagement forms do not have send or autonomous wired up yet)
+            to email it via n8n first; then start the autonomous sequence for{" "}
+            <strong>{SOLAR_ENGAGEMENT_FORM_EMAIL_COUNT} follow-up emails</strong> (every{" "}
+            {SOLAR_ENGAGEMENT_FORM_BUSINESS_DAY_GAP} business days). Other EOIs and engagement forms do not have send or
+            autonomous wired up yet
           </li>
         </ol>
         
@@ -1342,14 +1346,14 @@ export default function DocumentGenerationPage() {
         >
           <div className="w-full max-w-md rounded-2xl bg-white dark:bg-gray-900 shadow-2xl border border-gray-200 dark:border-gray-700 p-6">
             <h3 className="text-base font-bold text-gray-900 dark:text-gray-100 mb-1">
-              Start autonomous engagement form sequence?
+              Schedule follow-up emails?
             </h3>
             <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-              The form was emailed to the client. Start{" "}
-              <strong>Solar Panel Cleaning — Engagement Form v1</strong> (
-              <code className="text-xs">solar_panel_cleaning_engagement_form_v1</code>) in Autonomous Agent. This is
-              not the solar quote outreach sequence (
-              <code className="text-xs">solar_panel_cleaning_followup_v1</code>).
+              The engagement form was already emailed via n8n. Start{" "}
+              <strong>Solar Panel Cleaning — Engagement Form v1</strong> to send{" "}
+              <strong>{SOLAR_ENGAGEMENT_FORM_EMAIL_COUNT} more emails</strong> — each{" "}
+              {SOLAR_ENGAGEMENT_FORM_BUSINESS_DAY_GAP} business days apart (09:00 AEST). Not the solar quote outreach
+              sequence.
             </p>
             <div className="flex flex-col gap-2">
               <button
@@ -1358,7 +1362,7 @@ export default function DocumentGenerationPage() {
                 disabled={sendAutonomousBusy}
                 className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold disabled:opacity-50"
               >
-                {sendAutonomousBusy ? "Starting…" : "Start Engagement Form v1"}
+                {sendAutonomousBusy ? "Starting…" : `Start ${SOLAR_ENGAGEMENT_FORM_EMAIL_COUNT} follow-up emails`}
               </button>
               <button
                 type="button"
