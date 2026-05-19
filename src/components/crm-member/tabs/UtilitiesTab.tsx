@@ -57,14 +57,14 @@ function buildUtilityConfig(linked: Record<string, unknown>): UtilityConfigItem[
 type UtilityRowItem = {
   value: string;
   retailer: string;
-  extra?: { contract_end_date?: string; data_requested?: string; data_recieved?: string | boolean };
+  extra?: { contract_end_date?: string; dma_end_date?: string; data_requested?: string; data_recieved?: string | boolean };
 };
 
 /** Normalize linked[key] to rows. Handles n8n format (array of {identifier, retailer, ced, data_requested, data_received}) and legacy (array of strings + separate retailers/extra). */
 function getUtilityRowsFromValue(
   value: unknown,
   retailerList: unknown,
-  extraList: Array<{ contract_end_date?: string; data_requested?: string; data_recieved?: string | boolean }> | undefined,
+  extraList: Array<{ contract_end_date?: string; dma_end_date?: string; data_requested?: string; data_recieved?: string | boolean }> | undefined,
   sourceKey: string
 ): UtilityRowItem[] {
   if (typeof value === "string") {
@@ -91,6 +91,7 @@ function getUtilityRowsFromValue(
           retailer: formatRetailerDisplay(o.retailer),
           extra: {
             contract_end_date: (o.ced as string) ?? undefined,
+            dma_end_date: (o.dma_end_date as string) ?? undefined,
             data_requested: (o.data_requested as string) ?? undefined,
             data_recieved: (o.data_received as string | boolean) ?? (o.data_recieved as string | boolean) ?? undefined,
           },
@@ -115,7 +116,7 @@ export function getUtilitiesCountFromBusinessInfo(
   if (!businessInfo) return 0;
   const linked = (businessInfo.Linked_Details as Record<string, unknown>)?.linked_utilities as Record<string, unknown> | undefined ?? {};
   const retailers = (businessInfo.Linked_Details as Record<string, unknown>)?.utility_retailers as Record<string, unknown> | undefined ?? {};
-  const linkedExtra = (businessInfo.Linked_Details as Record<string, unknown>)?.linked_utility_extra as Record<string, Array<{ contract_end_date?: string; data_requested?: string; data_recieved?: string | boolean }>> | undefined;
+  const linkedExtra = (businessInfo.Linked_Details as Record<string, unknown>)?.linked_utility_extra as Record<string, Array<{ contract_end_date?: string; dma_end_date?: string; data_requested?: string; data_recieved?: string | boolean }>> | undefined;
   const config = buildUtilityConfig(linked);
   let count = 0;
   for (const item of config) {
@@ -229,6 +230,7 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility }: U
     displayKey: string;
     identifier: string;
     contract_end_date: string;
+    dma_end_date: string;
     data_requested: string;
     data_recieved: boolean;
   } | null>(null);
@@ -258,7 +260,7 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility }: U
       identifiers: Array<{
         value: string;
         retailer: string;
-        extra?: { contract_end_date?: string; data_requested?: string; data_recieved?: string | boolean };
+        extra?: { contract_end_date?: string; dma_end_date?: string; data_requested?: string; data_recieved?: string | boolean };
       }>;
     }> = [];
 
@@ -518,8 +520,9 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility }: U
     setUtilityEditError(null);
     setUtilityEditLoading(true);
     const contractEndIso = parseDateDDMMYYYYToISO(utilityEdit.contract_end_date);
+    const dmaEndIso = parseDateDDMMYYYYToISO(utilityEdit.dma_end_date);
     const dataRequestedIso = parseDateDDMMYYYYToISO(utilityEdit.data_requested);
-    if ((utilityEdit.contract_end_date && !contractEndIso) || (utilityEdit.data_requested && !dataRequestedIso)) {
+    if ((utilityEdit.contract_end_date && !contractEndIso) || (utilityEdit.dma_end_date && !dmaEndIso) || (utilityEdit.data_requested && !dataRequestedIso)) {
       setUtilityEditError("Invalid date format. Use dd-mm-yyyy (e.g. 31-12-2027).");
       setUtilityEditLoading(false);
       return;
@@ -538,6 +541,7 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility }: U
           data_requested: dataRequestedIso || undefined,
           data_recieved: utilityEdit.data_recieved,
           contract_end_date: contractEndIso || undefined,
+          dma_end_date: dmaEndIso || undefined,
         }),
       });
       if (!res.ok) {
@@ -558,6 +562,7 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility }: U
           arr[idxInRow] = {
             ...(arr[idxInRow] as Record<string, unknown>),
             contract_end_date: contractEndIso || undefined,
+            dma_end_date: dmaEndIso || undefined,
             data_requested: dataRequestedIso || undefined,
             data_recieved: utilityEdit.data_recieved,
           };
@@ -760,17 +765,21 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility }: U
                             {extra.contract_end_date != null && extra.contract_end_date !== "" && (
                               <div>Contract end: {formatDateAustralian(extra.contract_end_date)}</div>
                             )}
+                            {row.displayKey === "C&I Electricity" && extra.dma_end_date != null && extra.dma_end_date !== "" && (
+                              <div>DMA end: {formatDateAustralian(extra.dma_end_date)}</div>
+                            )}
                             {extra.data_requested != null && extra.data_requested !== "" && (
                               <div>Data requested: {formatDateAustralian(extra.data_requested)}</div>
                             )}
                             <div>Data received: {extra.data_recieved === true || extra.data_recieved === "Yes" || (typeof extra.data_recieved === "string" && extra.data_recieved.length > 0) ? "Received" : "Not received"}</div>
-                            {(row.displayKey === "C&I Electricity" || row.displayKey === "C&I Gas") && (extra.contract_end_date != null || extra.data_requested != null || extra.data_recieved != null) && (
+                            {(row.displayKey === "C&I Electricity" || row.displayKey === "C&I Gas") && (extra.contract_end_date != null || extra.dma_end_date != null || extra.data_requested != null || extra.data_recieved != null) && (
                               <button
                                 type="button"
                                 onClick={() => setUtilityEdit({
                                   displayKey: row.displayKey,
                                   identifier,
                                   contract_end_date: formatDateDDMMYYYY(extra.contract_end_date),
+                                  dma_end_date: formatDateDDMMYYYY(extra.dma_end_date),
                                   data_requested: formatDateDDMMYYYY(extra.data_requested),
                                   data_recieved: extra.data_recieved === true || extra.data_recieved === "Yes" || (typeof extra.data_recieved === "string" && extra.data_recieved.length > 0),
                                 })}
@@ -779,13 +788,14 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility }: U
                                 Edit dates
                               </button>
                             )}
-                            {(row.displayKey === "C&I Electricity" || row.displayKey === "C&I Gas") && extra.contract_end_date == null && extra.data_requested == null && (extra.data_recieved == null || extra.data_recieved === false || extra.data_recieved === "") && (
+                            {(row.displayKey === "C&I Electricity" || row.displayKey === "C&I Gas") && extra.contract_end_date == null && extra.dma_end_date == null && extra.data_requested == null && (extra.data_recieved == null || extra.data_recieved === false || extra.data_recieved === "") && (
                               <button
                                 type="button"
                                 onClick={() => setUtilityEdit({
                                   displayKey: row.displayKey,
                                   identifier,
                                   contract_end_date: "",
+                                  dma_end_date: "",
                                   data_requested: "",
                                   data_recieved: false,
                                 })}
@@ -1132,6 +1142,18 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility }: U
                 placeholder="e.g. 31-12-2027"
               />
             </div>
+            {utilityEdit.displayKey === "C&I Electricity" && (
+              <div>
+                <label className="block font-medium text-gray-700 dark:text-gray-300 mb-1">DMA end date (dd-mm-yyyy)</label>
+                <input
+                  type="text"
+                  value={utilityEdit.dma_end_date}
+                  onChange={(e) => setUtilityEdit((p) => p ? { ...p, dma_end_date: e.target.value } : null)}
+                  className="w-full px-2 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                  placeholder="e.g. 31-12-2027"
+                />
+              </div>
+            )}
             <div>
               <label className="block font-medium text-gray-700 dark:text-gray-300 mb-1">Data requested (dd-mm-yyyy)</label>
               <input
