@@ -55,13 +55,13 @@ const SOLAR_ENGAGEMENT_FORM_BUSINESS_DAY_GAP = 2;
 const SOLAR_ENGAGEMENT_INITIAL_EMAIL_SUBJECT =
   "Solar cleaning — quick win to protect performance and your solar investment";
 
-export type GmailSendMetadata = {
+type GmailSendMetadata = {
   messageId: string | null;
   threadId: string | null;
 };
 
 /** Gmail Send node returns `id` + `threadId`; n8n may nest them in the webhook response. */
-export function extractGmailSendMetadata(webhookResponse: unknown): GmailSendMetadata {
+function extractGmailSendMetadata(webhookResponse: unknown): GmailSendMetadata {
   const empty: GmailSendMetadata = { messageId: null, threadId: null };
   const readFromObject = (obj: Record<string, unknown>): GmailSendMetadata => {
     const messageId =
