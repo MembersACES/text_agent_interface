@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
+import { DOCUMENT_LODGEMENT_API_ENDPOINTS } from "@/lib/invoice-api-endpoints";
 
 // ---- Types ----
 type Category = "INVOICE" | "DATA" | "CONTRACT";
@@ -38,33 +39,8 @@ const LABELS: Record<UtilityKey, string> = {
   CI_GAS_CONTRACT: "C&I Gas",
 };
 
-const API_ENDPOINTS: Record<UtilityKey, string> = {
-  WASTE:
-    "https://aces-invoice-api-672026052958.australia-southeast2.run.app/v1/waste/process-invoice",
-  COOKING_OIL:
-    "https://aces-invoice-api-672026052958.australia-southeast2.run.app/v1/oil/process-invoice",
-  ELECTRICITY_CI:
-    "https://aces-api-63gwbzzcdq-km.a.run.app/v1/electricity-ci/process-invoice",
-  ELECTRICITY_SME:
-    "https://aces-api-63gwbzzcdq-km.a.run.app/v1/electricity-sme/process-invoice",
-  GAS_CI: "https://aces-api-63gwbzzcdq-km.a.run.app/v1/gas-ci/process-invoice",
-  GAS_SME:
-    "https://aces-api-63gwbzzcdq-km.a.run.app/v1/gas-sme/process-invoice",
-  GREASE_TRAP:
-    "https://aces-api-63gwbzzcdq-km.a.run.app/v1/grease-trap/process-invoice",
-  WATER: "https://aces-api-63gwbzzcdq-km.a.run.app/v1/water/process-invoice",
-  CLEANING:
-    "https://aces-invoice-api-672026052958.australia-southeast2.run.app/v1/cleaning-invoice/process-invoice",
-  LINEN_CLEANING:
-    "https://aces-invoice-api-672026052958.australia-southeast2.run.app/v1/linen-cleaning-invoice/process-invoice",
-  ELECTRICITY_CI_INTERVAL:
-    "https://aces-invoice-api-672026052958.australia-southeast2.run.app/v1/interval-ci-electricity/process-interval-ci-electricity-data",
-  EOI: "https://aces-invoice-api-672026052958.australia-southeast2.run.app/v1/eoi/process-eoi",
-  CI_ELECTRICITY_CONTRACT:
-    "https://aces-invoice-api-672026052958.australia-southeast2.run.app/v1/ci-electricity-contract/process-contract",
-  CI_GAS_CONTRACT:
-    "https://aces-invoice-api-672026052958.australia-southeast2.run.app/v1/ci-gas-contract/process-contract",
-};
+const API_ENDPOINTS: Record<UtilityKey, string> =
+  DOCUMENT_LODGEMENT_API_ENDPOINTS;
 
 // File accept strings
 const ACCEPTS: Record<UtilityKey, string> = {

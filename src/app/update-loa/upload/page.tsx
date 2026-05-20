@@ -1,6 +1,7 @@
 'use client';
 import React, { useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { postLoaDocument } from '@/lib/invoice-api-endpoints';
 
 export default function UploadLOAPage() {
   const router = useRouter();
@@ -30,31 +31,27 @@ export default function UploadLOAPage() {
     setResult(null);
     setError(null);
 
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('utility_type', 'LOA');
-
     try {
-      const res = await fetch('https://aces-api-63gwbzzcdq-km.a.run.app/v1/loa/process-document', {
-        method: 'POST',
-        body: formData,
+      const { res, data: parsedData, rawText } = await postLoaDocument(() => {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('utility_type', 'LOA');
+        return formData;
       });
 
-      let data;
-      try {
-        data = await res.json();
-      } catch {
-        const text = await res.text();
-        setError(`❌ Error parsing response:\n${text}`);
+      if (rawText && !parsedData) {
+        setError(`❌ Error parsing response:\n${rawText}`);
         setLoading(false);
         return;
       }
 
+      const data = parsedData ?? {};
+
       if (!res.ok) {
-        throw new Error(data.message || res.statusText);
+        throw new Error(String(data.message || res.statusText));
       }
 
-      setResult(`✅ ${data.message || 'LOA document uploaded successfully!'}`);
+      setResult(`✅ ${String(data.message || 'LOA document uploaded successfully!')}`);
 
       // ✅ Redirect with full business info
       setTimeout(() => {
