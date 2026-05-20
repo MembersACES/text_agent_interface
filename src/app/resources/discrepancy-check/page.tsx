@@ -94,42 +94,6 @@ type ApiResponse = {
   electricity_demand_check?: Record<string, string>[];
 };
 
-type ColumnDef<T> = {
-  key: keyof T;
-  label: string;
-  mono?: boolean;
-  wide?: boolean;
-};
-
-const GAS_COLUMNS: ColumnDef<DiscrepancyRow>[] = [
-  { key: "discrepancy_type", label: "Discrepancy type" },
-  { key: "utility_identifier", label: "Utility ID (MRIN)", mono: true },
-  { key: "linked_business_name", label: "Linked business" },
-  { key: "invoice_period", label: "Invoice period" },
-  { key: "invoice_rate", label: "Invoice rate" },
-  { key: "contract_period", label: "Contract period" },
-  { key: "contract_rate", label: "Contract rate" },
-  { key: "rate_difference", label: "Rate diff." },
-  { key: "pct_difference", label: "% diff." },
-  { key: "annual_quantity_gj", label: "Annual Qty (GJ)" },
-  { key: "annual_potential_overcharge", label: "Annual potential overcharge" },
-  { key: "take_or_pay_invoice", label: "Take or Pay" },
-];
-
-const DMA_COLUMNS: ColumnDef<DmaRow>[] = [
-  { key: "discrepancy_type", label: "Discrepancy type" },
-  { key: "utility_identifier", label: "NMI", mono: true },
-  { key: "linked_business_name", label: "Linked business", wide: true },
-  { key: "dma_annual_fee", label: "DMA annual fee ($)" },
-  { key: "dma_daily_rate", label: "DMA daily rate ($)" },
-  { key: "invoice_period", label: "Invoice period" },
-  { key: "invoice_comparison_days", label: "Comparison days" },
-  { key: "expected_charge", label: "Expected charge ($)" },
-  { key: "actual_invoice_charge", label: "Actual charge ($)" },
-  { key: "difference", label: "Difference ($)" },
-  { key: "status", label: "Status", wide: true },
-];
-
 type DetailField = { label: string; value: string };
 
 type DetailSection = { title: string; fields: DetailField[] };
@@ -172,6 +136,33 @@ function parseNumericCell(val: string | undefined): number | null {
   return Number.isNaN(n) ? null : n;
 }
 
+function isGasOvercharged(row: DiscrepancyRow): boolean {
+  const overcharge = parseNumericCell(row.annual_potential_overcharge);
+  if (overcharge != null && overcharge > 0.001) return true;
+  const rateDiff = parseNumericCell(row.rate_difference);
+  if (rateDiff != null && Math.abs(rateDiff) > 0.001) return true;
+  const pctDiff = parseNumericCell(row.pct_difference);
+  if (pctDiff != null && Math.abs(pctDiff) > 0.001) return true;
+  return false;
+}
+
+function isDmaMismatch(row: DmaRow): boolean {
+  const status = (row.status ?? "").toLowerCase();
+  return status.includes("❌") || status.includes("mismatch");
+}
+
+function rowHasAnyValue(row: Record<string, string>): boolean {
+  return Object.values(row).some((v) => (v ?? "").trim() !== "");
+}
+
+function HighlightedValue({ value, highlight }: { value: string; highlight: boolean }) {
+  return (
+    <span className={cn("tabular-nums", highlight && "font-semibold text-red-600 dark:text-red-400")}>
+      {value}
+    </span>
+  );
+}
+
 function isDemandMismatch(row: Record<string, string>): boolean {
   const status = (row.status ?? "").toLowerCase();
   if (
@@ -189,12 +180,59 @@ function isDemandMismatch(row: Record<string, string>): boolean {
   return false;
 }
 
+function gasRowId(row: DiscrepancyRow, index: number): string {
+  return `gas-${row.utility_identifier}-${row.invoice_period}-${index}`;
+}
+
+function dmaRowId(row: DmaRow, index: number): string {
+  return `dma-${row.utility_identifier}-${row.invoice_period}-${index}`;
+}
+
 function electricityRowId(row: ElectricityContractRow, index: number): string {
   return `contract-${row.utility_identifier}-${row.invoice_period}-${index}`;
 }
 
 function demandRowId(row: Record<string, string>, index: number): string {
   return `demand-${row.utility_identifier}-${row.review_type}-${index}`;
+}
+
+function buildGasDetailSections(row: DiscrepancyRow): DetailSection[] {
+  return [
+    {
+      title: "Rates",
+      fields: [
+        { label: "Discrepancy type", value: cellValue(row.discrepancy_type) },
+        { label: "Invoice rate", value: cellValue(row.invoice_rate) },
+        { label: "Contract rate", value: cellValue(row.contract_rate) },
+        { label: "Contract period", value: cellValue(row.contract_period) },
+      ],
+    },
+    {
+      title: "Annual & take-or-pay",
+      fields: [
+        { label: "Annual quantity (GJ)", value: cellValue(row.annual_quantity_gj) },
+        { label: "Take or pay invoice", value: cellValue(row.take_or_pay_invoice) },
+      ],
+    },
+  ];
+}
+
+function buildDmaDetailSections(row: DmaRow): DetailSection[] {
+  return [
+    {
+      title: "DMA fees",
+      fields: [
+        { label: "Discrepancy type", value: cellValue(row.discrepancy_type) },
+        { label: "DMA annual fee ($)", value: cellValue(row.dma_annual_fee) },
+        { label: "DMA daily rate ($)", value: cellValue(row.dma_daily_rate) },
+        { label: "Comparison days", value: cellValue(row.invoice_comparison_days) },
+      ],
+    },
+    {
+      title: "Status",
+      fields: [{ label: "Full status", value: cellValue(row.status) }],
+    },
+  ];
 }
 
 function buildElectricityDetailSections(row: ElectricityContractRow): DetailSection[] {
@@ -274,6 +312,7 @@ function buildDemandDetailSections(row: Record<string, string>): DetailSection[]
         { label: "Actual invoice charge", value: cellValue(row.actual_invoice_charge) },
         { label: "Expected charge", value: cellValue(row.expected_charge) },
         { label: "Difference", value: cellValue(row.difference) },
+        { label: "Status", value: cellValue(row.status) },
       ],
     },
   ];
@@ -324,6 +363,145 @@ function ExpandToggleButton({
         <ChevronRight className="h-4 w-4 shrink-0" />
       )}
     </button>
+  );
+}
+
+function GasTable({
+  rows,
+  expandedIds,
+  onToggleExpand,
+}: {
+  rows: DiscrepancyRow[];
+  expandedIds: Set<string>;
+  onToggleExpand: (id: string) => void;
+}) {
+  const colCount = 7;
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead className="w-10" />
+          <TableHead className="text-xs">MRIN</TableHead>
+          <TableHead className="text-xs min-w-[140px]">Linked business</TableHead>
+          <TableHead className="text-xs">Invoice period</TableHead>
+          <TableHead className="text-xs">Rate diff.</TableHead>
+          <TableHead className="text-xs">% diff.</TableHead>
+          <TableHead className="text-xs">Annual overcharge ($)</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {rows.map((row, i) => {
+          const id = gasRowId(row, i);
+          const expanded = expandedIds.has(id);
+          const overcharged = isGasOvercharged(row);
+          return (
+            <React.Fragment key={id}>
+              <TableRow
+                className={cn(overcharged && "bg-red-50/60 dark:bg-red-900/10", expanded && "border-b-0")}
+              >
+                <TableCell className="align-top py-2">
+                  <ExpandToggleButton
+                    expanded={expanded}
+                    onClick={() => onToggleExpand(id)}
+                    label={expanded ? "Collapse row details" : "Expand row details"}
+                  />
+                </TableCell>
+                <TableCell className="font-mono text-sm align-top">{cellValue(row.utility_identifier)}</TableCell>
+                <TableCell className="text-sm align-top">{cellValue(row.linked_business_name)}</TableCell>
+                <TableCell className="text-sm align-top whitespace-nowrap">{cellValue(row.invoice_period)}</TableCell>
+                <TableCell className="text-sm align-top">
+                  <HighlightedValue value={cellValue(row.rate_difference)} highlight={overcharged} />
+                </TableCell>
+                <TableCell className="text-sm align-top">
+                  <HighlightedValue value={cellValue(row.pct_difference)} highlight={overcharged} />
+                </TableCell>
+                <TableCell className="text-sm align-top">
+                  <HighlightedValue
+                    value={cellValue(row.annual_potential_overcharge)}
+                    highlight={overcharged}
+                  />
+                </TableCell>
+              </TableRow>
+              {expanded && (
+                <TableRow className="hover:bg-transparent">
+                  <TableCell colSpan={colCount} className="p-0">
+                    <RowDetailPanel sections={buildGasDetailSections(row)} />
+                  </TableCell>
+                </TableRow>
+              )}
+            </React.Fragment>
+          );
+        })}
+      </TableBody>
+    </Table>
+  );
+}
+
+function DmaTable({
+  rows,
+  expandedIds,
+  onToggleExpand,
+}: {
+  rows: DmaRow[];
+  expandedIds: Set<string>;
+  onToggleExpand: (id: string) => void;
+}) {
+  const colCount = 8;
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead className="w-10" />
+          <TableHead className="text-xs">NMI</TableHead>
+          <TableHead className="text-xs min-w-[140px]">Linked business</TableHead>
+          <TableHead className="text-xs">Invoice period</TableHead>
+          <TableHead className="text-xs">Expected ($)</TableHead>
+          <TableHead className="text-xs">Actual ($)</TableHead>
+          <TableHead className="text-xs">Difference ($)</TableHead>
+          <TableHead className="text-xs w-[100px]">Status</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {rows.map((row, i) => {
+          const id = dmaRowId(row, i);
+          const expanded = expandedIds.has(id);
+          const mismatch = isDmaMismatch(row);
+          return (
+            <React.Fragment key={id}>
+              <TableRow
+                className={cn(mismatch && "bg-red-50/60 dark:bg-red-900/10", expanded && "border-b-0")}
+              >
+                <TableCell className="align-top py-2">
+                  <ExpandToggleButton
+                    expanded={expanded}
+                    onClick={() => onToggleExpand(id)}
+                    label={expanded ? "Collapse row details" : "Expand row details"}
+                  />
+                </TableCell>
+                <TableCell className="font-mono text-sm align-top">{cellValue(row.utility_identifier)}</TableCell>
+                <TableCell className="text-sm align-top">{cellValue(row.linked_business_name)}</TableCell>
+                <TableCell className="text-sm align-top whitespace-nowrap">{cellValue(row.invoice_period)}</TableCell>
+                <TableCell className="text-sm align-top tabular-nums">{cellValue(row.expected_charge)}</TableCell>
+                <TableCell className="text-sm align-top tabular-nums">{cellValue(row.actual_invoice_charge)}</TableCell>
+                <TableCell className="text-sm align-top tabular-nums">
+                  <HighlightedValue value={cellValue(row.difference)} highlight={mismatch} />
+                </TableCell>
+                <TableCell className="align-top">
+                  <Badge intent={mismatch ? "danger" : "success"}>{mismatch ? "Mismatch" : "OK"}</Badge>
+                </TableCell>
+              </TableRow>
+              {expanded && (
+                <TableRow className="hover:bg-transparent">
+                  <TableCell colSpan={colCount} className="p-0">
+                    <RowDetailPanel sections={buildDmaDetailSections(row)} />
+                  </TableCell>
+                </TableRow>
+              )}
+            </React.Fragment>
+          );
+        })}
+      </TableBody>
+    </Table>
   );
 }
 
@@ -422,7 +600,7 @@ function DemandCheckTable({
           <TableHead className="text-xs min-w-[140px]">Linked business</TableHead>
           <TableHead className="text-xs min-w-[160px]">Review type</TableHead>
           <TableHead className="text-xs">Risk / opportunity</TableHead>
-          <TableHead className="text-xs min-w-[120px]">Status</TableHead>
+          <TableHead className="text-xs min-w-[100px]">Status</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -447,14 +625,14 @@ function DemandCheckTable({
                 <TableCell className="text-sm align-top">{cellValue(row.linked_business_name)}</TableCell>
                 <TableCell className="text-sm align-top">{cellValue(row.review_type)}</TableCell>
                 <TableCell className="text-sm align-top">{cellValue(row.risk_or_opportunity)}</TableCell>
-                <TableCell
-                  className={cn(
-                    "text-sm align-top",
-                    mismatch ? "text-amber-700 dark:text-amber-400" : "text-green-700 dark:text-green-300"
+                <TableCell className="align-top">
+                  {status === "—" ? (
+                    <span>—</span>
+                  ) : (
+                    <Badge intent={mismatch ? "warning" : "success"}>
+                      {mismatch ? "Review" : "OK"}
+                    </Badge>
                   )}
-                  title={status}
-                >
-                  <span className="line-clamp-2">{status}</span>
                 </TableCell>
               </TableRow>
               {expanded && (
@@ -469,65 +647,6 @@ function DemandCheckTable({
         })}
       </TableBody>
     </Table>
-  );
-}
-
-function DataTable<T extends Record<string, string>>({
-  columns,
-  rows,
-  rowKey,
-  rowClassName,
-  renderCell,
-}: {
-  columns: ColumnDef<T>[];
-  rows: T[];
-  rowKey: (row: T, index: number) => string;
-  rowClassName?: (row: T) => string | undefined;
-  renderCell?: (row: T, key: keyof T) => React.ReactNode;
-}) {
-  return (
-    <div className="overflow-x-auto -mx-2">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            {columns.map((col) => (
-              <TableHead
-                key={String(col.key)}
-                className={cn(
-                  "whitespace-nowrap text-xs",
-                  col.wide && "min-w-[160px]"
-                )}
-              >
-                {col.label}
-              </TableHead>
-            ))}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rows.map((row, i) => (
-            <TableRow key={rowKey(row, i)} className={rowClassName?.(row)}>
-              {columns.map((col) => (
-                <TableCell
-                  key={String(col.key)}
-                  className={cn(
-                    "text-sm align-top",
-                    col.mono && "font-mono",
-                    col.wide && "min-w-[160px] max-w-[280px] whitespace-normal"
-                  )}
-                  title={
-                    col.wide ? cellValue(row[col.key]) : undefined
-                  }
-                >
-                  {renderCell
-                    ? renderCell(row, col.key)
-                    : cellValue(row[col.key])}
-                </TableCell>
-              ))}
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </div>
   );
 }
 
@@ -551,10 +670,32 @@ export default function DiscrepancyCheckPage() {
   const [viewType, setViewType] = useState<ViewType>(() =>
     parseViewType(searchParams.get("type"))
   );
+  const [showOnlyOverchargedGas, setShowOnlyOverchargedGas] = useState(true);
   const [showOnlyMismatchesElectricity, setShowOnlyMismatchesElectricity] = useState(false);
+  const [showOnlyMismatchesDma, setShowOnlyMismatchesDma] = useState(false);
   const [showOnlyMismatchesDemand, setShowOnlyMismatchesDemand] = useState(false);
+  const [expandedGasIds, setExpandedGasIds] = useState<Set<string>>(new Set());
+  const [expandedDmaIds, setExpandedDmaIds] = useState<Set<string>>(new Set());
   const [expandedElectricityIds, setExpandedElectricityIds] = useState<Set<string>>(new Set());
   const [expandedDemandIds, setExpandedDemandIds] = useState<Set<string>>(new Set());
+
+  const toggleGasExpand = useCallback((id: string) => {
+    setExpandedGasIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const toggleDmaExpand = useCallback((id: string) => {
+    setExpandedDmaIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
 
   const toggleElectricityExpand = useCallback((id: string) => {
     setExpandedElectricityIds((prev) => {
@@ -640,10 +781,12 @@ export default function DiscrepancyCheckPage() {
     [electricityDmaRows, filterById, idFilter]
   );
 
-  const filteredDemandCheck = useMemo(
-    () => (idFilter ? electricityDemandCheckRows.filter(filterById) : electricityDemandCheckRows),
-    [electricityDemandCheckRows, filterById, idFilter]
-  );
+  const filteredDemandCheck = useMemo(() => {
+    const withId = idFilter
+      ? electricityDemandCheckRows.filter(filterById)
+      : electricityDemandCheckRows;
+    return withId.filter(rowHasAnyValue);
+  }, [electricityDemandCheckRows, filterById, idFilter]);
 
   const parseEndDate = useCallback((period: string): number => {
     if (!period?.trim()) return 0;
@@ -664,6 +807,11 @@ export default function DiscrepancyCheckPage() {
   );
 
   const sortedRows = useMemo(() => sortByInvoicePeriod(filteredRows), [filteredRows, sortByInvoicePeriod]);
+
+  const displayedGasRows = useMemo(() => {
+    if (!showOnlyOverchargedGas) return sortedRows;
+    return sortedRows.filter(isGasOvercharged);
+  }, [sortedRows, showOnlyOverchargedGas]);
   const sortedElectricityContract = useMemo(
     () => sortByInvoicePeriod(filteredElectricityContract),
     [filteredElectricityContract, sortByInvoicePeriod]
@@ -672,6 +820,11 @@ export default function DiscrepancyCheckPage() {
     () => sortByInvoicePeriod(filteredElectricityDma),
     [filteredElectricityDma, sortByInvoicePeriod]
   );
+
+  const displayedDmaRows = useMemo(() => {
+    if (!showOnlyMismatchesDma) return sortedElectricityDma;
+    return sortedElectricityDma.filter(isDmaMismatch);
+  }, [sortedElectricityDma, showOnlyMismatchesDma]);
 
   const displayedElectricityContract = useMemo(() => {
     if (!showOnlyMismatchesElectricity) return sortedElectricityContract;
@@ -693,10 +846,12 @@ export default function DiscrepancyCheckPage() {
     return sortedDemandCheck.filter(isDemandMismatch);
   }, [sortedDemandCheck, showOnlyMismatchesDemand]);
 
-  const rowCountGas = sortedRows.length;
+  const rowCountGas = displayedGasRows.length;
+  const rowCountGasTotal = sortedRows.length;
   const rowCountContract = displayedElectricityContract.length;
   const rowCountContractTotal = sortedElectricityContract.length;
-  const rowCountDma = sortedElectricityDma.length;
+  const rowCountDma = displayedDmaRows.length;
+  const rowCountDmaTotal = sortedElectricityDma.length;
   const rowCountDemand = displayedDemandCheck.length;
   const rowCountDemandTotal = sortedDemandCheck.length;
 
@@ -709,11 +864,16 @@ export default function DiscrepancyCheckPage() {
           ? rowCountDma
           : rowCountDemand;
 
+  const demandRowsLookUnmapped =
+    viewType === "demand" &&
+    electricityDemandCheckRows.length > 0 &&
+    filteredDemandCheck.length === 0;
+
   const viewDescriptions: Record<ViewType, string> = {
-    gas: "C&I Gas invoice vs contract rates from the sheet.",
+    gas: "Invoice vs contract gas rates. Expand a row for full rate and contract detail. Overcharge columns are highlighted in red.",
     electricity_contract:
       "Invoice vs contract checks. Expand a row for peak, shoulder, off-peak, and service charge detail.",
-    dma: "DMA fee checks — expected vs actual invoice charges per billing period.",
+    dma: "DMA fee checks — expected vs actual charges. Expand a row for fees and the full status message.",
     demand: "Interval demand vs invoice checks. Expand a row for site, demand, and charge detail.",
   };
 
@@ -794,12 +954,34 @@ export default function DiscrepancyCheckPage() {
                 className="border border-stroke dark:border-dark-3 rounded-md px-2 py-1.5 bg-white dark:bg-gray-dark text-dark dark:text-white text-sm min-w-[140px]"
               />
             </label>
+            {viewType === "gas" && (
+              <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={showOnlyOverchargedGas}
+                  onChange={(e) => setShowOnlyOverchargedGas(e.target.checked)}
+                  className="rounded border-stroke dark:border-dark-3"
+                />
+                Hide zero overcharge
+              </label>
+            )}
             {viewType === "electricity_contract" && (
               <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={showOnlyMismatchesElectricity}
                   onChange={(e) => setShowOnlyMismatchesElectricity(e.target.checked)}
+                  className="rounded border-stroke dark:border-dark-3"
+                />
+                Show only mismatches
+              </label>
+            )}
+            {viewType === "dma" && (
+              <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={showOnlyMismatchesDma}
+                  onChange={(e) => setShowOnlyMismatchesDma(e.target.checked)}
                   className="rounded border-stroke dark:border-dark-3"
                 />
                 Show only mismatches
@@ -818,15 +1000,27 @@ export default function DiscrepancyCheckPage() {
             )}
             {(filterBusinessName.trim() ||
               filterIdentifier.trim() ||
+              showOnlyOverchargedGas ||
               showOnlyMismatchesElectricity ||
+              showOnlyMismatchesDma ||
               showOnlyMismatchesDemand) && (
               <span className="text-xs text-gray-500 dark:text-gray-400">
                 {filterBusinessName.trim() ? "Business filter applied on server. " : ""}
                 {activeRowCount} row(s)
+                {viewType === "gas" &&
+                showOnlyOverchargedGas &&
+                rowCountGasTotal !== rowCountGas
+                  ? ` of ${rowCountGasTotal}`
+                  : ""}
                 {viewType === "electricity_contract" &&
                 showOnlyMismatchesElectricity &&
                 rowCountContractTotal !== rowCountContract
                   ? ` of ${rowCountContractTotal}`
+                  : ""}
+                {viewType === "dma" &&
+                showOnlyMismatchesDma &&
+                rowCountDmaTotal !== rowCountDma
+                  ? ` of ${rowCountDmaTotal}`
                   : ""}
                 {viewType === "demand" &&
                 showOnlyMismatchesDemand &&
@@ -845,16 +1039,24 @@ export default function DiscrepancyCheckPage() {
           {loading ? (
             <p className="text-sm text-gray-500 py-4">Loading…</p>
           ) : viewType === "gas" ? (
-            rowCountGas === 0 ? (
+            rowCountGasTotal === 0 ? (
               <p className="text-sm text-gray-500 italic py-4">
                 No C&I Gas discrepancy rows match the filters.
+              </p>
+            ) : rowCountGas === 0 ? (
+              <p className="text-sm text-gray-500 italic py-4">
+                No overcharged rows in the current filter set. Turn off &quot;Hide zero overcharge&quot; to see all rows.
               </p>
             ) : (
               <>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Sorted by most recent invoice period at top.
+                  {rowCountGas} row(s). Red values indicate rate or overcharge differences. Expand a row for contract rates and take-or-pay detail.
                 </p>
-                <DataTable columns={GAS_COLUMNS} rows={sortedRows} rowKey={(r, i) => `${r.utility_identifier}-${i}`} />
+                <GasTable
+                  rows={displayedGasRows}
+                  expandedIds={expandedGasIds}
+                  onToggleExpand={toggleGasExpand}
+                />
               </>
             )
           ) : viewType === "electricity_contract" ? (
@@ -879,44 +1081,30 @@ export default function DiscrepancyCheckPage() {
               </>
             )
           ) : viewType === "dma" ? (
-            rowCountDma === 0 ? (
+            rowCountDmaTotal === 0 ? (
               <p className="text-sm text-gray-500 italic py-4">
                 No DMA discrepancy rows match the filters.
+              </p>
+            ) : rowCountDma === 0 ? (
+              <p className="text-sm text-gray-500 italic py-4">
+                No mismatches in the current filter set. Turn off &quot;Show only mismatches&quot; to see all rows.
               </p>
             ) : (
               <>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
-                  {rowCountDma} row(s). Mismatch rows show status from the sheet.
+                  {rowCountDma} row(s). Expand a row for DMA fees and the full status message.
                 </p>
-                <DataTable
-                  columns={DMA_COLUMNS}
-                  rows={sortedElectricityDma}
-                  rowKey={(r, i) => `dma-${r.utility_identifier}-${i}`}
-                  rowClassName={(r) =>
-                    (r.status ?? "").includes("❌") ? "bg-red-50/60 dark:bg-red-900/10" : undefined
-                  }
-                  renderCell={(row, key) => {
-                    if (key === "status") {
-                      const status = cellValue(row.status);
-                      const mismatch = status.includes("❌") || status.toLowerCase().includes("mismatch");
-                      return (
-                        <span
-                          className={cn(
-                            "whitespace-normal",
-                            mismatch
-                              ? "text-red-700 dark:text-red-300"
-                              : "text-green-700 dark:text-green-300"
-                          )}
-                        >
-                          {status}
-                        </span>
-                      );
-                    }
-                    return cellValue(row[key]);
-                  }}
+                <DmaTable
+                  rows={displayedDmaRows}
+                  expandedIds={expandedDmaIds}
+                  onToggleExpand={toggleDmaExpand}
                 />
               </>
             )
+          ) : demandRowsLookUnmapped ? (
+            <p className="text-sm text-gray-500 italic py-4">
+              Demand Check rows were returned from the sheet but no column data could be read. Check that the &quot;Demand Check&quot; tab headers match the expected layout, or open the Google Sheet to verify.
+            </p>
           ) : rowCountDemandTotal === 0 ? (
             <p className="text-sm text-gray-500 italic py-4">
               No Demand Check rows match the filters.
