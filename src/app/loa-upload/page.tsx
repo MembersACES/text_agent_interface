@@ -6,6 +6,7 @@ import { Alert } from '../../components/ui-elements/alert';
 import { notifyUtilityLinkedPostProcess } from '@/lib/utility-linked-notify';
 import {
   LOA_UPLOAD_UTILITY_API_ENDPOINTS,
+  type LoaUploadUtilityKey,
   postLoaDocument,
 } from '@/lib/invoice-api-endpoints';
 
@@ -51,7 +52,7 @@ export default function LoaUploadPage() {
   
   // New states for utility linking
   const [showUtilityPrompt, setShowUtilityPrompt] = useState(false);
-  const [selectedUtility, setSelectedUtility] = useState<string>("");
+  const [selectedUtility, setSelectedUtility] = useState<LoaUploadUtilityKey | "">("");
   const [utilityFile, setUtilityFile] = useState<File | null>(null);
   const [utilityUploadResult, setUtilityUploadResult] = useState<string | null>(null);
   const [utilityData, setUtilityData] = useState<any>(null);
@@ -627,7 +628,13 @@ export default function LoaUploadPage() {
             <label className="block font-medium mb-1">Utility Type</label>
             <select
               value={selectedUtility}
-              onChange={(e) => setSelectedUtility(e.target.value)}
+              onChange={(e) =>
+                setSelectedUtility(
+                  e.target.value === ""
+                    ? ""
+                    : (e.target.value as LoaUploadUtilityKey),
+                )
+              }
               className="w-full px-3 py-2 border border-gray-300 rounded"
             >
               <option value="">Select Utility Type</option>

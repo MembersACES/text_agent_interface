@@ -40,6 +40,8 @@ export const LOA_UPLOAD_UTILITY_API_ENDPOINTS = {
   WATER: invoiceApi("water/process-invoice"),
 } as const;
 
+export type LoaUploadUtilityKey = keyof typeof LOA_UPLOAD_UTILITY_API_ENDPOINTS;
+
 export const LOA_PROCESS_ENDPOINTS = [
   invoiceApi("loa/process-document"),
   `${ACES_LEGACY_API_BASE}/v1/loa/process-document`,
