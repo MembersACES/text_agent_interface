@@ -4,6 +4,11 @@ import BusinessDetailsDisplay from '../../components/BusinessDetailsDisplay';
 import IndustrySubfolderSelector from '../../components/IndustrySubfolderSelector';
 import { Alert } from '../../components/ui-elements/alert';
 import { notifyUtilityLinkedPostProcess } from '@/lib/utility-linked-notify';
+import {
+  LOA_UPLOAD_UTILITY_API_ENDPOINTS,
+  type LoaUploadUtilityKey,
+  postLoaDocument,
+} from '@/lib/invoice-api-endpoints';
 
 const LOA_OPTIONS = [
   "LOA"
@@ -20,20 +25,7 @@ const UTILITY_OPTIONS = {
   WATER: "WATER",
 };
 
-const UTILITY_API_ENDPOINTS: Record<string, string> = {
-  WASTE: "https://aces-invoice-api-672026052958.australia-southeast2.run.app/v1/waste/process-invoice",
-  COOKING_OIL: "https://aces-invoice-api-672026052958.australia-southeast2.run.app/v1/oil/process-invoice",
-  ELECTRICITY_CI: "https://aces-api-63gwbzzcdq-km.a.run.app/v1/electricity-ci/process-invoice",
-  ELECTRICITY_SME: "https://aces-api-63gwbzzcdq-km.a.run.app/v1/electricity-sme/process-invoice",
-  GAS_CI: "https://aces-api-63gwbzzcdq-km.a.run.app/v1/gas-ci/process-invoice",
-  GAS_SME: "https://aces-api-63gwbzzcdq-km.a.run.app/v1/gas-sme/process-invoice",
-  GREASE_TRAP: "https://aces-api-63gwbzzcdq-km.a.run.app/v1/grease-trap/process-invoice",
-  WATER: "https://aces-api-63gwbzzcdq-km.a.run.app/v1/water/process-invoice",
-};
-
-const LOA_API_ENDPOINTS: Record<string, string> = {
-  LOA: "https://aces-api-63gwbzzcdq-km.a.run.app/v1/loa/process-document",
-};
+const UTILITY_API_ENDPOINTS = LOA_UPLOAD_UTILITY_API_ENDPOINTS;
 
 const INDUSTRY_OPTIONS = [
   '003-Clubs',
@@ -60,7 +52,7 @@ export default function LoaUploadPage() {
   
   // New states for utility linking
   const [showUtilityPrompt, setShowUtilityPrompt] = useState(false);
-  const [selectedUtility, setSelectedUtility] = useState<string>("");
+  const [selectedUtility, setSelectedUtility] = useState<LoaUploadUtilityKey | "">("");
   const [utilityFile, setUtilityFile] = useState<File | null>(null);
   const [utilityUploadResult, setUtilityUploadResult] = useState<string | null>(null);
   const [utilityData, setUtilityData] = useState<any>(null);
@@ -89,36 +81,30 @@ export default function LoaUploadPage() {
     setUploadResult(null);
     setAuthError(false);
 
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('utility_type', utilityType);
-
-    const endpoint = LOA_API_ENDPOINTS[utilityType];
-
     try {
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        body: formData,
+      const { res, data: parsedData, rawText } = await postLoaDocument(() => {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('utility_type', utilityType);
+        return formData;
       });
 
-      let data;
-      try {
-        data = await res.json();
-      } catch (jsonErr) {
-        const text = await res.text();
-        setUploadResult(`❌ Error parsing JSON: ${res.status} ${res.statusText}\n${text}`);
+      if (rawText && !parsedData) {
+        setUploadResult(`❌ Error parsing JSON: ${res.status} ${res.statusText}\n${rawText}`);
         setLoading(false);
         return;
       }
 
-      if (data.message && /invalid token|token expired|expired token/i.test(data.message)) {
+      const data = parsedData ?? {};
+
+      if (data.message && /invalid token|token expired|expired token/i.test(String(data.message))) {
         setAuthError(true);
         setUploadResult(null);
       } else if (res.ok) {
-        setUploadResult(`✅ ${data.message || 'Document lodged successfully!'}`);
+        setUploadResult(`✅ ${String(data.message || 'Document lodged successfully!')}`);
         setShowFolderPrompt(true);
       } else {
-        setUploadResult(`❌ Upload failed: ${data.message || res.statusText}`);
+        setUploadResult(`❌ Upload failed: ${String(data.message || res.statusText)}`);
       }
     } catch (error: any) {
       setUploadResult(`❌ Error: ${error.message}`);
@@ -642,7 +628,13 @@ export default function LoaUploadPage() {
             <label className="block font-medium mb-1">Utility Type</label>
             <select
               value={selectedUtility}
-              onChange={(e) => setSelectedUtility(e.target.value)}
+              onChange={(e) =>
+                setSelectedUtility(
+                  e.target.value === ""
+                    ? ""
+                    : (e.target.value as LoaUploadUtilityKey),
+                )
+              }
               className="w-full px-3 py-2 border border-gray-300 rounded"
             >
               <option value="">Select Utility Type</option>

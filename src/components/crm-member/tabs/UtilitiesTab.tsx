@@ -742,7 +742,7 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility }: U
                                     window.open(
                                       `/resources/discrepancy-check?business_name=${encodeURIComponent(
                                         businessName
-                                      )}&identifier=${encodeURIComponent(identifier)}&type=electricity`,
+                                      )}&identifier=${encodeURIComponent(identifier)}&type=electricity_contract`,
                                       "_blank",
                                       "noopener,noreferrer"
                                     )

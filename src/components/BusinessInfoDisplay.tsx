@@ -2673,7 +2673,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                                         window.open(
                                           `/resources/discrepancy-check?business_name=${encodeURIComponent(
                                             businessName
-                                          )}&identifier=${encodeURIComponent(identifier)}&type=electricity`,
+                                          )}&identifier=${encodeURIComponent(identifier)}&type=electricity_contract`,
                                           "_blank",
                                           "noopener,noreferrer"
                                         )

@@ -1,8 +1,13 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useSession } from "next-auth/react";
-import { getApiBaseUrl, getSendClientDocumentN8nWebhookUrl, parseGoogleDriveOrDocsFileId } from "@/lib/utils";
+import {
+  getApiBaseUrl,
+  getAutonomousApiBaseUrl,
+  getSendClientDocumentN8nWebhookUrl,
+  parseGoogleDriveOrDocsFileId,
+} from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 import { useSearchParams } from "next/navigation";
 import { PageHeader } from "@/components/Layouts/PageHeader";
@@ -41,6 +46,66 @@ interface LastClientDocSendContext {
 
 /** Matches backend `EngagementFormType.SOLAR_PANEL_CLEANING` display name — only type with n8n send wired up for now. */
 const N8N_SEND_ELIGIBLE_ENGAGEMENT_FORM_TYPE = "Solar Panel Cleaning";
+
+/** Document Generation → three follow-up emails every 2 business days after n8n sends the form. */
+const SOLAR_ENGAGEMENT_FORM_SEQUENCE = "solar_panel_cleaning_engagement_form_v1";
+const SOLAR_ENGAGEMENT_FORM_EMAIL_COUNT = 3;
+const SOLAR_ENGAGEMENT_FORM_BUSINESS_DAY_GAP = 2;
+
+const SOLAR_ENGAGEMENT_INITIAL_EMAIL_SUBJECT =
+  "Solar cleaning — quick win to protect performance and your solar investment";
+
+type GmailSendMetadata = {
+  messageId: string | null;
+  threadId: string | null;
+};
+
+/** Gmail Send node returns `id` + `threadId`; n8n may nest them in the webhook response. */
+function extractGmailSendMetadata(webhookResponse: unknown): GmailSendMetadata {
+  const empty: GmailSendMetadata = { messageId: null, threadId: null };
+  const readFromObject = (obj: Record<string, unknown>): GmailSendMetadata => {
+    const messageId =
+      (typeof obj.id === "string" && obj.id.trim()) ||
+      (typeof obj.messageId === "string" && obj.messageId.trim()) ||
+      (typeof obj.email_id === "string" && obj.email_id.trim()) ||
+      (typeof obj.email_ID === "string" && obj.email_ID.trim()) ||
+      (typeof obj.gmail_message_id === "string" && obj.gmail_message_id.trim()) ||
+      null;
+    const threadId =
+      (typeof obj.threadId === "string" && obj.threadId.trim()) ||
+      (typeof obj.thread_id === "string" && obj.thread_id.trim()) ||
+      (typeof obj.gmail_thread_id === "string" && obj.gmail_thread_id.trim()) ||
+      null;
+    if (messageId || threadId) return { messageId, threadId };
+    for (const value of Object.values(obj)) {
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          if (item && typeof item === "object") {
+            const nested = readFromObject(item as Record<string, unknown>);
+            if (nested.messageId || nested.threadId) return nested;
+          }
+        }
+      } else if (value && typeof value === "object") {
+        const nested = readFromObject(value as Record<string, unknown>);
+        if (nested.messageId || nested.threadId) return nested;
+      }
+    }
+    return empty;
+  };
+  if (Array.isArray(webhookResponse)) {
+    for (const item of webhookResponse) {
+      if (item && typeof item === "object") {
+        const found = readFromObject(item as Record<string, unknown>);
+        if (found.messageId || found.threadId) return found;
+      }
+    }
+    return empty;
+  }
+  if (webhookResponse && typeof webhookResponse === "object") {
+    return readFromObject(webhookResponse as Record<string, unknown>);
+  }
+  return empty;
+}
 
 function canSendClientDocViaN8n(ctx: LastClientDocSendContext | null): boolean {
   if (!ctx) return false;
@@ -202,6 +267,15 @@ export default function DocumentGenerationPage() {
   const [sendDocumentStaffUsers, setSendDocumentStaffUsers] = useState<StaffUserForCc[]>([]);
   const [sendDocumentCcTeam, setSendDocumentCcTeam] = useState<Record<string, boolean>>({});
   const [sendDocumentCcManual, setSendDocumentCcManual] = useState("");
+  const [sendAutonomousPrompt, setSendAutonomousPrompt] = useState<{
+    messageId: string | null;
+    threadId: string | null;
+    baseMsg: string;
+    recipientName: string;
+    recipientEmail: string;
+  } | null>(null);
+  const [sendAutonomousBusy, setSendAutonomousBusy] = useState(false);
+  const crmOfferIdRef = useRef<number | null>(null);
   const searchParams = useSearchParams();
   
   // Get category filter from URL
@@ -550,6 +624,188 @@ export default function DocumentGenerationPage() {
     (selectedDocumentCategory !== "eoi" || selectedEoiType) &&
     (selectedDocumentCategory !== "engagement-forms" || selectedEngagementFormType);
 
+  const resolveClientIdForAutonomous = async (): Promise<number | null> => {
+    const fromForm = editableBusinessInfo?.client_id;
+    if (typeof fromForm === "number" && fromForm > 0) return fromForm;
+    const bn = editableBusinessInfo?.business_name?.trim();
+    if (!bn || !token) return null;
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/get-business-info`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ business_name: bn }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && typeof data.client_id === "number" && data.client_id > 0) {
+        setEditableBusinessInfo((prev) => (prev ? { ...prev, client_id: data.client_id } : prev));
+        return data.client_id;
+      }
+    } catch {
+      /* ignore */
+    }
+    return null;
+  };
+
+  const ensureSolarCleaningCrmOfferId = async (): Promise<number | null> => {
+    if (crmOfferIdRef.current != null) return crmOfferIdRef.current;
+    if (!token) return null;
+    const clientNum = await resolveClientIdForAutonomous();
+    const business = editableBusinessInfo?.business_name?.trim() || lastClientDocSendContext?.business_name?.trim();
+    if (!business) return null;
+    try {
+      const createRes = await fetch(`${getApiBaseUrl()}/api/offers`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          client_id: clientNum && clientNum > 0 ? clientNum : null,
+          status: "requested",
+          business_name: business,
+          utility_type: "Solar panel cleaning",
+        }),
+      });
+      if (!createRes.ok) {
+        console.warn("[Doc gen CRM] create offer failed:", await createRes.text());
+        return null;
+      }
+      const created = (await createRes.json()) as { id?: number };
+      const id = typeof created?.id === "number" ? created.id : null;
+      if (id != null) crmOfferIdRef.current = id;
+      return id;
+    } catch (e) {
+      console.warn("[Doc gen CRM] create offer error:", e);
+      return null;
+    }
+  };
+
+  const recordEngagementFormSentInCrm = async (
+    recipientEmail: string,
+    recipientName: string,
+    docLink: string | undefined,
+  ) => {
+    const email = session?.user?.email;
+    if (!email || !token) return;
+    const oid = await ensureSolarCleaningCrmOfferId();
+    if (oid == null) return;
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/offers/${oid}/activities`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          activity_type: "engagement_form_sent",
+          document_link: docLink,
+          metadata: {
+            source: "document_generation_page",
+            form_type: N8N_SEND_ELIGIBLE_ENGAGEMENT_FORM_TYPE,
+            recipient_email: recipientEmail,
+            recipient_name: recipientName,
+          },
+          created_by: email,
+        }),
+      });
+      if (!res.ok) console.warn("[Doc gen CRM] engagement_form_sent:", res.status, await res.text());
+    } catch (e) {
+      console.warn("[Doc gen CRM] engagement_form_sent error:", e);
+    }
+  };
+
+  const buildSolarAutonomousContext = (
+    recipientName: string,
+    recipientEmail: string,
+    gmail: GmailSendMetadata,
+  ): Record<string, unknown> => {
+    const info = editableBusinessInfo;
+    const ctx = lastClientDocSendContext;
+    const messageId = (gmail.messageId || "").trim() || null;
+    const threadId = (gmail.threadId || "").trim() || null;
+    const context: Record<string, unknown> = {
+      source: "document_generation_page",
+      sequence_type: SOLAR_ENGAGEMENT_FORM_SEQUENCE,
+      contact_name: recipientName.trim() || info?.contact_name?.trim() || null,
+      contact_email: recipientEmail.trim() || info?.email?.trim() || null,
+      contact_phone: info?.telephone?.trim() || null,
+      business_name: info?.business_name?.trim() || ctx?.business_name?.trim() || null,
+      site_address: info?.site_address?.trim() || null,
+      client_folder_url: info?.client_folder_url?.trim() || ctx?.client_folder_url?.trim() || null,
+      engagement_form_type: ctx?.engagement_form_type || N8N_SEND_ELIGIBLE_ENGAGEMENT_FORM_TYPE,
+      google_file_id: ctx?.google_file_id || null,
+      reply_in_thread: true,
+      omit_validity: true,
+      omit_document_links: true,
+      initial_email_subject: SOLAR_ENGAGEMENT_INITIAL_EMAIL_SUBJECT,
+      use_html_signature: true,
+    };
+    if (messageId) {
+      context.email_id = messageId;
+      context.email_ID = messageId;
+      context.gmail_message_id = messageId;
+    }
+    if (threadId) {
+      context.gmail_thread_id = threadId;
+      context.thread_id = threadId;
+    }
+    return context;
+  };
+
+  const startSolarAutonomousSequence = async (
+    recipientName: string,
+    recipientEmail: string,
+    gmail: GmailSendMetadata,
+  ) => {
+    if (!token) throw new Error("Sign in required to start autonomous sequences.");
+    if (!gmail.messageId && !gmail.threadId) {
+      throw new Error(
+        "Could not capture Gmail thread from the send workflow. Update the send-eoi n8n flow to return Gmail message id and threadId in the webhook response, then send again.",
+      );
+    }
+    const oid = await ensureSolarCleaningCrmOfferId();
+    if (oid == null) {
+      throw new Error("Could not link a CRM offer for this business. Try reloading business info from search.");
+    }
+    const clientNum = await resolveClientIdForAutonomous();
+    const context = buildSolarAutonomousContext(recipientName, recipientEmail, gmail);
+    const res = await fetch(`${getAutonomousApiBaseUrl()}/api/autonomous/sequences/start`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sequence_type: SOLAR_ENGAGEMENT_FORM_SEQUENCE,
+        offer_id: oid,
+        client_id: clientNum && clientNum > 0 ? clientNum : null,
+        crm_activity_id: null,
+        anchor_at: new Date().toISOString(),
+        timezone: "Australia/Brisbane",
+        email_id: (gmail.messageId || "").trim() || null,
+        context,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(
+        typeof data.detail === "string" ? data.detail : "Failed to start autonomous sequence",
+      );
+    }
+  };
+
+  const confirmStartEngagementFormSequence = async () => {
+    if (!sendAutonomousPrompt) return;
+    setSendAutonomousBusy(true);
+    const { messageId, threadId, baseMsg, recipientName, recipientEmail } = sendAutonomousPrompt;
+    try {
+      await startSolarAutonomousSequence(recipientName, recipientEmail, { messageId, threadId });
+      setResult(
+        `${baseMsg}\n\n✅ Autonomous sequence started: ${SOLAR_ENGAGEMENT_FORM_EMAIL_COUNT} follow-up emails (every ${SOLAR_ENGAGEMENT_FORM_BUSINESS_DAY_GAP} business days) — see Autonomous Agent.`,
+      );
+      showToast("Engagement form follow-up email sequence started.", "success");
+    } catch (seqErr) {
+      const note =
+        seqErr instanceof Error ? seqErr.message : "Could not start engagement form sequence.";
+      setResult(`${baseMsg}\n\n⚠️ ${note}`);
+      showToast(note, "error");
+    } finally {
+      setSendAutonomousBusy(false);
+      setSendAutonomousPrompt(null);
+    }
+  };
+
   const openSendDocumentModal = () => {
     if (!lastClientDocSendContext || !canSendClientDocViaN8n(lastClientDocSendContext)) return;
     setSendDocumentRecipientName(editableBusinessInfo?.contact_name?.trim() ?? "");
@@ -604,12 +860,46 @@ export default function DocumentGenerationPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
+      const responseText = await res.text().catch(() => "");
+      let webhookResponse: unknown = null;
+      if (responseText) {
+        try {
+          webhookResponse = JSON.parse(responseText);
+        } catch {
+          webhookResponse = { raw: responseText };
+        }
+      }
       if (res.ok) {
-        showToast("Document send workflow triggered.", "success");
+        const baseMsg = `✅ Engagement form emailed to ${email}.`;
+        showToast("Document send workflow completed.", "success");
         setSendDocumentModalOpen(false);
+        await recordEngagementFormSentInCrm(
+          email,
+          name,
+          rest.document_link || undefined,
+        );
+        if (
+          engagement_form_type === N8N_SEND_ELIGIBLE_ENGAGEMENT_FORM_TYPE &&
+          kind === "engagement-form"
+        ) {
+          const gmailMeta = extractGmailSendMetadata(webhookResponse);
+          setSendAutonomousPrompt({
+            messageId: gmailMeta.messageId,
+            threadId: gmailMeta.threadId,
+            baseMsg,
+            recipientName: name,
+            recipientEmail: email,
+          });
+          if (!gmailMeta.messageId && !gmailMeta.threadId) {
+            showToast(
+              "Send succeeded, but Gmail thread id was not returned — fix send-eoi n8n response before starting follow-ups.",
+              "error",
+            );
+          }
+        }
+        setResult((prev) => (prev.trim() ? `${prev.trim()}\n\n${baseMsg}` : baseMsg));
       } else {
-        const text = await res.text().catch(() => "");
-        showToast(`n8n returned ${res.status}${text ? `: ${text.slice(0, 200)}` : ""}`, "error");
+        showToast(`n8n returned ${res.status}${responseText ? `: ${responseText.slice(0, 200)}` : ""}`, "error");
       }
     } catch (e) {
       console.error(e);
@@ -957,7 +1247,10 @@ export default function DocumentGenerationPage() {
           <li>5. Click &quot;Generate&quot; to create your document</li>
           <li>
             6. After a successful <strong>Solar Panel Cleaning</strong> engagement form, use &quot;Send document&quot;
-            to email it via n8n (other EOIs and engagement forms do not have send wired up yet)
+            to email it via n8n first; then start the autonomous sequence for{" "}
+            <strong>{SOLAR_ENGAGEMENT_FORM_EMAIL_COUNT} follow-up emails</strong> (every{" "}
+            {SOLAR_ENGAGEMENT_FORM_BUSINESS_DAY_GAP} business days). Other EOIs and engagement forms do not have send or
+            autonomous wired up yet
           </li>
         </ol>
         
@@ -1075,6 +1368,44 @@ export default function DocumentGenerationPage() {
                 className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors order-1 sm:order-2 disabled:opacity-50"
               >
                 {sendDocumentSubmitting ? "Sending…" : "Send document"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {sendAutonomousPrompt && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/45 backdrop-blur-sm p-4"
+          aria-modal="true"
+          role="dialog"
+        >
+          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-gray-900 shadow-2xl border border-gray-200 dark:border-gray-700 p-6">
+            <h3 className="text-base font-bold text-gray-900 dark:text-gray-100 mb-1">
+              Schedule follow-up emails?
+            </h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+              The engagement form was already emailed via n8n (with attachments). Follow-ups will{" "}
+              <strong>reply on that Gmail thread</strong> — no new emails, no Drive links, no validity dates.{" "}
+              <strong>{SOLAR_ENGAGEMENT_FORM_EMAIL_COUNT} emails</strong>, each{" "}
+              {SOLAR_ENGAGEMENT_FORM_BUSINESS_DAY_GAP} business days apart (09:00 AEST).
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => void confirmStartEngagementFormSequence()}
+                disabled={sendAutonomousBusy}
+                className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold disabled:opacity-50"
+              >
+                {sendAutonomousBusy ? "Starting…" : `Start ${SOLAR_ENGAGEMENT_FORM_EMAIL_COUNT} follow-up emails`}
+              </button>
+              <button
+                type="button"
+                onClick={() => setSendAutonomousPrompt(null)}
+                disabled={sendAutonomousBusy}
+                className="px-4 py-2.5 rounded-lg border border-gray-200 dark:border-gray-600 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
+              >
+                Not now
               </button>
             </div>
           </div>

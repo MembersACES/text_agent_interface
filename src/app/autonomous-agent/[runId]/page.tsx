@@ -101,6 +101,47 @@ function SequenceMetricsSidebar({ run, offer }: { run: RunDetail; offer: Offer |
   const snap = ctx.comparison_snapshot as Record<string, unknown> | undefined;
   const lane = typeof snap?.lane === "string" ? snap.lane : "";
 
+  if (run.sequence_type === "solar_panel_cleaning_engagement_form_v1") {
+    const qn = strField(ctx, "quote_number");
+    const bn = strField(ctx, "business_name");
+    const docLink = strField(ctx, "engagement_form_document_link");
+    const formType = strField(ctx, "engagement_form_type") || "Solar Panel Cleaning";
+    return (
+      <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm overflow-hidden xl:sticky xl:top-4">
+        <div className="px-4 py-3 bg-indigo-50 dark:bg-indigo-950/30 border-b border-indigo-100 dark:border-indigo-900">
+          <span className="text-xs font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300">Engagement form</span>
+          <p className="text-sm font-semibold text-indigo-900 dark:text-indigo-100 mt-1">{formType}</p>
+        </div>
+        <div className="grid grid-cols-1 divide-y divide-gray-100 dark:divide-gray-800">
+          {bn ? (
+            <div className="px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Business</p>
+              <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 mt-1">{bn}</p>
+            </div>
+          ) : null}
+          {qn ? (
+            <div className="px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Quote number</p>
+              <p className="text-sm font-bold text-gray-900 dark:text-gray-100 mt-1 tabular-nums">{qn}</p>
+            </div>
+          ) : null}
+          {docLink ? (
+            <div className="px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Generated form</p>
+              <a href={docLink} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline mt-1 break-all">
+                Open document
+              </a>
+            </div>
+          ) : (
+            <div className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
+              Form link appears here after the generation step runs.
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   if (run.sequence_type === "solar_panel_cleaning_followup_v1") {
     const qn = strField(ctx, "quote_number");
     const site = strField(ctx, "site_name");

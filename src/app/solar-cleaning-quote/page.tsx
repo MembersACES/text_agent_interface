@@ -583,20 +583,27 @@ export default function SolarCleaningQuotePage() {
     } catch (e) { console.warn("[Solar quote CRM] sent activity error:", e); }
   };
 
-  const startSolarAutonomousSequence = async (emailId?: string | null) => {
-    if (!token) return;
-    const oid = await ensureSolarCleaningCrmOfferId();
-    if (oid == null) return;
-    const clientNum = clientId ? Number(clientId) : NaN;
+  /** Solar quote page only — outreach after quote sent (not Document Generation engagement form). */
+  const SOLAR_FOLLOWUP_SEQUENCE = "solar_panel_cleaning_followup_v1";
+
+  const buildSolarAutonomousContext = (emailId?: string | null): Record<string, unknown> => {
     const normalizedEmailId = (emailId || "").trim() || null;
     const context: Record<string, unknown> = {
       source: "solar_cleaning_quote_page",
       contact_name: sendName.trim() || null,
       contact_email: sendEmail.trim() || null,
+      contact_phone: null,
       business_name: (businessName || clientName).trim() || null,
+      client_name: clientName.trim() || null,
       quote_number: quoteNumber.trim() || null,
       site_name: siteName.trim() || null,
       site_contact: contactName.trim() || null,
+      site_address: siteAddress.trim() || null,
+      client_folder_url: clientFolderUrl.trim() || null,
+      engagement_form_type: "Solar Panel Cleaning",
+      quote_google_doc_id: generateResult?.quote_google_doc_id ?? null,
+      quote_pdf_file_id: generateResult?.quote_pdf_file_id ?? null,
+      quote_doc_url: generateResult?.quote_doc_url ?? null,
     };
     if (normalizedEmailId) {
       context.email_id = normalizedEmailId;
@@ -621,11 +628,24 @@ export default function SolarCleaningQuotePage() {
         total_inc_gst: formatAudDisplay(p.total),
       };
     }
+    return context;
+  };
+
+  const startSolarAutonomousSequence = async (
+    sequenceType: string,
+    emailId?: string | null,
+  ) => {
+    if (!token) return;
+    const oid = await ensureSolarCleaningCrmOfferId();
+    if (oid == null) return;
+    const clientNum = clientId ? Number(clientId) : NaN;
+    const normalizedEmailId = (emailId || "").trim() || null;
+    const context = buildSolarAutonomousContext(emailId);
     const res = await fetch(`${getAutonomousApiBaseUrl()}/api/autonomous/sequences/start`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        sequence_type: "solar_panel_cleaning_followup_v1",
+        sequence_type: sequenceType,
         offer_id: oid,
         client_id: Number.isFinite(clientNum) && clientNum > 0 ? clientNum : null,
         crm_activity_id: null,
@@ -638,7 +658,7 @@ export default function SolarCleaningQuotePage() {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       throw new Error(
-        (data as { detail?: string }).detail || "Email sent, but failed to start autonomous sequence",
+        (data as { detail?: string }).detail || "Failed to start autonomous sequence",
       );
     }
   };
@@ -743,8 +763,8 @@ export default function SolarCleaningQuotePage() {
     setSendFollowUpBusy(true);
     const { emailId, baseMsg } = sendFollowUpPrompt;
     try {
-      await startSolarAutonomousSequence(emailId);
-      setResultMsg(`${baseMsg} Autonomous follow-up sequence started.`);
+      await startSolarAutonomousSequence(SOLAR_FOLLOWUP_SEQUENCE, emailId);
+      setResultMsg(`${baseMsg} Autonomous outreach follow-up sequence started.`);
     } catch (seqErr) {
       setResultMsg(
         `${baseMsg} Note: ${seqErr instanceof Error ? seqErr.message : "Could not start follow-up sequence."}`,
@@ -1197,7 +1217,9 @@ export default function SolarCleaningQuotePage() {
           <div className="w-full max-w-md rounded-2xl bg-white dark:bg-gray-900 shadow-2xl border border-gray-200 dark:border-gray-700 p-6">
             <h3 className="text-base font-bold text-gray-900 dark:text-gray-100 mb-1">Start autonomous follow-up?</h3>
             <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-              Schedule the solar panel cleaning outreach sequence (email, voice, follow-up emails) for this offer in the Autonomous Agent.
+              Quote sent to client. Schedule the solar panel cleaning <strong>outreach</strong> sequence (email, voice,
+              SMS) — <code className="text-xs">solar_panel_cleaning_followup_v1</code>. Engagement form automation is on
+              Document Generation, not here.
             </p>
             <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
               <button
@@ -1223,7 +1245,7 @@ export default function SolarCleaningQuotePage() {
                     Starting…
                   </>
                 ) : (
-                  "Start sequence"
+                  "Start outreach follow-up"
                 )}
               </button>
             </div>
