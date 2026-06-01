@@ -5,6 +5,9 @@
 		},
 		{
 			"path": "."
+		},
+		{
+			"path": "../aces-invoice-api"
 		}
 	],
 	"settings": {}

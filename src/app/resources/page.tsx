@@ -20,6 +20,8 @@ import {
   Loader2,
   Link2,
   LayoutDashboard,
+  Mail,
+  Building2,
 } from "lucide-react";
 import { cn, getApiBaseUrl } from "@/lib/utils";
 
@@ -39,11 +41,14 @@ interface Resource {
   name: string;
   link: string;
   password: string;
+  email?: string;
   notes?: string;
   env: "production" | "development";
   category?: string;
   /** When true, listed under Dashboard Links instead of Production / Development */
   dashboardLink?: boolean;
+  /** When set, listed under Supplier Portals grouped by this label (e.g. "Blue SME Portal") */
+  portalGroup?: string;
 }
 
 const RESOURCES: Resource[] = [
@@ -148,6 +153,16 @@ const RESOURCES: Resource[] = [
     category: "Dashboard",
     dashboardLink: true,
   },
+  {
+    name: "Blue SME Portal",
+    link: "https://brokerportal.bluenrg.cd8.cloud/",
+    email: "data.quote@fornrg.com",
+    password: "Kf7@mqRv2pXn!wzL",
+    notes: "Blue NRG SME broker portal login.",
+    env: "production",
+    category: "Supplier Portal",
+    portalGroup: "Blue SME Portal",
+  },
 ];
 
 
@@ -162,6 +177,8 @@ const CATEGORY_COLORS: Record<string, string> = {
   Resources: "bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300",
   Dashboard:
     "bg-indigo-50 text-indigo-800 dark:bg-indigo-900/35 dark:text-indigo-200",
+  "Supplier Portal":
+    "bg-sky-50 text-sky-800 dark:bg-sky-900/35 dark:text-sky-200",
 };
 
 /** Notes longer than this show a collapsed preview with “Show more”. */
@@ -277,6 +294,25 @@ function ResourceCard({
           </div>
         </div>
 
+        {/* Email row */}
+        {resource.email ? (
+          <div className="flex items-center gap-1.5">
+            <Mail className="h-3 w-3 text-gray-400 shrink-0" />
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="font-mono text-xs bg-gray-50 dark:bg-dark-2 border border-gray-200 dark:border-dark-3 rounded px-2 py-0.5 text-gray-600 dark:text-gray-400 truncate">
+                {resource.email}
+              </span>
+              <button
+                onClick={() => onCopy(resource.email!, "Email")}
+                className="p-1 rounded hover:bg-gray-100 dark:hover:bg-dark-3 transition-colors shrink-0"
+                title="Copy email"
+              >
+                <Copy className="h-3.5 w-3.5 text-gray-400" />
+              </button>
+            </div>
+          </div>
+        ) : null}
+
         {/* Password row */}
         <div className="flex items-center gap-1.5">
           <Lock className="h-3 w-3 text-gray-400 shrink-0" />
@@ -374,13 +410,30 @@ export default function ResourcesPage() {
         r.link.toLowerCase().includes(search) ||
         r.notes?.toLowerCase().includes(search) ||
         r.password.toLowerCase().includes(search) ||
+        r.email?.toLowerCase().includes(search) ||
+        r.portalGroup?.toLowerCase().includes(search) ||
         r.category?.toLowerCase().includes(search)
     );
   }, [searchTerm]);
 
   const dashboardResources = filteredResources.filter((r) => r.dashboardLink);
-  const productionResources = filteredResources.filter((r) => !r.dashboardLink && r.env === "production");
-  const developmentResources = filteredResources.filter((r) => !r.dashboardLink && r.env === "development");
+  const supplierPortalResources = filteredResources.filter((r) => r.portalGroup);
+  const supplierPortalGroups = useMemo(() => {
+    const groups = new Map<string, Resource[]>();
+    for (const resource of supplierPortalResources) {
+      const group = resource.portalGroup!;
+      const existing = groups.get(group) ?? [];
+      existing.push(resource);
+      groups.set(group, existing);
+    }
+    return Array.from(groups.entries());
+  }, [supplierPortalResources]);
+  const productionResources = filteredResources.filter(
+    (r) => !r.dashboardLink && !r.portalGroup && r.env === "production"
+  );
+  const developmentResources = filteredResources.filter(
+    (r) => !r.dashboardLink && !r.portalGroup && r.env === "development"
+  );
 
   const togglePasswordVisibility = (index: number) => {
     setVisiblePasswords((prev) => {
@@ -524,6 +577,46 @@ export default function ResourcesPage() {
           </div>
         )}
       </section>
+
+      {/* Supplier Portals — retailer / broker logins grouped by portal */}
+      {supplierPortalGroups.length > 0 && (
+        <section>
+          <div className="flex flex-wrap items-center gap-2 mb-2">
+            <div className="flex items-center gap-1.5 bg-sky-50 dark:bg-sky-900/25 border border-sky-200 dark:border-sky-800 rounded-md px-2 py-1">
+              <Building2 className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" />
+              <span className="text-xs font-semibold text-sky-800 dark:text-sky-200">Supplier Portals</span>
+            </div>
+            <span className="text-xs text-gray-400 tabular-nums">
+              {supplierPortalResources.length} item{supplierPortalResources.length !== 1 ? "s" : ""}
+            </span>
+          </div>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-3 -mt-0.5">
+            Retailer and broker portal links with login credentials.
+          </p>
+          <div className="space-y-4">
+            {supplierPortalGroups.map(([groupName, resources]) => (
+              <div key={groupName}>
+                <h3 className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">{groupName}</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {resources.map((resource) => {
+                    const idx = getResourceIndex(resource);
+                    return (
+                      <ResourceCard
+                        key={idx}
+                        resource={resource}
+                        index={idx}
+                        visiblePasswords={visiblePasswords}
+                        onTogglePassword={togglePasswordVisibility}
+                        onCopy={copyToClipboard}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Production + Development: side-by-side on xl to reduce vertical scroll */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 xl:gap-6 items-start">
