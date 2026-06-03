@@ -413,7 +413,9 @@ export default function ClientDetailPage() {
                     clientId={clientId!}
                     client={client}
                     onSaveAdvocateMeeting={actions.handleSaveAdvocateMeeting}
+                    onSaveReportingEntity={actions.handleSaveReportingEntity}
                     savingAdvocateMeeting={actions.savingAdvocateMeeting}
+                    savingReportingEntity={actions.savingReportingEntity}
                   />
                 )}
               </main>

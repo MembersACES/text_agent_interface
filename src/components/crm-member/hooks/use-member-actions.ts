@@ -68,7 +68,9 @@ export interface UseMemberActionsResult {
     advocacy_meeting_time: string;
     advocacy_meeting_completed: boolean;
   }) => Promise<void>;
+  handleSaveReportingEntity: (reporting_entity: string) => Promise<void>;
   savingAdvocateMeeting: boolean;
+  savingReportingEntity: boolean;
 }
 
 export function useMemberActions({
@@ -90,6 +92,7 @@ export function useMemberActions({
   const [editProfileSubmitting, setEditProfileSubmitting] = useState(false);
   const [savingAdvocate, setSavingAdvocate] = useState(false);
   const [savingAdvocateMeeting, setSavingAdvocateMeeting] = useState(false);
+  const [savingReportingEntity, setSavingReportingEntity] = useState(false);
 
   const handleStageChange = useCallback(
     async (value: ClientStage) => {
@@ -423,6 +426,40 @@ export function useMemberActions({
     [clientId, token, setClient, setError, showToast]
   );
 
+  const handleSaveReportingEntity = useCallback(
+    async (reporting_entity: string) => {
+      if (!clientId || !token) return;
+      setSavingReportingEntity(true);
+      setError(null);
+      try {
+        const res = await fetch(`${getApiBaseUrl()}/api/clients/${clientId}`, {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            reporting_entity: reporting_entity.trim() || null,
+          }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error((data as { detail?: string }).detail || "Failed to save reporting entity");
+        }
+        const updated: Client = await res.json();
+        setClient(updated);
+        showToast("Sustainability reporting entity saved", "success");
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : "Failed to save reporting entity";
+        setError(msg);
+        showToast(msg, "error");
+      } finally {
+        setSavingReportingEntity(false);
+      }
+    },
+    [clientId, token, setClient, setError, showToast]
+  );
+
   return {
     savingStage,
     creatingNote,
@@ -438,6 +475,8 @@ export function useMemberActions({
     handleSaveAdvocate,
     handleSaveAdvocateMeeting,
     savingAdvocateMeeting,
+    handleSaveReportingEntity,
+    savingReportingEntity,
     savingAdvocate,
   };
 }
