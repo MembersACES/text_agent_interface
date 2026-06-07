@@ -4,9 +4,34 @@ import { useMemo, useState, useCallback, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { SectionHeader } from "../shared/SectionHeader";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { RecordRow } from "../shared/RecordRow";
+import { getRecordRowIcon } from "../shared/recordRowIcons";
 import { Modal } from "@/components/ui/modal";
+import { useToast } from "@/components/ui/toast";
 import { mapUtilityKey } from "../shared/mapUtilityKey";
 import { getApiBaseUrl, formatDateAustralian, formatDateDDMMYYYY, parseDateDDMMYYYYToISO } from "@/lib/utils";
+import {
+  buildDiscrepancyCheckUrl,
+  hasElectricityHits,
+  hasGasHits,
+  pickDmaSummary,
+  pickElectricityContractSummary,
+  pickGasSummary,
+  type DmaRow,
+  type ElectricityContractRow,
+} from "@/lib/discrepancy-utils";
+
+function isUtilityDataReceived(value: string | boolean | undefined): boolean {
+  return (
+    value === true ||
+    value === "Yes" ||
+    (typeof value === "string" && value.length > 0)
+  );
+}
 
 export interface UtilitiesTabProps {
   businessInfo: Record<string, unknown> | null;
@@ -210,6 +235,7 @@ type DmaDiscrepancyRow = Record<string, string> & {
 
 export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility }: UtilitiesTabProps) {
   const { data: session } = useSession();
+  const { showToast } = useToast();
   const token = (session as { id_token?: string; accessToken?: string })?.id_token
     ?? (session as { id_token?: string; accessToken?: string })?.accessToken;
 
@@ -219,6 +245,7 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility }: U
   const [electricityDemandReviewFlags, setElectricityDemandReviewFlags] = useState<Record<string, boolean>>({});
   const [discrepancyLoading, setDiscrepancyLoading] = useState(false);
   const [expandedDiscrepancyId, setExpandedDiscrepancyId] = useState<string | null>(null);
+  const [expandedUtilityId, setExpandedUtilityId] = useState<string | null>(null);
 
   const [dataRequestSummary, setDataRequestSummary] = useState<DataRequestSummary | null>(null);
   const [dataRequestLoading, setDataRequestLoading] = useState(false);
@@ -236,6 +263,12 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility }: U
   } | null>(null);
   const [utilityEditLoading, setUtilityEditLoading] = useState(false);
   const [utilityEditError, setUtilityEditError] = useState<string | null>(null);
+
+  const [showDriveModal, setShowDriveModal] = useState(false);
+  const [driveFilingType, setDriveFilingType] = useState("");
+  const [driveFile, setDriveFile] = useState<File | null>(null);
+  const [driveLoading, setDriveLoading] = useState(false);
+  const [driveResult, setDriveResult] = useState<string | null>(null);
 
   const closeDataRequestConfirm = useCallback(() => {
     setShowDataRequestConfirm(false);
@@ -288,6 +321,84 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility }: U
   const processedFileIds = infoWithFiles?._processed_file_ids as Record<string, unknown> | undefined;
   const loaLink = processedFileIds?.business_LOA as string | undefined;
   const driveUrl = (infoWithFiles?.gdrive as Record<string, unknown>)?.folder_url as string | undefined;
+  const linked =
+    (infoWithFiles?.Linked_Details as Record<string, unknown> | undefined)?.linked_utilities as
+      | Record<string, unknown>
+      | undefined ?? {};
+  const retailers =
+    (infoWithFiles?.Linked_Details as Record<string, unknown> | undefined)?.utility_retailers as
+      | Record<string, unknown>
+      | undefined ?? {};
+
+  const resetDrive = () => {
+    setShowDriveModal(false);
+    setDriveFile(null);
+    setDriveResult(null);
+  };
+
+  const openAdditionalUtilityUpload = (serviceKey: string) => {
+    const filingType =
+      serviceKey === "Cleaning"
+        ? "cleaning_invoice_upload"
+        : serviceKey === "Telecommunication"
+          ? "telecommunication_invoice_upload"
+          : "water_invoice_upload";
+    setDriveFilingType(filingType);
+    setDriveFile(null);
+    setDriveResult(null);
+    setShowDriveModal(true);
+  };
+
+  const uploadDrive = async () => {
+    if (!token) {
+      setDriveResult("Please sign in.");
+      return;
+    }
+    if (!driveFile) {
+      setDriveResult("Please select a file.");
+      return;
+    }
+    if (!driveUrl) {
+      setDriveResult("No Drive folder linked for this member.");
+      return;
+    }
+    setDriveLoading(true);
+    setDriveResult(null);
+    try {
+      const fd = new FormData();
+      fd.append("business_name", businessName);
+      fd.append("filing_type", driveFilingType);
+      fd.append("gdrive_url", driveUrl);
+      fd.append("files", driveFile);
+      const res = await fetch(`${getApiBaseUrl()}/api/drive-filing?token=${encodeURIComponent(token)}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg = (data as { detail?: string }).detail || "Upload failed";
+        setDriveResult(`Error: ${msg}`);
+        showToast(msg, "error");
+        return;
+      }
+      const ok = data as { status?: string; message?: string };
+      if (ok.status === "success") {
+        setDriveResult("File successfully uploaded!");
+        showToast("File uploaded successfully.", "success");
+      } else {
+        const msg = ok.message || "Upload failed";
+        setDriveResult(`Error: ${msg}`);
+        showToast(msg, "error");
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setDriveResult(`Error: ${msg}`);
+      showToast(msg, "error");
+    } finally {
+      setDriveLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!token || !businessName.trim()) {
@@ -368,11 +479,19 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility }: U
     return map;
   }, [electricityDmaRows]);
 
-  const hasElectricityDiscrepancy = useCallback((identifier: string) => {
-    const contractCount = electricityContractByIdentifier.get(identifier)?.length ?? 0;
-    const dmaCount = electricityDmaByIdentifier.get(identifier)?.length ?? 0;
-    return contractCount > 0 || dmaCount > 0;
-  }, [electricityContractByIdentifier, electricityDmaByIdentifier]);
+  const hasGasDiscrepancy = useCallback(
+    (identifier: string) => hasGasHits(discrepancyByIdentifier.get(identifier) ?? []),
+    [discrepancyByIdentifier]
+  );
+
+  const hasElectricityDiscrepancy = useCallback(
+    (identifier: string) =>
+      hasElectricityHits(
+        (electricityContractByIdentifier.get(identifier) ?? []) as ElectricityContractRow[],
+        (electricityDmaByIdentifier.get(identifier) ?? []) as DmaRow[]
+      ),
+    [electricityContractByIdentifier, electricityDmaByIdentifier]
+  );
 
   const hasElectricityDemandReview = useCallback((identifier: string) => {
     const normalized = (identifier ?? "").trim();
@@ -582,11 +701,13 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility }: U
 
   if (!businessInfo) {
     return (
-      <Card className="border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+      <Card className="p-0">
         <CardContent className="p-4">
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            No business information loaded. Load the member&apos;s business details to see linked utilities.
-          </p>
+          <EmptyState
+            title="No business information loaded."
+            description="Load the member's business details to see linked utilities."
+            className="py-4 items-start text-left [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:text-gray-500 [&_h3]:dark:text-gray-400"
+          />
         </CardContent>
       </Card>
     );
@@ -594,97 +715,200 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility }: U
 
   return (
     <>
-      <Card className="border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+      <Card className="p-0">
         <CardContent className="p-4 space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-100">
-              Linked Utilities & Retailers
-            </h2>
-            <div className="flex flex-wrap gap-2 items-center">
-              {onLinkUtility && (
-                <button
+          <SectionHeader
+            title="Linked Utilities & Retailers"
+            actions={
+              <>
+                {onLinkUtility && (
+                  <Button type="button" variant="secondary" size="sm" radius="md" onClick={onLinkUtility}>
+                    Link Utility Invoice
+                  </Button>
+                )}
+                <Button
                   type="button"
-                  onClick={onLinkUtility}
-                  className="text-xs px-2.5 py-1.5 rounded-md border border-gray-400 dark:border-gray-500 bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-100 hover:bg-gray-200 dark:hover:bg-gray-600"
+                  variant="secondary"
+                  size="sm"
+                  radius="md"
+                  onClick={() => window.open("/document-lodgement", "_blank")}
                 >
-                  Link Utility Invoice
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => window.open("/document-lodgement", "_blank")}
-                className="text-xs px-2.5 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
-              >
-                Upload invoice or data
-              </button>
-            </div>
-          </div>
+                  Upload invoice or data
+                </Button>
+              </>
+            }
+          />
 
           {rows.length === 0 ? (
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              No utilities have been linked for this member yet.
-            </p>
+            <EmptyState
+              title="No utilities have been linked for this member yet."
+              className="py-6 items-start text-left [&_h3]:text-sm [&_h3]:font-normal [&_h3]:text-gray-500 [&_h3]:dark:text-gray-400 [&_h3]:mb-0"
+            />
           ) : (
-            <div className="grid gap-4 md:grid-cols-2">
-              {rows.map((row) => (
-                <div
-                  key={row.displayKey}
-                  className="border rounded-lg p-3 bg-gray-50/60 dark:bg-gray-900/40 border-gray-200 dark:border-gray-700"
-                >
-                  <div className="text-xs font-semibold text-gray-700 dark:text-gray-200 mb-3">
-                    {row.displayKey}
-                  </div>
-                  <div className="space-y-3">
-                    {row.identifiers.map(({ value: identifier, retailer: retailerVal, extra }, idx) => (
-                      <div
-                        key={`${row.displayKey}-${idx}-${identifier}`}
-                        className="border-l-2 border-blue-200 dark:border-blue-800 pl-3"
-                      >
-                        <div className="text-sm font-medium text-gray-800 dark:text-gray-100 flex flex-wrap items-center gap-2">
-                          {row.config.label}: {identifier}
-                          {row.displayKey === "C&I Gas" && (discrepancyByIdentifier.get(identifier)?.length ?? 0) > 0 && (
-                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200 border border-amber-300 dark:border-amber-700">
+            <div className="divide-y divide-gray-50 dark:divide-gray-800/40 -mx-4">
+              {rows.flatMap((row) =>
+                row.identifiers.map(({ value: identifier, retailer: retailerVal, extra }) => {
+                  const rowId = `${row.displayKey}-${identifier}`;
+                  const categoryIcon = getRecordRowIcon(row.displayKey);
+                  const dataReceived = extra
+                    ? isUtilityDataReceived(extra.data_recieved)
+                    : false;
+                  const subtitleParts: string[] = [];
+                  if (retailerVal) subtitleParts.push(formatRetailerDisplay(retailerVal));
+                  if (extra?.contract_end_date) {
+                    subtitleParts.push(
+                      `Contract end ${formatDateAustralian(extra.contract_end_date)}`
+                    );
+                  }
+                  if (extra?.data_requested) {
+                    subtitleParts.push(
+                      `Data requested ${formatDateAustralian(extra.data_requested)}`
+                    );
+                  }
+                  const gasSummary =
+                    row.displayKey === "C&I Gas"
+                      ? pickGasSummary(discrepancyByIdentifier.get(identifier) ?? [], "summed")
+                      : null;
+                  const contractRowsForId = (electricityContractByIdentifier.get(identifier) ??
+                    []) as ElectricityContractRow[];
+                  const dmaRowsForId = (electricityDmaByIdentifier.get(identifier) ?? []) as DmaRow[];
+                  const contractSummary =
+                    row.displayKey === "C&I Electricity"
+                      ? pickElectricityContractSummary(contractRowsForId, "latest_hit")
+                      : null;
+                  const dmaSummary =
+                    row.displayKey === "C&I Electricity"
+                      ? pickDmaSummary(dmaRowsForId, "summed")
+                      : null;
+                  const showGasDiscrepancy =
+                    !discrepancyLoading && row.displayKey === "C&I Gas" && hasGasDiscrepancy(identifier);
+                  const showElectricityDiscrepancy =
+                    !discrepancyLoading &&
+                    row.displayKey === "C&I Electricity" &&
+                    hasElectricityDiscrepancy(identifier);
+                  const showDemandReview =
+                    !discrepancyLoading &&
+                    row.displayKey === "C&I Electricity" &&
+                    hasElectricityDemandReview(identifier);
+                  const discrepancyPanelId = `${row.displayKey}-${identifier}`;
+                  return (
+                    <RecordRow
+                      key={rowId}
+                      expandable
+                      expanded={expandedUtilityId === rowId}
+                      onExpandedChange={(open) =>
+                        setExpandedUtilityId(open ? rowId : null)
+                      }
+                      leadingIcon={categoryIcon.icon}
+                      iconIntent={categoryIcon.intent}
+                      title={`${row.displayKey} · ${identifier}`}
+                      subtitle={
+                        subtitleParts.length > 0
+                          ? subtitleParts.join(" · ")
+                          : `${row.config.label}: ${identifier}`
+                      }
+                      status={
+                        <div className="flex flex-wrap items-center justify-end gap-1">
+                          <Badge
+                            intent={dataReceived ? "success" : "warning"}
+                            shape="pill"
+                          >
+                            {dataReceived ? "Received" : "Not received"}
+                          </Badge>
+                          {showGasDiscrepancy && (
+                            <Badge intent="warning" shape="pill" className="font-semibold">
                               Discrepancy
-                            </span>
+                            </Badge>
                           )}
-                          {row.displayKey === "C&I Electricity" && hasElectricityDiscrepancy(identifier) && (
-                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200 border border-amber-300 dark:border-amber-700">
+                          {showElectricityDiscrepancy && (
+                            <Badge intent="warning" shape="pill" className="font-semibold">
                               Discrepancy
-                            </span>
+                            </Badge>
                           )}
-                          {row.displayKey === "C&I Electricity" && hasElectricityDemandReview(identifier) && (
-                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-semibold bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-100 border border-blue-300 dark:border-blue-700">
-                              Interval Data Included — Press “Account Info” for demand review vs invoice
-                            </span>
+                          {showDemandReview && (
+                            <Badge intent="info" shape="pill" title="Press Account Info for demand review vs invoice">
+                              Interval data
+                            </Badge>
                           )}
                         </div>
-                        {row.displayKey === "C&I Gas" && (discrepancyByIdentifier.get(identifier)?.length ?? 0) > 0 && (
+                      }
+                      actions={
+                        <>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            radius="md"
+                            onClick={() => handleAccountInfo(row.config, identifier)}
+                          >
+                            Account Info
+                          </Button>
+                          {row.config.tool !== "robot" && row.config.tool !== "cleaning" && (
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              radius="md"
+                              onClick={() => handleDataRequest(row.config, identifier, retailerVal)}
+                            >
+                              Data Request
+                            </Button>
+                          )}
+                          {row.config.tool !== "cleaning" && (
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              radius="md"
+                              onClick={() => handleQuoteRequest(row.config, identifier)}
+                            >
+                              Quote Request
+                            </Button>
+                          )}
+                        </>
+                      }
+                      expandedContent={
+                        <div className="space-y-3 text-xs text-gray-600 dark:text-gray-300">
+                        <div className="text-sm font-medium text-gray-800 dark:text-gray-100">
+                          {row.config.label}: {identifier}
+                        </div>
+                        {showGasDiscrepancy && gasSummary && (
                           <div className="mt-2 rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50/80 dark:bg-amber-900/20">
                             <button
                               type="button"
-                              onClick={() => setExpandedDiscrepancyId((prev) => (prev === `${row.displayKey}-${identifier}` ? null : `${row.displayKey}-${identifier}`))}
+                              onClick={() => setExpandedDiscrepancyId((prev) => (prev === discrepancyPanelId ? null : discrepancyPanelId))}
                               className="w-full px-2 py-1.5 text-left text-xs font-medium text-amber-800 dark:text-amber-200 flex items-center justify-between"
                             >
-                              {expandedDiscrepancyId === `${row.displayKey}-${identifier}` ? "Hide" : "Show"} discrepancy details
-                              <span className="text-amber-600 dark:text-amber-400">{expandedDiscrepancyId === `${row.displayKey}-${identifier}` ? "▼" : "▶"}</span>
+                              {expandedDiscrepancyId === discrepancyPanelId ? "Hide" : "Show"} discrepancy details
+                              <span className="text-amber-600 dark:text-amber-400">{expandedDiscrepancyId === discrepancyPanelId ? "▼" : "▶"}</span>
                             </button>
-                            {expandedDiscrepancyId === `${row.displayKey}-${identifier}` && (
+                            {expandedDiscrepancyId === discrepancyPanelId && (
                               <div className="px-2 pb-2 pt-0 space-y-1 text-xs text-gray-700 dark:text-gray-300">
-                                {discrepancyByIdentifier.get(identifier)?.map((d, i) => (
-                                  <div key={i}>
-                                    {d.rate_difference && <div>Rate difference: {d.rate_difference}</div>}
-                                    {d.pct_difference && <div>% difference: {d.pct_difference}</div>}
-                                    {d.annual_potential_overcharge && <div>Annual potential overcharge: {d.annual_potential_overcharge}</div>}
-                                    {d.take_or_pay_invoice && <div className="truncate max-w-full" title={d.take_or_pay_invoice}>Take or Pay: {d.take_or_pay_invoice.slice(0, 80)}{d.take_or_pay_invoice.length > 80 ? "…" : ""}</div>}
+                                {gasSummary.totalAnnualOverchargeFormatted && (
+                                  <div>
+                                    Annual potential overcharge (summed): {gasSummary.totalAnnualOverchargeFormatted}
+                                    {gasSummary.hitCount > 1 ? ` across ${gasSummary.hitCount} periods` : ""}
                                   </div>
-                                ))}
+                                )}
+                                {gasSummary.representativeRow?.rate_difference && (
+                                  <div>Rate difference: {gasSummary.representativeRow.rate_difference}</div>
+                                )}
+                                {gasSummary.representativeRow?.pct_difference && (
+                                  <div>% difference: {gasSummary.representativeRow.pct_difference}</div>
+                                )}
+                                {gasSummary.representativeRow?.invoice_period && (
+                                  <div>Latest period: {gasSummary.representativeRow.invoice_period}</div>
+                                )}
+                                {gasSummary.moreCount > 0 && (
+                                  <div className="text-amber-700 dark:text-amber-300">
+                                    +{gasSummary.moreCount} more flagged period{gasSummary.moreCount === 1 ? "" : "s"}
+                                  </div>
+                                )}
                                 <button
                                   type="button"
                                   onClick={() =>
                                     window.open(
-                                      `/resources/discrepancy-check?business_name=${encodeURIComponent(
-                                        businessName
-                                      )}&identifier=${encodeURIComponent(identifier)}&type=gas`,
+                                      buildDiscrepancyCheckUrl(businessName, identifier, "gas"),
                                       "_blank",
                                       "noopener,noreferrer"
                                     )
@@ -697,52 +921,80 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility }: U
                             )}
                           </div>
                         )}
-                        {row.displayKey === "C&I Electricity" && hasElectricityDiscrepancy(identifier) && (
+                        {showElectricityDiscrepancy && (
                           <div className="mt-2 rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50/80 dark:bg-amber-900/20">
                             <button
                               type="button"
-                              onClick={() => setExpandedDiscrepancyId((prev) => (prev === `${row.displayKey}-${identifier}` ? null : `${row.displayKey}-${identifier}`))}
+                              onClick={() => setExpandedDiscrepancyId((prev) => (prev === discrepancyPanelId ? null : discrepancyPanelId))}
                               className="w-full px-2 py-1.5 text-left text-xs font-medium text-amber-800 dark:text-amber-200 flex items-center justify-between"
                             >
-                              {expandedDiscrepancyId === `${row.displayKey}-${identifier}` ? "Hide" : "Show"} discrepancy details (Contract / DMA)
-                              <span className="text-amber-600 dark:text-amber-400">{expandedDiscrepancyId === `${row.displayKey}-${identifier}` ? "▼" : "▶"}</span>
+                              {expandedDiscrepancyId === discrepancyPanelId ? "Hide" : "Show"} discrepancy details (Contract / DMA)
+                              <span className="text-amber-600 dark:text-amber-400">{expandedDiscrepancyId === discrepancyPanelId ? "▼" : "▶"}</span>
                             </button>
-                            {expandedDiscrepancyId === `${row.displayKey}-${identifier}` && (
+                            {expandedDiscrepancyId === discrepancyPanelId && (
                               <div className="px-2 pb-2 pt-0 space-y-2 text-xs text-gray-700 dark:text-gray-300">
-                                {((electricityContractByIdentifier.get(identifier)?.length ?? 0) > 0) && (
+                                {contractSummary && contractSummary.hitCount > 0 && contractSummary.representativeRow && (
                                   <div>
                                     <div className="font-semibold text-amber-800 dark:text-amber-200">C&I Contract</div>
-                                    {electricityContractByIdentifier.get(identifier)?.map((d, i) => (
-                                      <div key={i} className="pl-1">
-                                        {d.discrepancy_detected != null && d.discrepancy_detected !== "" && <div>Detected: {d.discrepancy_detected}</div>}
-                                        {d.peak_rate_difference && <div>Peak rate diff: {d.peak_rate_difference}</div>}
-                                        {d.off_peak_rate_difference && <div>Off-peak rate diff: {d.off_peak_rate_difference}</div>}
-                                        {d.service_charge_difference && <div>Service charge diff: {d.service_charge_difference}</div>}
-                                        {d.notes && <div className="truncate max-w-full" title={d.notes}>{d.notes.slice(0, 80)}{d.notes.length > 80 ? "…" : ""}</div>}
-                                      </div>
-                                    ))}
+                                    <div className="pl-1">
+                                      {contractSummary.representativeRow.invoice_period && (
+                                        <div>Period: {contractSummary.representativeRow.invoice_period}</div>
+                                      )}
+                                      {contractSummary.representativeRow.peak_rate_difference && (
+                                        <div>Peak rate diff: {contractSummary.representativeRow.peak_rate_difference}</div>
+                                      )}
+                                      {contractSummary.representativeRow.off_peak_rate_difference && (
+                                        <div>Off-peak rate diff: {contractSummary.representativeRow.off_peak_rate_difference}</div>
+                                      )}
+                                      {contractSummary.representativeRow.service_charge_difference && (
+                                        <div>Service charge diff: {contractSummary.representativeRow.service_charge_difference}</div>
+                                      )}
+                                      {contractSummary.representativeRow.notes && (
+                                        <div className="truncate max-w-full" title={contractSummary.representativeRow.notes}>
+                                          {contractSummary.representativeRow.notes.slice(0, 80)}
+                                          {contractSummary.representativeRow.notes.length > 80 ? "…" : ""}
+                                        </div>
+                                      )}
+                                      {contractSummary.moreCount > 0 && (
+                                        <div className="text-amber-700 dark:text-amber-300">
+                                          +{contractSummary.moreCount} more flagged period{contractSummary.moreCount === 1 ? "" : "s"}
+                                        </div>
+                                      )}
+                                    </div>
                                   </div>
                                 )}
-                                {((electricityDmaByIdentifier.get(identifier)?.length ?? 0) > 0) && (
+                                {dmaSummary && dmaSummary.hitCount > 0 && dmaSummary.representativeRow && (
                                   <div>
                                     <div className="font-semibold text-amber-800 dark:text-amber-200">DMA</div>
-                                    {electricityDmaByIdentifier.get(identifier)?.map((d, i) => (
-                                      <div key={i} className="pl-1">
-                                        {d.expected_charge && <div>Expected: {d.expected_charge}</div>}
-                                        {d.actual_invoice_charge && <div>Actual: {d.actual_invoice_charge}</div>}
-                                        {d.difference && <div>Difference: {d.difference}</div>}
-                                        {d.status && <div>{d.status}</div>}
-                                      </div>
-                                    ))}
+                                    <div className="pl-1">
+                                      {dmaSummary.totalDifferenceFormatted && (
+                                        <div>
+                                          Difference (summed): {dmaSummary.totalDifferenceFormatted}
+                                          {dmaSummary.hitCount > 1 ? ` across ${dmaSummary.hitCount} periods` : ""}
+                                        </div>
+                                      )}
+                                      {dmaSummary.representativeRow.expected_charge && (
+                                        <div>Expected: {dmaSummary.representativeRow.expected_charge}</div>
+                                      )}
+                                      {dmaSummary.representativeRow.actual_invoice_charge && (
+                                        <div>Actual: {dmaSummary.representativeRow.actual_invoice_charge}</div>
+                                      )}
+                                      {dmaSummary.representativeRow.status && (
+                                        <div>{dmaSummary.representativeRow.status}</div>
+                                      )}
+                                      {dmaSummary.moreCount > 0 && (
+                                        <div className="text-amber-700 dark:text-amber-300">
+                                          +{dmaSummary.moreCount} more flagged period{dmaSummary.moreCount === 1 ? "" : "s"}
+                                        </div>
+                                      )}
+                                    </div>
                                   </div>
                                 )}
                                 <button
                                   type="button"
                                   onClick={() =>
                                     window.open(
-                                      `/resources/discrepancy-check?business_name=${encodeURIComponent(
-                                        businessName
-                                      )}&identifier=${encodeURIComponent(identifier)}&type=electricity_contract`,
+                                      buildDiscrepancyCheckUrl(businessName, identifier, "electricity_contract"),
                                       "_blank",
                                       "noopener,noreferrer"
                                     )
@@ -771,7 +1023,19 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility }: U
                             {extra.data_requested != null && extra.data_requested !== "" && (
                               <div>Data requested: {formatDateAustralian(extra.data_requested)}</div>
                             )}
-                            <div>Data received: {extra.data_recieved === true || extra.data_recieved === "Yes" || (typeof extra.data_recieved === "string" && extra.data_recieved.length > 0) ? "Received" : "Not received"}</div>
+                            <div className="flex items-center gap-2">
+                              <span>Data received:</span>
+                              <Badge
+                                intent={
+                                  isUtilityDataReceived(extra.data_recieved) ? "success" : "warning"
+                                }
+                                shape="pill"
+                              >
+                                {isUtilityDataReceived(extra.data_recieved)
+                                  ? "Received"
+                                  : "Not received"}
+                              </Badge>
+                            </div>
                             {(row.displayKey === "C&I Electricity" || row.displayKey === "C&I Gas") && (extra.contract_end_date != null || extra.dma_end_date != null || extra.data_requested != null || extra.data_recieved != null) && (
                               <button
                                 type="button"
@@ -783,7 +1047,7 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility }: U
                                   data_requested: formatDateDDMMYYYY(extra.data_requested),
                                   data_recieved: extra.data_recieved === true || extra.data_recieved === "Yes" || (typeof extra.data_recieved === "string" && extra.data_recieved.length > 0),
                                 })}
-                                className="text-xs mt-1 text-blue-600 dark:text-blue-400 hover:underline"
+                                className="text-xs mt-1 text-primary hover:underline"
                               >
                                 Edit dates
                               </button>
@@ -799,69 +1063,183 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility }: U
                                   data_requested: "",
                                   data_recieved: false,
                                 })}
-                                className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                                className="text-xs text-primary hover:underline"
                               >
                                 Add contract end / data dates
                               </button>
                             )}
                           </div>
                         )}
-                        <div className="flex flex-wrap gap-1 mt-2">
-                          <button
-                            type="button"
-                            onClick={() => handleAccountInfo(row.config, identifier)}
-                            className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
-                          >
-                            Account Info
-                          </button>
-                          {row.config.tool !== "robot" && row.config.tool !== "cleaning" && (
-                            <button
-                              type="button"
-                              onClick={() => handleDataRequest(row.config, identifier, retailerVal)}
-                              className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
-                            >
-                              Data Request
-                            </button>
-                          )}
-                          {row.config.tool !== "cleaning" && (
-                            <button
-                              type="button"
-                              onClick={() => handleQuoteRequest(row.config, identifier)}
-                              className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
-                            >
-                              Quote Request
-                            </button>
-                          )}
+                        <div className="mt-2 flex flex-wrap gap-1">
                           {row.config.tool !== "cleaning" &&
                             row.displayKey === "C&I Electricity" &&
                             row.config.tool === "ci-electricity" && (
-                              <button
+                              <Button
                                 type="button"
+                                variant="secondary"
+                                size="sm"
+                                radius="md"
                                 onClick={() => handleBlendExtend(row.config, identifier)}
-                                className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
                               >
                                 B&E
-                              </button>
+                              </Button>
                             )}
                           {row.config.key === "C&I Electricity" && row.config.tool === "ci-electricity" && (
-                            <button
+                            <Button
                               type="button"
+                              variant="secondary"
+                              size="sm"
+                              radius="md"
                               onClick={() => handleDma(row.config, identifier)}
-                              className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
                             >
                               DMA
-                            </button>
+                            </Button>
                           )}
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
+                        </div>
+                      }
+                    />
+                  );
+                })
+              )}
             </div>
           )}
+
+          <p className="mb-2 mt-2 text-[11px] font-medium text-gray-500 dark:text-gray-400">
+            Additional utilities
+          </p>
+          <div className="divide-y divide-gray-50 dark:divide-gray-800/40 -mx-4">
+            {(["Cleaning", "Telecommunication", "Water"] as const).map((serviceKey) => {
+              const realKey =
+                Object.keys(linked).find(
+                  (k) => k.toLowerCase() === serviceKey.toLowerCase()
+                ) || serviceKey;
+              const value = linked[realKey];
+              const retailer = retailers[realKey];
+              const retailerLabel =
+                typeof retailer === "string"
+                  ? retailer
+                  : Array.isArray(retailer)
+                    ? retailer.join(", ")
+                    : "";
+              const invoiceFileKey = `invoice_${serviceKey}`;
+              const hasInvoiceFile = processedFileIds?.[invoiceFileKey] as string | undefined;
+
+              let statusIntent: "success" | "neutral" | "warning" = "neutral";
+              let statusLabel = "Not available";
+              if (hasInvoiceFile) {
+                statusLabel = "Invoice available";
+                statusIntent = "success";
+              } else if (value === true) {
+                statusLabel = "In file";
+                statusIntent = "success";
+              } else if (value) {
+                statusLabel = "Available";
+                statusIntent = "success";
+              }
+
+              const serviceIcon = getRecordRowIcon(serviceKey);
+              return (
+                <RecordRow
+                  key={serviceKey}
+                  leadingIcon={serviceIcon.icon}
+                  iconIntent={serviceIcon.intent}
+                  title={
+                    <>
+                      {serviceKey}
+                      {serviceKey === "Cleaning" && (
+                        <span className="ml-1.5 font-normal text-gray-400 dark:text-gray-500">
+                          (deprecated)
+                        </span>
+                      )}
+                    </>
+                  }
+                  subtitle={retailerLabel ? `Provider: ${retailerLabel}` : undefined}
+                  status={
+                    <Badge intent={statusIntent} shape="pill">
+                      {statusLabel}
+                    </Badge>
+                  }
+                  actions={
+                    <>
+                      {hasInvoiceFile && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          radius="md"
+                          className="record-row-open shrink-0 border border-primary/20 bg-primary/5 text-primary hover:bg-primary/10"
+                          onClick={() => window.open(hasInvoiceFile, "_blank", "noopener,noreferrer")}
+                        >
+                          View
+                        </Button>
+                      )}
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        radius="md"
+                        onClick={() => openAdditionalUtilityUpload(serviceKey)}
+                      >
+                        {hasInvoiceFile ? "Replace" : "Upload"}
+                      </Button>
+                    </>
+                  }
+                />
+              );
+            })}
+          </div>
         </CardContent>
       </Card>
+
+      <Modal
+        open={showDriveModal}
+        onClose={() => !driveLoading && resetDrive()}
+        title="File in Drive"
+        size="default"
+        footer={
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={resetDrive}
+              disabled={driveLoading}
+              className="text-xs px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={driveLoading || !driveFile}
+              onClick={() => void uploadDrive()}
+              className="text-xs px-3 py-1.5 rounded bg-primary text-white hover:bg-primary/90 disabled:opacity-50"
+            >
+              {driveLoading ? "Uploading…" : "Upload"}
+            </button>
+          </div>
+        }
+      >
+        <div className="space-y-3 text-sm">
+          <div>
+            <span className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Business</span>
+            <p className="font-medium text-gray-800 dark:text-gray-200">{businessName}</p>
+          </div>
+          <div>
+            <span className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Filing type</span>
+            <p className="font-mono text-gray-600 dark:text-gray-300">{driveFilingType}</p>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">File</label>
+            <input
+              type="file"
+              onChange={(e) => setDriveFile(e.target.files?.[0] ?? null)}
+              className="block w-full text-xs text-gray-700 dark:text-gray-300"
+            />
+          </div>
+          {driveResult && (
+            <p className="text-xs text-gray-600 dark:text-gray-400 whitespace-pre-wrap">{driveResult}</p>
+          )}
+        </div>
+      </Modal>
 
       {/* Data Request confirmation – centered modal (same as business-info page) */}
       <Modal
@@ -882,7 +1260,7 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility }: U
               type="button"
               disabled={dataRequestLoading}
               onClick={confirmDataRequest}
-              className="px-4 py-2 rounded bg-blue-600 text-white font-semibold hover:bg-blue-700 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 py-2 rounded bg-primary text-white font-semibold hover:bg-primary/90 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {dataRequestLoading ? "Sending…" : "Confirm & Send"}
             </button>
@@ -1037,7 +1415,7 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility }: U
             <button
               type="button"
               onClick={closeDataRequestResult}
-              className="px-4 py-2 rounded bg-blue-600 text-white font-semibold hover:bg-blue-700 focus:outline-none"
+              className="px-4 py-2 rounded bg-primary text-white font-semibold hover:bg-primary/90 focus:outline-none"
             >
               Close
             </button>
@@ -1118,7 +1496,7 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility }: U
               type="button"
               disabled={utilityEditLoading}
               onClick={saveUtilityRecordEdit}
-              className="text-xs px-3 py-1.5 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+              className="text-xs px-3 py-1.5 rounded bg-primary text-white hover:bg-primary/90 disabled:opacity-50"
             >
               {utilityEditLoading ? "Saving…" : "Save"}
             </button>

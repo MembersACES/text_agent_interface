@@ -18,72 +18,28 @@ import { getApiBaseUrl } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 import { RefreshCw, AlertCircle, ExternalLink, ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  type DiscrepancyCheckViewType,
+  type DiscrepancyRow,
+  type DmaRow,
+  type ElectricityContractRow,
+  isDemandMismatch,
+  isDmaMismatch,
+  isGasOvercharged,
+  isTruthyDetected,
+  parseDiscrepancyViewType,
+  parseNumericCell,
+  rowHasAnyValue,
+  shouldDefaultMismatchFilter,
+  sortByInvoicePeriod,
+} from "@/lib/discrepancy-utils";
+
+export type { DiscrepancyRow, ElectricityContractRow, DmaRow };
 
 const SHEET_ID = "1l_ShkAcpS1HBqX8EdXLEVmn3pkliVGwsskkkI0GlLho";
 const SHEET_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/edit?gid=379463966`;
 
-export type DiscrepancyRow = {
-  discrepancy_type: string;
-  utility_identifier: string;
-  linked_business_name: string;
-  invoice_period: string;
-  invoice_rate: string;
-  contract_period: string;
-  contract_rate: string;
-  rate_difference: string;
-  pct_difference: string;
-  annual_quantity_gj: string;
-  annual_potential_overcharge: string;
-  take_or_pay_invoice: string;
-};
-
-export type ElectricityContractRow = {
-  discrepancy_type: string;
-  utility_identifier: string;
-  linked_business_name: string;
-  retailer: string;
-  site_address: string;
-  invoice_period: string;
-  contract_period: string;
-  peak_quantity_kwh: string;
-  peak_contract_rate: string;
-  peak_invoice_rate: string;
-  peak_rate_difference: string;
-  peak_pct_difference: string;
-  shoulder_quantity_kwh: string;
-  shoulder_contract_rate: string;
-  shoulder_invoice_rate: string;
-  shoulder_rate_difference: string;
-  shoulder_pct_difference: string;
-  off_peak_quantity_kwh: string;
-  off_peak_contract_rate: string;
-  off_peak_invoice_rate: string;
-  off_peak_rate_difference: string;
-  off_peak_pct_difference: string;
-  service_charge_contract: string;
-  service_charge_invoice: string;
-  service_charge_difference: string;
-  service_charge_pct_difference: string;
-  contract_target_consumption_kwh: string;
-  discrepancy_detected: string;
-  notes: string;
-};
-
-export type DmaRow = {
-  discrepancy_type: string;
-  utility_identifier: string;
-  linked_business_name: string;
-  dma_annual_fee: string;
-  dma_daily_rate: string;
-  invoice_period: string;
-  invoice_comparison_days: string;
-  expected_charge: string;
-  actual_invoice_charge: string;
-  difference: string;
-  status: string;
-};
-
-type ViewType = "gas" | "electricity_contract" | "dma" | "demand";
+type ViewType = DiscrepancyCheckViewType;
 
 type ApiResponse = {
   rows: DiscrepancyRow[];
@@ -98,24 +54,9 @@ type DetailField = { label: string; value: string };
 
 type DetailSection = { title: string; fields: DetailField[] };
 
-function parseViewType(raw: string | null): ViewType {
-  const t = (raw ?? "gas").toLowerCase();
-  if (t === "electricity" || t === "electricity_contract" || t === "contract") {
-    return "electricity_contract";
-  }
-  if (t === "dma" || t === "electricity_dma") return "dma";
-  if (t === "demand") return "demand";
-  return "gas";
-}
-
 function cellValue(val: string | undefined): string {
   const v = (val ?? "").trim();
   return v || "—";
-}
-
-function isTruthyDetected(val: string | undefined): boolean {
-  const v = (val ?? "").trim().toUpperCase();
-  return v === "TRUE" || v === "YES" || v === "1";
 }
 
 function DiscrepancyDetectedBadge({ value }: { value: string | undefined }) {
@@ -129,55 +70,12 @@ function DiscrepancyDetectedBadge({ value }: { value: string | undefined }) {
   );
 }
 
-function parseNumericCell(val: string | undefined): number | null {
-  const raw = (val ?? "").trim().replace(/[$,%]/g, "");
-  if (!raw || raw === "—") return null;
-  const n = parseFloat(raw);
-  return Number.isNaN(n) ? null : n;
-}
-
-function isGasOvercharged(row: DiscrepancyRow): boolean {
-  const overcharge = parseNumericCell(row.annual_potential_overcharge);
-  if (overcharge != null && overcharge > 0.001) return true;
-  const rateDiff = parseNumericCell(row.rate_difference);
-  if (rateDiff != null && Math.abs(rateDiff) > 0.001) return true;
-  const pctDiff = parseNumericCell(row.pct_difference);
-  if (pctDiff != null && Math.abs(pctDiff) > 0.001) return true;
-  return false;
-}
-
-function isDmaMismatch(row: DmaRow): boolean {
-  const status = (row.status ?? "").toLowerCase();
-  return status.includes("❌") || status.includes("mismatch");
-}
-
-function rowHasAnyValue(row: Record<string, string>): boolean {
-  return Object.values(row).some((v) => (v ?? "").trim() !== "");
-}
-
 function HighlightedValue({ value, highlight }: { value: string; highlight: boolean }) {
   return (
     <span className={cn("tabular-nums", highlight && "font-semibold text-red-600 dark:text-red-400")}>
       {value}
     </span>
   );
-}
-
-function isDemandMismatch(row: Record<string, string>): boolean {
-  const status = (row.status ?? "").toLowerCase();
-  if (
-    status.includes("❌") ||
-    status.includes("mismatch") ||
-    status.includes("issue") ||
-    status.includes("overcharge")
-  ) {
-    return true;
-  }
-  for (const key of ["difference", "demand_difference"] as const) {
-    const n = parseNumericCell(row[key]);
-    if (n != null && Math.abs(n) > 0.001) return true;
-  }
-  return false;
 }
 
 function gasRowId(row: DiscrepancyRow, index: number): string {
@@ -665,14 +563,23 @@ export default function DiscrepancyCheckPage() {
   const [error, setError] = useState<string | null>(null);
   const initialBusinessName = searchParams.get("business_name") ?? searchParams.get("businessName") ?? "";
   const initialIdentifier = searchParams.get("identifier") ?? searchParams.get("utility_identifier") ?? "";
+  const initialViewType = parseDiscrepancyViewType(searchParams.get("type"));
+  const hasIdentifierDeepLink = initialIdentifier.trim().length > 0;
+  const defaultMismatchFilter = shouldDefaultMismatchFilter(
+    hasIdentifierDeepLink,
+    initialViewType,
+    searchParams.get("mismatches_only")
+  );
   const [filterBusinessName, setFilterBusinessName] = useState(initialBusinessName);
   const [filterIdentifier, setFilterIdentifier] = useState(initialIdentifier);
-  const [viewType, setViewType] = useState<ViewType>(() =>
-    parseViewType(searchParams.get("type"))
-  );
+  const [viewType, setViewType] = useState<ViewType>(() => initialViewType);
   const [showOnlyOverchargedGas, setShowOnlyOverchargedGas] = useState(true);
-  const [showOnlyMismatchesElectricity, setShowOnlyMismatchesElectricity] = useState(false);
-  const [showOnlyMismatchesDma, setShowOnlyMismatchesDma] = useState(false);
+  const [showOnlyMismatchesElectricity, setShowOnlyMismatchesElectricity] = useState(
+    defaultMismatchFilter && initialViewType === "electricity_contract"
+  );
+  const [showOnlyMismatchesDma, setShowOnlyMismatchesDma] = useState(
+    defaultMismatchFilter && initialViewType === "dma"
+  );
   const [showOnlyMismatchesDemand, setShowOnlyMismatchesDemand] = useState(false);
   const [expandedGasIds, setExpandedGasIds] = useState<Set<string>>(new Set());
   const [expandedDmaIds, setExpandedDmaIds] = useState<Set<string>>(new Set());
@@ -788,25 +695,7 @@ export default function DiscrepancyCheckPage() {
     return withId.filter(rowHasAnyValue);
   }, [electricityDemandCheckRows, filterById, idFilter]);
 
-  const parseEndDate = useCallback((period: string): number => {
-    if (!period?.trim()) return 0;
-    const part = period.includes("-") ? period.split("-").pop()?.trim() : period.trim();
-    const [d, m, y] = (part ?? "").split("/").map(Number);
-    if (!y || !m || !d) return 0;
-    return new Date(y, m - 1, d).getTime();
-  }, []);
-
-  const sortByInvoicePeriod = useCallback(
-    <T extends { invoice_period?: string }>(list: T[]) =>
-      [...list].sort((a, b) => {
-        const timeA = parseEndDate(a.invoice_period ?? "");
-        const timeB = parseEndDate(b.invoice_period ?? "");
-        return timeB - timeA;
-      }),
-    [parseEndDate]
-  );
-
-  const sortedRows = useMemo(() => sortByInvoicePeriod(filteredRows), [filteredRows, sortByInvoicePeriod]);
+  const sortedRows = useMemo(() => sortByInvoicePeriod(filteredRows), [filteredRows]);
 
   const displayedGasRows = useMemo(() => {
     if (!showOnlyOverchargedGas) return sortedRows;
@@ -814,11 +703,11 @@ export default function DiscrepancyCheckPage() {
   }, [sortedRows, showOnlyOverchargedGas]);
   const sortedElectricityContract = useMemo(
     () => sortByInvoicePeriod(filteredElectricityContract),
-    [filteredElectricityContract, sortByInvoicePeriod]
+    [filteredElectricityContract]
   );
   const sortedElectricityDma = useMemo(
     () => sortByInvoicePeriod(filteredElectricityDma),
-    [filteredElectricityDma, sortByInvoicePeriod]
+    [filteredElectricityDma]
   );
 
   const displayedDmaRows = useMemo(() => {
