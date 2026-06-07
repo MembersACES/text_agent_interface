@@ -260,7 +260,7 @@ export default function DynamicInboundAndrewOnePager() {
         <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg p-8 border border-purple-200 text-center">
           <h2 className="text-2xl font-bold text-gray-800 mb-4">Ready to Enhance Member Support?</h2>
           <p className="text-gray-600 mb-6 max-w-2xl mx-auto">
-            Contact ACES to learn more about how Dynamic Inbound (Andrew) can provide personalized, 
+            Contact Carbon Zero Australasia to learn more about how Dynamic Inbound (Andrew) can provide personalized, 
             real-time member support with instant access to live data and member-specific solutions.
           </p>
           <a

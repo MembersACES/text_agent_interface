@@ -3,6 +3,8 @@
 import { useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { CleaningRobotDashboard } from "@/components/crm-member/CleaningRobotDashboard";
+import { ToolPageLayout } from "@/components/Layouts/ToolPageLayout";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export default function RobotDataInfoPage() {
   const searchParams = useSearchParams();
@@ -16,11 +18,20 @@ export default function RobotDataInfoPage() {
     (session as { accessToken?: string } | null)?.accessToken;
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+    <ToolPageLayout
+      pageName="Robot dashboard"
+      title="Cleaning robot utility data"
+      description={
+        businessName
+          ? `Pudu analytics for ${businessName}${robotNumber ? ` · ${robotNumber}` : ""}`
+          : "Pudu robot analytics and utility invoice data."
+      }
+      width="2xl"
+    >
       {status === "loading" ? (
-        <p className="text-sm text-gray-600 dark:text-gray-400">Loading session…</p>
+        <Skeleton className="h-64 w-full rounded-2xl" />
       ) : !idToken ? (
-        <p className="text-sm text-red-600 dark:text-red-400">Sign in to view Pudu robot analytics.</p>
+        <p className="text-sm text-semantic-block">Sign in to view Pudu robot analytics.</p>
       ) : (
         <CleaningRobotDashboard
           robotSerial={robotNumber}
@@ -29,6 +40,6 @@ export default function RobotDataInfoPage() {
           businessName={businessName || undefined}
         />
       )}
-    </div>
+    </ToolPageLayout>
   );
 }

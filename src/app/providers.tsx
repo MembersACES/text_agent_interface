@@ -6,6 +6,10 @@ import { SessionProvider, useSession, signIn } from "next-auth/react";
 import { useEffect } from "react";
 import { ToastProvider } from "@/components/ui/toast";
 import { CommandPaletteProvider } from "@/components/CommandPaletteContext";
+import { AppCopyright } from "@/components/Layouts/AppCopyright";
+import { BRAND } from "@/lib/brand";
+import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { data: session, status } = useSession();
@@ -36,10 +40,12 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
   if (status === "loading") {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex min-h-screen items-center justify-center bg-canvas dark:bg-canvas-dark">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
-          <p className="text-lg">Loading authentication...</p>
+          <Spinner className="mx-auto mb-4 size-8 text-primary" />
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Loading authentication…
+          </p>
         </div>
       </div>
     );
@@ -47,18 +53,23 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
   if (status === "unauthenticated") {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <p className="text-lg mb-4">Redirecting to sign in...</p>
-          <button 
+      <div className="flex min-h-screen items-center justify-center bg-canvas dark:bg-canvas-dark">
+        <div className="max-w-sm rounded-2xl border border-stroke bg-white p-8 text-center shadow-lg dark:border-dark-3 dark:bg-gray-dark">
+          <p className="mb-1 text-lg font-semibold text-dark dark:text-white">
+            {BRAND.name}
+          </p>
+          <p className="mb-6 text-sm text-gray-600 dark:text-gray-400">
+            Sign in with your @{allowedDomain} account to continue.
+          </p>
+          <Button
             onClick={() => {
               const currentUrl = window.location.pathname + window.location.search;
               signIn("google", { callbackUrl: currentUrl });
             }}
-            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
           >
-            Sign In with Google
-          </button>
+            Sign in with Google
+          </Button>
+          <AppCopyright className="mt-6 text-xs text-gray-400 dark:text-gray-500" compact />
         </div>
       </div>
     );
@@ -67,21 +78,25 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   // Check if user is from allowed domain
   if (session && !isDomainValid) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <p className="text-lg mb-4">Access Denied</p>
-          <p className="text-gray-600 mb-4">
-            You must be signed in with an @{allowedDomain} email address to access this application.
+      <div className="flex min-h-screen items-center justify-center bg-canvas dark:bg-canvas-dark">
+        <div className="max-w-md rounded-2xl border border-stroke bg-white p-8 text-center shadow-lg dark:border-dark-3 dark:bg-gray-dark">
+          <p className="mb-1 text-lg font-semibold text-dark dark:text-white">
+            Access denied
           </p>
-          <button 
+          <p className="mb-6 text-sm text-gray-600 dark:text-gray-400">
+            You must be signed in with an @{allowedDomain} email address to
+            access this application.
+          </p>
+          <Button
+            variant="secondary"
             onClick={() => {
               const currentUrl = window.location.pathname + window.location.search;
               signIn("google", { callbackUrl: currentUrl });
             }}
-            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
           >
-            Sign In with Different Account
-          </button>
+            Sign in with a different account
+          </Button>
+          <AppCopyright className="mt-6 text-xs text-gray-400 dark:text-gray-500" compact />
         </div>
       </div>
     );

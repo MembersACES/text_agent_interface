@@ -10,7 +10,10 @@ import {
 } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 import { useSearchParams } from "next/navigation";
-import { PageHeader } from "@/components/Layouts/PageHeader";
+import { ToolPageLayout } from "@/components/Layouts/ToolPageLayout";
+import { BusinessSearchBar, WorkflowSection } from "@/components/workflow";
+import { Button } from "@/components/ui/button";
+import { Select } from "@/components/ui/select";
 
 interface BusinessInfo {
   business_name: string;
@@ -187,7 +190,7 @@ const DOCUMENT_CATEGORIES = {
 const BUSINESS_DOCUMENT_TYPES = {
   loa: {
     label: "📄 Letter of Authority",
-    description: "Authorizes ACES to act on behalf of the business",
+    description: "Authorizes Carbon Zero Australasia to act on behalf of the business",
     apiEndpoint: "/api/generate-loa"
   },
   "service-agreement": {
@@ -910,31 +913,20 @@ export default function DocumentGenerationPage() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto mt-10 p-6 pb-28 bg-white dark:bg-gray-dark rounded-lg shadow-lg">
-      <PageHeader pageName="Document Generation" description="Create LOA, EOI, engagement forms, and other client documents." />
-
-      {/* Step 1: Business */}
-      <section className="mb-10 pl-4 border-l-4 border-primary/30 dark:border-primary/40">
-        <h2 className="text-heading-6 font-bold text-dark dark:text-white mb-1">Step 1</h2>
-        <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">Select business</p>
-        <div className="p-6 bg-gray-50 dark:bg-dark-2 rounded-lg">
-          <div className="flex gap-4 mb-4">
-          <input
-            type="text"
-            value={businessQuery}
-            onChange={(e) => setBusinessQuery(e.target.value)}
-            placeholder="Enter business name to search..."
-            className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            onKeyPress={(e) => e.key === 'Enter' && fetchBusinessInfo()}
-          />
-          <button
-            onClick={fetchBusinessInfo}
-            disabled={businessLoading || !businessQuery.trim()}
-            className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {businessLoading ? "Searching..." : "Search"}
-          </button>
-        </div>
+    <ToolPageLayout
+      pageName="Document Generation"
+      title="Document generation"
+      description="Create LOA, EOI, engagement forms, and other client documents."
+      width="lg"
+      className="pb-28"
+    >
+      <WorkflowSection title="Select business" step={1}>
+        <BusinessSearchBar
+          value={businessQuery}
+          onChange={setBusinessQuery}
+          onSearch={fetchBusinessInfo}
+          loading={businessLoading}
+        />
 
         {selectedBusiness && (
           <div className="mt-4 p-4 bg-white rounded border border-green-200">
@@ -1050,22 +1042,17 @@ export default function DocumentGenerationPage() {
             </div>
           </div>
         )}
-        </div>
-      </section>
+      </WorkflowSection>
 
-      {/* Step 2: Document Category */}
-      <section className="mb-10 pl-4 border-l-4 border-primary/30 dark:border-primary/40">
-        <h2 className="text-heading-6 font-bold text-dark dark:text-white mb-1">Step 2</h2>
-        <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">Select document category</p>
-        <div className="mb-8">
+      <WorkflowSection title="Select document category" step={2} description="Choose what type of document to generate">
         <div className={`grid grid-cols-1 ${Object.keys(filteredCategories).length > 1 ? 'md:grid-cols-2' : 'md:grid-cols-1 max-w-md mx-auto'} gap-4`}>
           {Object.entries(filteredCategories).map(([category, config]) => (
             <div
               key={category}
-              className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${
+              className={`p-4 border-2 rounded-2xl cursor-pointer transition-all ${
                 selectedDocumentCategory === category
-                  ? "border-blue-500 bg-blue-50"
-                  : "border-gray-200 hover:border-gray-300"
+                  ? "border-primary bg-primary/5"
+                  : "border-stroke hover:border-primary/40 dark:border-dark-3"
               }`}
               onClick={() => setSelectedDocumentCategory(category as DocumentCategory)}
             >
@@ -1082,23 +1069,18 @@ export default function DocumentGenerationPage() {
             </div>
           ))}
         </div>
-        </div>
-      </section>
+      </WorkflowSection>
 
-      {/* Step 3: Document type (conditional) */}
       {selectedDocumentCategory === "business-documents" && (
-        <section className="mb-10 pl-4 border-l-4 border-primary/30 dark:border-primary/40">
-          <h2 className="text-heading-6 font-bold text-dark dark:text-white mb-1">Step 3</h2>
-          <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">Select business document type</p>
-          <div className="mb-8">
+        <WorkflowSection title="Select business document type" step={3}>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {Object.entries(BUSINESS_DOCUMENT_TYPES).map(([type, config]) => (
               <div
                 key={type}
-                className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                className={`p-4 border-2 rounded-2xl cursor-pointer transition-all ${
                   selectedBusinessDocumentType === type
-                    ? "border-green-500 bg-green-50"
-                    : "border-gray-200 hover:border-gray-300"
+                    ? "border-brand-disclosure bg-brand-disclosure/10"
+                    : "border-stroke hover:border-brand-disclosure/40 dark:border-dark-3"
                 }`}
                 onClick={() => setSelectedBusinessDocumentType(type as BusinessDocumentType)}
               >
@@ -1115,19 +1097,14 @@ export default function DocumentGenerationPage() {
               </div>
             ))}
           </div>
-          </div>
-        </section>
+        </WorkflowSection>
       )}
 
       {selectedDocumentCategory === "eoi" && (
-        <section className="mb-10 pl-4 border-l-4 border-primary/30 dark:border-primary/40">
-          <h2 className="text-heading-6 font-bold text-dark dark:text-white mb-1">Step 3</h2>
-          <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">Select EOI type</p>
-          <div className="mb-8">
-          <select
+        <WorkflowSection title="Select EOI type" step={3}>
+          <Select
             value={selectedEoiType}
             onChange={(e) => setSelectedEoiType(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             required
           >
             <option value="">Select EOI type...</option>
@@ -1136,42 +1113,38 @@ export default function DocumentGenerationPage() {
                 {type}
               </option>
             ))}
-          </select>
-          </div>
-        </section>
+          </Select>
+        </WorkflowSection>
       )}
 
       {selectedDocumentCategory === "engagement-forms" && (
-        <section className="mb-10 pl-4 border-l-4 border-primary/30 dark:border-primary/40">
-          <h2 className="text-heading-6 font-bold text-dark dark:text-white mb-1">Step 3</h2>
-          <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">Select engagement form type</p>
-          <div className="mb-8">
-          <select
+        <WorkflowSection title="Select engagement form type" step={3}>
+          <Select
             value={selectedEngagementFormType}
             onChange={(e) => setSelectedEngagementFormType(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             required
           >
-            <option value="">Select Engagement Form type...</option>
+            <option value="">Select engagement form type...</option>
             {engagementFormTypes.map((type) => (
               <option key={type} value={type}>
                 {type}
               </option>
             ))}
-          </select>
-          </div>
-        </section>
+          </Select>
+        </WorkflowSection>
       )}
 
       {/* Sticky primary action bar */}
       <div className="sticky bottom-0 -mx-6 -mb-6 px-6 py-4 bg-white dark:bg-gray-dark border-t border-stroke dark:border-dark-3 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-10">
         <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-          <button
+          <Button
             onClick={handleGenerateDocument}
             disabled={loading || !canGenerate}
-            className="flex-1 sm:flex-none px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-base font-medium"
+            loading={loading}
+            size="lg"
+            className="flex-1 sm:flex-none"
           >
-            {loading ? "Generating..." : `Generate ${
+            {`Generate ${
               selectedDocumentCategory === "eoi"
                 ? "Expression of Interest"
                 : selectedDocumentCategory === "engagement-forms"
@@ -1180,14 +1153,11 @@ export default function DocumentGenerationPage() {
                   ? BUSINESS_DOCUMENT_TYPES[selectedBusinessDocumentType].label
                   : "Document"
             }`}
-          </button>
+          </Button>
           {selectedBusiness && (
-            <button
-              onClick={handleNewSearch}
-              className="px-4 py-3 border border-stroke dark:border-dark-3 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-dark-2 transition-colors"
-            >
+            <Button variant="secondary" onClick={handleNewSearch}>
               New business search
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -1307,7 +1277,7 @@ export default function DocumentGenerationPage() {
               </div>
               <div>
                 <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">
-                  CC — ACES team
+                  CC — Carbon Zero team
                 </label>
                 <div className="rounded-xl border border-gray-200 dark:border-gray-700 divide-y divide-gray-100 dark:divide-gray-800 max-h-36 overflow-y-auto">
                   {sendDocumentStaffUsers.length === 0 ? (
@@ -1411,6 +1381,6 @@ export default function DocumentGenerationPage() {
           </div>
         </div>
       )}
-    </div>
+    </ToolPageLayout>
   );
 }

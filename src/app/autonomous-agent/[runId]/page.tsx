@@ -9,6 +9,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { getAutonomousApiBaseUrl, getApiBaseUrl } from "@/lib/utils";
 import { PageHeader } from "@/components/Layouts/PageHeader";
+import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 
 dayjs.extend(utc);
@@ -1151,18 +1152,15 @@ export default function AutonomousRunDetailPage() {
                       <span className="text-xs text-gray-400 dark:text-gray-500 tabular-nums">
                         {run.steps.length} steps · {Math.max(...run.steps.map((s) => s.day_number), 0)} days
                       </span>
-                      <button
+                      <Button
                         type="button"
+                        size="sm"
                         onClick={handleSaveSchedules}
                         disabled={savingSchedules || !hasScheduleChanges}
-                        className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold bg-primary text-white hover:bg-primary/90 disabled:opacity-50 transition shadow-sm"
+                        loading={savingSchedules}
                       >
-                        {savingSchedules ? (
-                          <><span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />Saving…</>
-                        ) : (
-                          "Save schedules"
-                        )}
-                      </button>
+                        Save schedules
+                      </Button>
                     </div>
                   </div>
                   <div className="flex flex-wrap xl:flex-nowrap gap-3 xl:overflow-x-auto pb-1 -mx-1 px-1">
@@ -1222,17 +1220,15 @@ export default function AutonomousRunDetailPage() {
 
                 {/* Save footer */}
                 <div className="px-5 py-3.5 bg-gray-50 dark:bg-gray-800/30 border-t border-gray-100 dark:border-gray-800 flex items-center gap-3">
-                  <button
+                  <Button
                     type="button"
                     onClick={handleSaveContext}
                     disabled={savingContext}
-                    className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold bg-primary text-white hover:bg-primary/90 disabled:opacity-50 transition shadow-sm"
+                    loading={savingContext}
+                    size="sm"
                   >
-                    {savingContext
-                      ? <><span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />Saving…</>
-                      : <><svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>Save context</>
-                    }
-                  </button>
+                    Save context
+                  </Button>
                   <span className="text-xs text-gray-400 dark:text-gray-500">Changes take effect on the next scheduled step</span>
                 </div>
               </div>

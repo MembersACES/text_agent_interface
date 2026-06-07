@@ -2,10 +2,12 @@
 
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { SectionHeader } from "../shared/SectionHeader";
 import { OfferStatusBadge } from "../shared/OfferStatusBadge";
-import { formatDate } from "../shared/formatDate";
-import { OFFER_PIPELINE_STAGE_LABELS } from "@/constants/crm";
-import type { OfferPipelineStage } from "@/constants/crm";
+import { RecordRow } from "../shared/RecordRow";
+import { buildOfferRecordSubtitle } from "../shared/offerRecordMeta";
+import { getRecordRowIcon } from "../shared/recordRowIcons";
 import type { Offer } from "../types";
 
 export interface OffersTabProps {
@@ -18,102 +20,56 @@ export function OffersTab({
   onCreateOfferClick,
 }: OffersTabProps) {
   return (
-    <Card className="border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+    <Card className="p-0">
       <CardContent className="p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-100">
-            Offers & Quote Requests
-          </h2>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={onCreateOfferClick}
-              className="text-xs font-medium text-primary hover:underline"
-            >
-              Create offer
-            </button>
-            <Link href="/offers" className="text-xs text-primary hover:underline">
-              View All Offers
-            </Link>
-          </div>
-        </div>
-        {offers.length === 0 ? (
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            No offers recorded for this client yet.
-          </p>
-        ) : (
-          <ul className="space-y-2">
-            {offers.map((o) => (
-              <li
-                key={o.id}
-                className="flex items-start justify-between gap-3 text-sm"
+        <SectionHeader
+          title="Offers & Quote Requests"
+          actions={
+            <>
+              <button
+                type="button"
+                onClick={onCreateOfferClick}
+                className="text-xs font-medium text-primary hover:underline"
               >
-                <div className="min-w-0">
-                  <Link
-                    href={`/offers/${o.id}`}
-                    className="font-medium text-gray-900 dark:text-gray-100 hover:underline truncate block"
-                  >
-                    {(o.utility_display || o.utility_type_identifier || o.utility_type || "Offer") +
-                      (o.identifier ? " " + o.identifier : "")}
-                  </Link>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Created {formatDate(o.created_at)}
-                    {o.updated_at && o.updated_at !== o.created_at && (
-                      <> · Updated {formatDate(o.updated_at)}</>
-                    )}
-                  </p>
-                  {(o.pipeline_stage != null || o.estimated_value != null || o.annual_savings != null) && (
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                      {o.pipeline_stage != null && (
-                        <span>
-                          {OFFER_PIPELINE_STAGE_LABELS[o.pipeline_stage as OfferPipelineStage] ?? o.pipeline_stage}
-                        </span>
-                      )}
-                      {o.pipeline_stage != null && (o.estimated_value != null || o.annual_savings != null) && " · "}
-                      {o.estimated_value != null && (
-                        <span>Est. value: ${o.estimated_value.toLocaleString()}</span>
-                      )}
-                      {o.estimated_value != null && o.annual_savings != null && " · "}
-                      {o.annual_savings != null && (
-                        <span>Annual savings: ${Number(o.annual_savings).toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                      )}
-                    </p>
-                  )}
-                  {(o.annual_usage_gj != null || o.energy_charge_pct != null || o.contracted_rate != null || o.offer_rate != null) && (
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                      {(() => {
-                        const parts: string[] = [];
-                        if (o.annual_usage_gj != null) {
-                          parts.push(
-                            `Annual usage: ${Number(o.annual_usage_gj).toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} GJ`,
-                          );
-                        }
-                        if (o.energy_charge_pct != null) {
-                          parts.push(
-                            `Energy charge: ${Number(o.energy_charge_pct).toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`,
-                          );
-                        }
-                        if (o.contracted_rate != null) {
-                          parts.push(
-                            `Contracted rate: $${Number(o.contracted_rate).toLocaleString("en-AU", { minimumFractionDigits: 4, maximumFractionDigits: 4 })}`,
-                          );
-                        }
-                        if (o.offer_rate != null) {
-                          parts.push(
-                            `Offer rate: $${Number(o.offer_rate).toLocaleString("en-AU", { minimumFractionDigits: 4, maximumFractionDigits: 4 })}`,
-                          );
-                        }
-                        return parts.join(" · ");
-                      })()}
-                    </p>
-                  )}
-                </div>
-                <div className="text-right text-xs whitespace-nowrap">
-                  <OfferStatusBadge status={o.status} />
-                </div>
-              </li>
-            ))}
-          </ul>
+                Create offer
+              </button>
+              <Link href="/offers" className="text-xs text-primary hover:underline">
+                View All Offers
+              </Link>
+            </>
+          }
+        />
+        {offers.length === 0 ? (
+          <EmptyState
+            title="No offers recorded for this client yet."
+            className="py-6 items-start text-left [&_h3]:text-sm [&_h3]:font-normal [&_h3]:text-gray-500 [&_h3]:dark:text-gray-400 [&_h3]:mb-0"
+          />
+        ) : (
+          <div className="divide-y divide-gray-50 dark:divide-gray-800/40 -mx-4">
+            {offers.map((o) => {
+              const utilityLabel =
+                o.utility_display || o.utility_type_identifier || o.utility_type || "Offer";
+              const rowIcon = getRecordRowIcon(utilityLabel);
+              return (
+                <RecordRow
+                  key={o.id}
+                  leadingIcon={rowIcon.icon}
+                  iconIntent={rowIcon.intent}
+                  title={
+                    <Link
+                      href={`/offers/${o.id}`}
+                      className="hover:text-primary hover:underline"
+                    >
+                      {utilityLabel}
+                      {o.identifier ? ` ${o.identifier}` : ""}
+                    </Link>
+                  }
+                  subtitle={buildOfferRecordSubtitle(o)}
+                  status={<OfferStatusBadge status={o.status} />}
+                />
+              );
+            })}
+          </div>
         )}
       </CardContent>
     </Card>

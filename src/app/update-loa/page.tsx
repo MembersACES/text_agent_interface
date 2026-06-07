@@ -2,6 +2,9 @@
 
 import React, { useState, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import { ToolPageLayout } from "@/components/Layouts/ToolPageLayout";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 
 export default function UpdateLOAPage() {
   const searchParams = useSearchParams();
@@ -101,18 +104,16 @@ export default function UpdateLOAPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-6xl mx-auto px-6">
-        <div className="bg-white rounded-lg shadow-sm p-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-6">
-            Update LOA for {businessInfo?.["Business Name"] || businessName || "Business"}
-          </h1>
-
-          {/* --- CURRENT BUSINESS DETAILS --- */}
+    <ToolPageLayout
+      pageName="Update LOA"
+      title={`Update LOA for ${businessInfo?.["Business Name"] || businessName || "Business"}`}
+      width="2xl"
+    >
           {businessInfo && (
-            <div className="mb-8 bg-gray-50 p-6 border border-gray-200 rounded-lg">
-              <h2 className="text-xl font-semibold text-gray-800 mb-3">
-                Current LOA Business Details
+            <Card className="mb-6">
+              <CardContent className="pt-6">
+              <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-3">
+                Current LOA business details
               </h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                 {Object.entries(businessInfo).map(([key, value]) => (
@@ -123,7 +124,8 @@ export default function UpdateLOAPage() {
                   ) : null
                 ))}
               </div>
-            </div>
+              </CardContent>
+            </Card>
           )}
 
           {/* --- STATUS + ERRORS --- */}
@@ -167,33 +169,17 @@ export default function UpdateLOAPage() {
             </div>
           )}
 
-          {/* --- ACTION BUTTONS --- */}
-          <div className="mt-8 flex flex-wrap gap-4">
-            <button
-              onClick={() => router.back()}
-              className="bg-gray-400 text-white py-2 px-4 rounded font-semibold hover:bg-gray-500"
-            >
+          <div className="mt-8 flex flex-wrap gap-3">
+            <Button variant="secondary" onClick={() => router.back()}>
               Back
-            </button>
-
-            <button
-              onClick={fetchLoaData}
-              disabled={loading}
-              className="flex-1 bg-blue-600 text-white py-2 rounded font-semibold hover:bg-blue-700 disabled:opacity-50"
-            >
-              {loading ? 'Refreshing...' : 'Refresh LOA Data'}
-            </button>
-
-            <button
-              onClick={handleProceed}
-              disabled={!businessInfo || !loaData}
-              className="flex-1 bg-green-600 text-white py-2 rounded font-semibold hover:bg-green-700 disabled:opacity-50"
-            >
+            </Button>
+            <Button className="flex-1" onClick={fetchLoaData} disabled={loading} loading={loading}>
+              Refresh LOA data
+            </Button>
+            <Button className="flex-1" variant="secondary" onClick={handleProceed} disabled={!businessInfo || !loaData}>
               Proceed
-            </button>
+            </Button>
           </div>
-        </div>
-      </div>
-    </div>
+    </ToolPageLayout>
   );
 }

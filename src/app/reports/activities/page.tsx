@@ -1,11 +1,16 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { useSession } from "next-auth/react";
-import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { getApiBaseUrl } from "@/lib/utils";
 import { PageHeader } from "@/components/Layouts/PageHeader";
+import { Button } from "@/components/ui/button";
+import { SurfacePanel, FilterInput, FilterSelect, FilterTextarea } from "@/components/ui/surface-panel";
+import { ActivityReportSummary } from "@/components/reports/activity-report-summary";
+import { ActivityReportTable } from "@/components/reports/activity-report-table";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Inbox } from "lucide-react";
 import {
   OFFER_ACTIVITY_TYPES,
   OFFER_ACTIVITY_LABELS,
@@ -58,23 +63,6 @@ interface ActivityItem {
   manual_activity_id?: number | null;
 }
 
-function activityRowKey(a: ActivityItem): string {
-  if (a.manual_activity_id != null) return `cm-${a.manual_activity_id}`;
-  if (a.task_id) return `task-${a.task_id}-${a.id}`;
-  return `${a.activity_type}-${a.id}`;
-}
-
-/** Label for activity type (including notes and tasks when merged) */
-function activityTypeLabel(type: string): string {
-  if (type === "note_added") return "Note added";
-  if (type === "task_created") return "Task created";
-  if (type === "task_edited") return "Task edited";
-  if (type === "task_completed") return "Task completed";
-  if (type === "testimonial_activity") return "Testimonial activity";
-  if (type === "client_manual_activity") return "Manual activity (client)";
-  return OFFER_ACTIVITY_LABELS[type as OfferActivityType] ?? type;
-}
-
 interface ClientOption {
   id: number;
   business_name: string;
@@ -91,29 +79,6 @@ function parseClientListResponse(data: unknown): ClientOption[] {
     return parseClientListResponse((data as { items: unknown[] }).items);
   }
   return [];
-}
-
-function documentLinkHref(link: string | null | undefined): string | undefined {
-  if (!link || typeof link !== "string") return undefined;
-  let s = link.trim();
-  if (s.startsWith("=")) s = s.slice(1).trim();
-  if (s.startsWith("https:/") && !s.startsWith("https://")) s = "https://" + s.slice(7);
-  if (s.startsWith("http:/") && !s.startsWith("http://")) s = "http://" + s.slice(6);
-  return s.startsWith("http://") || s.startsWith("https://") ? s : undefined;
-}
-
-function formatDate(dateString: string) {
-  try {
-    return new Date(dateString).toLocaleDateString("en-AU", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  } catch {
-    return dateString;
-  }
 }
 
 export default function ActivityReportPage() {
@@ -501,29 +466,55 @@ export default function ActivityReportPage() {
     fetchActivities();
   }, [token, filterClientId, filterActivityType, effectiveAfter, effectiveBefore, activitiesVersion, clients]);
 
+  const summaryStats = useMemo(() => {
+    const clientIds = new Set<number>();
+    const types = new Set<string>();
+    for (const a of activities) {
+      types.add(a.activity_type);
+      if (a.client_id) clientIds.add(a.client_id);
+    }
+    return {
+      total: activities.length,
+      clientCount: clientIds.size,
+      typeCount: types.size,
+    };
+  }, [activities]);
+
   return (
     <>
       <PageHeader
         pageName="Activity report"
         description="Offer activities, tasks, testimonials, and client-level manual entries. Log manual work without linking to an offer."
       />
-      <div className="mt-4">
-        <div className="flex flex-col gap-4 mb-6">
-          <div className="flex flex-wrap gap-3 items-center">
-            <select
+
+      <div className="mt-5 space-y-4">
+        <ActivityReportSummary
+          total={summaryStats.total}
+          clientCount={summaryStats.clientCount}
+          typeCount={summaryStats.typeCount}
+          loading={loading}
+        />
+
+        <SurfacePanel className="pg-fade-up pg-stagger-2 p-4">
+          <div className="flex flex-wrap items-end gap-2">
+            <FilterSelect
               value={filterClientId}
               onChange={(e) => setFilters({ client_id: e.target.value })}
-              className="px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm"
+              aria-label="Filter by client"
+              className="min-w-[10rem] flex-1 sm:flex-none"
             >
               <option value="">All clients</option>
               {clients.map((c) => (
-                <option key={c.id} value={String(c.id)}>{c.business_name}</option>
+                <option key={c.id} value={String(c.id)}>
+                  {c.business_name}
+                </option>
               ))}
-            </select>
-            <select
+            </FilterSelect>
+            <FilterSelect
               value={filterActivityType}
               onChange={(e) => setFilters({ activity_type: e.target.value })}
-              className="px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm"
+              aria-label="Filter by activity type"
+              className="min-w-[10rem] flex-1 sm:flex-none"
             >
               <option value="">All types</option>
               <option value="note_added">Note added</option>
@@ -533,24 +524,28 @@ export default function ActivityReportPage() {
               <option value="testimonial_activity">Testimonial activity</option>
               <option value="client_manual_activity">Manual activity (client)</option>
               {OFFER_ACTIVITY_TYPES.map((t) => (
-                <option key={t} value={t}>{OFFER_ACTIVITY_LABELS[t as OfferActivityType] ?? t}</option>
+                <option key={t} value={t}>
+                  {OFFER_ACTIVITY_LABELS[t as OfferActivityType] ?? t}
+                </option>
               ))}
-            </select>
-            <input
+            </FilterSelect>
+            <FilterInput
               type="date"
               value={filterCreatedAfter || defaultRange.after}
               onChange={(e) => setFilters({ created_after: e.target.value })}
-              className="px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm"
+              aria-label="From date"
             />
-            <input
+            <FilterInput
               type="date"
               value={filterCreatedBefore || defaultRange.before}
               onChange={(e) => setFilters({ created_before: e.target.value })}
-              className="px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm"
+              aria-label="To date"
             />
             {hasAnyFilter && (
-              <button
+              <Button
                 type="button"
+                variant="secondary"
+                size="sm"
                 onClick={() => {
                   const { after, before } = defaultDateRange();
                   const next = new URLSearchParams();
@@ -558,142 +553,55 @@ export default function ActivityReportPage() {
                   next.set("created_before", before);
                   router.replace(`?${next.toString()}`, { scroll: false });
                 }}
-                className="px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700"
               >
                 Clear filters
-              </button>
+              </Button>
             )}
-            <button
+            <Button
               type="button"
               disabled={!token}
               onClick={openAddActivityModal}
-              className="px-3 py-2 rounded-md bg-primary text-white text-sm font-medium hover:opacity-90 disabled:opacity-50"
+              size="sm"
+              className="sm:ml-auto"
             >
               Add activity
-            </button>
+            </Button>
           </div>
-        </div>
+        </SurfacePanel>
 
         {error && (
-          <div className="mb-4 p-3 rounded-md bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 text-sm">
+          <div className="rounded-xl bg-semantic-block/10 px-4 py-3 text-sm text-semantic-block">
             {error}
           </div>
         )}
 
         {loading ? (
-          <div className="py-10 text-center text-gray-500 dark:text-gray-400">Loading…</div>
-        ) : activities.length === 0 ? (
-          <div className="py-10 text-center text-gray-500 dark:text-gray-400">
-            No activities found.
+          <div className="space-y-3">
+            <Skeleton className="h-64 w-full rounded-2xl" />
           </div>
+        ) : activities.length === 0 ? (
+          <SurfacePanel className="flex flex-col items-center px-6 py-14 text-center">
+            <span className="mb-3 flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+              <Inbox className="size-6" aria-hidden />
+            </span>
+            <p className="text-sm font-semibold text-dark dark:text-white">No activities in this range</p>
+            <p className="mt-1 max-w-sm text-xs text-gray-500 dark:text-gray-400">
+              Try widening the date range, clearing filters, or log manual work with Add activity.
+            </p>
+          </SurfacePanel>
         ) : (
           <>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
-              Showing {activities.length} activities (max {MAX_ACTIVITIES}).
+            <p className="text-xs tabular-nums text-gray-500 dark:text-gray-400">
+              Showing <span className="font-semibold text-dark dark:text-white">{activities.length}</span>{" "}
+              activities · max {MAX_ACTIVITIES} per load
             </p>
-            <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
-              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                <thead className="bg-gray-50 dark:bg-gray-800">
-                  <tr>
-                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Date</th>
-                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Type</th>
-                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Client</th>
-                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Details</th>
-                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Created by</th>
-                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Document</th>
-                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-900">
-                  {activities.map((a) => (
-                    <tr key={activityRowKey(a)}>
-                      <td className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                        {formatDate(a.created_at)}
-                      </td>
-                      <td className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300">
-                        {activityTypeLabel(a.activity_type)}
-                      </td>
-                      <td className="px-4 py-2 text-sm">
-                        {a.client_id ? (
-                          <Link href={`/crm-members/${a.client_id}`} className="text-primary hover:underline">
-                            {a.business_name ?? `Client ${a.client_id}`}
-                          </Link>
-                        ) : (
-                          <span className="text-gray-500">—</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-2 text-sm">
-                        {a.offer_id > 0 ? (
-                          <Link href={`/offers/${a.offer_id}`} className="text-primary hover:underline max-w-md break-words inline-block">
-                            {a.offer_display ? (
-                              <>{a.offer_display} <span className="text-gray-500 dark:text-gray-400">(Offer #{a.offer_id})</span></>
-                            ) : (
-                              <>Offer #{a.offer_id}</>
-                            )}
-                          </Link>
-                        ) : a.task_id ? (
-                          <Link href={`/tasks?task_id=${a.task_id}`} className="text-primary hover:underline">
-                            {a.offer_display ? (
-                              <>{a.offer_display} <span className="text-gray-500 dark:text-gray-400">(Task #{a.task_id})</span></>
-                            ) : (
-                              <>Task #{a.task_id}</>
-                            )}
-                          </Link>
-                        ) : (
-                          <span className="text-gray-700 dark:text-gray-300 max-w-md break-words inline-block">
-                            {a.offer_display ?? "—"}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300">
-                        {a.created_by ?? "—"}
-                      </td>
-                      <td className="px-4 py-2 text-sm">
-                        {documentLinkHref(a.document_link) ? (
-                          <a
-                            href={documentLinkHref(a.document_link)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-primary hover:underline"
-                          >
-                            Open
-                          </a>
-                        ) : (
-                          <span className="text-gray-500">—</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-2 text-sm">
-                        {a.manual_activity_id != null ? (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setDeleteError(null);
-                              setDeleteTarget({ kind: "client_manual", id: a.manual_activity_id! });
-                            }}
-                            className="text-red-600 hover:underline dark:text-red-400"
-                          >
-                            Delete
-                          </button>
-                        ) : a.offer_id > 0 ? (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setDeleteError(null);
-                              setDeleteTarget({ kind: "offer_activity", id: a.id });
-                            }}
-                            className="text-red-600 hover:underline dark:text-red-400"
-                          >
-                            Delete
-                          </button>
-                        ) : (
-                          <span className="text-gray-500">—</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <ActivityReportTable
+              rows={activities}
+              onDelete={(target) => {
+                setDeleteError(null);
+                setDeleteTarget(target);
+              }}
+            />
           </>
         )}
         {addActivityOpen && (
@@ -703,7 +611,7 @@ export default function ActivityReportPage() {
             aria-modal="true"
             aria-labelledby="add-activity-title"
           >
-            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 shadow-lg max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-5 shadow-lg dark:bg-gray-dark">
               <h3 id="add-activity-title" className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-3">
                 Add manual activity
               </h3>
@@ -718,7 +626,7 @@ export default function ActivityReportPage() {
                   >
                     Client
                   </label>
-                  <input
+                  <FilterInput
                     id="add-activity-client-search"
                     type="search"
                     autoComplete="off"
@@ -734,7 +642,7 @@ export default function ActivityReportPage() {
                         setAddActivitySelectedClient(null);
                       }
                     }}
-                    className="w-full px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm"
+                    className="w-full"
                   />
                   {clientSearchLoading && clientSearchInput.trim().length >= 2 && (
                     <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Searching…</p>
@@ -749,7 +657,7 @@ export default function ActivityReportPage() {
                   {clientSearchResults.length > 0 && (
                     <ul
                       role="listbox"
-                      className="absolute z-[60] mt-1 w-full max-h-48 overflow-auto rounded-md border border-gray-200 bg-white shadow-lg dark:border-gray-600 dark:bg-gray-800"
+                      className="absolute z-[60] mt-1 max-h-48 w-full overflow-auto rounded-lg border border-stroke bg-white shadow-md dark:border-dark-3 dark:bg-gray-dark"
                     >
                       {clientSearchResults.map((c) => (
                         <li key={c.id}>
@@ -757,7 +665,7 @@ export default function ActivityReportPage() {
                             type="button"
                             role="option"
                             aria-selected={addActivitySelectedClient?.id === c.id}
-                            className="w-full px-3 py-2 text-left text-sm text-gray-800 hover:bg-gray-100 dark:text-gray-100 dark:hover:bg-gray-700"
+                            className="w-full px-3 py-2 text-left text-sm text-dark transition-colors hover:bg-canvas focus-visible:bg-canvas focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 dark:text-white dark:hover:bg-dark-3"
                             onMouseDown={(e) => {
                               e.preventDefault();
                               setAddActivitySelectedClient(c);
@@ -785,19 +693,19 @@ export default function ActivityReportPage() {
                   >
                     Offer / utility type
                   </label>
-                  <select
+                  <FilterSelect
                     id="add-activity-offer-type"
                     value={addActivityOfferPreset}
                     onChange={(e) => setAddActivityOfferPreset(e.target.value)}
                     disabled={!addActivitySelectedClient}
-                    className="w-full px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm disabled:opacity-50"
+                    className="w-full disabled:opacity-50"
                   >
                     {CLIENT_MANUAL_OFFER_TYPE_OPTIONS.map((opt) => (
                       <option key={opt.value || "none"} value={opt.value}>
                         {opt.label}
                       </option>
                     ))}
-                  </select>
+                  </FilterSelect>
                 </div>
                 <div>
                   <label
@@ -806,36 +714,36 @@ export default function ActivityReportPage() {
                   >
                     Custom type (if not in list)
                   </label>
-                  <input
+                  <FilterInput
                     id="add-activity-offer-custom"
                     type="text"
                     value={addActivityOfferCustom}
                     onChange={(e) => setAddActivityOfferCustom(e.target.value)}
                     placeholder="e.g. steam retrofit, multi-site gas…"
                     disabled={!addActivitySelectedClient}
-                    className="w-full px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm disabled:opacity-50"
+                    className="w-full disabled:opacity-50"
                   />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Note</label>
-                  <textarea
+                  <FilterTextarea
                     value={addActivityNote}
                     onChange={(e) => setAddActivityNote(e.target.value)}
                     rows={3}
                     placeholder="What was done manually?"
-                    className="w-full px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm"
+                    className="w-full"
                   />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Document link (optional)
                   </label>
-                  <input
+                  <FilterInput
                     type="url"
                     value={addActivityLink}
                     onChange={(e) => setAddActivityLink(e.target.value)}
                     placeholder="https://…"
-                    className="w-full px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm"
+                    className="w-full"
                   />
                 </div>
               </div>
@@ -843,8 +751,10 @@ export default function ActivityReportPage() {
                 <p className="mt-2 text-xs text-red-600 dark:text-red-400">{addActivityError}</p>
               )}
               <div className="flex justify-end gap-2 pt-4">
-                <button
+                <Button
                   type="button"
+                  variant="secondary"
+                  size="sm"
                   onClick={() => {
                     if (addActivitySaving) return;
                     setAddActivitySelectedClient(null);
@@ -857,19 +767,19 @@ export default function ActivityReportPage() {
                     setAddActivityOpen(false);
                     setAddActivityError(null);
                   }}
-                  className="px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"
                   disabled={addActivitySaving}
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
+                  size="sm"
                   onClick={handleAddActivity}
                   disabled={addActivitySaving}
-                  className="px-3 py-1.5 rounded-md bg-primary text-white text-xs font-medium hover:opacity-90 disabled:opacity-50"
+                  loading={addActivitySaving}
                 >
-                  {addActivitySaving ? "Saving…" : "Save activity"}
-                </button>
+                  Save activity
+                </Button>
               </div>
             </div>
           </div>
@@ -880,7 +790,7 @@ export default function ActivityReportPage() {
             role="dialog"
             aria-modal="true"
           >
-            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 shadow-lg max-w-md w-full mx-2">
+            <div className="mx-2 w-full max-w-md rounded-2xl bg-white p-5 shadow-lg dark:bg-gray-dark">
               <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-2">
                 Delete activity?
               </h3>

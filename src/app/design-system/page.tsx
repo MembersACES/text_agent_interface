@@ -8,16 +8,101 @@ import { Modal } from "@/components/ui/modal";
 import { Select } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
+import { PageHeader } from "@/components/Layouts/PageHeader";
+import {
+  StatCard,
+  QuickActionRow,
+  QuickActionList,
+  SegmentedControl,
+  PostureBadge,
+  InsightCallout,
+  PillarGrid,
+  ProgressModuleRow,
+  ActivityFeedItem,
+  DemoFold,
+} from "@/components/dashboard";
+import { FileText, Users, AlertCircle } from "lucide-react";
 import { useState } from "react";
 
 export default function DesignSystemPage() {
   const [modalOpen, setModalOpen] = useState(false);
+  const [segment, setSegment] = useState("a");
 
   return (
-    <div className="space-y-12 p-6">
-      <h1 className="text-heading-4 text-dark dark:text-white">
-        Design System — Phase 1
-      </h1>
+    <div className="space-y-10">
+      <PageHeader
+        pageName="Design system"
+        title="Design System — Phase 2"
+        description="UI primitives and Prograde-inspired dashboard components."
+      />
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Dashboard components</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-8">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <StatCard label="Members" value={128} trend="12 won · 4 lost" icon={<Users />} accent="scope-2" />
+            <StatCard label="Tasks" value={34} trend="3 overdue" icon={<FileText />} accent="primary" />
+          </div>
+
+          <QuickActionList className="max-w-md">
+            <QuickActionRow href="/crm-members" icon={<Users />} label="Browse members" description="CRM pipeline" />
+            <QuickActionRow href="/tasks" icon={<FileText />} label="All tasks" description="Track work" />
+          </QuickActionList>
+
+          <div className="flex flex-wrap items-center gap-4">
+            <SegmentedControl
+              options={[
+                { value: "a", label: "Option A" },
+                { value: "b", label: "Option B", sublabel: "Alt" },
+              ]}
+              value={segment}
+              onChange={setSegment}
+            />
+            <PostureBadge variant="preview" />
+            <PostureBadge variant="defensible" />
+          </div>
+
+          <InsightCallout title="Insight callout" icon={<AlertCircle className="text-semantic-flag" />} variant="warning">
+            Used for task banners, drift warnings, and AI nudges.
+          </InsightCallout>
+
+          <PillarGrid
+            items={[
+              { id: "1", label: "Lead", percent: 42, icon: "📋", detail: "54 members" },
+              { id: "2", label: "Qualified", percent: 28, status: "ok", icon: "✓" },
+              { id: "3", label: "Offer sent", percent: 18, status: "flag", icon: "📤" },
+              { id: "4", label: "Won", percent: 12, status: "ok", icon: "🏆" },
+            ]}
+          />
+
+          <div className="max-w-md space-y-2">
+            <ProgressModuleRow label="Data collected" percent={72} status="ok" />
+            <ProgressModuleRow label="Analysis in progress" percent={45} status="flag" />
+          </div>
+
+          <Card>
+            <CardContent className="p-0">
+              <ul className="divide-y divide-stroke dark:divide-dark-3">
+                <ActivityFeedItem
+                  icon={<FileText />}
+                  title="Quote sent"
+                  meta="Acme Corp · by morgan@acesolutions.com.au"
+                  timestamp="2 Mar 2026"
+                  href="/offers"
+                  type="info"
+                  highlighted
+                />
+              </ul>
+            </CardContent>
+          </Card>
+
+          <DemoFold title="Demo fold" description="Collapsible training section">
+            <p className="text-sm text-gray-600 dark:text-gray-400">Hidden demo content goes here.</p>
+          </DemoFold>
+        </CardContent>
+      </Card>
 
       {/* Button */}
       <Card>

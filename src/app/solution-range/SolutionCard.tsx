@@ -123,12 +123,12 @@ export default function EnhancedSolutionCard({ solution }: { solution: SolutionL
     if (desc.includes("obee")) return "OBEE System";
     if (desc.includes("n8n")) return "n8n Integration";
     if (desc.includes("twilio")) return "Twilio";
-    if (desc.includes("aces api") || desc.includes("custom api")) return "ACES API";
+    if (desc.includes("aces api") || desc.includes("custom api")) return "Carbon Zero API";
     
     // Fallback to ID-based mapping
     if (solution.id === "inbound_booking_alex") return "OBEE System";
     if (solution.id === "pudu_maintenance_agent") return "n8n Integration";
-    if (solution.id === "trojan_oil_docket_reader") return "ACES API";
+    if (solution.id === "trojan_oil_docket_reader") return "Carbon Zero API";
     if (solution.id === "dynamic_inbound_andrew") return "Twilio";
     if (solution.id === "digital_voice_agents") return "Twilio";
     
@@ -347,7 +347,7 @@ export default function EnhancedSolutionCard({ solution }: { solution: SolutionL
                     }
                   }
                 }}
-                className={`w-full px-4 py-3 rounded-lg transition-all duration-200 text-sm font-semibold flex items-center justify-center gap-2 shadow-md bg-gradient-to-r ${getCategoryColor(category)} text-white hover:shadow-lg hover:scale-[1.02]`}
+                className={`w-full px-4 py-3 rounded-lg transition-all duration-200 text-sm font-semibold flex items-center justify-center gap-2 shadow-md bg-gradient-to-r ${getCategoryColor(category)} text-white hover:shadow-md hover:scale-[1.02]`}
               >
                 <svg
                   className="w-4 h-4"

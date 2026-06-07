@@ -824,7 +824,7 @@ export default function SolarCleaningQuotePage() {
             Solar panel cleaning quote
           </h1>
           <p className="text-sm text-gray-600 dark:text-gray-400">
-            Build ACES-branded solar panel cleaning quotations from the supplier PDF, with member
+            Build Carbon Zero Australasia-branded solar panel cleaning quotations from the supplier PDF, with member
             pricing and CRM filing — same document workflow style as the 1st Month Savings invoice.
           </p>
         </header>
@@ -1167,7 +1167,7 @@ export default function SolarCleaningQuotePage() {
                 <input className={inputCls} value={sendSubject} onChange={(e) => setSendSubject(e.target.value)} />
               </div>
               <div>
-                <label className={labelCls}>CC (ACES Staff)</label>
+                <label className={labelCls}>CC (Carbon Zero team)</label>
                 <div className="rounded-xl border border-gray-200 dark:border-gray-700 divide-y divide-gray-100 dark:divide-gray-800 max-h-36 overflow-y-auto">
                   {staffUsers.length === 0 ? (
                     <div className="px-3 py-2.5 text-xs text-gray-400">Loading users…</div>

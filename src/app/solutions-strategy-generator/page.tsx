@@ -4,6 +4,9 @@ import React, { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { getApiBaseUrl } from "@/lib/utils";
 import { useSearchParams } from "next/navigation";
+import { ToolPageLayout } from "@/components/Layouts/ToolPageLayout";
+import { BusinessSearchBar, WorkflowSection } from "@/components/workflow";
+import { Button } from "@/components/ui/button";
 
 interface BusinessInfo {
   business_name: string;
@@ -880,30 +883,19 @@ export default function IndividualStrategyEmailPage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto p-6">
-      <h1 className="text-3xl font-bold mb-8 text-gray-800">📧 Individual Strategy Email</h1>
-
-      {/* Business Search Section */}
-      <div className="mb-8 p-6 bg-gray-50 rounded-lg">
-        <h2 className="text-xl font-semibold mb-4 text-gray-800">1. Select Business</h2>
-        
-        <div className="flex gap-4 mb-4">
-          <input
-            type="text"
-            value={businessQuery}
-            onChange={(e) => setBusinessQuery(e.target.value)}
-            placeholder="Enter business name to search..."
-            className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            onKeyPress={(e) => e.key === 'Enter' && fetchBusinessInfo()}
-          />
-          <button
-            onClick={fetchBusinessInfo}
-            disabled={businessLoading || !businessQuery.trim()}
-            className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {businessLoading ? "Searching..." : "Search"}
-          </button>
-        </div>
+    <ToolPageLayout
+      pageName="Solutions Strategy Generator"
+      title="Individual strategy email"
+      description="Send tailored strategy proposal emails for selected solutions."
+      width="2xl"
+    >
+      <WorkflowSection title="Select business" step={1}>
+        <BusinessSearchBar
+          value={businessQuery}
+          onChange={setBusinessQuery}
+          onSearch={fetchBusinessInfo}
+          loading={businessLoading}
+        />
 
         {selectedBusiness && (
           <div className="mt-4 p-4 bg-white rounded border border-green-200">
@@ -1040,15 +1032,12 @@ export default function IndividualStrategyEmailPage() {
         {/* New Search Button - only show if business is selected */}
         {selectedBusiness && (
           <div className="mt-4 flex justify-end">
-            <button
-              onClick={handleNewSearch}
-              className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors text-sm"
-            >
-              🔄 New Business Search
-            </button>
+            <Button variant="secondary" size="sm" onClick={handleNewSearch}>
+              New business search
+            </Button>
           </div>
         )}
-      </div>
+      </WorkflowSection>
 
       {/* Result Display */}
       {result && (
@@ -1485,6 +1474,6 @@ export default function IndividualStrategyEmailPage() {
           </div>
         </div>
       )}
-    </div>
+    </ToolPageLayout>
   );
 }

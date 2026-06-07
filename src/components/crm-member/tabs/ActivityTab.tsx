@@ -2,8 +2,16 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { cn } from "@/lib/utils";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Card, CardContent } from "@/components/ui/card";
+import { SectionHeader } from "../shared/SectionHeader";
 import { formatDate } from "../shared/formatDate";
+import {
+  getOfferActivityEventVisual,
+  getStageChangeEventVisual,
+} from "../shared/activityEventTypes";
+import { RECORD_ICON_CHIP } from "../shared/recordRowIcons";
 import { OFFER_ACTIVITY_LABELS } from "@/constants/crm";
 import type { OfferActivityType } from "@/constants/crm";
 import type { TimelineEvent } from "../types";
@@ -38,14 +46,12 @@ export function ActivityTab({ timelineEvents }: ActivityTabProps) {
   }, [timelineEvents, filter]);
 
   return (
-    <Card className="border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+    <Card className="p-0">
       <CardContent className="p-4 space-y-3">
-        <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-100">
-          Activity timeline
-        </h2>
-        <p className="text-xs text-gray-500 dark:text-gray-400">
-          Stage changes and offer activities for this member.
-        </p>
+        <SectionHeader
+          title="Activity timeline"
+          subtitle="Stage changes and offer activities for this member."
+        />
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
@@ -90,25 +96,40 @@ export function ActivityTab({ timelineEvents }: ActivityTabProps) {
           })}
         </div>
         {filteredEvents.length === 0 ? (
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            No activity recorded yet.
-          </p>
+          <EmptyState
+            title="No activity recorded yet."
+            className="py-6 items-start text-left [&_h3]:text-sm [&_h3]:font-normal [&_h3]:text-gray-500 [&_h3]:dark:text-gray-400 [&_h3]:mb-0"
+          />
         ) : (
           <ul className="space-y-3 max-h-[480px] overflow-y-auto">
             {filteredEvents.map((ev) => {
               if (ev.type === "stage_change") {
+                const visual = getStageChangeEventVisual();
+                const StageIcon = visual.icon;
                 return (
                   <li
                     key={ev.id}
-                    className="flex flex-col gap-1 text-sm border-l-2 border-blue-200 dark:border-blue-600 pl-3 py-1"
+                    className={cn(
+                      "flex flex-col gap-1 rounded-r-md border-l-2 py-1 pl-3 text-sm transition-colors duration-[120ms] hover:bg-gray-2/70 dark:hover:bg-dark-2/50",
+                      visual.borderClass
+                    )}
                   >
-                    <span className="font-medium text-gray-800 dark:text-gray-100">
-                      Stage change
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className={cn("h-2 w-2 shrink-0 rounded-full", visual.dotClass)} />
+                      <span
+                        className={cn(
+                          "flex h-5 w-5 shrink-0 items-center justify-center rounded",
+                          RECORD_ICON_CHIP[visual.iconIntent]
+                        )}
+                      >
+                        <StageIcon className="h-3 w-3" aria-hidden />
+                      </span>
+                      <span className="font-medium text-gray-800 dark:text-gray-100">
+                        Stage change
+                      </span>
+                    </div>
                     {ev.note && (
-                      <p className="text-gray-700 dark:text-gray-300">
-                        {ev.note}
-                      </p>
+                      <p className="text-gray-700 dark:text-gray-300">{ev.note}</p>
                     )}
                     <span className="text-xs text-gray-500 dark:text-gray-400">
                       {formatDate(ev.created_at)}
@@ -122,21 +143,37 @@ export function ActivityTab({ timelineEvents }: ActivityTabProps) {
               const label =
                 OFFER_ACTIVITY_LABELS[activityType as OfferActivityType] ??
                 activityType.replace(/_/g, " ");
+              const visual = getOfferActivityEventVisual(activityType);
+              const ActivityIcon = visual.icon;
 
               return (
                 <li
                   key={ev.id}
-                  className="flex flex-col gap-1 text-sm border-l-2 border-gray-200 dark:border-gray-600 pl-3 py-1"
+                  className={cn(
+                    "flex flex-col gap-1 rounded-r-md border-l-2 py-1 pl-3 text-sm transition-colors duration-[120ms] hover:bg-gray-2/70 dark:hover:bg-dark-2/50",
+                    visual.borderClass
+                  )}
                 >
-                  <span className="font-medium text-gray-800 dark:text-gray-100">
-                    {label || "Activity"}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className={cn("h-2 w-2 shrink-0 rounded-full", visual.dotClass)} />
+                    <span
+                      className={cn(
+                        "flex h-5 w-5 shrink-0 items-center justify-center rounded",
+                        RECORD_ICON_CHIP[visual.iconIntent]
+                      )}
+                    >
+                      <ActivityIcon className="h-3 w-3" aria-hidden />
+                    </span>
+                    <span className="font-medium text-gray-800 dark:text-gray-100">
+                      {label || "Activity"}
+                    </span>
+                  </div>
                   <span className="text-xs text-gray-500 dark:text-gray-400">
                     {formatDate(ev.created_at)}
                     {ev.created_by && ` · ${ev.created_by}`}
                   </span>
                   {(ev.offer_id != null || ev.document_link) && (
-                    <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex flex-wrap items-center gap-2">
                       {ev.offer_id != null && (
                         <Link
                           href={`/offers/${ev.offer_id}`}

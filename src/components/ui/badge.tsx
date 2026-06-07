@@ -12,6 +12,7 @@ export type BadgeIntent =
 
 export interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
   intent?: BadgeIntent;
+  shape?: "default" | "pill";
   children: ReactNode;
 }
 
@@ -27,16 +28,23 @@ const intentStyles: Record<BadgeIntent, string> = {
     "bg-gray-3 text-dark-5 border border-gray-4 dark:bg-dark-3 dark:text-gray-5 dark:border-dark-3",
 };
 
+const shapeStyles = {
+  default: "rounded-md",
+  pill: "rounded-full",
+};
+
 export function Badge({
   className,
   intent = "neutral",
+  shape = "default",
   children,
   ...props
 }: BadgeProps) {
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium",
+        "inline-flex items-center border px-2 py-0.5 text-xs font-medium",
+        shapeStyles[shape],
         intentStyles[intent],
         className
       )}

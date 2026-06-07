@@ -3,6 +3,16 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
+import {
+  ClipboardList,
+  FileText,
+  FolderPlus,
+  LayoutDashboard,
+  Leaf,
+  ListTodo,
+  UserPlus,
+  Users,
+} from "lucide-react";
 import { getApiBaseUrl } from "@/lib/utils";
 import { useCommandPalette } from "@/components/CommandPaletteContext";
 
@@ -29,9 +39,20 @@ interface SearchResult {
   offers: SearchOffer[];
 }
 
+const QUICK_ACTIONS = [
+  { href: "/crm-members?openAdd=1", label: "Add new member", icon: UserPlus, section: "Actions" },
+  { href: "/loa-upload", label: "Google Drive — New Member", icon: FolderPlus, section: "Actions" },
+  { href: "/tasks", label: "View all tasks", icon: ClipboardList, section: "Actions" },
+  { href: "/crm", label: "CRM dashboard", icon: LayoutDashboard, section: "Navigate" },
+  { href: "/crm-members", label: "Browse members", icon: Users, section: "Navigate" },
+  { href: "/offers", label: "Browse offers", icon: ListTodo, section: "Navigate" },
+  { href: "/workflows", label: "All workflows", icon: FileText, section: "Navigate" },
+  { href: "/design-system", label: "Design system", icon: Leaf, section: "Reference" },
+];
+
 export function CommandPalette() {
   const { data: session } = useSession();
-  const token = (session as any)?.id_token || (session as any)?.accessToken;
+  const token = (session as { id_token?: string; accessToken?: string })?.id_token ?? (session as { id_token?: string; accessToken?: string })?.accessToken;
   const palette = useCommandPalette();
   const open = palette?.open ?? false;
   const setOpen = useMemo(() => palette?.setOpen ?? (() => {}), [palette]);
@@ -81,22 +102,38 @@ export function CommandPalette() {
     return result.clients.length > 0 || result.offers.length > 0;
   }, [result]);
 
+  const filteredQuickActions = useMemo(() => {
+    if (!debouncedQuery) return QUICK_ACTIONS;
+    const q = debouncedQuery.toLowerCase();
+    return QUICK_ACTIONS.filter((a) => a.label.toLowerCase().includes(q));
+  }, [debouncedQuery]);
+
+  const quickActionSections = useMemo(() => {
+    const sections = new Map<string, typeof QUICK_ACTIONS>();
+    for (const action of filteredQuickActions) {
+      const list = sections.get(action.section) ?? [];
+      list.push(action);
+      sections.set(action.section, list);
+    }
+    return sections;
+  }, [filteredQuickActions]);
+
   if (!open) return null;
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh] px-4 bg-black/50"
+      className="fixed inset-0 z-[100] flex items-start justify-center bg-black/50 px-4 pt-[12vh]"
       role="dialog"
       aria-modal="true"
-      aria-label="Search members and offers"
+      aria-label="Search and quick actions"
       onClick={() => setOpen(false)}
     >
       <div
-        className="w-full max-w-xl rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-xl overflow-hidden"
+        className="w-full max-w-xl overflow-hidden rounded-2xl border border-stroke bg-white shadow-2xl dark:border-dark-3 dark:bg-gray-dark"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center border-b border-gray-200 dark:border-gray-700 px-3 py-2">
-          <span className="text-gray-400 dark:text-gray-500 mr-2" aria-hidden>
+        <div className="flex items-center border-b border-stroke px-4 py-3 dark:border-dark-3">
+          <span className="mr-2 text-gray-400 dark:text-gray-500" aria-hidden>
             ⌘K
           </span>
           <input
@@ -106,70 +143,139 @@ export function CommandPalette() {
               setQuery(e.target.value);
               setResult(null);
             }}
-            placeholder="Search members and offers..."
-            className="flex-1 bg-transparent text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none text-sm py-1"
+            placeholder="Search members, offers, or actions…"
+            className="flex-1 bg-transparent py-1 text-sm text-dark placeholder-gray-400 focus:outline-none dark:text-white dark:placeholder-gray-500"
             autoFocus
             aria-label="Search"
           />
         </div>
         <div className="max-h-[60vh] overflow-y-auto py-2">
-          {!result && debouncedQuery ? (
-            <div className="px-4 py-6 text-center text-sm text-gray-500 dark:text-gray-400">
-              Searching...
-            </div>
-          ) : !debouncedQuery ? (
-            <div className="px-4 py-6 text-center text-sm text-gray-500 dark:text-gray-400">
-              Type to search clients by name or offers by business name / identifier.
-            </div>
-          ) : !hasResults ? (
-            <div className="px-4 py-6 text-center text-sm text-gray-500 dark:text-gray-400">
-              No clients or offers found.
-            </div>
-          ) : (
+          {!debouncedQuery && (
             <>
-              {result!.clients.length > 0 && (
-                <div className="px-2 pb-2">
-                  <p className="px-2 py-1 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                    Clients
+              {Array.from(quickActionSections.entries()).map(([section, actions]) => (
+                <div key={section} className="px-2 pb-2">
+                  <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
+                    {section}
                   </p>
                   <ul className="space-y-0.5">
-                    {result!.clients.map((c) => (
+                    {actions.map((action) => {
+                      const Icon = action.icon;
+                      return (
+                        <li key={action.href}>
+                          <Link
+                            href={action.href}
+                            className="flex items-center gap-3 rounded-xl px-3 py-2 text-sm text-dark hover:bg-brand-disclosure/10 dark:text-white dark:hover:bg-brand-disclosure/15"
+                            onClick={() => setOpen(false)}
+                          >
+                            <Icon className="size-4 shrink-0 text-primary" />
+                            <span className="font-medium">{action.label}</span>
+                          </Link>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              ))}
+            </>
+          )}
+
+          {debouncedQuery && !result && (
+            <div className="px-4 py-6 text-center text-sm text-gray-500 dark:text-gray-400">
+              Searching…
+            </div>
+          )}
+
+          {debouncedQuery && result && !hasResults && filteredQuickActions.length === 0 && (
+            <div className="px-4 py-6 text-center text-sm text-gray-500 dark:text-gray-400">
+              No clients, offers, or actions found.
+            </div>
+          )}
+
+          {debouncedQuery && filteredQuickActions.length > 0 && (
+            <div className="px-2 pb-2">
+              <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
+                Actions
+              </p>
+              <ul className="space-y-0.5">
+                {filteredQuickActions.map((action) => {
+                  const Icon = action.icon;
+                  return (
+                    <li key={action.href}>
+                      <Link
+                        href={action.href}
+                        className="flex items-center gap-3 rounded-xl px-3 py-2 text-sm hover:bg-brand-disclosure/10 dark:hover:bg-brand-disclosure/15"
+                        onClick={() => setOpen(false)}
+                      >
+                        <Icon className="size-4 text-primary" />
+                        <span className="font-medium text-dark dark:text-white">{action.label}</span>
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
+
+          {debouncedQuery && result && hasResults && (
+            <>
+              {result.clients.length > 0 && (
+                <div className="px-2 pb-2">
+                  <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
+                    Members
+                  </p>
+                  <ul className="space-y-0.5">
+                    {result.clients.map((c) => (
                       <li key={`c-${c.id}`}>
-                        <Link
-                          href={`/crm-members/${c.id}`}
-                          className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-left text-sm text-gray-900 dark:text-gray-100"
-                          onClick={() => setOpen(false)}
-                        >
-                          <span className="font-medium truncate">{c.business_name}</span>
-                          {c.stage && (
-                            <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0 capitalize">
-                              {c.stage.replace(/_/g, " ")}
+                        <div className="flex items-stretch gap-1 rounded-xl hover:bg-gray/50 dark:hover:bg-dark-3">
+                          <Link
+                            href={`/crm-members/${c.id}`}
+                            className="min-w-0 flex-1 px-3 py-2 text-left text-sm"
+                            onClick={() => setOpen(false)}
+                          >
+                            <span className="block truncate font-medium text-dark dark:text-white">
+                              {c.business_name}
                             </span>
-                          )}
-                        </Link>
+                            {c.stage && (
+                              <span className="text-xs capitalize text-gray-500 dark:text-gray-400">
+                                {c.stage.replace(/_/g, " ")}
+                              </span>
+                            )}
+                          </Link>
+                          <Link
+                            href={`/business-info?businessName=${encodeURIComponent(c.business_name)}`}
+                            className="shrink-0 self-center px-2 py-2 text-[10px] font-semibold uppercase tracking-wide text-primary hover:underline"
+                            onClick={() => setOpen(false)}
+                            title="Open LOA-linked Airtable profile"
+                          >
+                            Profile
+                          </Link>
+                        </div>
                       </li>
                     ))}
                   </ul>
                 </div>
               )}
-              {result!.offers.length > 0 && (
+              {result.offers.length > 0 && (
                 <div className="px-2 pb-2">
-                  <p className="px-2 py-1 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                  <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
                     Offers
                   </p>
                   <ul className="space-y-0.5">
-                    {result!.offers.map((o) => (
+                    {result.offers.map((o) => (
                       <li key={`o-${o.id}`}>
                         <Link
                           href={`/offers/${o.id}`}
-                          className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-left text-sm text-gray-900 dark:text-gray-100"
+                          className="flex items-center justify-between gap-2 rounded-xl px-3 py-2 text-left text-sm hover:bg-gray/50 dark:hover:bg-dark-3"
                           onClick={() => setOpen(false)}
                         >
-                          <span className="truncate">
-                            {o.business_name || "Offer"}{(o.utility_display || o.utility_type_identifier || o.identifier) ? ` · ${(o.utility_display || o.utility_type_identifier || o.utility_type || "Offer") + (o.identifier ? " " + o.identifier : "")}` : ""}
+                          <span className="truncate text-dark dark:text-white">
+                            {o.business_name || "Offer"}
+                            {(o.utility_display || o.utility_type_identifier || o.identifier)
+                              ? ` · ${(o.utility_display || o.utility_type_identifier || o.utility_type || "Offer")}${o.identifier ? " " + o.identifier : ""}`
+                              : ""}
                           </span>
                           {o.status && (
-                            <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0 capitalize">
+                            <span className="shrink-0 text-xs capitalize text-gray-500 dark:text-gray-400">
                               {o.status.replace(/_/g, " ")}
                             </span>
                           )}

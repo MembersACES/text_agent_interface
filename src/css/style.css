@@ -4,7 +4,7 @@
 
 @layer base {
   body {
-    @apply bg-gray-2 text-dark-5 dark:bg-[#020D1A] dark:text-dark-6;
+    @apply bg-canvas text-dark-5 dark:bg-canvas-dark dark:text-dark-6;
   }
 }
 
@@ -38,6 +38,58 @@
   
   .chat-height {
     @apply h-[calc(100vh_-_8.125rem)] lg:h-[calc(100vh_-_5.625rem)];
+  }
+
+  @keyframes pg-fade-up {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .pg-fade-up {
+    animation: pg-fade-up 0.45s ease-out both;
+  }
+
+  .pg-stagger-1 { animation-delay: 60ms; }
+  .pg-stagger-2 { animation-delay: 120ms; }
+  .pg-stagger-3 { animation-delay: 180ms; }
+  .pg-stagger-4 { animation-delay: 240ms; }
+  .pg-stagger-5 { animation-delay: 300ms; }
+  .pg-stagger-6 { animation-delay: 360ms; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .pg-fade-up,
+    [class*="pg-stagger"] {
+      animation: none !important;
+    }
+  }
+
+  @keyframes skeleton-shimmer {
+    100% {
+      transform: translateX(100%);
+    }
+  }
+
+  .skeleton-shimmer {
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.45),
+      transparent
+    );
+    animation: skeleton-shimmer 1.5s infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .skeleton-shimmer {
+      animation: none !important;
+      display: none;
+    }
   }
 
   .inbox-height {

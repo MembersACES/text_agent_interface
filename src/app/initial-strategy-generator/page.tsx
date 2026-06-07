@@ -4,7 +4,10 @@ import React, { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { getApiBaseUrl } from "@/lib/utils";
 import { useSearchParams } from "next/navigation";
-import { PageHeader } from "@/components/Layouts/PageHeader";
+import { ToolPageLayout } from "@/components/Layouts/ToolPageLayout";
+import { BusinessSearchBar, WorkflowSection } from "@/components/workflow";
+import { Button } from "@/components/ui/button";
+import { InsightCallout } from "@/components/dashboard";
 
 interface BusinessInfo {
   business_name: string;
@@ -568,33 +571,22 @@ export default function InitialStrategyGeneratorPage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto p-6">
-      <PageHeader pageName="Initial Strategy Generator" description="Generate initial strategy and proposals for a business." />
-
-      {/* Business Search Section */}
-      <div className="mb-8 p-6 bg-gray-50 rounded-lg">
-        <h2 className="text-xl font-semibold mb-4 text-gray-800">1. Select Business</h2>
-        
-        <div className="flex gap-4 mb-4">
-          <input
-            type="text"
-            value={businessQuery}
-            onChange={(e) => setBusinessQuery(e.target.value)}
-            placeholder="Enter business name to search..."
-            className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            onKeyPress={(e) => e.key === 'Enter' && fetchBusinessInfo()}
-          />
-          <button
-            onClick={fetchBusinessInfo}
-            disabled={businessLoading || !businessQuery.trim()}
-            className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {businessLoading ? "Searching..." : "Search"}
-          </button>
-        </div>
+    <ToolPageLayout
+      pageName="Initial Strategy Generator"
+      title="Initial strategy generator"
+      description="Generate initial strategy and proposals for a business."
+      width="2xl"
+    >
+      <WorkflowSection title="Select business" step={1}>
+        <BusinessSearchBar
+          value={businessQuery}
+          onChange={setBusinessQuery}
+          onSearch={fetchBusinessInfo}
+          loading={businessLoading}
+        />
 
         {selectedBusiness && (
-          <div className="mt-4 p-4 bg-white rounded border border-green-200">
+          <div className="mt-4 rounded-xl border border-green-200 bg-white p-4 dark:border-green-800/40 dark:bg-gray-dark">
             <h3 className="font-semibold text-green-800 mb-4">✅ Business Found - Review & Edit Details:</h3>
             
             {/* Editable Business Information */}
@@ -729,15 +721,12 @@ export default function InitialStrategyGeneratorPage() {
         {/* New Search Button - only show if business is selected */}
         {selectedBusiness && (
           <div className="mt-4 flex justify-end">
-            <button
-              onClick={handleNewSearch}
-              className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors text-sm"
-            >
-              🔄 New Business Search
-            </button>
+            <Button variant="secondary" size="sm" onClick={handleNewSearch}>
+              New business search
+            </Button>
           </div>
         )}
-      </div>
+      </WorkflowSection>
 
       {/* Result Display */}
       {result && (
@@ -754,22 +743,15 @@ export default function InitialStrategyGeneratorPage() {
 
       {/* Solution Selection Section */}
       {selectedBusiness && (
-        <div className="mb-8 p-6 bg-gray-50 rounded-lg">
+        <WorkflowSection title="Select initial strategy solutions" step={2}>
           <div className="flex justify-between items-center mb-6">
-            <h2 className="text-xl font-semibold text-gray-800">2. Select Initial Strategy Solutions</h2>
             <div className="flex gap-2">
-              <button
-                onClick={selectAllSolutions}
-                className="px-3 py-1 text-sm bg-green-100 text-green-700 rounded hover:bg-green-200 transition-colors"
-              >
-                Select All
-              </button>
-              <button
-                onClick={clearAllSolutions}
-                className="px-3 py-1 text-sm bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
-              >
-                Clear All
-              </button>
+              <Button variant="secondary" size="sm" onClick={selectAllSolutions}>
+                Select all
+              </Button>
+              <Button variant="ghost" size="sm" onClick={clearAllSolutions}>
+                Clear all
+              </Button>
             </div>
           </div>
           
@@ -777,7 +759,7 @@ export default function InitialStrategyGeneratorPage() {
             {solutionOptions.map((solution) => (
               <div 
                 key={solution.id} 
-                className="bg-white p-4 rounded-lg border border-gray-200 hover:border-blue-300 transition-all duration-200 hover:shadow-md"
+                className="bg-white dark:bg-gray-dark p-4 rounded-2xl border border-stroke hover:border-primary/40 transition-all duration-200 hover:shadow-sm dark:border-dark-3"
               >
                 <div className="flex items-start space-x-3">
                   <input
@@ -806,16 +788,16 @@ export default function InitialStrategyGeneratorPage() {
           </div>
 
           {selectedSolutions.length > 0 && (
-            <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+            <div className="mt-6 p-4 rounded-2xl border border-primary/20 bg-primary/5">
               <div className="flex justify-between items-start mb-3">
-                <h4 className="font-medium text-blue-800">
-                  Selected Solutions ({selectedSolutions.length} of {solutionOptions.length}):
+                <h4 className="font-medium text-primary">
+                  Selected solutions ({selectedSolutions.length} of {solutionOptions.length})
                 </h4>
                 <button
                   onClick={clearAllSolutions}
-                  className="text-xs text-blue-600 hover:text-blue-800 underline"
+                  className="text-xs text-primary hover:underline"
                 >
-                  Clear All
+                  Clear all
                 </button>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -824,12 +806,12 @@ export default function InitialStrategyGeneratorPage() {
                   return solution ? (
                     <span 
                       key={solutionId} 
-                      className="inline-flex items-center bg-blue-100 px-2 py-1 rounded-full text-xs text-blue-800"
+                      className="inline-flex items-center bg-primary/10 px-2 py-1 rounded-full text-xs text-primary"
                     >
                       {solution.name}
                       <button
                         onClick={() => handleSolutionToggle(solutionId)}
-                        className="ml-1 text-blue-600 hover:text-blue-800 font-bold"
+                        className="ml-1 text-primary hover:text-primary/80 font-bold"
                       >
                         ×
                       </button>
@@ -839,35 +821,33 @@ export default function InitialStrategyGeneratorPage() {
               </div>
             </div>
           )}
-        </div>
+        </WorkflowSection>
       )}
 
-      {/* Generate Presentation Section */}
       {selectedBusiness && selectedSolutions.length > 0 && (
-        <div className="mb-8 p-6 bg-white rounded-lg shadow-sm border">
-          <h2 className="text-xl font-semibold mb-4 text-gray-800">3. Generate Initial Strategy Presentation</h2>
-          
+        <WorkflowSection title="Generate initial strategy presentation" step={3}>
           <div className="mb-4">
-            <p className="text-sm text-gray-600 mb-2">
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
               This will create a custom initial strategy presentation including:
             </p>
-            <ul className="text-sm text-gray-600 space-y-1 ml-4">
-              <li>• Cover page with business details ({editableBusinessInfo?.business_name})</li>
+            <ul className="text-sm text-gray-600 dark:text-gray-400 space-y-1 ml-4 list-disc">
+              <li>Cover page with business details ({editableBusinessInfo?.business_name})</li>
               {selectedSolutions.map(solutionId => {
                 const solution = solutionOptions.find(s => s.id === solutionId);
-                return solution ? <li key={solutionId}>• {solution.name} strategy slides</li> : null;
+                return solution ? <li key={solutionId}>{solution.name} strategy slides</li> : null;
               })}
             </ul>
           </div>
 
-          <button
+          <Button
             onClick={generateInitialStrategyPresentation}
             disabled={generationLoading}
-            className="px-6 py-3 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+            loading={generationLoading}
+            size="lg"
           >
-            {generationLoading ? "Generating Presentation..." : "🚀 Generate Initial Strategy Presentation"}
-          </button>
-        </div>
+            Generate initial strategy presentation
+          </Button>
+        </WorkflowSection>
       )}
       {generationResult && (
         <div className={`mb-6 p-6 rounded-lg border ${
@@ -908,7 +888,7 @@ export default function InitialStrategyGeneratorPage() {
                     href={generationResult.presentationUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm font-medium"
+                    className="inline-flex items-center px-4 py-2 bg-primary text-white rounded-full hover:bg-primary/90 transition-colors text-sm font-medium"
                   >
                     📝 Edit Presentation
                   </a>
@@ -954,25 +934,19 @@ export default function InitialStrategyGeneratorPage() {
       )}
       {/* Instructions */}
       {!selectedBusiness && (
-        <div className="mt-8 p-4 bg-gray-50 rounded-md">
-          <h3 className="font-medium text-gray-800 mb-2">How to use the Initial Strategy Generator:</h3>
-          <ol className="text-sm text-gray-600 space-y-1">
-            <li>1. Search for an existing business by name</li>
-            <li>2. Review and edit the business details if needed</li>
-            <li>3. Select the initial strategy solutions you want to include</li>
-            <li>4. Generate your custom initial strategy presentation</li>
+        <InsightCallout title="How to use">
+          <ol className="list-decimal space-y-1 pl-4">
+            <li>Search for an existing business by name</li>
+            <li>Review and edit the business details if needed</li>
+            <li>Select the initial strategy solutions you want to include</li>
+            <li>Generate your custom initial strategy presentation</li>
           </ol>
-          
-          <div className="mt-4 p-3 bg-blue-50 rounded border border-blue-200">
-            <p className="text-sm text-blue-700">
-              🚀 <strong>Initial Strategy Focus:</strong> This tool creates foundational strategy presentations 
-              with essential solutions for new client engagements. Solutions include Profile Reset, Asset Optimisation, 
-              Resource Recovery, AI Agents, Renewable Energy, Behavior Modification, Material Range, Automation, 
-              and Carbon Credits strategies.
-            </p>
-          </div>
-        </div>
+          <p className="mt-3">
+            <strong>Initial strategy focus:</strong> foundational presentations with Profile Reset, Asset Optimisation,
+            Resource Recovery, AI Agents, Renewable Energy, and related solutions.
+          </p>
+        </InsightCallout>
       )}
-    </div>
+    </ToolPageLayout>
   );
 }

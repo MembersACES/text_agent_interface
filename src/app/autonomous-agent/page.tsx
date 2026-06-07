@@ -553,9 +553,9 @@ export default function AutonomousAgentPage() {
     "mt-1 w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-950 px-2.5 py-2 text-xs text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 transition resize-y";
   const labelCls = "block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide";
   const btnPrimary =
-    "inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white text-xs font-semibold px-3 py-1.5 transition disabled:opacity-40 disabled:cursor-not-allowed shadow-sm";
+    "inline-flex items-center gap-1.5 rounded-full bg-gradient-to-br from-primary to-primary/85 text-white text-xs font-semibold px-3 py-1.5 transition hover:-translate-y-0.5 hover:shadow-sm disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:translate-y-0 shadow-sm";
   const btnSecondary =
-    "inline-flex items-center gap-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-semibold px-3 py-1.5 transition disabled:opacity-40 disabled:cursor-not-allowed shadow-sm";
+    "inline-flex items-center gap-1.5 rounded-full border border-stroke dark:border-dark-3 bg-white dark:bg-gray-dark hover:bg-gray/80 dark:hover:bg-dark-3 text-dark dark:text-white text-xs font-semibold px-3 py-1.5 transition disabled:opacity-40 disabled:cursor-not-allowed shadow-sm";
 
   // ── render ────────────────────────────────────────────────────────────────
 

@@ -98,7 +98,7 @@ export default function FloatingAgentChat() {
         <div className="fixed bottom-24 right-8 z-50 w-[460px] h-[620px] bg-white border border-gray-200 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
           {/* Chat Header */}
           <div className="bg-emerald-600 text-white px-4 py-3 font-semibold text-lg flex items-center justify-between">
-            ACES Floating Agent 💬
+            Carbon Zero Assistant 💬
             <button
               onClick={() => setIsOpen(false)}
               className="text-white hover:text-gray-200 transition"

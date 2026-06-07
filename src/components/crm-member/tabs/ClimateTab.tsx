@@ -5,7 +5,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
+import { PostureBadge, CollapsiblePanel } from "@/components/dashboard";
 import { getApiBaseUrl } from "@/lib/utils";
 import type { Client } from "../types";
 
@@ -541,6 +543,13 @@ export function ClimateTab({
 
   return (
     <div className="space-y-4">
+      <CollapsiblePanel
+        title="Climate controls"
+        description="Entity setup, drift monitoring, ETL sync, and staged records"
+        defaultOpen
+        badge={<PostureBadge variant="preview" />}
+      >
+        <div className="space-y-4">
       <Card className="border-primary/20">
         <CardHeader>
           <CardTitle className="text-base">Sustainability reporting entity</CardTitle>
@@ -551,22 +560,15 @@ export function ClimateTab({
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex flex-wrap items-end gap-3">
-            <div className="min-w-[16rem] flex-1">
-              <label
-                htmlFor="climate-reporting-entity"
-                className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1"
-              >
-                Entity ID
-              </label>
-              <input
-                id="climate-reporting-entity"
-                type="text"
-                value={reportingEntityDraft}
-                onChange={(e) => setReportingEntityDraft(e.target.value)}
-                placeholder="e.g. parramatta-leagues-club"
-                className="w-full rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm px-3 py-2 font-mono"
-              />
-            </div>
+            <Input
+              id="climate-reporting-entity"
+              label="Entity ID"
+              value={reportingEntityDraft}
+              onChange={(e) => setReportingEntityDraft(e.target.value)}
+              placeholder="e.g. parramatta-leagues-club"
+              className="font-mono"
+              wrapperClassName="min-w-[16rem] flex-1"
+            />
             <Button
               variant="primary"
               size="sm"
@@ -604,9 +606,7 @@ export function ClimateTab({
       </Card>
 
       <div className="flex flex-wrap items-center gap-2">
-        <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-900 dark:bg-amber-900/40 dark:text-amber-200">
-          Preview — management grade
-        </span>
+        <PostureBadge variant="preview" />
         {driftLoading ? (
           <span className="text-xs text-gray-500">Checking drift events…</span>
         ) : driftEvents.length > 0 ? (
@@ -881,33 +881,38 @@ export function ClimateTab({
           )}
         </CardContent>
       </Card>
+        </div>
+      </CollapsiblePanel>
 
       {iframeSrc ? (
-        <Card>
-          <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
+        <Card className="overflow-hidden border-brand-disclosure/20 shadow-md">
+          <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0 border-b border-stroke bg-gradient-to-r from-brand-disclosure/5 to-transparent dark:border-dark-3">
             <div>
               <CardTitle className="text-base">Climate disclosure workspace</CardTitle>
               <CardDescription>
-                Prograde preview for <span className="font-mono">{entity}</span> — management grade, not locked.
+                Prograde preview for <span className="font-mono">{entity}</span>
               </CardDescription>
             </div>
-            {disclosureHref ? (
-              <a
-                href={disclosureHref}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center rounded-md border border-stroke bg-white px-2.5 py-1.5 text-xs font-medium text-dark hover:bg-gray dark:border-dark-3 dark:bg-gray-dark dark:text-white dark:hover:bg-dark-3"
-              >
-                Open full workspace
-              </a>
-            ) : null}
+            <div className="flex flex-wrap items-center gap-2">
+              <PostureBadge variant="preview" />
+              {disclosureHref ? (
+                <a
+                  href={disclosureHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center rounded-full border border-stroke bg-white px-3 py-1.5 text-xs font-semibold text-dark transition-all hover:-translate-y-0.5 hover:shadow-sm dark:border-dark-3 dark:bg-gray-dark dark:text-white"
+                >
+                  Open full workspace
+                </a>
+              ) : null}
+            </div>
           </CardHeader>
-          <CardContent className="overflow-hidden rounded-b-lg p-0">
+          <CardContent className="overflow-hidden p-0">
             <iframe
               ref={iframeRef}
               src={iframeSrc}
               title="Climate disclosure workspace"
-              className="h-[min(70vh,720px)] w-full border-0"
+              className="h-[min(75vh,800px)] w-full border-0"
               onLoad={postAuthToIframe}
             />
           </CardContent>

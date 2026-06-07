@@ -1,13 +1,23 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { Search } from "lucide-react";
 import { getApiBaseUrl } from "@/lib/utils";
 import { PageHeader } from "@/components/Layouts/PageHeader";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { SegmentedControl } from "@/components/dashboard";
+import { RecentMembersRow } from "@/components/member-profile";
+import {
+  getRecentMemberViews,
+  type RecentMemberView,
+} from "@/lib/member-profile-recent";
 import { StageBadge } from "@/components/crm-member/shared/StageBadge";
 import {
   CLIENT_STAGES,
@@ -30,6 +40,7 @@ interface Client {
 
 export default function ClientsPage() {
   const { data: session } = useSession();
+  const router = useRouter();
   const token = (session as any)?.id_token || (session as any)?.accessToken;
   const searchParams = useSearchParams();
 
@@ -67,8 +78,81 @@ export default function ClientsPage() {
   const [cardStageClientId, setCardStageClientId] = useState<number | null>(null);
   const [cardStageValue, setCardStageValue] = useState<ClientStage>("lead");
   const [cardStageSubmitting, setCardStageSubmitting] = useState(false);
+  const [viewMode, setViewMode] = useState<"pipeline" | "flat">("pipeline");
+  const [lookupName, setLookupName] = useState("");
+  const [lookupLoading, setLookupLoading] = useState(false);
+  const [lookupError, setLookupError] = useState<string | null>(null);
+  const [recentMembers, setRecentMembers] = useState<RecentMemberView[]>([]);
 
   const PAGE_SIZE = 20;
+
+  useEffect(() => {
+    setRecentMembers(getRecentMemberViews());
+  }, []);
+
+  const resolveBusinessToMember = useCallback(
+    async (name: string) => {
+      const queryName = name.trim();
+      if (!queryName) {
+        setLookupError("Enter a business name to search.");
+        return;
+      }
+      if (!token) {
+        setLookupError("Please sign in to search.");
+        return;
+      }
+
+      setLookupError(null);
+      setLookupLoading(true);
+      try {
+        const res = await fetch(`${getApiBaseUrl()}/api/get-business-info`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ business_name: queryName }),
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error((err as { detail?: string }).detail || "Member not found");
+        }
+
+        const data = await res.json();
+        const clientId = (data as { client_id?: number | null }).client_id;
+        const resolvedName =
+          (data as { business_details?: { name?: string } })?.business_details?.name ||
+          queryName;
+
+        if (clientId != null) {
+          router.push(`/crm-members/${clientId}`);
+          return;
+        }
+
+        router.push(
+          `/business-info?businessName=${encodeURIComponent(resolvedName)}`
+        );
+      } catch (err: unknown) {
+        setLookupError(err instanceof Error ? err.message : "Could not resolve member");
+      } finally {
+        setLookupLoading(false);
+      }
+    },
+    [token, router]
+  );
+
+  const handleRecentSelect = useCallback(
+    (entry: RecentMemberView) => {
+      if (entry.clientId != null) {
+        router.push(`/crm-members/${entry.clientId}`);
+        return;
+      }
+      setLookupName(entry.businessName);
+      void resolveBusinessToMember(entry.businessName);
+    },
+    [router, resolveBusinessToMember]
+  );
 
   useEffect(() => {
     const t = setTimeout(() => setSearchDebounced(search), 350);
@@ -454,21 +538,65 @@ export default function ClientsPage() {
   return (
     <>
       <PageHeader pageName="Members" description="Browse and open member records across the pipeline." />
-      <div className="mt-4">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-6">
-          <div />
-          <div className="flex flex-wrap gap-3 items-center">
-            <input
-              type="text"
-              placeholder="Search by business name..."
+      <div className="mt-4 space-y-5">
+        <Card>
+          <CardContent className="space-y-4 pt-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+              <Input
+                label="Open by business name"
+                value={lookupName}
+                onChange={(e) => setLookupName(e.target.value)}
+                placeholder="e.g. Frankston RSL, Extrusions…"
+                wrapperClassName="min-w-0 flex-1"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void resolveBusinessToMember(lookupName);
+                }}
+              />
+              <Button
+                onClick={() => void resolveBusinessToMember(lookupName)}
+                loading={lookupLoading}
+                disabled={lookupLoading || !lookupName.trim()}
+                leftIcon={<Search className="size-4" />}
+              >
+                Open member
+              </Button>
+            </div>
+            {lookupError && (
+              <p className="text-xs text-red-600 dark:text-red-400">{lookupError}</p>
+            )}
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Resolves to a CRM member when saved; otherwise opens the legacy business-info view.
+            </p>
+          </CardContent>
+        </Card>
+
+        <RecentMembersRow
+          items={recentMembers}
+          onSelect={handleRecentSelect}
+          loading={lookupLoading}
+        />
+
+        <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <SegmentedControl
+            options={[
+              { value: "pipeline", label: "By stage" },
+              { value: "flat", label: "All members" },
+            ]}
+            value={viewMode}
+            onChange={setViewMode}
+          />
+          <div className="flex flex-wrap items-end gap-3">
+            <Input
+              placeholder="Search by business name…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full md:w-48 px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary"
+              wrapperClassName="w-full sm:w-48"
+              className="py-2"
             />
-            <select
+            <Select
               value={filterStage}
               onChange={(e) => setFilterStage(e.target.value)}
-              className="px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary"
+              wrapperClassName="w-full sm:w-40"
             >
               <option value="">All stages</option>
               {CLIENT_STAGES.map((s) => (
@@ -476,32 +604,33 @@ export default function ClientsPage() {
                   {CLIENT_STAGE_LABELS[s]}
                 </option>
               ))}
-            </select>
-            <input
+            </Select>
+            <Input
               type="date"
-              placeholder="Created after"
               value={filterCreatedAfter}
               onChange={(e) => setFilterCreatedAfter(e.target.value)}
-              className="px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary"
+              wrapperClassName="w-full sm:w-36"
+              aria-label="Created after"
             />
-            <input
+            <Input
               type="date"
-              placeholder="Created before"
               value={filterCreatedBefore}
               onChange={(e) => setFilterCreatedBefore(e.target.value)}
-              className="px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary"
+              wrapperClassName="w-full sm:w-36"
+              aria-label="Created before"
             />
-            <label className="flex items-center gap-2 cursor-pointer">
+            <label className="flex cursor-pointer items-center gap-2 pb-2">
               <input
                 type="checkbox"
                 checked={filterMine}
                 onChange={(e) => setFilterMine(e.target.checked)}
-                className="rounded border-gray-300 dark:border-gray-600 text-primary focus:ring-primary"
+                className="rounded border-gray-300 text-primary focus:ring-primary dark:border-gray-600"
               />
               <span className="text-sm text-gray-700 dark:text-gray-300">My clients</span>
             </label>
-            <button
-              type="button"
+            <Button
+              variant="secondary"
+              size="sm"
               onClick={async () => {
                 if (!token) return;
                 const params = new URLSearchParams();
@@ -520,25 +649,23 @@ export default function ClientsPage() {
                 a.click();
                 URL.revokeObjectURL(a.href);
               }}
-              className="px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
             >
               Export CSV
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              size="sm"
               onClick={() => {
                 setAddClientOpen(true);
                 setAddClientForm({
                   business_name: "",
                   primary_contact_email: "",
                   stage: "lead",
-                  owner_email: (session as any)?.user?.email ?? "",
+                  owner_email: (session as { user?: { email?: string } })?.user?.email ?? "",
                 });
               }}
-              className="px-4 py-2 rounded-md bg-primary text-white text-sm font-medium hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
             >
               Add client
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -602,7 +729,7 @@ export default function ClientsPage() {
                   <button
                     type="submit"
                     disabled={addClientSubmitting}
-                    className="px-3 py-1.5 rounded-md bg-primary text-white text-sm font-medium disabled:opacity-50"
+                    className="px-3 py-1.5 rounded-full bg-primary text-white text-sm font-medium disabled:opacity-50"
                   >
                     {addClientSubmitting ? "Creating…" : "Create"}
                   </button>
@@ -635,7 +762,7 @@ export default function ClientsPage() {
             <button
               type="button"
               onClick={() => setBulkOwnerOpen(true)}
-              className="px-3 py-1.5 rounded-md bg-primary text-white text-sm font-medium hover:opacity-90"
+              className="px-3 py-1.5 rounded-full bg-primary text-white text-sm font-medium hover:opacity-90"
             >
               Assign owner
             </button>
@@ -696,7 +823,7 @@ export default function ClientsPage() {
                   <button
                     type="submit"
                     disabled={bulkOwnerSubmitting}
-                    className="px-3 py-1.5 rounded-md bg-primary text-white text-sm font-medium disabled:opacity-50"
+                    className="px-3 py-1.5 rounded-full bg-primary text-white text-sm font-medium disabled:opacity-50"
                   >
                     {bulkOwnerSubmitting ? "Saving…" : "Assign"}
                   </button>
@@ -740,7 +867,7 @@ export default function ClientsPage() {
                   <button
                     type="submit"
                     disabled={bulkStageSubmitting}
-                    className="px-3 py-1.5 rounded-md bg-primary text-white text-sm font-medium disabled:opacity-50"
+                    className="px-3 py-1.5 rounded-full bg-primary text-white text-sm font-medium disabled:opacity-50"
                   >
                     {bulkStageSubmitting ? "Saving…" : "Update status"}
                   </button>
@@ -849,7 +976,7 @@ export default function ClientsPage() {
                     owner_email: (session as any)?.user?.email ?? "",
                   });
                 }}
-                className="px-4 py-2 rounded-md bg-primary text-white text-sm font-medium hover:opacity-90"
+                className="px-4 py-2 rounded-full bg-primary text-white text-sm font-medium hover:opacity-90"
               >
                 Add a client
               </button>
@@ -857,21 +984,25 @@ export default function ClientsPage() {
           </div>
         ) : (
           <div className="space-y-6">
-            {CLIENT_STAGES.filter((stage) => groupedByStage[stage]?.length)
-              .map((stage) => {
-                const list = groupedByStage[stage] || [];
-                return (
-                  <section key={stage}>
+            {(viewMode === "flat"
+              ? [["all", [...clients].sort((a, b) => a.business_name.localeCompare(b.business_name))] as const]
+              : CLIENT_STAGES.filter((stage) => groupedByStage[stage]?.length).map(
+                  (stage) => [stage, groupedByStage[stage] || []] as const,
+                )
+            ).map(([stage, list]) => (
+                  <section key={String(stage)}>
+                    {viewMode === "pipeline" && (
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center gap-2">
                         <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wide">
-                          {CLIENT_STAGE_LABELS[stage] ?? stage}
+                          {CLIENT_STAGE_LABELS[stage as ClientStage] ?? stage}
                         </h2>
                         <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
                           {list.length}
                         </span>
                       </div>
                     </div>
+                    )}
                     <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
                       {list.map((client) => (
                         <div key={client.id} className="flex items-start gap-2">
@@ -884,7 +1015,7 @@ export default function ClientsPage() {
                             aria-label={`Select ${client.business_name}`}
                           />
                           <div className="flex-1 min-w-0">
-                            <Card className="h-full border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5">
+                            <Card hover className="h-full border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
                               <CardContent className="p-4 space-y-2">
                                 <Link
                                   href={`/crm-members/${client.id}`}
@@ -960,15 +1091,14 @@ export default function ClientsPage() {
                       ))}
                     </div>
                   </section>
-                );
-              })}
+            ))}
             {clients.length < totalClients && (
               <div className="flex justify-center pt-4">
                 <button
                   type="button"
                   onClick={loadMoreClients}
                   disabled={loadingMore}
-                  className="px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
+                  className="rounded-full border border-stroke px-4 py-2 text-sm font-semibold text-dark transition-all hover:-translate-y-0.5 hover:shadow-sm dark:border-dark-3 dark:text-white disabled:opacity-50"
                 >
                   {loadingMore ? "Loading…" : `Load more (${clients.length} of ${totalClients})`}
                 </button>

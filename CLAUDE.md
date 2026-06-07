@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-ACES Text Agent Interface — a Next.js 15 dashboard frontend for ACES (ACE Solutions), an energy consulting business. The app provides tools for utility invoice management, client CRM, document generation, and an AI-powered Base 1 Review agent for analysing utility bills. It communicates with a separate FastAPI backend (`text_agent_backend`) via REST APIs.
+Carbon Zero Australasia Text Agent Interface — a Next.js 15 dashboard frontend for Carbon Zero Australasia. The app provides tools for utility invoice management, client CRM, document generation, and an AI-powered Base 1 Review agent for analysing utility bills. It communicates with a separate FastAPI backend (`text_agent_backend`) via REST APIs. Brand constants live in `src/lib/brand.ts` (copyright: Prograde IP Holdings).
 
 ## Commands
 

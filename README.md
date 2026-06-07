@@ -1,13 +1,12 @@
-# ACES Text Agent Interface & Backend
-Test
+# Carbon Zero Australasia — Text Agent Interface & Backend
 
-This repository contains the frontend for the ACES Text Agent Interface, an ACES dashboard designed to interact with a secure FastAPI backend. This document provides detailed instructions on how to set up, run, and test both the frontend and backend projects.
+This repository contains the frontend for the Carbon Zero Australasia admin dashboard, designed to interact with a secure FastAPI backend. Copyright © Prograde IP Holdings. This document provides detailed instructions on how to set up, run, and test both the frontend and backend projects.
 
 ## Overview
 
 The project consists of two main parts:
 
-1.  **Frontend (This Project):** An ACES application providing a user interface for:
+1.  **Frontend (This Project):** A Carbon Zero Australasia application providing a user interface for:
     *   Viewing detailed business information.
     *   Retrieving utility invoices (Electricity, Gas, Waste, Oil).
     *   Initiating templated data requests to suppliers.

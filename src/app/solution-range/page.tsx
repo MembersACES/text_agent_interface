@@ -7,6 +7,9 @@ import {
   SolutionCategory,
 } from "./solutions-data";
 import SolutionCard from "./SolutionCard";
+import { PageHeader } from "@/components/Layouts/PageHeader";
+import { StatCard } from "@/components/dashboard";
+import { Sparkles, Layers, Filter } from "lucide-react";
 
 export default function EnhancedSolutionRangePage() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -41,67 +44,19 @@ export default function EnhancedSolutionRangePage() {
   const filteredCount = filtered.length;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">
-    {/* Enhanced Header with Brand Colors */}
-    <header className="bg-white shadow-sm border-b border-gray-200">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="text-center">
-          <h1 className="text-5xl font-bold mb-5 bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent leading-tight">
-            Solutions Range
-          </h1>
-          <p className="text-xl text-gray-600 max-w-3xl mx-auto leading-relaxed">
-            Comprehensive sustainable solutions driving environmental excellence and operational efficiency
-          </p>
-        </div>
+    <div className="space-y-8">
+      <PageHeader
+        pageName="Solution Range"
+        description="Comprehensive sustainable solutions driving environmental excellence and operational efficiency."
+      />
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <StatCard label="Total solutions" value={totalSolutions} icon={<Sparkles />} accent="primary" />
+        <StatCard label="Categories" value={totalCategories} icon={<Layers />} accent="scope-2" />
+        <StatCard label="Showing" value={filteredCount} trend={`${filtered.length} match filters`} icon={<Filter />} accent="scope-3" />
       </div>
-    </header>
 
-      <div className="max-w-7xl mx-auto p-8 space-y-10">
-        {/* Enhanced Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="relative overflow-hidden bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-blue-400/20 to-blue-600/20 rounded-full -mr-16 -mt-16"></div>
-            <div className="relative">
-              <div className="inline-flex items-center justify-center w-12 h-12 bg-blue-100 rounded-lg mb-3">
-                <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                </svg>
-              </div>
-              <p className="text-gray-600 text-sm font-medium mb-1">Total Solutions</p>
-              <p className="text-3xl font-bold text-gray-900">{totalSolutions}</p>
-              <p className="text-xs text-gray-500 mt-1">Active services</p>
-            </div>
-          </div>
-
-          <div className="relative overflow-hidden bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-green-400/20 to-green-600/20 rounded-full -mr-16 -mt-16"></div>
-            <div className="relative">
-              <div className="inline-flex items-center justify-center w-12 h-12 bg-green-100 rounded-lg mb-3">
-                <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                </svg>
-              </div>
-              <p className="text-gray-600 text-sm font-medium mb-1">Categories</p>
-              <p className="text-3xl font-bold text-gray-900">{totalCategories}</p>
-              <p className="text-xs text-gray-500 mt-1">Solution types</p>
-            </div>
-          </div>
-
-          <div className="relative overflow-hidden bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-purple-400/20 to-purple-600/20 rounded-full -mr-16 -mt-16"></div>
-            <div className="relative">
-              <div className="inline-flex items-center justify-center w-12 h-12 bg-purple-100 rounded-lg mb-3">
-                <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-                </svg>
-              </div>
-              <p className="text-gray-600 text-sm font-medium mb-1">Filtered Results</p>
-              <p className="text-3xl font-bold text-gray-900">{filteredCount}</p>
-              <p className="text-xs text-gray-500 mt-1">Matching criteria</p>
-            </div>
-          </div>
-        </div>
-
+      <div className="space-y-10">
         {/* Search Bar */}
         <div className="bg-white rounded-xl shadow-md border border-gray-200 p-4">
           <div className="relative">
@@ -148,7 +103,7 @@ export default function EnhancedSolutionRangePage() {
             Explore by Category
           </h2>
           <p className="text-gray-600 text-sm max-w-2xl mx-auto">
-            Select a solution category below to instantly filter the full range of sustainable, AI-powered, and energy-efficient services available through ACES.
+            Select a solution category below to instantly filter the full range of sustainable, AI-powered, and energy-efficient services available through Carbon Zero Australasia.
           </p>
         </div>
 
@@ -169,7 +124,7 @@ export default function EnhancedSolutionRangePage() {
               }
               className={`px-5 py-3 rounded-xl text-sm font-medium border transition-all text-center shadow-sm ${
                 selectedCategory === key
-                  ? "bg-blue-600 text-white border-blue-600 shadow-md"
+                  ? "bg-primary text-white border-primary shadow-md"
                   : "bg-white text-gray-700 hover:bg-blue-50 border-gray-200"
               }`}
             >
@@ -194,7 +149,7 @@ export default function EnhancedSolutionRangePage() {
               return (
                 <div
                   key={category}
-                  className="bg-white rounded-xl shadow-md overflow-hidden border border-gray-200 hover:shadow-lg transition-shadow"
+                  className="bg-white rounded-xl shadow-md overflow-hidden border border-gray-200 hover:shadow-md transition-shadow"
                 >
                   <button
                     onClick={() =>
@@ -249,12 +204,12 @@ export default function EnhancedSolutionRangePage() {
                       
                       {isAiAutomation ? (
                         <>
-                          {/* ACES Agents Section */}
+                          {/* Carbon Zero Agents Section */}
                           {acesAgents.length > 0 && (
                             <div className="mb-8">
                               <div className="flex items-center gap-2 mb-4">
                                 <div className="h-1 w-8 bg-gradient-to-r from-purple-500 to-purple-600 rounded"></div>
-                                <h3 className="text-lg font-bold text-gray-800">ACES Agents</h3>
+                                <h3 className="text-lg font-bold text-gray-800">Carbon Zero Agents</h3>
                                 <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full font-medium">
                                   {acesAgents.length} agent{acesAgents.length > 1 ? 's' : ''}
                                 </span>
@@ -513,7 +468,7 @@ export default function EnhancedSolutionRangePage() {
           
           {selectedCategory === "ai_automation" ? (
             <div className="space-y-6">
-              {/* ACES Agents Section */}
+              {/* Carbon Zero Agents Section */}
               {selectedCategory === "ai_automation" && filtered.filter(s => s.agentType === "aces").length > 0 && (
                 <div>
                   <button
@@ -522,7 +477,7 @@ export default function EnhancedSolutionRangePage() {
                   >
                     <div className="flex items-center gap-2">
                       <div className="h-1 w-8 bg-gradient-to-r from-purple-500 to-purple-600 rounded"></div>
-                      <h3 className="text-lg font-bold text-gray-800">ACES Agents</h3>
+                      <h3 className="text-lg font-bold text-gray-800">Carbon Zero Agents</h3>
                       <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full font-medium">
                         {filtered.filter(s => s.agentType === "aces").length} agent{filtered.filter(s => s.agentType === "aces").length > 1 ? 's' : ''}
                       </span>
@@ -752,7 +707,7 @@ export default function EnhancedSolutionRangePage() {
                 setSearchTerm("");
                 setSelectedCategory("all");
               }}
-              className="mt-4 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              className="mt-4 px-6 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 transition-colors"
             >
               Clear Filters
             </button>

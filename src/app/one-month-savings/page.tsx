@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
-import Breadcrumb from "@/components/Breadcrumbs/Breadcrumb";
+import { PageHeader } from "@/components/Layouts/PageHeader";
 import { useToast } from "@/components/ui/toast";
 
 // EGB Company Details (from invoice template)
@@ -978,16 +978,13 @@ export default function OneMonthSavingsPage() {
 
   return (
     <>
-      <Breadcrumb pageName="One Month Savings Invoice" />
+      <PageHeader
+        pageName="One Month Savings"
+        title="1st month savings tax invoice"
+        description="Generate invoices for first month savings achieved through Carbon Zero Australasia solutions and services."
+      />
 
       <div className="max-w-6xl mx-auto">
-        {/* Page Header */}
-        <div className="mb-6 p-6 bg-gradient-to-r from-emerald-50 to-green-50 rounded-xl border border-emerald-200">
-          <h1 className="text-2xl font-bold text-gray-800 mb-2">1st Month Savings Tax Invoice</h1>
-          <p className="text-gray-600">
-            Generate invoices for first month savings achieved through ACES solutions and services.
-          </p>
-        </div>
 
         {/* Soft guard: warn if no approved testimonial */}
         {businessInfo && testimonialCheck && !testimonialCheckLoading && !testimonialCheck.has_approved && !testimonialWarningDismissed && (
@@ -1131,7 +1128,7 @@ export default function OneMonthSavingsPage() {
                     <button
                       onClick={addLineItem}
                       disabled={(!selectedSolution && !customSolution) || !savingsAmount}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                      className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors"
                     >
                       Add Item
                     </button>

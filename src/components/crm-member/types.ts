@@ -140,16 +140,11 @@ export interface StrategyItem {
 
 export type MemberTab =
   | "overview"
-  | "documents"
+  | "commercial"
   | "utilities"
-  | "offers"
-  | "savings"
-  | "testimonials"
+  | "documents"
   | "activity"
-  | "notes"
-  | "tools"
   | "solutions"
-  | "strategy"
   | "climate";
 
 export interface ClientReferral {

@@ -173,7 +173,7 @@ export function CalculateOneMonthSavingsModal({
             Calculate 1 month savings
           </h3>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-            Uses Member ACES Data sheet for the selected utility and agreement start month.
+            Uses member data sheet for the selected utility and agreement start month.
           </p>
         </div>
         <div className="px-5 py-4 space-y-4 overflow-y-auto flex-1 min-h-0">
@@ -429,7 +429,7 @@ export function CalculateOneMonthSavingsModal({
                 );
               }}
               disabled={!testimonialBusinessName}
-              className="px-3 py-1.5 rounded-md text-xs font-semibold bg-primary text-white hover:opacity-90"
+              className="px-3 py-1.5 rounded-full bg-primary text-white hover:bg-primary/90"
             >
               Generate Testimonial
             </button>

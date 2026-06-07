@@ -32,7 +32,7 @@ export default function FrankstonRSLAgentOnePager() {
                 <h3 className="text-lg font-semibold text-gray-800 mb-2">Member Access</h3>
                 <p className="text-gray-600">
                   Frankston RSL members access the AI agent through a dedicated web interface widget. 
-                  The agent is linked directly to the member's profile and partnership information with ACES.
+                  The agent is linked directly to the member's profile and partnership information with Carbon Zero Australasia.
                 </p>
               </div>
             </div>
@@ -77,9 +77,9 @@ export default function FrankstonRSLAgentOnePager() {
               <div className="flex-1">
                 <h3 className="text-lg font-semibold text-gray-800 mb-2">Seamless Integration</h3>
                 <p className="text-gray-600">
-                  The agent integrates directly with ACES systems to provide real-time, accurate information. 
+                  The agent integrates directly with Carbon Zero Australasia systems to provide real-time, accurate information. 
                   Responses are contextually aware and tailored to the member's specific relationship 
-                  with ACES and Frankston RSL.
+                  with Carbon Zero Australasia and Frankston RSL.
                 </p>
               </div>
             </div>
@@ -103,7 +103,7 @@ export default function FrankstonRSLAgentOnePager() {
               <h3 className="font-semibold text-blue-800 mb-2">🎯 Personalized Experience</h3>
               <p className="text-gray-600 text-sm">
                 Each member receives customized responses based on their specific account, 
-                services, and partnership details with ACES.
+                services, and partnership details with Carbon Zero Australasia.
               </p>
             </div>
             
@@ -250,7 +250,7 @@ export default function FrankstonRSLAgentOnePager() {
         <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg p-8 border border-purple-200 text-center">
           <h2 className="text-2xl font-bold text-gray-800 mb-4">Ready to Enhance Member Experience?</h2>
           <p className="text-gray-600 mb-6 max-w-2xl mx-auto">
-            Contact ACES to learn more about how custom AI agents can provide personalized support 
+            Contact Carbon Zero Australasia to learn more about how custom AI agents can provide personalized support 
             and information access for your members.
           </p>
           <a

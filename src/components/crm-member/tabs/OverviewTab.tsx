@@ -3,19 +3,27 @@
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Card as UiCard } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { SectionHeader } from "../shared/SectionHeader";
+import { FileText } from "lucide-react";
+import { BusinessInfoRow } from "../shared/BusinessInfoRow";
 import { OfferStatusBadge } from "../shared/OfferStatusBadge";
+import { RecordRow, RecordRowOpenAction } from "../shared/RecordRow";
+import { buildOfferRecordSubtitle } from "../shared/offerRecordMeta";
+import { getRecordRowIcon } from "../shared/recordRowIcons";
 import { formatDate } from "../shared/formatDate";
-import { OFFER_ACTIVITY_LABELS } from "@/constants/crm";
-import type { OfferActivityType } from "@/constants/crm";
-import type { Task, Offer, ClientActivity, Note } from "../types";
+import type { Task, Offer, Note } from "../types";
 import {
   getBusinessDocumentsForOverview,
   getContractsFromBusinessInfo,
   getDocumentsCountFromBusinessInfo,
   getKeyDocumentsFromBusinessInfo,
+  getSfaFilesFromBusinessInfo,
 } from "./documentHelpers";
 
 export interface OverviewTabProps {
+  clientId: number;
   businessInfo: Record<string, unknown> | null;
   businessInfoLoading?: boolean;
   setBusinessInfo: (info: Record<string, unknown> | null) => void;
@@ -23,7 +31,6 @@ export interface OverviewTabProps {
   onToggleBusinessInfo: () => void;
   tasks: Task[];
   offers: Offer[];
-  activities: ClientActivity[];
   notes: Note[];
   onCreateOfferClick: () => void;
 }
@@ -42,14 +49,6 @@ function IconFolder() {
   return (
     <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24" aria-hidden>
       <path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
-    </svg>
-  );
-}
-
-function IconExternal() {
-  return (
-    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
     </svg>
   );
 }
@@ -81,21 +80,13 @@ function IconQuote() {
   );
 }
 
-function IconActivity() {
-  return (
-    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24" aria-hidden>
-      <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
 // ─── Primitives ───────────────────────────────────────────────────────────────
 
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={cn("bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm ring-1 ring-gray-200/60 dark:ring-gray-700/50 overflow-hidden", className)}>
+    <UiCard className={cn("overflow-hidden p-0 ring-1 ring-gray-200/60 dark:ring-gray-700/50", className)}>
       {children}
-    </div>
+    </UiCard>
   );
 }
 
@@ -111,30 +102,26 @@ function CardHeader({
   actions?: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 px-5 py-4">
-      <div className="flex items-center gap-2.5">
-        {icon && (
-          <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 shrink-0">
-            {icon}
-          </span>
-        )}
-        <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">{title}</span>
-        {badge}
-      </div>
-      {actions && <div className="flex items-center gap-3">{actions}</div>}
-    </div>
+    <SectionHeader
+      className="px-5 py-4"
+      icon={icon}
+      title={title}
+      badge={badge}
+      actions={actions}
+      as="h2"
+    />
   );
 }
 
 function Divider() {
-  return <div className="border-t border-gray-50 dark:border-gray-800/60" />;
+  return <div className="border-t border-stroke/40 dark:border-dark-3/60" />;
 }
 
 function InfoRow({ label, children, even }: { label: string; children: React.ReactNode; even?: boolean }) {
   return (
     <div
       className={cn(
-        "grid grid-cols-[130px_1fr] gap-4 items-start py-4 px-4",
+        "grid grid-cols-[130px_1fr] gap-3 items-start py-2.5 px-4",
         even && "bg-gray-50/50 dark:bg-gray-800/30"
       )}
     >
@@ -155,20 +142,24 @@ function CountBadge({ count }: { count: number }) {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export function OverviewTab({
+  clientId,
   businessInfo,
   businessInfoLoading = false,
   businessInfoOpen,
   onToggleBusinessInfo,
   offers,
-  activities,
   notes,
   onCreateOfferClick,
 }: OverviewTabProps) {
   const biz = (businessInfo as any)?.business_details ?? {};
   const contact = (businessInfo as any)?.contact_information ?? {};
+  const rep = (businessInfo as any)?.representative_details ?? {};
+  const loaFileUrl = (businessInfo as any)?._processed_file_ids?.business_LOA as
+    | string
+    | undefined;
   const driveUrl = (businessInfo as any)?.gdrive?.folder_url as string | undefined;
-  const businessName: string = biz?.name ?? "";
   const tradingName: string = biz?.trading_name ?? "";
+  const loaSignedDate: string | undefined = rep?.signed_date;
   const postalAddress: string | undefined = contact?.postal_address;
   const siteAddress: string | undefined = contact?.site_address;
 
@@ -181,10 +172,14 @@ export function OverviewTab({
   );
   const contractFileTotal = contracts.reduce((n, c) => n + c.items.length, 0);
   const hasContracts = contractFileTotal > 0;
-  const { loaUrl, sfaUrl, wipUrl, amortExcelUrl, amortPdfUrl } =
+  const { loaUrl, wipUrl, amortExcelUrl, amortPdfUrl } =
     getKeyDocumentsFromBusinessInfo(
       businessInfo as Record<string, unknown> | null
     );
+  const { count: sfaCount, url: sfaFileUrl } = getSfaFilesFromBusinessInfo(
+    businessInfo as Record<string, unknown> | null
+  );
+  const loaFileLink = loaFileUrl || loaUrl;
 
   const overviewBusinessDocs = getBusinessDocumentsForOverview(
     businessInfo as Record<string, unknown> | null
@@ -206,17 +201,12 @@ export function OverviewTab({
               <IconBuilding />
             </span>
             <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">Business Information</span>
-            {businessInfoLoading ? (
+            {businessInfoLoading && (
               <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-900/20 text-[11px] font-semibold text-amber-600 dark:text-amber-400">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
                 Loading
               </span>
-            ) : businessInfo ? (
-              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-900/20 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                Loaded
-              </span>
-            ) : null}
+            )}
           </div>
           <IconChevron rotated={businessInfoOpen} />
         </button>
@@ -230,35 +220,30 @@ export function OverviewTab({
                   <div className="grid gap-6 md:grid-cols-2">
                     {/* Left: core business details */}
                     <div>
-                      <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">
-                        Business details
-                      </h3>
-                      <div className="rounded-lg border border-gray-100 dark:border-gray-800/60 overflow-hidden">
-                        <InfoRow label="Business name" even>
-                          {businessName || "—"}
-                        </InfoRow>
-                        <InfoRow label="Trading name">
+                      <SectionHeader title="Business details" as="h3" className="mb-3" />
+                      <div className="rounded-lg border border-stroke/40 dark:border-dark-3/60 overflow-hidden">
+                        <InfoRow label="Trading name" even>
                           {tradingName || (
                             <span className="text-gray-400 dark:text-gray-500">
                               Not available
                             </span>
                           )}
                         </InfoRow>
-                        <InfoRow label="Postal address" even>
+                        <InfoRow label="Postal address">
                           {postalAddress || (
                             <span className="text-gray-400 dark:text-gray-500">
                               Not available
                             </span>
                           )}
                         </InfoRow>
-                        <InfoRow label="Site address">
+                        <InfoRow label="Site address" even>
                           {siteAddress || (
                             <span className="text-gray-400 dark:text-gray-500">
                               Not available
                             </span>
                           )}
                         </InfoRow>
-                        <InfoRow label="Drive folder" even>
+                        <InfoRow label="Drive folder">
                           {driveUrl ? (
                             <a
                               href={driveUrl}
@@ -274,28 +259,58 @@ export function OverviewTab({
                           )}
                         </InfoRow>
                       </div>
-                      <div className="pt-4 mt-3">
-                        <Link
-                          href={
-                            businessName
-                              ? `/business-info?business_name=${encodeURIComponent(
-                                  businessName
-                                )}`
-                              : "/business-info"
+                      <SectionHeader title="Representative details" as="h3" className="mb-3 mt-6" />
+                      <div className="space-y-1">
+                        <BusinessInfoRow
+                          label="Contact name"
+                          value={
+                            rep.contact_name || (
+                              <span className="text-gray-400 dark:text-gray-500">Not available</span>
+                            )
                           }
-                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline"
-                        >
-                          Open full business view
-                          <IconExternal />
-                        </Link>
+                        />
+                        <BusinessInfoRow
+                          label="Position"
+                          value={
+                            rep.position || (
+                              <span className="text-gray-400 dark:text-gray-500">Not available</span>
+                            )
+                          }
+                        />
+                        <BusinessInfoRow
+                          label="LOA signed"
+                          value={
+                            loaSignedDate && loaFileLink ? (
+                              <a
+                                href={loaFileLink}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-sm text-primary hover:underline font-medium"
+                              >
+                                {loaSignedDate}
+                              </a>
+                            ) : loaSignedDate ? (
+                              loaSignedDate
+                            ) : loaFileLink ? (
+                              <a
+                                href={loaFileLink}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-sm text-primary hover:underline font-medium"
+                              >
+                                View file
+                              </a>
+                            ) : (
+                              "—"
+                            )
+                          }
+                        />
                       </div>
                     </div>
 
                     {/* Right: documents & contracts quick view */}
                     <div className="flex flex-col gap-3 md:border-l md:border-gray-100 md:dark:border-gray-800/60 md:pl-6">
-                      <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                        Documents & contracts
-                      </h3>
+                      <SectionHeader title="Documents & contracts" as="h3" />
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-300">
                           <span>
@@ -325,7 +340,7 @@ export function OverviewTab({
                           <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">
                             Contracts
                           </p>
-                          <ul className="space-y-1.5">
+                          <div className="divide-y divide-gray-50 dark:divide-gray-800/40 -mx-2">
                             {contracts
                               .flatMap((c) =>
                                 c.items.map((item, idx) => ({
@@ -335,28 +350,24 @@ export function OverviewTab({
                                       ? `${c.key} (#${idx + 1})`
                                       : c.key,
                                   rowKey: `${c.key}-${idx}`,
+                                  category: c.key,
                                 })),
                               )
                               .slice(0, 6)
-                              .map(({ rowKey, label, url }) => (
-                                <li
-                                  key={rowKey}
-                                  className="flex items-center justify-between gap-2"
-                                >
-                                  <span className="truncate text-[11px] text-gray-700 dark:text-gray-200">
-                                    {label}
-                                  </span>
-                                  <a
-                                    href={url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-[11px] font-semibold text-primary hover:underline"
-                                  >
-                                    Open
-                                  </a>
-                                </li>
-                              ))}
-                          </ul>
+                              .map(({ rowKey, label, url, category }) => {
+                                const rowIcon = getRecordRowIcon(category);
+                                return (
+                                  <RecordRow
+                                    key={rowKey}
+                                    className="px-2 py-2"
+                                    leadingIcon={rowIcon.icon}
+                                    iconIntent={rowIcon.intent}
+                                    title={label}
+                                    actions={url ? <RecordRowOpenAction href={url} /> : undefined}
+                                  />
+                                );
+                              })}
+                          </div>
                         </div>
                       )}
 
@@ -381,13 +392,13 @@ export function OverviewTab({
                                 </a>
                               </li>
                             )}
-                            {sfaUrl && (
+                            {sfaCount > 0 && sfaFileUrl && (
                               <li className="flex items-center justify-between gap-2">
                                 <span className="truncate text-[11px] text-gray-700 dark:text-gray-200">
                                   Service Fee Agreement
                                 </span>
                                 <a
-                                  href={sfaUrl}
+                                  href={sfaFileUrl}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="text-[11px] font-semibold text-primary hover:underline"
@@ -473,10 +484,10 @@ export function OverviewTab({
                       )}
 
                       {!hasContracts && documentsCount === 0 && (
-                        <p className="text-[11px] text-gray-400 dark:text-gray-500">
-                          No contracts or business documents linked yet. Add
-                          them from the Documents tab.
-                        </p>
+                        <EmptyState
+                          title="No contracts or business documents linked yet. Add them from the Documents tab."
+                          className="py-4 px-0 items-start text-left [&_h3]:text-[11px] [&_h3]:font-normal [&_h3]:text-gray-400 [&_h3]:dark:text-gray-500 [&_h3]:mb-0"
+                        />
                       )}
                     </div>
                   </div>
@@ -488,79 +499,42 @@ export function OverviewTab({
                   <Skeleton variant="text" className="w-2/5 h-4" />
                 </div>
               ) : (
-                <p className="text-sm text-gray-400 pt-4">
-                  No business information loaded yet.
-                </p>
+                <EmptyState
+                  title="No business information loaded yet."
+                  className="py-4 pt-4 items-start text-left [&_h3]:text-sm [&_h3]:font-normal [&_h3]:text-gray-400 [&_h3]:mb-0"
+                />
               )}
             </div>
           </>
         )}
 
-        {!businessInfoOpen && businessInfo && !businessInfoLoading && (
-          <div className="px-5 pb-3.5">
-            <p className="text-sm text-gray-400 truncate ml-9">{businessName || "Loaded"}</p>
-          </div>
-        )}
       </Card>
 
-      {/* ── Client notes (quick view) ── */}
-      <Card>
-        <CardHeader
-          icon={<IconActivity />}
-          title="Client notes"
-          badge={notes.length > 0 ? <CountBadge count={notes.length} /> : undefined}
-          actions={
+      <p className="text-sm text-gray-500 dark:text-gray-400">
+        {notes.length === 0 ? (
+          <>
+            No notes yet —{" "}
             <Link
-              href="?tab=notes"
+              href="?tab=activity&subtab=notes"
               scroll={false}
-              className="text-xs text-primary font-semibold hover:underline"
+              className="font-medium text-primary hover:underline"
             >
-              Open full notes
+              add one in Activity
             </Link>
-          }
-        />
-        <Divider />
-        <div className="px-5 py-4">
-          {notes.length === 0 ? (
-            <div className="py-4 text-sm text-gray-400">
-              No notes yet for this client.
-              <br />
-              <span className="text-xs text-gray-400">
-                Use the Notes tab to capture context, calls, and decisions.
-              </span>
-            </div>
-          ) : (
-            <ul className="space-y-2 max-h-52 overflow-y-auto pr-1">
-              {notes
-                .slice()
-                .sort(
-                  (a, b) =>
-                    new Date(b.created_at).getTime() -
-                    new Date(a.created_at).getTime()
-                )
-                .slice(0, 4)
-                .map((n) => (
-                  <li
-                    key={n.id}
-                    className="rounded-md bg-gray-50 dark:bg-gray-900/60 border border-gray-100 dark:border-gray-800 px-3 py-2"
-                  >
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-1 flex justify-between gap-3">
-                      <span className="truncate">
-                        {n.user_email.split("@")[0] || "Note"}
-                      </span>
-                      <span className="shrink-0">
-                        {formatDate(n.created_at)}
-                      </span>
-                    </p>
-                    <p className="text-sm text-gray-800 dark:text-gray-100 line-clamp-3 whitespace-pre-wrap">
-                      {n.note}
-                    </p>
-                  </li>
-                ))}
-            </ul>
-          )}
-        </div>
-      </Card>
+          </>
+        ) : (
+          <>
+            {notes.length} note{notes.length === 1 ? "" : "s"} —{" "}
+            <Link
+              href="?tab=activity&subtab=notes"
+              scroll={false}
+              className="font-medium text-primary hover:underline"
+            >
+              view in Activity
+            </Link>
+          </>
+        )}
+      </p>
       {/* ── Offers & Quote Requests ── */}
       <Card>
         <CardHeader
@@ -577,103 +551,63 @@ export function OverviewTab({
                 <IconPlus />
                 Create offer
               </button>
-              <span className="text-gray-200 dark:text-gray-700 select-none">|</span>
-              <Link href="/offers" className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
-                View all
+              <Link
+                href={`/crm-members/${clientId}?tab=commercial`}
+                className="text-xs font-semibold text-primary hover:underline"
+              >
+                View all →
               </Link>
             </>
           }
         />
         <Divider />
         {offers.length === 0 ? (
-          <div className="px-5 py-10 text-center">
-            <div className="w-10 h-10 rounded-full bg-gray-50 dark:bg-gray-800 flex items-center justify-center mx-auto mb-3">
-              <IconQuote />
-            </div>
-            <p className="text-sm text-gray-400 mb-2">No offers recorded yet.</p>
-            <button
-              type="button"
-              onClick={onCreateOfferClick}
-              className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
-            >
-              <IconPlus />
-              Create the first offer
-            </button>
-          </div>
+          <EmptyState
+            icon={
+              <div className="w-10 h-10 rounded-full bg-gray-50 dark:bg-gray-800 flex items-center justify-center text-gray-500 dark:text-gray-400">
+                <IconQuote />
+              </div>
+            }
+            title="No offers recorded yet."
+            className="py-10 [&_h3]:text-sm [&_h3]:font-normal [&_h3]:text-gray-400"
+            action={
+              <button
+                type="button"
+                onClick={onCreateOfferClick}
+                className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
+              >
+                <IconPlus />
+                Create the first offer
+              </button>
+            }
+          />
         ) : (
           <div className="divide-y divide-gray-50 dark:divide-gray-800/50">
-            {offers.slice(0, 5).map((o) => (
-              <div
-                key={o.id}
-                className="flex items-center justify-between gap-3 px-5 py-3.5 hover:bg-gray-50/50 dark:hover:bg-white/[0.02] transition-colors"
-              >
-                <div className="min-w-0 flex-1">
-                  <Link
-                    href={`/offers/${o.id}`}
-                    className="text-sm font-medium text-gray-800 dark:text-gray-200 hover:text-primary transition-colors truncate block"
-                  >
-                    {(o.utility_display || o.utility_type_identifier || o.utility_type || "Offer") +
-                      (o.identifier ? ` ${o.identifier}` : "")}
-                  </Link>
-                  <p className="text-[11px] text-gray-400 mt-0.5">Created {formatDate(o.created_at)}</p>
-                </div>
-                <OfferStatusBadge status={o.status} />
-              </div>
-            ))}
+            {offers.slice(0, 5).map((o) => {
+              const utilityLabel =
+                o.utility_display || o.utility_type_identifier || o.utility_type || "Offer";
+              const rowIcon = getRecordRowIcon(utilityLabel);
+              return (
+                <RecordRow
+                  key={o.id}
+                  leadingIcon={rowIcon.icon}
+                  iconIntent={rowIcon.intent}
+                  title={
+                    <Link
+                      href={`/offers/${o.id}`}
+                      className="hover:text-primary hover:underline"
+                    >
+                      {utilityLabel}
+                      {o.identifier ? ` ${o.identifier}` : ""}
+                    </Link>
+                  }
+                  subtitle={buildOfferRecordSubtitle(o)}
+                  status={<OfferStatusBadge status={o.status} />}
+                />
+              );
+            })}
           </div>
         )}
-      </Card>
-
-      {/* ── Activity timeline ── */}
-      <Card>
-        <CardHeader
-          icon={<IconActivity />}
-          title="Activity"
-          badge={activities.length > 0 ? <CountBadge count={activities.length} /> : undefined}
-        />
-        <Divider />
-        <div className="px-5 py-4">
-          {activities.length === 0 ? (
-            <p className="py-6 text-sm text-center text-gray-400">No activity recorded yet.</p>
-          ) : (
-            <ul className="max-h-72 overflow-y-auto space-y-0 pr-1 -ml-px">
-              {activities.map((a, idx) => {
-                const label =
-                  OFFER_ACTIVITY_LABELS[a.activity_type as OfferActivityType] ??
-                  a.activity_type.replace(/_/g, " ");
-                const isComparison = a.activity_type === "comparison";
-                const compType = isComparison && a.metadata?.comparison_type ? String(a.metadata.comparison_type) : null;
-
-                return (
-                  <li key={a.id} className="relative flex gap-4 pb-5 last:pb-0">
-                    {idx < activities.length - 1 && (
-                      <div className="absolute left-[7px] top-5 bottom-0 w-px bg-gray-100 dark:bg-gray-800" />
-                    )}
-                    <span className="relative mt-1 flex-shrink-0 w-3.5 h-3.5 rounded-full bg-white dark:bg-gray-900 border-2 border-gray-300 dark:border-gray-600 z-10" />
-                    <div className="flex-1 min-w-0 -mt-0.5">
-                      <p className="text-sm font-medium text-gray-800 dark:text-gray-100 leading-snug">
-                        {isComparison && compType ? `Comparison (${compType})` : label}
-                      </p>
-                      <p className="text-[11px] text-gray-400 mt-0.5">
-                        {formatDate(a.created_at)}{a.created_by && ` · ${a.created_by}`}
-                      </p>
-                      <div className="flex items-center gap-3 mt-1.5">
-                        <Link href={`/offers/${a.offer_id}`} className="text-[11px] font-semibold text-primary hover:underline">
-                          View offer
-                        </Link>
-                        {a.document_link && (
-                          <a href={a.document_link} target="_blank" rel="noopener noreferrer" className="text-[11px] font-semibold text-primary hover:underline">
-                            Open document
-                          </a>
-                        )}
-                      </div>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </div>
       </Card>
 
     </div>

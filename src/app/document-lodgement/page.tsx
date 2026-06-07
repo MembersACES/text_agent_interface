@@ -2,6 +2,9 @@
 
 import React, { useMemo, useState } from "react";
 import { DOCUMENT_LODGEMENT_API_ENDPOINTS } from "@/lib/invoice-api-endpoints";
+import { ToolPageLayout } from "@/components/Layouts/ToolPageLayout";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 
 // ---- Types ----
 type Category = "INVOICE" | "DATA" | "CONTRACT";
@@ -278,9 +281,12 @@ export default function UtilityInvoiceLodgementPage() {
   const currentLabel = FRIENDLY_UPLOAD_LABEL[utilityType];
 
   return (
-    <div className="max-w-xl mx-auto mt-10 p-6 bg-white rounded-lg shadow">
-      <h1 className="text-xl font-bold mb-2">Utility Invoice Lodgement</h1>
-
+    <ToolPageLayout
+      pageName="Document Lodgement"
+      title="Utility invoice lodgement"
+      description="Upload utility invoices, interval data, or contracts for processing."
+      width="md"
+    >
       {/* Category toggle */}
       <div className="mb-4">
         <span className="block font-medium mb-1">Upload Type</span>
@@ -417,25 +423,28 @@ export default function UtilityInvoiceLodgementPage() {
       )}
 
       {/* Submit */}
-      <button
+      <Button
         onClick={handleSubmit}
         disabled={loading || files.length === 0}
-        className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+        loading={loading}
       >
-        {loading ? `Uploading... (${fileStatuses.filter(s => s.status === "uploading").length}/${files.length})` : `Submit ${files.length > 0 ? `(${files.length} file${files.length > 1 ? 's' : ''})` : ''}`}
-      </button>
+        {files.length > 0
+          ? `Submit (${files.length} file${files.length > 1 ? "s" : ""})`
+          : "Submit"}
+      </Button>
 
-      {/* Summary */}
       {fileStatuses.length > 0 && !loading && (
-        <div className="mt-4 p-3 bg-gray-50 rounded">
-          <div className="text-sm font-medium mb-2">Upload Summary:</div>
-          <div className="text-xs text-gray-600">
-            ✅ Successful: {fileStatuses.filter(s => s.status === "success").length} | 
-            ❌ Failed: {fileStatuses.filter(s => s.status === "error").length} | 
-            ⏳ Pending: {fileStatuses.filter(s => s.status === "pending").length}
+        <Card className="mt-4">
+          <CardContent className="pt-6">
+          <div className="text-sm font-medium mb-2">Upload summary</div>
+          <div className="text-xs text-gray-600 dark:text-gray-400">
+            Successful: {fileStatuses.filter(s => s.status === "success").length} · 
+            Failed: {fileStatuses.filter(s => s.status === "error").length} · 
+            Pending: {fileStatuses.filter(s => s.status === "pending").length}
           </div>
-        </div>
+          </CardContent>
+        </Card>
       )}
-    </div>
+    </ToolPageLayout>
   );
 }

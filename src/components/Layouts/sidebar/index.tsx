@@ -1,29 +1,74 @@
 "use client";
 
+import { AppCopyright } from "@/components/Layouts/AppCopyright";
+import { BRAND } from "@/lib/brand";
+import { getApiBaseUrl } from "@/lib/utils";
 import { cn } from "@/lib/utils";
+import { ChevronDown, ChevronLeft, ChevronsLeft, Search } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
-import { ChevronDown, ChevronLeft } from "lucide-react";
 import { useSession } from "next-auth/react";
-import { NAV_DATA, ACES_BRAND } from "./data";
-import type { NavGroupItem, NavLinkItem } from "./data";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  JOB_GROUPS,
+  MAIN_NAV,
+  NAV_DATA,
+  PINNED_NAV,
+  type NavGroupItem,
+  type NavLinkItem,
+  type NavSection,
+} from "./data";
 import { MenuItem } from "./menu-item";
+import { navMatchesQuery } from "./nav-utils";
 import { useSidebarContext } from "./sidebar-context";
 
-const SECTION_COLLAPSED_KEY_PREFIX = "aces-sidebar-section-";
+const SECTION_COLLAPSED_KEY_PREFIX = "cza-sidebar-section-";
+const JOB_GROUP_COLLAPSED_KEY_PREFIX = "cza-sidebar-job-";
+const SIDEBAR_RAIL_WIDTH = 56;
+const SIDEBAR_EXPANDED_WIDTH = 260;
 
 function isNavGroup(item: NavLinkItem | NavGroupItem): item is NavGroupItem {
   return "items" in item && Array.isArray((item as NavGroupItem).items);
 }
 
+function NavIcon({
+  icon: Icon,
+  collapsed,
+  badge,
+}: {
+  icon?: NavLinkItem["icon"];
+  label: string;
+  collapsed: boolean;
+  badge?: number;
+}) {
+  if (!Icon) return null;
+  return (
+    <span className="relative flex shrink-0">
+      <Icon className="size-[18px] shrink-0" aria-hidden />
+      {badge != null && badge > 0 && (
+        <span
+          className="absolute -right-1.5 -top-1 z-[1] flex min-w-4 items-center justify-center rounded-full bg-semantic-block px-0.5 text-[9px] font-bold leading-none text-white ring-2 ring-white dark:ring-gray-dark"
+          aria-label={`${badge} pending`}
+        >
+          {badge > 9 ? "9+" : badge}
+        </span>
+      )}
+    </span>
+  );
+}
+
 export function Sidebar() {
   const pathname = usePathname();
   const { data: session, status } = useSession();
-  const { setIsOpen, isOpen, isMobile, toggleSidebar, isCollapsed } = useSidebarContext();
+  const { setIsOpen, isOpen, isMobile, toggleSidebar, isCollapsed, toggleCollapse } =
+    useSidebarContext();
+
+  const [jumpQuery, setJumpQuery] = useState("");
   const [invoicingAllowed, setInvoicingAllowed] = useState<boolean | null>(null);
   const [personalAssistantAllowed, setPersonalAssistantAllowed] = useState<boolean | null>(null);
+  const [pendingTaskCount, setPendingTaskCount] = useState(0);
+
   const [sectionOpen, setSectionOpen] = useState<Record<string, boolean>>(() => {
     if (typeof window === "undefined") return {};
     const initial: Record<string, boolean> = {};
@@ -38,6 +83,22 @@ export function Sidebar() {
     return initial;
   });
 
+  const [jobGroupOpen, setJobGroupOpen] = useState<Record<string, boolean>>(() => {
+    if (typeof window === "undefined") return {};
+    const initial: Record<string, boolean> = {};
+    JOB_GROUPS.forEach((group) => {
+      try {
+        const stored = localStorage.getItem(JOB_GROUP_COLLAPSED_KEY_PREFIX + group.title);
+        initial[group.title] = stored === "true";
+      } catch {
+        initial[group.title] = false;
+      }
+    });
+    return initial;
+  });
+
+  const filtering = jumpQuery.trim().length > 0;
+
   const setSectionExpanded = useCallback((label: string, open: boolean) => {
     setSectionOpen((prev) => ({ ...prev, [label]: open }));
     if (typeof window !== "undefined") {
@@ -49,24 +110,70 @@ export function Sidebar() {
     }
   }, []);
 
-  const isSectionOpen = useCallback((label: string) => sectionOpen[label] !== false, [sectionOpen]);
-  const toggleSection = (label: string) =>
-    setSectionExpanded(label, !isSectionOpen(label));
+  const setJobGroupExpanded = useCallback((title: string, open: boolean) => {
+    setJobGroupOpen((prev) => ({ ...prev, [title]: open }));
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem(JOB_GROUP_COLLAPSED_KEY_PREFIX + title, String(open));
+      } catch {
+        // ignore
+      }
+    }
+  }, []);
+
+  const isSectionOpen = useCallback(
+    (label: string) => sectionOpen[label] !== false,
+    [sectionOpen],
+  );
+  const isJobGroupOpen = useCallback(
+    (title: string) => jobGroupOpen[title] === true,
+    [jobGroupOpen],
+  );
 
   useEffect(() => {
-    NAV_DATA.some((section) =>
-      section.items.some((item) => {
+    if (filtering) {
+      JOB_GROUPS.forEach((group) => {
+        const groupMatch = navMatchesQuery(group.title, jumpQuery);
+        const childMatch = group.items.some((sub) =>
+          navMatchesQuery(sub.title, jumpQuery),
+        );
+        if (groupMatch || childMatch) {
+          setJobGroupExpanded(group.title, true);
+        }
+      });
+      NAV_DATA.forEach((section) => {
+        const match = section.items.some((item) => {
+          if (isNavGroup(item)) {
+            return (
+              navMatchesQuery(item.title, jumpQuery) ||
+              item.items.some((sub) => navMatchesQuery(sub.title, jumpQuery))
+            );
+          }
+          return navMatchesQuery(item.title, jumpQuery);
+        });
+        if (match) setSectionExpanded(section.label, true);
+      });
+    }
+  }, [jumpQuery, filtering, setJobGroupExpanded, setSectionExpanded]);
+
+  useEffect(() => {
+    NAV_DATA.forEach((section) => {
+      section.items.forEach((item) => {
         if (isNavGroup(item)) {
           const hasActive = item.items.some((sub) => sub.url === pathname);
           if (hasActive && !isSectionOpen(section.label)) {
             setSectionExpanded(section.label, true);
           }
-          return hasActive;
         }
-        return false;
-      }),
-    );
-  }, [pathname, isSectionOpen, setSectionExpanded]);
+      });
+    });
+    JOB_GROUPS.forEach((group) => {
+      const hasActive = group.items.some((sub) => sub.url === pathname);
+      if (hasActive && !isJobGroupOpen(group.title)) {
+        setJobGroupExpanded(group.title, true);
+      }
+    });
+  }, [pathname, isSectionOpen, isJobGroupOpen, setSectionExpanded, setJobGroupExpanded]);
 
   useEffect(() => {
     if (status !== "authenticated" || !session?.user?.email) return;
@@ -100,6 +207,35 @@ export function Sidebar() {
     };
   }, [status, session?.user?.email]);
 
+  useEffect(() => {
+    const token =
+      (session as { id_token?: string; accessToken?: string })?.id_token ??
+      (session as { id_token?: string; accessToken?: string })?.accessToken;
+    if (!token) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`${getApiBaseUrl()}/api/tasks/my`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+        const count = (Array.isArray(data) ? data : []).filter(
+          (t: { status?: string }) =>
+            !["completed", "cancelled"].includes(String(t.status).toLowerCase()),
+        ).length;
+        if (!cancelled) setPendingTaskCount(count);
+      } catch {
+        // ignore
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session]);
+
   const hasInvoicingAccess = invoicingAllowed === true;
   const hasPersonalAssistantAccess = personalAssistantAllowed === true;
 
@@ -109,26 +245,181 @@ export function Sidebar() {
     return true;
   }
 
-  const sections = NAV_DATA
-    .map((section) => ({
-      ...section,
-      items: section.items
-        .map((item) => {
-          if (isNavGroup(item)) {
-            return {
-              ...item,
-              items: item.items.filter((sub) => canSeeRestrictedNavUrl(sub.url)),
-            };
-          }
-          if (!canSeeRestrictedNavUrl(item.url)) return null;
-          return item;
-        })
-        .filter((item): item is NavLinkItem | NavGroupItem => Boolean(item)),
-    }))
-    .filter((section) =>
-      (section.label !== "Development" || process.env.NODE_ENV !== "production") &&
-      section.items.length > 0
+  function itemVisible(title: string, url?: string): boolean {
+    if (!filtering) return true;
+    if (navMatchesQuery(title, jumpQuery)) return true;
+    if (url && navMatchesQuery(url.replace(/\//g, " "), jumpQuery)) return true;
+    return false;
+  }
+
+  function itemHighlight(title: string): boolean {
+    return filtering && navMatchesQuery(title, jumpQuery);
+  }
+
+  const sections = useMemo(
+    () =>
+      NAV_DATA.map((section) => ({
+        ...section,
+        items: section.items
+          .map((item) => {
+            if (isNavGroup(item)) {
+              return {
+                ...item,
+                items: item.items.filter((sub) => canSeeRestrictedNavUrl(sub.url)),
+              };
+            }
+            if (!canSeeRestrictedNavUrl(item.url)) return null;
+            return item;
+          })
+          .filter((item): item is NavLinkItem | NavGroupItem => Boolean(item)),
+      })).filter(
+        (section) =>
+          (section.label !== "Development" || process.env.NODE_ENV !== "production") &&
+          section.items.length > 0,
+      ),
+    [hasInvoicingAccess, hasPersonalAssistantAccess],
+  );
+
+  const filteredJobGroups = useMemo(
+    () =>
+      JOB_GROUPS.map((group) => ({
+        ...group,
+        items: group.items.filter((sub) => canSeeRestrictedNavUrl(sub.url)),
+      })).filter((g) => g.items.length > 0),
+    [hasInvoicingAccess, hasPersonalAssistantAccess],
+  );
+
+  const renderLink = (item: NavLinkItem, badge?: number) => {
+    if (!itemVisible(item.title, item.url)) return null;
+    const href = item.url || "/";
+    const active = pathname === href;
+    const showBadge = badge ?? (item.url === "/tasks" ? pendingTaskCount : 0);
+
+    return (
+      <li key={item.title} className={cn(isCollapsed && "flex w-full justify-center")}>
+        <MenuItem
+          as="link"
+          href={href}
+          isActive={active}
+          isHighlighted={itemHighlight(item.title)}
+          label={item.title}
+          className="flex w-full items-center gap-2.5"
+        >
+          <NavIcon
+            icon={item.icon}
+            label={item.title}
+            collapsed={isCollapsed}
+            badge={isCollapsed && showBadge > 0 ? showBadge : undefined}
+          />
+          {!isCollapsed && (
+            <>
+              <span className="min-w-0 flex-1 truncate">{item.title}</span>
+              {showBadge > 0 && (
+                <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-semantic-block text-[10px] font-bold tabular-nums text-white">
+                  {showBadge > 9 ? "9+" : showBadge}
+                </span>
+              )}
+            </>
+          )}
+        </MenuItem>
+      </li>
     );
+  };
+
+  const renderSection = (section: NavSection) => {
+    const visibleItems = section.items.filter((item) => {
+      if (isNavGroup(item)) {
+        return (
+          itemVisible(item.title) ||
+          item.items.some((sub) => itemVisible(sub.title, sub.url))
+        );
+      }
+      return itemVisible(item.title, item.url);
+    });
+    if (visibleItems.length === 0) return null;
+
+    const open = isSectionOpen(section.label);
+
+    return (
+      <div key={section.label} className={cn("mb-2", isCollapsed && "flex flex-col items-center")}>
+        {!isCollapsed && (
+          <button
+            type="button"
+            onClick={() => setSectionExpanded(section.label, !open)}
+            className="flex w-full min-h-[28px] items-center justify-between gap-2 rounded-md px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-500 transition-colors hover:bg-primary/5 hover:text-primary dark:text-gray-400"
+            aria-expanded={open}
+          >
+            <span>{section.label}</span>
+            <ChevronDown
+              className={cn("size-3.5 shrink-0 transition-transform", !open && "-rotate-90")}
+              aria-hidden
+            />
+          </button>
+        )}
+
+        {(open || isCollapsed) && (
+          <ul className={cn("space-y-0.5", isCollapsed && "flex flex-col items-center")}>
+            {visibleItems.map((item) => {
+              if (isNavGroup(item)) {
+                const hasActive = item.items.some((sub) => sub.url === pathname);
+                return (
+                  <li key={item.title} className="w-full">
+                    {!isCollapsed && (
+                      <MenuItem
+                        isActive={hasActive}
+                        onClick={() => setSectionExpanded(section.label, !open)}
+                        label={item.title}
+                        isHighlighted={itemHighlight(item.title)}
+                        className="flex items-center gap-2.5"
+                      >
+                        <NavIcon icon={item.icon} label={item.title} collapsed={false} />
+                        <span className="flex-1 truncate text-left">{item.title}</span>
+                        <ChevronDown
+                          className={cn(
+                            "size-3.5 shrink-0 text-gray-400 transition-transform",
+                            !open && "-rotate-90",
+                          )}
+                          aria-hidden
+                        />
+                      </MenuItem>
+                    )}
+                    {open && !isCollapsed && (
+                      <ul className="ml-7 space-y-0.5 pb-1">
+                        {item.items
+                          .filter((sub) => itemVisible(sub.title, sub.url))
+                          .map((sub) => (
+                            <li key={sub.title}>
+                              <MenuItem
+                                as="link"
+                                href={sub.url}
+                                isActive={pathname === sub.url}
+                                isHighlighted={itemHighlight(sub.title)}
+                                label={sub.title}
+                              >
+                                <span className="truncate">{sub.title}</span>
+                              </MenuItem>
+                            </li>
+                          ))}
+                      </ul>
+                    )}
+                  </li>
+                );
+              }
+              return renderLink(item as NavLinkItem);
+            })}
+          </ul>
+        )}
+      </div>
+    );
+  };
+
+  const sidebarWidth = isMobile
+    ? isOpen
+      ? SIDEBAR_EXPANDED_WIDTH
+      : 0
+    : isCollapsed
+      ? SIDEBAR_RAIL_WIDTH
+      : SIDEBAR_EXPANDED_WIDTH;
 
   return (
     <>
@@ -136,225 +427,202 @@ export function Sidebar() {
         <div
           className="fixed inset-0 z-40 bg-black/50 transition-opacity duration-300"
           onClick={() => setIsOpen(false)}
-          aria-hidden="true"
+          aria-hidden
         />
       )}
 
       <aside
+        style={{ width: sidebarWidth }}
         className={cn(
-          "overflow-hidden border-r border-gray-200 bg-white transition-[width] duration-300 ease-in-out dark:border-gray-800 dark:bg-gray-dark",
+          "shrink-0 border-r border-gray-200 bg-white transition-[width] duration-300 ease-in-out dark:border-gray-800 dark:bg-gray-dark",
+          "overflow-hidden",
           isMobile ? "fixed bottom-0 top-0 z-50" : "sticky top-0 h-screen",
-          isMobile ? (isOpen ? "w-full max-w-[290px]" : "w-0") : isCollapsed ? "w-[72px]" : "w-[290px]",
         )}
         aria-label="Main navigation"
         aria-hidden={isMobile ? !isOpen : false}
         inert={isMobile && !isOpen ? true : undefined}
       >
-        <div
-          className={cn(
-            "flex h-full flex-col py-6 pl-3 pr-2 min-[850px]:pl-4",
-            isCollapsed && "items-center",
-          )}
-        >
-          {/* Logo */}
-          <div className={cn("flex flex-col items-center mb-4", isCollapsed ? "w-full" : "")}>
+        <div className="flex h-full flex-col">
+          {/* Logo — 64px to align with header */}
+          <div
+            className={cn(
+              "flex h-16 shrink-0 items-center border-b border-stroke dark:border-dark-3",
+              isCollapsed ? "justify-center px-2" : "px-4",
+            )}
+          >
             <Link
               href="/"
               onClick={() => isMobile && toggleSidebar()}
-              className="block text-center"
-              aria-label="ACES Portal home"
+              className={cn(
+                "flex min-w-0 items-center gap-2.5",
+                isCollapsed ? "justify-center" : "",
+              )}
+              aria-label={`${BRAND.portalName} home`}
             >
               {isCollapsed ? (
                 <Image
-                  src="/images/logo/logo-icon.svg"
+                  src={BRAND.logo}
                   alt=""
-                  width={36}
-                  height={36}
-                  className="h-9 w-9 object-contain"
+                  width={32}
+                  height={32}
+                  className="size-8 object-contain"
                 />
               ) : (
                 <>
                   <Image
-                    src={ACES_BRAND.logo}
-                    alt="ACES Logo"
-                    width={120}
-                    height={56}
-                    className="h-14 w-auto mb-1"
+                    src={BRAND.logo}
+                    alt={`${BRAND.name} logo`}
+                    width={32}
+                    height={32}
+                    className="size-8 shrink-0 object-contain"
                   />
-                  <span className="text-base font-semibold text-gray-900 dark:text-white">
-                    ACES Portal
+                  <span className="truncate text-sm font-semibold text-gray-900 dark:text-white">
+                    {BRAND.portalName}
                   </span>
                 </>
               )}
             </Link>
+
+            {isMobile && (
+              <button
+                type="button"
+                onClick={toggleSidebar}
+                className="absolute right-3 top-5 text-gray-500"
+                aria-label="Close menu"
+              >
+                <ChevronLeft className="size-6" aria-hidden />
+              </button>
+            )}
           </div>
 
-          {isMobile && (
-            <button
-              onClick={toggleSidebar}
-              className="absolute left-3/4 right-4.5 top-1/2 -translate-y-1/2 text-right"
-              aria-label="Close Menu"
-            >
-              <ChevronLeft className="ml-auto size-7" aria-hidden />
-            </button>
+          {/* Jump to */}
+          {!isCollapsed && (
+            <div className="shrink-0 border-b border-stroke px-3 py-2 dark:border-dark-3">
+              <label className="relative block">
+                <span className="sr-only">Jump to page</span>
+                <Search
+                  className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-gray-400"
+                  aria-hidden
+                />
+                <input
+                  type="search"
+                  value={jumpQuery}
+                  onChange={(e) => setJumpQuery(e.target.value)}
+                  placeholder="Jump to…"
+                  className="h-[34px] w-full rounded-lg border border-stroke bg-gray/30 pl-8 pr-2 text-sm text-dark outline-none placeholder:text-gray-400 focus:border-primary/40 focus:ring-1 focus:ring-primary/20 dark:border-dark-3 dark:bg-dark-2 dark:text-white"
+                />
+              </label>
+            </div>
           )}
 
-          <div className="custom-scrollbar flex-1 overflow-y-auto min-[850px]:mt-2">
-            {sections.map((section) => {
-              const open = isSectionOpen(section.label);
+          <div className="custom-scrollbar flex-1 overflow-y-auto px-2 py-2">
+            {/* Pinned */}
+            {!isCollapsed && (
+              <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
+                Pinned
+              </p>
+            )}
+            <ul className={cn("mb-3 space-y-0.5", isCollapsed && "flex flex-col items-center")}>
+              {PINNED_NAV.map((item) => renderLink(item))}
+            </ul>
+
+            {/* Main */}
+            {!isCollapsed && (
+              <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
+                Main
+              </p>
+            )}
+            <ul className={cn("mb-3 space-y-0.5", isCollapsed && "flex flex-col items-center")}>
+              {MAIN_NAV.map((item) => renderLink(item))}
+            </ul>
+
+            {/* Job groups */}
+            {filteredJobGroups.map((group) => {
+              const groupVisible =
+                itemVisible(group.title) ||
+                group.items.some((sub) => itemVisible(sub.title, sub.url));
+              if (!groupVisible) return null;
+
+              const open = isJobGroupOpen(group.title) || filtering;
+              const hasActive = group.items.some((sub) => sub.url === pathname);
+
               return (
-                <div
-                  key={section.label}
-                  className={cn(
-                    "mb-4",
-                    isCollapsed && "flex flex-col items-center",
-                  )}
-                >
-                  {!isCollapsed && (
-                    <button
-                      type="button"
-                      onClick={() => toggleSection(section.label)}
-                      className="flex w-full items-center justify-between gap-2 rounded-lg px-3.5 py-2 text-left text-xs font-semibold uppercase tracking-wider text-dark-4 dark:text-dark-6 hover:bg-gray-100 dark:hover:bg-gray-800/50 transition-colors"
-                      aria-expanded={open}
-                      aria-controls={`sidebar-section-${section.label}`}
-                      id={`sidebar-section-btn-${section.label}`}
-                    >
-                      <span>{section.label}</span>
-                      <ChevronDown
-                        className={cn(
-                          "size-4 shrink-0 transition-transform duration-200",
-                          !open && "-rotate-90",
-                        )}
-                        aria-hidden
-                      />
-                    </button>
-                  )}
-
-                  <div
-                    id={`sidebar-section-${section.label}`}
-                    role="region"
-                    aria-labelledby={isCollapsed ? undefined : `sidebar-section-btn-${section.label}`}
-                    className="grid transition-[grid-template-rows] duration-200 ease-out"
-                    style={{
-                      gridTemplateRows: open || isCollapsed ? "1fr" : "0fr",
-                    }}
+                <div key={group.title} className="mb-1">
+                  <MenuItem
+                    as="button"
+                    onClick={() => setJobGroupExpanded(group.title, !open)}
+                    isActive={hasActive}
+                    isHighlighted={itemHighlight(group.title)}
+                    label={group.title}
+                    className={cn("flex w-full items-center gap-2.5", isCollapsed && "justify-center")}
                   >
-                    <div className="overflow-hidden">
-                      <nav role="navigation" aria-label={section.label}>
-                        <ul className={cn("space-y-0.5", isCollapsed && "flex flex-col items-center")}>
-                          {section.items.map((item) => {
-                            if (isNavGroup(item)) {
-                              const expanded = open;
-                              const hasActive = item.items.some(
-                                (sub) => sub.url === pathname,
-                              );
-                              return (
-                                <li key={item.title} className="w-full">
-                                  <MenuItem
-                                    isActive={hasActive}
-                                    onClick={() => toggleSection(section.label)}
-                                    label={item.title}
-                                    className={cn(
-                                      "flex items-center gap-3",
-                                      isCollapsed && "justify-center",
-                                    )}
-                                  >
-                                    {"icon" in item && item.icon && (
-                                      <span className="group relative flex shrink-0">
-                                        <item.icon
-                                          className="size-5 shrink-0"
-                                          aria-hidden
-                                        />
-                                        {isCollapsed && (
-                                          <span className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white opacity-0 shadow transition-opacity duration-150 group-hover:opacity-100 dark:bg-gray-100 dark:text-gray-900">
-                                            {item.title}
-                                          </span>
-                                        )}
-                                      </span>
-                                    )}
-                                    {!isCollapsed && <span>{item.title}</span>}
-                                  </MenuItem>
-                                  {expanded && !isCollapsed && (
-                                    <ul
-                                      className={cn(
-                                        "space-y-0.5 pb-2 pt-1",
-                                        !isCollapsed && "ml-9",
-                                      )}
-                                      role="menu"
-                                    >
-                                      {item.items
-                                        .filter(
-                                          (sub) =>
-                                            sub?.url &&
-                                            typeof sub.url === "string" &&
-                                            typeof sub.title === "string",
-                                        )
-                                        .map((sub) => (
-                                          <li key={sub.title} role="none" className={cn(isCollapsed && "flex justify-center")}>
-                                            <MenuItem
-                                              as="link"
-                                              href={sub.url!}
-                                              isActive={pathname === sub.url}
-                                              label={sub.title}
-                                              className="block"
-                                            >
-                                              {!isCollapsed && (
-                                                <span>{sub.title}</span>
-                                              )}
-                                            </MenuItem>
-                                          </li>
-                                        ))}
-                                    </ul>
-                                  )}
-                                </li>
-                              );
-                            }
-
-                            const linkItem = item as NavLinkItem;
-                            const href =
-                              linkItem.url && linkItem.url.length > 0
-                                ? linkItem.url
-                                : "/" +
-                                  linkItem.title
-                                    .toLowerCase()
-                                    .replace(/\s+/g, "-");
-
-                            return (
-                              <li key={linkItem.title} className={cn(isCollapsed && "flex justify-center w-full")}>
-                                <MenuItem
-                                  as="link"
-                                  href={href}
-                                  isActive={pathname === href}
-                                  label={linkItem.title}
-                                  className="flex items-center gap-3"
-                                >
-                                  {linkItem.icon && (
-                                    <span className="group relative flex shrink-0">
-                                      <linkItem.icon
-                                        className="size-5 shrink-0"
-                                        aria-hidden
-                                      />
-                                      {isCollapsed && (
-                                        <span className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white opacity-0 shadow transition-opacity duration-150 group-hover:opacity-100 dark:bg-gray-100 dark:text-gray-900">
-                                          {linkItem.title}
-                                        </span>
-                                      )}
-                                    </span>
-                                  )}
-                                  {!isCollapsed && (
-                                    <span>{linkItem.title}</span>
-                                  )}
-                                </MenuItem>
-                              </li>
-                            );
-                          })}
-                        </ul>
-                      </nav>
-                    </div>
-                  </div>
+                    <NavIcon icon={group.icon} label={group.title} collapsed={isCollapsed} />
+                    {!isCollapsed && (
+                      <>
+                        <span className="min-w-0 flex-1 truncate text-left">{group.title}</span>
+                        <ChevronDown
+                          className={cn(
+                            "size-3.5 shrink-0 text-gray-400 transition-transform",
+                            !open && "-rotate-90",
+                          )}
+                          aria-hidden
+                        />
+                      </>
+                    )}
+                  </MenuItem>
+                  {open && !isCollapsed && (
+                    <ul className="ml-7 space-y-0.5 pb-1 pt-0.5">
+                      {group.items
+                        .filter((sub) => itemVisible(sub.title, sub.url))
+                        .map((sub) => (
+                          <li key={sub.url}>
+                            <MenuItem
+                              as="link"
+                              href={sub.url}
+                              isActive={pathname === sub.url}
+                              isHighlighted={itemHighlight(sub.title)}
+                              label={sub.title}
+                            >
+                              <span className="truncate">{sub.title}</span>
+                            </MenuItem>
+                          </li>
+                        ))}
+                    </ul>
+                  )}
                 </div>
               );
             })}
+
+            {sections.map(renderSection)}
+          </div>
+
+          {/* Footer */}
+          <div
+            className={cn(
+              "shrink-0 border-t border-stroke px-2 py-2 dark:border-dark-3",
+              isCollapsed && "flex flex-col items-center",
+            )}
+          >
+            {!isMobile && (
+              <button
+                type="button"
+                onClick={toggleCollapse}
+                className={cn(
+                  "flex min-h-[34px] w-full items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:bg-gray/50 hover:text-dark dark:hover:bg-dark-3 dark:hover:text-white",
+                  isCollapsed && "w-auto justify-center px-2",
+                )}
+                aria-label={isCollapsed ? "Expand sidebar" : "Collapse to icons"}
+              >
+                <ChevronsLeft
+                  className={cn("size-4 shrink-0 transition-transform", isCollapsed && "rotate-180")}
+                  aria-hidden
+                />
+                {!isCollapsed && <span>Collapse to icons</span>}
+              </button>
+            )}
+            {!isCollapsed && (
+              <AppCopyright className="mt-1 px-1 text-center text-[10px] leading-snug text-gray-400 dark:text-gray-500" />
+            )}
           </div>
         </div>
       </aside>

@@ -101,6 +101,43 @@ export function getKeyDocumentsFromProcessed(processed: ProcessedFileMap) {
   return { loaUrl, sfaUrl, wipUrl, amortExcelUrl, amortPdfUrl };
 }
 
+const SFA_PROCESSED_KEYS = [
+  "business_Service Fee Agreement",
+  "business_service_fee_agreement",
+  "business_SFA",
+  "businessSFA",
+  "Service Fee Agreement",
+  "service_fee_agreement",
+  "businessService Fee Agreement",
+  "businessservicefeeagreement",
+] as const;
+
+export function getSfaFilesFromProcessed(processed: ProcessedFileMap): {
+  count: number;
+  url?: string;
+} {
+  const seen = new Set<string>();
+  const urls: string[] = [];
+  for (const key of SFA_PROCESSED_KEYS) {
+    const raw = processed[key];
+    if (typeof raw !== "string" || !raw.trim()) continue;
+    for (const part of raw.split(",").map((s) => s.trim()).filter(Boolean)) {
+      if (!seen.has(part)) {
+        seen.add(part);
+        urls.push(part);
+      }
+    }
+  }
+  return { count: urls.length, url: urls[0] };
+}
+
+export function getSfaFilesFromBusinessInfo(
+  businessInfo: Record<string, unknown> | null
+) {
+  const { processed } = getProcessedAndDocs(businessInfo);
+  return getSfaFilesFromProcessed(processed);
+}
+
 export function getKeyDocumentsFromBusinessInfo(
   businessInfo: Record<string, unknown> | null
 ) {

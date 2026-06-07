@@ -1,16 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useSession } from "next-auth/react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/Layouts/PageHeader";
-import { ArrowRight, Users, ListTodo, FileText } from "lucide-react";
+import {
+  StatCard,
+  QuickActionRow,
+  QuickActionList,
+  ActivityFeedItem,
+  PillarGrid,
+} from "@/components/dashboard";
+import { ArrowRight, Users, ListTodo, FileText, ClipboardList } from "lucide-react";
 import { getApiBaseUrl } from "@/lib/utils";
 import type { ApexOptions } from "apexcharts";
 import { Base1PipelineMini } from "@/components/base1/Base1PipelineMini";
+import { CLIENT_STAGE_LABELS, type ClientStage } from "@/constants/crm";
 
 const ApexChart = dynamic(() => import("react-apexcharts"), { ssr: false });
 
@@ -162,6 +170,22 @@ export default function CrmDashboardPage() {
     })();
   }, [token]);
 
+  const pipelinePillars = useMemo(() => {
+    if (!pipelineSummary?.by_stage?.length) return [];
+    const total = pipelineSummary.total_clients || 1;
+    return pipelineSummary.by_stage
+      .filter((s) => s.count > 0)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 4)
+      .map((s) => ({
+        id: s.stage,
+        label: CLIENT_STAGE_LABELS[s.stage as ClientStage] ?? s.stage.replace(/_/g, " "),
+        percent: (s.count / total) * 100,
+        status: "neutral" as const,
+        detail: `${s.count} members`,
+      }));
+  }, [pipelineSummary]);
+
   return (
     <>
       <PageHeader
@@ -186,158 +210,70 @@ export default function CrmDashboardPage() {
           </div>
         ) : (
           <>
-            {/* Overview: centered quick links, stats below */}
-            <section className="space-y-3">
-              <div className="text-center space-y-3">
-                <div className="flex flex-wrap items-center justify-center gap-3">
-                  <Link
-                    href="/clients"
-                    className="inline-flex items-center gap-2.5 rounded-full border border-primary/20 bg-primary/5 px-4 py-2.5 text-sm font-semibold text-primary hover:bg-primary/10"
-                  >
-                    <Users className="h-4 w-4" />
-                    <span>CRM member records</span>
-                    <ArrowRight className="h-4 w-4" />
-                  </Link>
-                  <Link
+            <section className="space-y-4">
+              <QuickActionList className="sm:grid sm:grid-cols-3 sm:gap-2">
+                <QuickActionRow href="/crm-members" icon={<Users />} label="CRM member records" description="Browse pipeline" />
+                <QuickActionRow href="/offers" icon={<ListTodo />} label="Offers" description="Manage quotes" />
+                <QuickActionRow href="/reports/activities" icon={<FileText />} label="Activity report" description="Recent documents" />
+              </QuickActionList>
+
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                {pipelineSummary && (
+                  <StatCard
+                    label="Members"
+                    value={pipelineSummary.total_clients}
+                    trend={`${pipelineSummary.won_count} won · ${pipelineSummary.lost_count} lost`}
+                    icon={<Users />}
+                    accent="scope-2"
+                    href="/crm-members"
+                  />
+                )}
+                {tasksSummary && (
+                  <StatCard
+                    label="Tasks"
+                    value={tasksSummary.total_tasks}
+                    trend={
+                      <>
+                        Overdue{" "}
+                        <span className="font-semibold text-semantic-block">{tasksSummary.overdue}</span>
+                        {" · "}Today{" "}
+                        <span className="font-semibold text-semantic-flag">{tasksSummary.due_today}</span>
+                      </>
+                    }
+                    icon={<ClipboardList />}
+                    accent="primary"
+                    href="/tasks"
+                  />
+                )}
+                {offersSummary && (
+                  <StatCard
+                    label="Offers"
+                    value={offersSummary.total_offers}
+                    trend={`Accepted ${offersSummary.accepted} · Win ${offersSummary.total_offers > 0 ? `${Math.round((offersSummary.win_rate || 0) * 100)}%` : "—"}`}
+                    icon={<ListTodo />}
+                    accent="scope-3"
                     href="/offers"
-                    className="inline-flex items-center gap-2.5 rounded-full border border-primary/20 bg-primary/5 px-4 py-2.5 text-sm font-semibold text-primary hover:bg-primary/10"
-                  >
-                    <ListTodo className="h-4 w-4" />
-                    <span>Offers</span>
-                    <ArrowRight className="h-4 w-4" />
-                  </Link>
-                  <Link
+                  />
+                )}
+                {activitiesSummary && (
+                  <StatCard
+                    label="Activities"
+                    value={activitiesSummary.total}
+                    icon={<FileText />}
+                    accent="scope-1"
                     href="/reports/activities"
-                    className="inline-flex items-center gap-2.5 rounded-full border border-primary/20 bg-primary/5 px-4 py-2.5 text-sm font-semibold text-primary hover:bg-primary/10"
-                  >
-                    <FileText className="h-4 w-4" />
-                    <span>Activity report</span>
-                    <ArrowRight className="h-4 w-4" />
-                  </Link>
-                </div>
-                <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
-                  Overview
-                </h2>
-                <p className="text-xs text-gray-600 dark:text-gray-400">
-                  Quick links and key counts for your CRM work.
-                </p>
+                  />
+                )}
               </div>
 
-              <Card className="bg-white/80 dark:bg-dark-2 border border-gray-200/80 dark:border-dark-3 shadow-sm">
-                <CardContent className="p-3 sm:p-4">
-                  <div className="grid gap-2 sm:grid-cols-3">
-                    <Link
-                      href="/tasks"
-                      className="group rounded-md border border-gray-200/80 dark:border-dark-3 bg-gray-50/70 dark:bg-dark-1 px-3 py-2.5 flex flex-col justify-between hover:border-primary/40 hover:bg-primary/5 dark:hover:bg-primary/10 transition-colors"
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">
-                          Tasks
-                        </p>
-                        {tasksSummary && (
-                          <span className="text-sm font-semibold text-gray-900 dark:text-white tabular-nums">
-                            {tasksSummary.total_tasks}
-                          </span>
-                        )}
-                      </div>
-                      {tasksSummary && (
-                        <div className="mt-1.5 flex items-center justify-between text-xs text-gray-600 dark:text-gray-400">
-                          <span>
-                            Overdue{" "}
-                            <span className="font-semibold text-red-600 dark:text-red-400">
-                              {tasksSummary.overdue}
-                            </span>
-                          </span>
-                          <span>
-                            Today{" "}
-                            <span className="font-semibold text-amber-600 dark:text-amber-400">
-                              {tasksSummary.due_today}
-                            </span>
-                          </span>
-                        </div>
-                      )}
-                      {!tasksSummary && (
-                        <p className="mt-1.5 text-xs text-gray-400 dark:text-gray-500">
-                          Tasks summary unavailable.
-                        </p>
-                      )}
-                    </Link>
-
-                    <Link
-                      href="/offers"
-                      className="group rounded-md border border-gray-200/80 dark:border-dark-3 bg-gray-50/70 dark:bg-dark-1 px-3 py-2.5 flex flex-col justify-between hover:border-primary/40 hover:bg-primary/5 dark:hover:bg-primary/10 transition-colors"
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">
-                          Offers
-                        </p>
-                        {offersSummary && (
-                          <span className="text-sm font-semibold text-gray-900 dark:text-white tabular-nums">
-                            {offersSummary.total_offers}
-                          </span>
-                        )}
-                      </div>
-                      {offersSummary && (
-                        <div className="mt-1.5 flex items-center justify-between text-xs text-gray-600 dark:text-gray-400">
-                          <span>
-                            Accepted{" "}
-                            <span className="font-semibold text-emerald-600 dark:text-emerald-400">
-                              {offersSummary.accepted}
-                            </span>
-                          </span>
-                          <span>
-                            Win rate{" "}
-                            <span className="font-semibold">
-                              {offersSummary.total_offers > 0
-                                ? `${Math.round((offersSummary.win_rate || 0) * 100)}%`
-                                : "—"}
-                            </span>
-                          </span>
-                        </div>
-                      )}
-                      {!offersSummary && (
-                        <p className="mt-1.5 text-xs text-gray-400 dark:text-gray-500">
-                          Offers summary unavailable.
-                        </p>
-                      )}
-                    </Link>
-
-                    <Link
-                      href="/reports/activities"
-                      className="group rounded-md border border-gray-200/80 dark:border-dark-3 bg-gray-50/70 dark:bg-dark-1 px-3 py-2.5 flex flex-col justify-between hover:border-primary/40 hover:bg-primary/5 dark:hover:bg-primary/10 transition-colors"
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">
-                          Offer activities
-                        </p>
-                        {activitiesSummary && (
-                          <span className="text-sm font-semibold text-gray-900 dark:text-white tabular-nums">
-                            {activitiesSummary.total}
-                          </span>
-                        )}
-                      </div>
-                      {activitiesSummary && (
-                        <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-600 dark:text-gray-400">
-                          {Object.entries(activitiesSummary.by_type || {})
-                            .sort((a, b) => b[1] - a[1])
-                            .slice(0, 2)
-                            .map(([type, count]) => (
-                              <span key={type} className="truncate">
-                                {type.replace(/_/g, " ")}{" "}
-                                <span className="font-semibold">{count}</span>
-                              </span>
-                            ))}
-                        </div>
-                      )}
-                      {!activitiesSummary && (
-                        <p className="mt-1.5 text-xs text-gray-400 dark:text-gray-500">
-                          Activity summary unavailable.
-                        </p>
-                      )}
-                    </Link>
-                  </div>
-                </CardContent>
-              </Card>
+              {pipelinePillars.length > 0 && (
+                <div>
+                  <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
+                    Pipeline by stage
+                  </h2>
+                  <PillarGrid items={pipelinePillars} />
+                </div>
+              )}
             </section>
 
             {/* Middle layout: activity + chart */}
@@ -365,44 +301,24 @@ export default function CrmDashboardPage() {
                     ) : (
                       <ul className="divide-y divide-gray-100 dark:divide-dark-3">
                         {recentActivities.map((a, index) => (
-                          <li
+                          <ActivityFeedItem
                             key={a.id}
-                            className={`px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs ${
-                              index === 0
-                                ? "bg-gray-50/80 dark:bg-dark-1/60"
-                                : ""
-                            }`}
-                          >
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-2">
-                                <span className="inline-flex items-center rounded-full bg-primary/5 px-2 py-0.5 text-[10px] font-medium text-primary">
-                                  {activityTypeLabel(a.activity_type)}
-                                </span>
-                                {a.business_name && (
-                                  <span className="truncate text-[11px] text-gray-700 dark:text-gray-300">
-                                    {a.business_name}
-                                  </span>
+                            icon={<FileText />}
+                            title={activityTypeLabel(a.activity_type)}
+                            meta={
+                              <>
+                                {a.business_name && <span>{a.business_name}</span>}
+                                {a.created_by && (
+                                  <span>{a.business_name ? " · " : ""}by {a.created_by}</span>
                                 )}
-                              </div>
-                              {a.created_by && (
-                                <p className="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">
-                                  by {a.created_by}
-                                </p>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-3 shrink-0">
-                              <span className="text-[11px] text-gray-500 dark:text-gray-400">
-                                {formatActivityDate(a.created_at)}
-                              </span>
-                              <Link
-                                href={`/offers/${a.offer_id}`}
-                                className="inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline"
-                              >
-                                View offer
-                                <ArrowRight className="h-3 w-3" />
-                              </Link>
-                            </div>
-                          </li>
+                              </>
+                            }
+                            timestamp={formatActivityDate(a.created_at)}
+                            href={`/offers/${a.offer_id}`}
+                            hrefLabel="View offer"
+                            type="info"
+                            highlighted={index === 0}
+                          />
                         ))}
                       </ul>
                     )}

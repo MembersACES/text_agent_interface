@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ReactNode } from "react";
 
 interface PageHeaderProps {
   /** Used for breadcrumb and as default title */
@@ -7,9 +8,11 @@ interface PageHeaderProps {
   title?: string;
   /** Optional short description below the title */
   description?: string;
+  /** Optional actions aligned to the right on larger screens */
+  actions?: ReactNode;
 }
 
-export function PageHeader({ pageName, title, description }: PageHeaderProps) {
+export function PageHeader({ pageName, title, description, actions }: PageHeaderProps) {
   const displayTitle = title ?? pageName;
 
   return (
@@ -27,7 +30,7 @@ export function PageHeader({ pageName, title, description }: PageHeaderProps) {
             </li>
           </ol>
         </nav>
-        <h1 className="mt-2 text-heading-5 font-bold text-dark dark:text-white">
+        <h1 className="mt-2 text-heading-5 font-bold tracking-tight text-dark dark:text-white">
           {displayTitle}
         </h1>
         {description && (
@@ -36,6 +39,7 @@ export function PageHeader({ pageName, title, description }: PageHeaderProps) {
           </p>
         )}
       </div>
+      {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
     </div>
   );
 }

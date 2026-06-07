@@ -1,11 +1,10 @@
 "use client";
 
-import { useMemo, useState, useCallback, type FormEvent } from "react";
+import { useMemo, useState, useCallback, useEffect, type FormEvent } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 
 import { TaskModal } from "@/components/tasks/TaskModal";
-import { PageHeader } from "@/components/Layouts/PageHeader";
 import { EmptyState } from "@/components/ui/empty-state";
 
 import { useMemberData } from "@/components/crm-member/hooks/use-member-data";
@@ -17,21 +16,23 @@ import { MemberTabs } from "@/components/crm-member/MemberTabs";
 import { MemberSidebar } from "@/components/crm-member/MemberSidebar";
 import { MemberLoadingSkeleton } from "@/components/crm-member/MemberLoadingSkeleton";
 import { Modal } from "@/components/ui/modal";
+import { Button } from "@/components/ui/button";
 
 import { OverviewTab } from "@/components/crm-member/tabs/OverviewTab";
-import { SavingsTab } from "@/components/crm-member/tabs/SavingsTab";
-import { TestimonialsTab } from "@/components/crm-member/tabs/TestimonialsTab";
 import { DocumentsTab, getDocumentsCountFromBusinessInfo } from "@/components/crm-member/tabs/DocumentsTab";
 import { UtilitiesTab, getUtilitiesCountFromBusinessInfo } from "@/components/crm-member/tabs/UtilitiesTab";
-import { OffersTab } from "@/components/crm-member/tabs/OffersTab";
-import { ActivityTab } from "@/components/crm-member/tabs/ActivityTab";
-import { NotesTab } from "@/components/crm-member/tabs/NotesTab";
 import { ToolsTab } from "@/components/crm-member/tabs/ToolsTab";
-import { SolutionsTab } from "@/components/crm-member/tabs/SolutionsTab";
-import { StrategyTab } from "@/components/crm-member/tabs/StrategyTab";
 import { ClimateTab } from "@/components/crm-member/tabs/ClimateTab";
-
-import type { MemberTab } from "@/components/crm-member/types";
+import { CommercialTabPanel } from "@/components/crm-member/tabs/CommercialTabPanel";
+import { ActivityTabPanel } from "@/components/crm-member/tabs/ActivityTabPanel";
+import { SolutionsStrategyTabPanel } from "@/components/crm-member/tabs/SolutionsStrategyTabPanel";
+import { resolveMemberTab } from "@/components/crm-member/member-tab-utils";
+import { recordMemberProfileView } from "@/lib/member-profile-recent";
+import type {
+  ActivitySubTab,
+  CommercialSubTab,
+  SolutionsSubTab,
+} from "@/components/crm-member/member-tab-utils";
 export default function ClientDetailPage() {
   const params = useParams();
   const searchParams = useSearchParams();
@@ -44,7 +45,10 @@ export default function ClientDetailPage() {
   }, [params]);
 
   const { data: session } = useSession();
-  const tab = (searchParams.get("tab") as MemberTab | null) || "overview";
+  const rawTab = searchParams.get("tab");
+  const rawSubTab = searchParams.get("subtab");
+  const { tab, subTab: aliasSubTab } = resolveMemberTab(rawTab);
+  const subTab = rawSubTab ?? aliasSubTab;
 
   const {
     client,
@@ -142,6 +146,22 @@ export default function ClientDetailPage() {
 
   const [newNote, setNewNote] = useState("");
   const [newNoteType, setNewNoteType] = useState("general");
+  const [toolsOpen, setToolsOpen] = useState(false);
+
+  useEffect(() => {
+    if (rawTab === "tools") {
+      setToolsOpen(true);
+    }
+  }, [rawTab]);
+
+  useEffect(() => {
+    if (client?.business_name && clientId != null) {
+      recordMemberProfileView({
+        businessName: client.business_name,
+        clientId,
+      });
+    }
+  }, [client?.id, client?.business_name, clientId]);
 
   const timelineEvents = useMemo(() => {
     const stageNotes = notes
@@ -244,26 +264,26 @@ export default function ClientDetailPage() {
         label: "Utilities",
         count: businessInfo ? getUtilitiesCountFromBusinessInfo(businessInfo) : null,
       },
-      { key: "offers" as const, label: "Offers", count: offers.length },
       {
-        key: "savings" as const,
-        label: "1st Month Savings",
-        count: null,
+        key: "activity" as const,
+        label: "Activity",
+        count: activities.length + notes.length,
       },
-      {
-        key: "testimonials" as const,
-        label: "Testimonials",
-        count: null,
-      },
-      { key: "activity" as const, label: "Activity", count: activities.length },
-      { key: "notes" as const, label: "Notes", count: notes.length },
-      { key: "tools" as const, label: "Tools", count: null },
-      { key: "solutions" as const, label: "Solutions", count: null },
-      { key: "strategy" as const, label: "Strategy & WIP", count: null },
+      { key: "commercial" as const, label: "Offers & Savings", count: offers.length },
+      { key: "solutions" as const, label: "Solutions & Strategy", count: null },
       { key: "climate" as const, label: "Climate", count: null },
     ],
     [businessInfo, offers.length, activities.length, notes.length]
   );
+
+  const lastActivityAt = useMemo(() => {
+    if (activities.length === 0) return null;
+    return activities.reduce((latest, a) => {
+      return new Date(a.created_at).getTime() > new Date(latest).getTime()
+        ? a.created_at
+        : latest;
+    }, activities[0].created_at);
+  }, [activities]);
 
   if (clientId == null) {
     return (
@@ -277,13 +297,7 @@ export default function ClientDetailPage() {
 
   return (
     <>
-      <PageHeader
-        pageName="Member"
-        title={client?.business_name ?? "Member"}
-        description="Member record and activity overview."
-      />
-
-      <div className="mt-4 space-y-4 lg:space-y-6">
+      <div className="space-y-4 lg:space-y-6">
         {error && (
             <div className="rounded-md border border-red-200/80 bg-red-50/80 px-3 py-2.5 text-xs text-red-700 dark:border-red-800/80 dark:bg-red-900/20 dark:text-red-300">
               {error}
@@ -306,6 +320,9 @@ export default function ClientDetailPage() {
                   firstOfferId={offers[0]?.id ?? null}
                   businessInfo={businessInfo}
                   fetchBusinessInfo={fetchBusinessInfoForBase2}
+                  onOpenTools={() => setToolsOpen(true)}
+                  offersCount={offers.length}
+                  lastActivityAt={lastActivityAt}
                 />
               </div>
 
@@ -317,7 +334,9 @@ export default function ClientDetailPage() {
             <div className="grid gap-4 lg:gap-6 lg:grid-cols-4">
               <main className="space-y-4 lg:space-y-5 lg:col-span-3">
                 {tab === "overview" && (
+                  <div key="overview" className="pg-fade-up">
                   <OverviewTab
+                    clientId={clientId}
                     businessInfo={businessInfo}
                     businessInfoLoading={businessInfoLoading}
                     setBusinessInfo={setBusinessInfo}
@@ -325,16 +344,17 @@ export default function ClientDetailPage() {
                     onToggleBusinessInfo={() => setBusinessInfoOpen((o) => !o)}
                     tasks={tasks}
                     offers={offers}
-                    activities={activities}
                     notes={notes}
                     onCreateOfferClick={() => {
                       setCreateOfferOpen(true);
                       setError(null);
                     }}
                   />
+                  </div>
                 )}
 
                 {tab === "documents" && (
+                  <div key="documents" className="pg-fade-up">
                   <DocumentsTab
                     businessInfo={businessInfo}
                     setBusinessInfo={setBusinessInfo}
@@ -342,40 +362,38 @@ export default function ClientDetailPage() {
                     clientId={clientId}
                     onMemberUploadLogged={refetchActivities}
                   />
+                  </div>
                 )}
 
                 {tab === "utilities" && (
+                  <div key="utilities" className="pg-fade-up">
                   <UtilitiesTab
                     businessInfo={businessInfo}
                     setBusinessInfo={setBusinessInfo}
                     onLinkUtility={handleLinkUtility}
                   />
+                  </div>
                 )}
 
-                {tab === "offers" && (
-                  <OffersTab
+                {tab === "commercial" && (
+                  <div key="commercial" className="pg-fade-up">
+                  <CommercialTabPanel
+                    initialSubTab={(subTab as CommercialSubTab) ?? "offers"}
                     offers={offers}
+                    businessInfo={businessInfo}
                     onCreateOfferClick={() => {
                       setCreateOfferOpen(true);
                       setError(null);
                     }}
                   />
-                )}
-
-                {tab === "savings" && (
-                  <SavingsTab businessInfo={businessInfo} />
-                )}
-
-                {tab === "testimonials" && (
-                  <TestimonialsTab businessInfo={businessInfo} />
+                  </div>
                 )}
 
                 {tab === "activity" && (
-                  <ActivityTab timelineEvents={timelineEvents} />
-                )}
-
-                {tab === "notes" && (
-                  <NotesTab
+                  <div key="activity" className="pg-fade-up">
+                  <ActivityTabPanel
+                    initialSubTab={(subTab as ActivitySubTab) ?? "activity"}
+                    timelineEvents={timelineEvents}
                     notes={notes}
                     newNote={newNote}
                     newNoteType={newNoteType}
@@ -394,42 +412,36 @@ export default function ClientDetailPage() {
                     }}
                     onDeleteNote={handleDeleteNote}
                   />
+                  </div>
                 )}
 
-                {tab === "tools" && (
-                  <ToolsTab
+                {tab === "solutions" && clientId != null && (
+                  <div key="solutions" className="pg-fade-up">
+                  <SolutionsStrategyTabPanel
+                    initialSubTab={(subTab as SolutionsSubTab) ?? "solutions"}
                     businessInfo={businessInfo}
                     setBusinessInfo={setBusinessInfo}
-                  />
-                )}
-
-                {tab === "solutions" && (
-                  <SolutionsTab
-                    businessInfo={businessInfo}
-                    setBusinessInfo={setBusinessInfo}
-                  />
-                )}
-
-                {tab === "strategy" && clientId != null && (
-                  <StrategyTab
-                    clientId={clientId!}
+                    clientId={clientId}
                     client={client}
                     onSaveAdvocateMeeting={actions.handleSaveAdvocateMeeting}
                     savingAdvocateMeeting={actions.savingAdvocateMeeting}
                   />
+                  </div>
                 )}
 
                 {tab === "climate" && client && (
+                  <div key="climate" className="pg-fade-up">
                   <ClimateTab
                     client={client}
                     businessInfo={businessInfo}
                     onSaveReportingEntity={actions.handleSaveReportingEntity}
                     savingReportingEntity={actions.savingReportingEntity}
                   />
+                  </div>
                 )}
               </main>
 
-              <aside className="lg:col-span-1">
+              <aside className="min-w-0 lg:col-span-1">
                 <MemberSidebar
                   client={client}
                   tasks={tasks}
@@ -452,21 +464,18 @@ export default function ClientDetailPage() {
               size="default"
               footer={
                 <div className="flex justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setEditProfileOpen(false)}
-                    className="px-3.5 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-xs font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800"
-                  >
+                  <Button type="button" variant="secondary" size="sm" onClick={() => setEditProfileOpen(false)}>
                     Cancel
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     type="submit"
                     form="edit-profile-form"
+                    size="sm"
                     disabled={actions.editProfileSubmitting}
-                    className="px-3.5 py-1.5 rounded-md bg-primary text-white text-xs font-medium shadow-sm hover:bg-primary/90 disabled:opacity-50"
+                    loading={actions.editProfileSubmitting}
                   >
-                    {actions.editProfileSubmitting ? "Saving..." : "Save"}
-                  </button>
+                    Save
+                  </Button>
                 </div>
               }
             >
@@ -540,7 +549,7 @@ export default function ClientDetailPage() {
                         owner_email: e.target.value,
                       }))
                     }
-                    placeholder="ACES team member"
+                    placeholder="Carbon Zero team member"
                     className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900/60 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary/60 focus:border-primary/60"
                   />
                 </label>
@@ -562,8 +571,10 @@ export default function ClientDetailPage() {
               size="default"
               footer={
                 <div className="flex justify-end gap-2">
-                  <button
+                  <Button
                     type="button"
+                    variant="secondary"
+                    size="sm"
                     onClick={() => {
                       setCreateOfferOpen(false);
                       setCreateOfferForm({
@@ -573,18 +584,18 @@ export default function ClientDetailPage() {
                         estimated_value: "",
                       });
                     }}
-                    className="px-3.5 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-xs font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800"
                   >
                     Cancel
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     type="submit"
                     form="create-offer-form"
+                    size="sm"
                     disabled={actions.createOfferSubmitting}
-                    className="px-3.5 py-1.5 rounded-md bg-primary text-white text-xs font-medium shadow-sm hover:bg-primary/90 disabled:opacity-50"
+                    loading={actions.createOfferSubmitting}
                   >
-                    {actions.createOfferSubmitting ? "Creating..." : "Create"}
-                  </button>
+                    Create
+                  </Button>
                 </div>
               }
             >
@@ -682,23 +693,20 @@ export default function ClientDetailPage() {
               size="default"
               footer={
                 <div className="flex justify-end gap-2">
-                  <button
+                  <Button
                     type="button"
+                    variant="secondary"
+                    size="sm"
                     onClick={() => {
                       setEditNoteOpen(false);
                       setEditNoteForm({ noteId: 0, note: "", note_type: "general" });
                     }}
-                    className="px-3.5 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-xs font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800"
                   >
                     Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    form="edit-note-form"
-                    className="px-3.5 py-1.5 rounded-md bg-primary text-white text-xs font-medium shadow-sm hover:bg-primary/90 disabled:opacity-50"
-                  >
+                  </Button>
+                  <Button type="submit" form="edit-note-form" size="sm">
                     Save
-                  </button>
+                  </Button>
                 </div>
               }
             >
@@ -739,6 +747,18 @@ export default function ClientDetailPage() {
                   />
                 </label>
               </form>
+            </Modal>
+
+            <Modal
+              open={toolsOpen}
+              onClose={() => setToolsOpen(false)}
+              title="Robot Finance & Tools"
+              size="lg"
+            >
+              <ToolsTab
+                businessInfo={businessInfo}
+                setBusinessInfo={setBusinessInfo}
+              />
             </Modal>
 
             {addTaskOpen && client && (

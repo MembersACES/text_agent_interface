@@ -4,19 +4,21 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSidebarContext } from "../sidebar/sidebar-context";
+import { BRAND } from "@/lib/brand";
 import { getTitleForPath } from "@/lib/route-titles";
 import { MenuIcon } from "./icons";
 import { Notification } from "./notification";
 import { ThemeToggleSwitch } from "./theme-toggle";
 import { UserInfo } from "./user-info";
 import { useCommandPalette } from "@/components/CommandPaletteContext";
-import { Search } from "lucide-react";
+import { ChevronRight, Search } from "lucide-react";
 
 export function Header() {
   const pathname = usePathname();
   const { toggleSidebar, toggleCollapse, isMobile, isCollapsed } = useSidebarContext();
   const pageTitle = getTitleForPath(pathname ?? "/");
   const palette = useCommandPalette();
+  const isHome = pathname === "/";
 
   const handleSidebarToggle = () => {
     if (isMobile) {
@@ -33,54 +35,75 @@ export function Header() {
       : "Collapse sidebar";
 
   return (
-    <header className="sticky top-0 z-30 flex items-center justify-between border-b border-stroke bg-white px-4 py-5 shadow-1 dark:border-stroke-dark dark:bg-gray-dark md:px-5 2xl:px-10">
-      <button
-        onClick={handleSidebarToggle}
-        className="rounded-lg border px-1.5 py-1 dark:border-stroke-dark dark:bg-gray-dark hover:dark:bg-[#FFFFFF1A] transition-all duration-200 active:scale-95"
-        aria-label={sidebarToggleLabel}
-      >
-        <MenuIcon />
-      </button>
+    <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center justify-between border-b border-stroke bg-white/95 px-4 shadow-1 backdrop-blur-sm dark:border-stroke-dark dark:bg-gray-dark/95 md:px-5 2xl:px-8">
+      <div className="flex min-w-0 flex-1 items-center gap-3">
+        <button
+          type="button"
+          onClick={handleSidebarToggle}
+          className="flex size-9 items-center justify-center rounded-lg border transition-all duration-200 dark:hover:bg-white/10 active:scale-95 dark:border-stroke-dark dark:bg-gray-dark"
+          aria-label={sidebarToggleLabel}
+        >
+          <MenuIcon />
+        </button>
 
-      {isMobile && (
-        <Link href={"/"} className="ml-2 max-[430px]:hidden min-[375px]:ml-4">
-          <Image
-            src={"/images/logo/logo-icon.svg"}
-            width={32}
-            height={32}
-            alt=""
-            role="presentation"
-          />
-        </Link>
-      )}
+        {isMobile && (
+          <Link href="/" className="max-[430px]:hidden min-[375px]:block">
+            <Image
+              src={BRAND.logo}
+              width={28}
+              height={28}
+              alt=""
+              role="presentation"
+              className="size-7 object-contain"
+            />
+          </Link>
+        )}
 
-      <div className="flex-1 flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="mb-0.5 text-heading-5 font-bold text-dark dark:text-white">
-            {pageTitle}
-          </h1>
-          <p className="text-sm text-gray-600 dark:text-gray-400">ACES Admin Dashboard Solution</p>
-        </div>
+        <nav aria-label="Breadcrumb" className="hidden min-w-0 sm:block">
+          <ol className="flex items-center gap-1.5 text-sm">
+            <li>
+              <Link
+                href="/"
+                className="font-medium text-gray-500 transition-colors hover:text-primary dark:text-gray-400"
+              >
+                Dashboard
+              </Link>
+            </li>
+            {!isHome && (
+              <>
+                <li aria-hidden>
+                  <ChevronRight className="size-3.5 text-gray-400" />
+                </li>
+                <li>
+                  <span
+                    className="truncate font-semibold text-dark dark:text-white"
+                    aria-current="page"
+                  >
+                    {pageTitle}
+                  </span>
+                </li>
+              </>
+            )}
+          </ol>
+        </nav>
       </div>
 
-      <div className="flex items-center justify-end gap-2 min-[375px]:gap-4">
+      <div className="flex h-9 items-center gap-1.5 min-[375px]:gap-2">
         <button
           type="button"
           onClick={() => palette?.toggle()}
-          className="flex items-center gap-2 rounded-lg border border-stroke dark:border-stroke-dark px-2.5 py-1.5 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-          title="Search members and offers (Ctrl+K)"
+          className="flex h-9 items-center gap-2 rounded-full border border-stroke px-2.5 text-sm text-gray-600 transition-colors hover:bg-gray/50 dark:border-dark-3 dark:text-gray-400 dark:hover:bg-dark-3"
+          title="Search and quick actions (Ctrl+K)"
         >
-          <Search className="w-4 h-4" />
+          <Search className="size-4" />
           <span className="hidden sm:inline">Search</span>
-          <kbd className="hidden sm:inline px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-700 text-xs font-mono">⌘K</kbd>
+          <kbd className="hidden rounded bg-gray-2 px-1.5 py-0.5 font-mono text-xs dark:bg-dark-3 sm:inline">
+            ⌘K
+          </kbd>
         </button>
         <ThemeToggleSwitch />
-
         <Notification />
-
-        <div className="shrink-0">
-          <UserInfo />
-        </div>
+        <UserInfo />
       </div>
     </header>
   );

@@ -2,6 +2,8 @@
 
 import React, { useEffect, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
+import { ToolPageLayout } from '@/components/Layouts/ToolPageLayout';
+import { Button } from '@/components/ui/button';
 
 export default function ConfirmLOAPage() {
   const searchParams = useSearchParams();
@@ -67,15 +69,13 @@ export default function ConfirmLOAPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 py-10">
-      <div className="max-w-7xl mx-auto px-10">
-        <div className="bg-white rounded-lg shadow-sm p-10">
-          <h1 className="text-3xl font-bold text-gray-900 mb-8">
-            Confirm Updated LOA for {businessInfo?.['Business Name'] || businessName || 'Business'}
-          </h1>
-
+    <ToolPageLayout
+      pageName="Update LOA"
+      title={`Confirm updated LOA for ${businessInfo?.['Business Name'] || businessName || 'Business'}`}
+      width="2xl"
+    >
           {/* Editable LOA Data Only */}
-          <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 mb-10">
+          <div className="bg-gray/50 border border-stroke rounded-2xl p-6 mb-10 dark:border-dark-3 dark:bg-dark-2">
             <h2 className="text-2xl font-semibold text-gray-800 mb-4">
               Latest Processed LOA Data (Editable)
             </h2>
@@ -141,45 +141,43 @@ export default function ConfirmLOAPage() {
 
           {/* Action buttons */}
           <div className="mt-10 grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div className="bg-blue-50 border border-blue-200 p-6 rounded-lg">
-              <h3 className="font-semibold text-blue-800 mb-2 text-lg">Proccess new LOA and/or update contact details</h3>
-              <p className="text-sm text-gray-700 mb-4">
-                Use this if the business and ABN are unchanged, but the contact person has changed. Or if you want to proccess a new LOA.
+            <div className="rounded-2xl border border-primary/20 bg-primary/5 p-6 dark:border-primary/30 dark:bg-primary/10">
+              <h3 className="font-semibold text-primary mb-2 text-lg">Process new LOA and/or update contact details</h3>
+              <p className="text-sm text-gray-700 dark:text-gray-300 mb-4">
+                Use this if the business and ABN are unchanged, but the contact person has changed. Or if you want to process a new LOA.
               </p>
-              <button
+              <Button
+                className="w-full"
                 onClick={() => handleUpdate('contact')}
                 disabled={loading}
-                className="w-full bg-blue-600 text-white py-2 rounded font-semibold hover:bg-blue-700 disabled:opacity-50"
+                loading={loading}
               >
-                {loading ? 'Updating...' : 'Proccess new LOA and/or update contact details'}
-              </button>
+                Process new LOA and/or update contact details
+              </Button>
             </div>
 
-            <div className="bg-yellow-50 border border-yellow-200 p-6 rounded-lg">
-              <h3 className="font-semibold text-yellow-800 mb-2 text-lg">Update Business Details</h3>
-              <p className="text-sm text-gray-700 mb-4">
+            <div className="rounded-2xl border border-semantic-flag/30 bg-semantic-flag/10 p-6">
+              <h3 className="font-semibold text-amber-900 dark:text-amber-200 mb-2 text-lg">Update business details</h3>
+              <p className="text-sm text-gray-700 dark:text-gray-300 mb-4">
                 Use this if the business or ABN has changed. All related business records will be updated. Including Folder Names & Name in system. 
               </p>
-              <button
+              <Button
+                className="w-full"
+                variant="secondary"
                 onClick={() => handleUpdate('business')}
                 disabled={loading}
-                className="w-full bg-yellow-600 text-white py-2 rounded font-semibold hover:bg-yellow-700 disabled:opacity-50"
+                loading={loading}
               >
-                {loading ? 'Updating...' : 'Update Business Details'}
-              </button>
+                Update business details
+              </Button>
             </div>
           </div>
 
           <div className="mt-10 flex justify-end">
-            <button
-              onClick={() => router.back()}
-              className="px-6 py-2 rounded bg-gray-400 text-white font-medium hover:bg-gray-500"
-            >
+            <Button variant="secondary" onClick={() => router.back()}>
               Back
-            </button>
+            </Button>
           </div>
-        </div>
-      </div>
-    </div>
+    </ToolPageLayout>
   );
 }
