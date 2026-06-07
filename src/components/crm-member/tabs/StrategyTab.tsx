@@ -17,9 +17,7 @@ export interface StrategyTabProps {
     advocacy_meeting_time: string;
     advocacy_meeting_completed: boolean;
   }) => Promise<void>;
-  onSaveReportingEntity: (reporting_entity: string) => Promise<void>;
   savingAdvocateMeeting?: boolean;
-  savingReportingEntity?: boolean;
 }
 
 interface EditableItem {
@@ -73,9 +71,7 @@ export function StrategyTab({
   clientId,
   client,
   onSaveAdvocateMeeting,
-  onSaveReportingEntity,
   savingAdvocateMeeting = false,
-  savingReportingEntity = false,
 }: StrategyTabProps) {
   const { data: session } = useSession();
   const token =
@@ -122,12 +118,6 @@ export function StrategyTab({
     setMeetingTime(client.advocacy_meeting_time ?? "");
     setMeetingCompleted(client.advocacy_meeting_completed === true);
   }, [client?.id, client?.advocacy_meeting_date, client?.advocacy_meeting_time, client?.advocacy_meeting_completed]);
-
-  const [reportingEntity, setReportingEntity] = useState("");
-  useEffect(() => {
-    if (!client) return;
-    setReportingEntity(client.reporting_entity ?? "");
-  }, [client?.id, client?.reporting_entity]);
 
   const hasToken = !!token;
   const baseUrl = useMemo(() => getApiBaseUrl(), []);
@@ -768,38 +758,16 @@ export function StrategyTab({
                     </p>
                   </div>
 
-                  {/* Sustainability reporting entity */}
-                  <div className="rounded-lg border border-gray-100 dark:border-gray-800 p-4 bg-gray-50/50 dark:bg-gray-800/30 space-y-3">
-                    <div>
-                      <h4 className="text-sm font-semibold text-gray-800 dark:text-gray-100">
+                  {/* Sustainability reporting — configured on Climate tab */}
+                  <div className="rounded-lg border border-gray-100 dark:border-gray-800 p-4 bg-gray-50/50 dark:bg-gray-800/30">
+                    <p className="text-xs text-gray-600 dark:text-gray-400">
+                      <strong className="font-semibold text-gray-800 dark:text-gray-200">
                         Sustainability reporting entity
-                      </h4>
-                      <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
-                        A1 entity slug for group disclosures (e.g. agn-holdings). Multiple members can share the same value.
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap items-end gap-3">
-                      <div className="min-w-[16rem] flex-1">
-                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">
-                          Entity ID
-                        </label>
-                        <input
-                          type="text"
-                          value={reportingEntity}
-                          onChange={(e) => setReportingEntity(e.target.value)}
-                          placeholder="e.g. reddrop-group"
-                          className="w-full rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm px-3 py-2 font-mono"
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => onSaveReportingEntity(reportingEntity)}
-                        disabled={savingReportingEntity}
-                        className="px-4 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:opacity-90 disabled:opacity-50"
-                      >
-                        {savingReportingEntity ? "Saving…" : "Save"}
-                      </button>
-                    </div>
+                      </strong>{" "}
+                      (A1 slug for Prograde) is set on the{" "}
+                      <strong className="font-semibold">Climate</strong> tab — required for linked utilities sync
+                      and disclosure workspace.
+                    </p>
                   </div>
 
                   {/* Advocacy Meeting Details - above linked businesses */}

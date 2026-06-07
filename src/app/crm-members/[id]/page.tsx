@@ -415,14 +415,17 @@ export default function ClientDetailPage() {
                     clientId={clientId!}
                     client={client}
                     onSaveAdvocateMeeting={actions.handleSaveAdvocateMeeting}
-                    onSaveReportingEntity={actions.handleSaveReportingEntity}
                     savingAdvocateMeeting={actions.savingAdvocateMeeting}
-                    savingReportingEntity={actions.savingReportingEntity}
                   />
                 )}
 
                 {tab === "climate" && client && (
-                  <ClimateTab client={client} businessInfo={businessInfo} />
+                  <ClimateTab
+                    client={client}
+                    businessInfo={businessInfo}
+                    onSaveReportingEntity={actions.handleSaveReportingEntity}
+                    savingReportingEntity={actions.savingReportingEntity}
+                  />
                 )}
               </main>
 

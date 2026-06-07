@@ -186,9 +186,16 @@ function linkedUtilityIdentifiers(sites: LinkedUtilitySite[]): Record<string, st
 type ClimateTabProps = {
   client: Client;
   businessInfo?: Record<string, unknown> | null;
+  onSaveReportingEntity: (reporting_entity: string) => Promise<void>;
+  savingReportingEntity?: boolean;
 };
 
-export function ClimateTab({ client, businessInfo = null }: ClimateTabProps) {
+export function ClimateTab({
+  client,
+  businessInfo = null,
+  onSaveReportingEntity,
+  savingReportingEntity = false,
+}: ClimateTabProps) {
   const { data: session } = useSession();
   const { showToast } = useToast();
   const token =
@@ -228,6 +235,11 @@ export function ClimateTab({ client, businessInfo = null }: ClimateTabProps) {
     null,
   );
   const [lastEtlPreview, setLastEtlPreview] = useState<EtlSyncResponse | null>(null);
+  const [reportingEntityDraft, setReportingEntityDraft] = useState("");
+
+  useEffect(() => {
+    setReportingEntityDraft(client.reporting_entity ?? "");
+  }, [client.id, client.reporting_entity]);
 
   useEffect(() => {
     const suggested = linkedIds[utilityType];
@@ -380,7 +392,7 @@ export function ClimateTab({ client, businessInfo = null }: ClimateTabProps) {
         return;
       }
       if (!entity) {
-        showToast("Set reporting entity on Strategy & WIP tab first", "error");
+        showToast("Set sustainability reporting entity below first", "error");
         return;
       }
       const idTrim = identifier.trim();
@@ -465,7 +477,7 @@ export function ClimateTab({ client, businessInfo = null }: ClimateTabProps) {
         return;
       }
       if (!entity) {
-        showToast("Set reporting entity on Strategy & WIP tab first", "error");
+        showToast("Set sustainability reporting entity below first", "error");
         return;
       }
       if (linkedSites.length === 0) {
@@ -529,6 +541,68 @@ export function ClimateTab({ client, businessInfo = null }: ClimateTabProps) {
 
   return (
     <div className="space-y-4">
+      <Card className="border-primary/20">
+        <CardHeader>
+          <CardTitle className="text-base">Sustainability reporting entity</CardTitle>
+          <CardDescription>
+            A1 entity slug for Prograde disclosures (e.g. parramatta-leagues-club). Required before sync and
+            workspace — multiple members can share the same value.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="min-w-[16rem] flex-1">
+              <label
+                htmlFor="climate-reporting-entity"
+                className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1"
+              >
+                Entity ID
+              </label>
+              <input
+                id="climate-reporting-entity"
+                type="text"
+                value={reportingEntityDraft}
+                onChange={(e) => setReportingEntityDraft(e.target.value)}
+                placeholder="e.g. parramatta-leagues-club"
+                className="w-full rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm px-3 py-2 font-mono"
+              />
+            </div>
+            <Button
+              variant="primary"
+              size="sm"
+              loading={savingReportingEntity}
+              disabled={savingReportingEntity}
+              onClick={() => void onSaveReportingEntity(reportingEntityDraft)}
+            >
+              Save
+            </Button>
+          </div>
+          {entity ? (
+            <p className="text-xs text-emerald-700 dark:text-emerald-300">
+              Active slug: <span className="font-mono">{entity}</span>
+              {disclosureHref ? (
+                <>
+                  {" "}
+                  ·{" "}
+                  <Link href={disclosureHref} target="_blank" rel="noopener noreferrer" className="underline">
+                    Open Prograde workspace
+                  </Link>
+                </>
+              ) : null}
+            </p>
+          ) : (
+            <p className="text-xs text-amber-800 dark:text-amber-200">
+              Save an entity slug to enable linked utilities sync and the disclosure workspace below.
+            </p>
+          )}
+          {client.external_business_id && (
+            <p className="text-xs text-gray-500">
+              LOA record: <span className="font-mono">{client.external_business_id}</span>
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
       <div className="flex flex-wrap items-center gap-2">
         <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-900 dark:bg-amber-900/40 dark:text-amber-200">
           Preview — management grade
@@ -585,29 +659,6 @@ export function ClimateTab({ client, businessInfo = null }: ClimateTabProps) {
           </CardContent>
         </Card>
       )}
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Reporting entity</CardTitle>
-          <CardDescription>
-            A1 entity slug from Strategy &amp; WIP. Set under Strategy tab if empty.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-2 text-sm">
-          {entity ? (
-            <p className="font-mono text-gray-800 dark:text-gray-100">{entity}</p>
-          ) : (
-            <p className="text-gray-600 dark:text-gray-400">
-              No reporting entity configured. Save an A1 slug on the Strategy &amp; WIP tab first.
-            </p>
-          )}
-          {client.external_business_id && (
-            <p className="text-xs text-gray-500">
-              LOA record: <span className="font-mono">{client.external_business_id}</span>
-            </p>
-          )}
-        </CardContent>
-      </Card>
 
       <Card>
         <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
