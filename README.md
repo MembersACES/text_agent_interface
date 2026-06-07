@@ -127,7 +127,27 @@ NEXT_PUBLIC_API_BASE_URL="http://localhost:8000"
 npm run dev
 ```
 
-The frontend application will now be running at `http://localhost:8080`.
+The frontend application will now be running at `http://localhost:8080` (or the port shown in the terminal).
+
+**Optional — Step 3b: Prograde Climate platform (iframe only)**
+
+You do **not** need this for CRM, tasks, or Climate ETL sync. Only run it if you want the AASB S2 iframe on the Member Profile **Climate** tab to load from localhost instead of dev Cloud Run.
+
+```powershell
+cd "C:\My Projects\sustainability_reporting"
+npm install
+npm run dev:8081
+```
+
+Add to `.env.local` (use **8081** — the main interface already uses 8080):
+
+```
+NEXT_PUBLIC_SUSTAINABILITY_PLATFORM_URL=http://localhost:8081
+```
+
+If omitted, the Climate tab iframe defaults to `prograde-climate-dev` on Cloud Run.
+
+For Climate **Sync from Airtable**, the backend also needs `AIRTABLE_API_KEY` and `USE_AIRTABLE_DIRECT=true` in `text_agent_backend/.env`. Optional for drift webhook tests: `PROGRADE_WEBHOOK_SECRET`.
 
 ---
 

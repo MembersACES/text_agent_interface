@@ -29,6 +29,7 @@ import { NotesTab } from "@/components/crm-member/tabs/NotesTab";
 import { ToolsTab } from "@/components/crm-member/tabs/ToolsTab";
 import { SolutionsTab } from "@/components/crm-member/tabs/SolutionsTab";
 import { StrategyTab } from "@/components/crm-member/tabs/StrategyTab";
+import { ClimateTab } from "@/components/crm-member/tabs/ClimateTab";
 
 import type { MemberTab } from "@/components/crm-member/types";
 export default function ClientDetailPage() {
@@ -259,6 +260,7 @@ export default function ClientDetailPage() {
       { key: "tools" as const, label: "Tools", count: null },
       { key: "solutions" as const, label: "Solutions", count: null },
       { key: "strategy" as const, label: "Strategy & WIP", count: null },
+      { key: "climate" as const, label: "Climate", count: null },
     ],
     [businessInfo, offers.length, activities.length, notes.length]
   );
@@ -417,6 +419,10 @@ export default function ClientDetailPage() {
                     savingAdvocateMeeting={actions.savingAdvocateMeeting}
                     savingReportingEntity={actions.savingReportingEntity}
                   />
+                )}
+
+                {tab === "climate" && client && (
+                  <ClimateTab client={client} businessInfo={businessInfo} />
                 )}
               </main>
 

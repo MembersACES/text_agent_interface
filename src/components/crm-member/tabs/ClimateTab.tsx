@@ -1,0 +1,483 @@
+"use client";
+
+import Link from "next/link";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSession } from "next-auth/react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
+import { getApiBaseUrl } from "@/lib/utils";
+import type { Client } from "../types";
+
+function platformBaseUrl(): string {
+  const fromEnv = process.env.NEXT_PUBLIC_SUSTAINABILITY_PLATFORM_URL?.trim();
+  if (fromEnv) return fromEnv.replace(/\/$/, "");
+  return "https://prograde-climate-dev-672026052958.australia-southeast2.run.app";
+}
+
+const ETL_UTILITY_TYPES = [
+  "C&I Electricity",
+  "SME Electricity",
+  "C&I Gas",
+  "SME Gas",
+  "Waste",
+  "Oil",
+] as const;
+
+type EtlUtilityType = (typeof ETL_UTILITY_TYPES)[number];
+
+type DriftEvent = {
+  event_id: string;
+  event_type?: string | null;
+  severity?: string | null;
+  emitted_at?: string | null;
+  affected_scope?: string | null;
+  acknowledged?: boolean;
+};
+
+type ActivityRecordSummary = {
+  record_id: string;
+  activity_type: string;
+  quantity?: number | null;
+  unit?: string | null;
+  status: string;
+  reporting_period?: { start?: string | null; end?: string | null };
+};
+
+type EtlSyncResponse = {
+  dry_run?: boolean;
+  created?: number;
+  updated?: number;
+  skipped?: number;
+  preview?: Array<{
+    record_id?: string;
+    activity_type?: string;
+    quantity?: number;
+    skipped?: boolean;
+    reason?: string;
+  }>;
+  detail?: string;
+};
+
+const SEVERITY_STYLES: Record<string, string> = {
+  critical: "bg-red-100 text-red-900 dark:bg-red-900/40 dark:text-red-200",
+  high: "bg-orange-100 text-orange-900 dark:bg-orange-900/40 dark:text-orange-200",
+  medium: "bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-200",
+  low: "bg-blue-100 text-blue-900 dark:bg-blue-900/40 dark:text-blue-200",
+  info: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300",
+};
+
+function severityClass(severity?: string | null): string {
+  const key = (severity || "info").toLowerCase();
+  return SEVERITY_STYLES[key] ?? SEVERITY_STYLES.info;
+}
+
+/** First linked identifier per utility type from member business info. */
+function linkedUtilityIdentifiers(businessInfo: Record<string, unknown> | null): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!businessInfo) return out;
+  const linked =
+    ((businessInfo.Linked_Details as Record<string, unknown> | undefined)?.linked_utilities as
+      | Record<string, unknown>
+      | undefined) ?? {};
+
+  for (const utilityType of ETL_UTILITY_TYPES) {
+    const raw = linked[utilityType];
+    if (typeof raw === "string" && raw.trim()) {
+      out[utilityType] = raw.split(",")[0]?.trim() ?? "";
+      continue;
+    }
+    if (Array.isArray(raw) && raw.length > 0) {
+      const first = raw[0];
+      if (typeof first === "string" && first.trim()) {
+        out[utilityType] = first.trim();
+      } else if (first && typeof first === "object" && "identifier" in first) {
+        out[utilityType] = String((first as { identifier: unknown }).identifier ?? "").trim();
+      }
+    }
+  }
+  return out;
+}
+
+type ClimateTabProps = {
+  client: Client;
+  businessInfo?: Record<string, unknown> | null;
+};
+
+export function ClimateTab({ client, businessInfo = null }: ClimateTabProps) {
+  const { data: session } = useSession();
+  const { showToast } = useToast();
+  const token =
+    (session as { id_token?: string; accessToken?: string })?.id_token ??
+    (session as { id_token?: string; accessToken?: string })?.accessToken;
+
+  const entity = (client.reporting_entity || "").trim();
+  const period = "FY26";
+  const iframeSrc = entity
+    ? `${platformBaseUrl()}/?entity=${encodeURIComponent(entity)}&period=${encodeURIComponent(period)}`
+    : null;
+
+  const linkedIds = useMemo(() => linkedUtilityIdentifiers(businessInfo), [businessInfo]);
+
+  const [driftEvents, setDriftEvents] = useState<DriftEvent[]>([]);
+  const [driftLoading, setDriftLoading] = useState(false);
+  const [activityRecords, setActivityRecords] = useState<ActivityRecordSummary[]>([]);
+  const [recordsLoading, setRecordsLoading] = useState(false);
+
+  const [utilityType, setUtilityType] = useState<EtlUtilityType>("C&I Electricity");
+  const [identifier, setIdentifier] = useState("");
+  const [etlLoading, setEtlLoading] = useState(false);
+  const [lastEtlPreview, setLastEtlPreview] = useState<EtlSyncResponse | null>(null);
+
+  useEffect(() => {
+    const suggested = linkedIds[utilityType];
+    if (suggested && !identifier) {
+      setIdentifier(suggested);
+    }
+  }, [utilityType, linkedIds, identifier]);
+
+  const fetchClimateData = useCallback(async () => {
+    if (!client.id || !token) return;
+    const base = getApiBaseUrl();
+    const headers = {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    };
+
+    setDriftLoading(true);
+    setRecordsLoading(true);
+    try {
+      const [driftRes, recordsRes] = await Promise.all([
+        fetch(`${base}/api/clients/${client.id}/climate/drift-events`, { headers }),
+        fetch(`${base}/api/clients/${client.id}/climate/activity-records?limit=10`, { headers }),
+      ]);
+
+      if (driftRes.ok) {
+        const data = (await driftRes.json()) as { events?: DriftEvent[] };
+        setDriftEvents(Array.isArray(data.events) ? data.events : []);
+      } else {
+        setDriftEvents([]);
+      }
+
+      if (recordsRes.ok) {
+        const data = (await recordsRes.json()) as { records?: ActivityRecordSummary[] };
+        setActivityRecords(Array.isArray(data.records) ? data.records : []);
+      } else {
+        setActivityRecords([]);
+      }
+    } catch {
+      setDriftEvents([]);
+      setActivityRecords([]);
+    } finally {
+      setDriftLoading(false);
+      setRecordsLoading(false);
+    }
+  }, [client.id, token]);
+
+  useEffect(() => {
+    void fetchClimateData();
+  }, [fetchClimateData]);
+
+  const runEtlSync = useCallback(
+    async (dryRun: boolean) => {
+      if (!client.id || !token) {
+        showToast("Sign in required", "error");
+        return;
+      }
+      if (!entity) {
+        showToast("Set reporting entity on Strategy & WIP tab first", "error");
+        return;
+      }
+      const idTrim = identifier.trim();
+      if (!idTrim) {
+        showToast("Enter a utility identifier (NMI, MRIN, etc.)", "error");
+        return;
+      }
+
+      setEtlLoading(true);
+      try {
+        const res = await fetch(`${getApiBaseUrl()}/api/clients/${client.id}/climate/etl/sync`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            utility_type: utilityType,
+            identifier: idTrim,
+            reporting_period_label: period,
+            max_records: 100,
+            dry_run: dryRun,
+          }),
+        });
+        const data = (await res.json().catch(() => ({}))) as EtlSyncResponse & { detail?: string };
+        if (!res.ok) {
+          showToast(data.detail || `ETL failed (${res.status})`, "error");
+          return;
+        }
+        setLastEtlPreview(data);
+        if (dryRun) {
+          const produced = (data.preview ?? []).filter((p) => !p.skipped).length;
+          showToast(
+            `Preview: ${produced} record(s), ${data.skipped ?? 0} skipped`,
+            produced > 0 ? "success" : "warning",
+          );
+        } else {
+          showToast(
+            `Synced: ${data.created ?? 0} created, ${data.updated ?? 0} updated, ${data.skipped ?? 0} skipped`,
+            "success",
+          );
+          await fetchClimateData();
+        }
+      } catch {
+        showToast("ETL request failed", "error");
+      } finally {
+        setEtlLoading(false);
+      }
+    },
+    [client.id, token, entity, identifier, utilityType, period, showToast, fetchClimateData],
+  );
+
+  const highestSeverity = driftEvents.reduce<string | null>((best, ev) => {
+    const order = ["critical", "high", "medium", "low", "info"];
+    const sev = (ev.severity || "info").toLowerCase();
+    if (!best) return sev;
+    return order.indexOf(sev) < order.indexOf(best) ? sev : best;
+  }, null);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-900 dark:bg-amber-900/40 dark:text-amber-200">
+          Preview — management grade
+        </span>
+        {driftLoading ? (
+          <span className="text-xs text-gray-500">Checking drift events…</span>
+        ) : driftEvents.length > 0 ? (
+          <span
+            className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${severityClass(highestSeverity)}`}
+          >
+            Drift: {driftEvents.length} open
+            {highestSeverity ? ` (${highestSeverity})` : ""}
+          </span>
+        ) : (
+          <span className="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-200">
+            No open drift events
+          </span>
+        )}
+        <span className="text-xs text-gray-500 dark:text-gray-400">
+          Committed reports (B4) will show defensible when locked. WIP sheet is not source of truth.
+        </span>
+      </div>
+
+      {driftEvents.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Standards drift</CardTitle>
+            <CardDescription>
+              Prograde DRIFT_EVENT notifications for this reporting entity (unacknowledged).
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+              {driftEvents.map((ev) => (
+                <li key={ev.event_id} className="flex flex-wrap items-start gap-2 py-2 text-sm">
+                  <span
+                    className={`inline-flex shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${severityClass(ev.severity)}`}
+                  >
+                    {(ev.severity || "info").toUpperCase()}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-gray-900 dark:text-gray-100">
+                      {(ev.event_type || "drift").replace(/_/g, " ")}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {ev.event_id}
+                      {ev.emitted_at ? ` · ${ev.emitted_at.slice(0, 10)}` : ""}
+                      {ev.affected_scope ? ` · scope: ${ev.affected_scope}` : ""}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Reporting entity</CardTitle>
+          <CardDescription>
+            A1 entity slug from Strategy &amp; WIP. Set under Strategy tab if empty.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2 text-sm">
+          {entity ? (
+            <p className="font-mono text-gray-800 dark:text-gray-100">{entity}</p>
+          ) : (
+            <p className="text-gray-600 dark:text-gray-400">
+              No reporting entity configured. Save an A1 slug on the Strategy &amp; WIP tab first.
+            </p>
+          )}
+          {client.external_business_id && (
+            <p className="text-xs text-gray-500">
+              LOA record: <span className="font-mono">{client.external_business_id}</span>
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Sync from Airtable</CardTitle>
+          <CardDescription>
+            Pull invoice rows into <span className="font-mono">climate_activity_records</span> (SQL staging).
+            Preview first, then sync. Requires reporting entity + Airtable direct mode on backend.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block text-sm">
+              <span className="mb-1 block text-gray-600 dark:text-gray-400">Utility type</span>
+              <select
+                className="w-full rounded-md border border-stroke bg-white px-3 py-2 text-sm dark:border-dark-3 dark:bg-gray-dark"
+                value={utilityType}
+                onChange={(e) => {
+                  const next = e.target.value as EtlUtilityType;
+                  setUtilityType(next);
+                  const suggested = linkedIds[next];
+                  if (suggested) setIdentifier(suggested);
+                }}
+                disabled={etlLoading}
+              >
+                {ETL_UTILITY_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-gray-600 dark:text-gray-400">Identifier (NMI / MRIN / account)</span>
+              <input
+                type="text"
+                className="w-full rounded-md border border-stroke bg-white px-3 py-2 font-mono text-sm dark:border-dark-3 dark:bg-gray-dark"
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
+                placeholder={utilityType.includes("Electricity") ? "NMI" : "MRIN or account"}
+                disabled={etlLoading}
+              />
+            </label>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={etlLoading}
+              disabled={!entity || etlLoading}
+              onClick={() => void runEtlSync(true)}
+            >
+              Preview (dry run)
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              loading={etlLoading}
+              disabled={!entity || etlLoading}
+              onClick={() => void runEtlSync(false)}
+            >
+              Sync to SQL
+            </Button>
+          </div>
+          {lastEtlPreview?.preview && lastEtlPreview.preview.length > 0 && (
+            <div className="rounded-md border border-stroke bg-gray/30 p-3 text-xs dark:border-dark-3 dark:bg-dark-3/30">
+              <p className="mb-2 font-medium text-gray-700 dark:text-gray-300">Last preview</p>
+              <ul className="max-h-32 space-y-1 overflow-y-auto font-mono text-gray-600 dark:text-gray-400">
+                {lastEtlPreview.preview.slice(0, 8).map((row, i) => (
+                  <li key={i}>
+                    {row.skipped
+                      ? `skip ${row.reason ?? "unknown"}`
+                      : `${row.activity_type} · ${row.quantity ?? "—"} (${row.record_id})`}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Staged activity records</CardTitle>
+          <CardDescription>
+            B4-boundary rows staged before Prograde ingest (post-Tuesday).
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {recordsLoading ? (
+            <p className="text-sm text-gray-500">Loading staged records…</p>
+          ) : activityRecords.length === 0 ? (
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              No staged records yet. Use Sync from Airtable above.
+            </p>
+          ) : (
+            <ul className="divide-y divide-gray-100 text-sm dark:divide-gray-800">
+              {activityRecords.map((rec) => (
+                <li key={rec.record_id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                  <div>
+                    <p className="font-medium">{rec.activity_type.replace(/_/g, " ")}</p>
+                    <p className="font-mono text-xs text-gray-500">{rec.record_id}</p>
+                  </div>
+                  <div className="text-right text-xs text-gray-600 dark:text-gray-400">
+                    {rec.quantity != null ? (
+                      <span>
+                        {rec.quantity.toLocaleString()} {rec.unit}
+                      </span>
+                    ) : (
+                      <span>—</span>
+                    )}
+                    <br />
+                    <span className="capitalize">{rec.status}</span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+
+      {iframeSrc ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">AASB S2 platform (preview)</CardTitle>
+            <CardDescription>Prograde Climate — iframe embed; not a committed disclosure.</CardDescription>
+          </CardHeader>
+          <CardContent className="overflow-hidden rounded-b-lg p-0">
+            <iframe
+              src={iframeSrc}
+              title="AASB S2 disclosure preview"
+              className="h-[min(70vh,720px)] w-full border-0"
+            />
+          </CardContent>
+        </Card>
+      ) : null}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Legacy GHG WIP</CardTitle>
+          <CardDescription>
+            Google Sheet via n8n — management preview only until B4 cutover (Phase 1 pilot).
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Link
+            href={`/ghg-reporting?business_name=${encodeURIComponent(client.business_name)}`}
+            className="text-sm font-medium text-primary hover:underline"
+          >
+            Open GHG Reporting →
+          </Link>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

@@ -149,7 +149,8 @@ export type MemberTab =
   | "notes"
   | "tools"
   | "solutions"
-  | "strategy";
+  | "strategy"
+  | "climate";
 
 export interface ClientReferral {
   id: number;
