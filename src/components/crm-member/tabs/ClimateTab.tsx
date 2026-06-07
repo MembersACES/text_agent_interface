@@ -12,7 +12,7 @@ import type { Client } from "../types";
 function platformBaseUrl(): string {
   const fromEnv = process.env.NEXT_PUBLIC_SUSTAINABILITY_PLATFORM_URL?.trim();
   if (fromEnv) return fromEnv.replace(/\/$/, "");
-  return "https://prograde-sustainability-dev-63gwbzzcdq-km.a.run.app";
+  return "https://prograde-sustainability-dev-672026052958.australia-southeast2.run.app";
 }
 
 const ETL_UTILITY_TYPES = [
