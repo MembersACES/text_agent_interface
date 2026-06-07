@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -116,6 +116,15 @@ export function ClimateTab({ client, businessInfo = null }: ClimateTabProps) {
   const iframeSrc = entity
     ? `${platformBaseUrl()}/?entity=${encodeURIComponent(entity)}&period=${encodeURIComponent(period)}`
     : null;
+  const disclosureHref = iframeSrc;
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const platformOrigin = useMemo(() => {
+    try {
+      return new URL(platformBaseUrl()).origin;
+    } catch {
+      return "";
+    }
+  }, []);
 
   const linkedIds = useMemo(() => linkedUtilityIdentifiers(businessInfo), [businessInfo]);
 
@@ -177,6 +186,23 @@ export function ClimateTab({ client, businessInfo = null }: ClimateTabProps) {
   useEffect(() => {
     void fetchClimateData();
   }, [fetchClimateData]);
+
+  const postAuthToIframe = useCallback(() => {
+    if (!token || !iframeRef.current?.contentWindow || !platformOrigin) return;
+    iframeRef.current.contentWindow.postMessage(
+      { type: "aces:auth", token },
+      platformOrigin,
+    );
+  }, [token, platformOrigin]);
+
+  useEffect(() => {
+    const onMessage = (ev: MessageEvent) => {
+      if (ev.origin !== platformOrigin) return;
+      if (ev.data?.type === "aces:ready") postAuthToIframe();
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [platformOrigin, postAuthToIframe]);
 
   const runEtlSync = useCallback(
     async (dryRun: boolean) => {
@@ -448,15 +474,31 @@ export function ClimateTab({ client, businessInfo = null }: ClimateTabProps) {
 
       {iframeSrc ? (
         <Card>
-          <CardHeader>
-            <CardTitle className="text-base">AASB S2 platform (preview)</CardTitle>
-            <CardDescription>Prograde Climate — iframe embed; not a committed disclosure.</CardDescription>
+          <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
+            <div>
+              <CardTitle className="text-base">Climate disclosure workspace</CardTitle>
+              <CardDescription>
+                Prograde preview for <span className="font-mono">{entity}</span> — management grade, not locked.
+              </CardDescription>
+            </div>
+            {disclosureHref ? (
+              <a
+                href={disclosureHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center rounded-md border border-stroke bg-white px-2.5 py-1.5 text-xs font-medium text-dark hover:bg-gray dark:border-dark-3 dark:bg-gray-dark dark:text-white dark:hover:bg-dark-3"
+              >
+                Open full workspace
+              </a>
+            ) : null}
           </CardHeader>
           <CardContent className="overflow-hidden rounded-b-lg p-0">
             <iframe
+              ref={iframeRef}
               src={iframeSrc}
-              title="AASB S2 disclosure preview"
+              title="Climate disclosure workspace"
               className="h-[min(70vh,720px)] w-full border-0"
+              onLoad={postAuthToIframe}
             />
           </CardContent>
         </Card>
