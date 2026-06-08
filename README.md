@@ -20,7 +20,48 @@ The project consists of two main parts:
 
 ## Getting Started
 
-Follow these steps to get both the backend and frontend development environments up and running.
+### Quick start (recommended)
+
+After the one-time setup below (env files, first `pip`/`npm` install), start both servers with **one command** from this repo:
+
+```powershell
+cd "C:\My Projects\text_agent_interface"
+npm run dev:stack
+```
+
+Or run the script directly:
+
+```powershell
+cd "C:\My Projects\text_agent_interface"
+.\scripts\dev.ps1
+```
+
+This opens **two new terminal windows** — backend (`uvicorn` on port 8000) and frontend (`npm run dev`). The script creates the backend `venv` and installs dependencies automatically if they are missing.
+
+**Optional — include Prograde Climate (iframe on localhost:8081):**
+
+```powershell
+npm run dev:stack:climate
+# or: .\scripts\dev.ps1 -Climate
+```
+
+Skip dependency checks on repeat runs:
+
+```powershell
+.\scripts\dev.ps1 -SkipInstall
+```
+
+If PowerShell blocks the script, run once:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+```
+
+---
+
+### First-time setup
+
+Follow these steps once to configure env files and dependencies. After that, use **Quick start** above for daily development.
 
 ### Prerequisites
 

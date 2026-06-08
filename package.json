@@ -6,6 +6,8 @@
     "node": ">=20.9.0"
   },
   "scripts": {
+    "dev:stack": "powershell -ExecutionPolicy Bypass -File ./scripts/dev.ps1",
+    "dev:stack:climate": "powershell -ExecutionPolicy Bypass -File ./scripts/dev.ps1 -Climate",
     "dev": "next dev --webpack",
     "build": "next build --webpack",
     "start": "next start",
