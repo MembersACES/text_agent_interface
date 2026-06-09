@@ -1,0 +1,102 @@
+"use client";
+
+import { useState } from "react";
+import Link from "next/link";
+import Base1Client from "./Base1Client";
+import { Base1PipelineBoard } from "@/components/base1/Base1PipelineBoard";
+import { Base1ComparisonBucketsEditor } from "@/components/base1/Base1ComparisonBucketsEditor";
+import { CollapsiblePanel } from "@/components/dashboard/collapsible-panel";
+
+interface Base1HubProps {
+  base1Url: string;
+  base1Password: string;
+}
+
+export default function Base1Hub({ base1Url, base1Password }: Base1HubProps) {
+  const [openFormTrigger, setOpenFormTrigger] = useState(0);
+
+  return (
+    <div className="mt-6 space-y-10">
+      <section aria-labelledby="base1-review-agent-heading" className="space-y-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h2
+              id="base1-review-agent-heading"
+              className="text-lg font-semibold text-dark dark:text-white"
+            >
+              Review Agent
+            </h2>
+            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+              View recent Base 1 runs, start a new Utility Bill review, and open Base 1 reports.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setOpenFormTrigger((prev) => prev + 1)}
+            className="inline-flex min-w-[240px] items-center justify-center rounded-lg bg-[#2d6b5a] px-6 py-2.5 text-sm font-semibold text-white shadow-md transition hover:bg-[#1a4d3e]"
+          >
+            Start New Base 1 Review →
+          </button>
+        </div>
+        <Base1Client
+          base1Url={base1Url}
+          base1Password={base1Password}
+          openFormTrigger={openFormTrigger}
+        />
+      </section>
+
+      <section aria-labelledby="base1-buckets-heading">
+        <CollapsiblePanel
+          title="Comparison buckets"
+          description="Edit savings comparison rates and thresholds used by the Base 1 engine."
+          defaultOpen={false}
+        >
+          <Base1ComparisonBucketsEditor />
+        </CollapsiblePanel>
+      </section>
+
+      <section id="pipeline" aria-labelledby="base1-pipeline-heading" className="space-y-4">
+        <div>
+          <h2
+            id="base1-pipeline-heading"
+            className="text-lg font-semibold text-dark dark:text-white"
+          >
+            Lead Pipeline
+          </h2>
+          <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+            Drag leads between stages as you work them through the Base 1 pipeline.
+          </p>
+        </div>
+        <Base1PipelineBoard />
+      </section>
+
+      <section aria-labelledby="base1-reports-heading" className="space-y-4">
+        <div>
+          <h2
+            id="base1-reports-heading"
+            className="text-lg font-semibold text-dark dark:text-white"
+          >
+            Reports
+          </h2>
+          <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+            Open Base 1 / lead reports in a full-page view for deeper analysis.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <Link
+            href="/reports"
+            className="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 dark:border-dark-3 dark:bg-dark-2 dark:text-gray-100 dark:hover:bg-dark-3"
+          >
+            Base 1 / Lead Reports
+          </Link>
+          <Link
+            href="/reports/activities"
+            className="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 dark:border-dark-3 dark:bg-dark-2 dark:text-gray-100 dark:hover:bg-dark-3"
+          >
+            Activity report
+          </Link>
+        </div>
+      </section>
+    </div>
+  );
+}

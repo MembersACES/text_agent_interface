@@ -29,12 +29,12 @@ Backend startup runs `init_db()` and adds `has_signed_contract` columns if missi
 
 1. Open **Members** (`/crm-members`).
 2. Click **Sync signed status** (ACES staff only).
-3. Expect a blue summary banner, e.g.:
+3. Confirm in the modal — by default sync **only updates flags** (stage unchanged).
+4. Optional: tick **Also promote signed Lead/Qualified members to Existing Member** before **Run sync**.
+5. Expect a blue summary banner, e.g.:
    - ~119 clients updated
    - ~54 signed via ACES
-   - ~41 signed but not promoted
-
-**Guardrail:** Note a member’s stage before sync (e.g. Lead) — it must **not** change after sync.
+   - ~N signed but not promoted (or promoted count if opt-in was checked)
 
 ---
 
@@ -48,10 +48,9 @@ Backend startup runs `init_db()` and adds `has_signed_contract` columns if missi
 
 ## 4. Bulk promote (explicit only)
 
-1. With filter on (or Select mode), tick 1–2 test members.
-2. Click **Promote to Existing Member**.
-3. Confirm in the dialog.
-4. Rows should move to **Existing Member**; signed badge should disappear for those rows.
+1. With filter on (or Select mode), tick 1–2 test members — or use row **Promote** next to the amber badge.
+2. Click **Promote to Existing Member** (bulk bar) or profile **Stage** dropdown / **Promote** link.
+3. Rows should move to **Existing Member**; signed badge should disappear for those rows.
 5. Re-run **Sync signed status** — promoted members should no longer count as “signed but not promoted”.
 
 ---

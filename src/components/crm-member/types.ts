@@ -17,6 +17,10 @@ export interface Client {
   advocacy_meeting_completed?: boolean;
   /** A1 entity_id slug — many members may share one reporting entity */
   reporting_entity?: string | null;
+  entity_group_id?: number | null;
+  entity_group_slug?: string | null;
+  entity_group_display_name?: string | null;
+  has_signed_contract?: boolean;
 }
 
 export interface Note {

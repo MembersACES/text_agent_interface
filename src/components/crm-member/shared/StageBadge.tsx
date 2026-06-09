@@ -15,9 +15,6 @@ function stageIntent(stage: string): BadgeIntent {
 }
 
 function stageLabel(stage: ClientStage): string {
-  if (stage.toLowerCase() === "won") return "Won";
-  if (stage.toLowerCase() === "existing_client") return "Existing Client";
-  if (stage.toLowerCase() === "lost") return "Lost";
   if (stage.toLowerCase() === "offer_sent") return "Offer Sent";
   if (stage.toLowerCase() === "analysis_in_progress") return "Analysis In Progress";
 

@@ -1,16 +1,18 @@
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 
 const N8N_WEBHOOK_URL =
   process.env.N8N_BASE1_WEBHOOK_URL ||
   "https://membersaces.app.n8n.cloud/webhook/interface_form_base1_dev";
 
-/** Server-side timeout for n8n (workflow can take 10–25+ minutes). */
-const PROXY_TIMEOUT_MS = 25 * 60 * 1000; // 25 minutes
+/** Background forward to n8n (workflow often takes 2–25+ minutes). */
+const N8N_FORWARD_TIMEOUT_MS = 25 * 60 * 1000;
 
 /**
  * Proxy POST to n8n Base 1 webhook.
  * - Avoids CORS (browser calls same origin; server calls n8n).
- * - Uses long server timeout so n8n can finish before proxy times out.
+ * - Returns immediately: n8n Cloud cuts synchronous webhook responses at ~60s
+ *   (Cloudflare), while Base 1 runs ~2+ minutes. The workflow still completes;
+ *   we must not block the browser on the Respond to Webhook node.
  */
 export async function POST(req: NextRequest) {
   const contentType = req.headers.get("content-type") || "";
@@ -33,63 +35,43 @@ export async function POST(req: NextRequest) {
   }
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), PROXY_TIMEOUT_MS);
+  const timeoutId = setTimeout(() => controller.abort(), N8N_FORWARD_TIMEOUT_MS);
+  const forwardPromise = fetch(N8N_WEBHOOK_URL, {
+    method: "POST",
+    headers: { "Content-Type": contentType },
+    body,
+    signal: controller.signal,
+  });
 
-  try {
-    const res = await fetch(N8N_WEBHOOK_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": contentType,
-      },
-      body,
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
-
-    const responseContentType = res.headers.get("content-type") || "application/json";
-    const responseBody = await res.text();
-
-    if (!res.ok) {
-      console.error(
-        "[base1-submit] n8n non-OK:",
-        res.status,
-        responseBody?.slice(0, 500)
-      );
-      // 524 (Cloudflare) / 504 = upstream timeout — n8n often still completes;
-      // treat as accepted so the UI can show a success/\"processing\" state.
-      if (res.status === 524 || res.status === 504) {
-        return NextResponse.json(
-          {
-            accepted: true,
-            code: "UPSTREAM_TIMEOUT",
-            message:
-              "The request timed out before we could show the result, but your submission was received. Check the Base 1 pipeline and your email for the completed review.",
-          },
-          { status: 200 }
+  after(async () => {
+    try {
+      const res = await forwardPromise;
+      const responseBody = await res.text();
+      if (!res.ok) {
+        console.error(
+          "[base1-submit:bg] n8n non-OK:",
+          res.status,
+          responseBody?.slice(0, 500)
         );
+      } else {
+        console.log("[base1-submit:bg] n8n completed", { status: res.status });
       }
-      return new NextResponse(responseBody, {
-        status: res.status,
-        statusText: res.statusText,
-        headers: { "Content-Type": responseContentType },
-      });
+    } catch (err: unknown) {
+      const isTimeout = err instanceof Error && err.name === "AbortError";
+      console.error("[base1-submit:bg] n8n forward error:", isTimeout ? "timeout" : err);
+    } finally {
+      clearTimeout(timeoutId);
     }
+  });
 
-    return new NextResponse(responseBody, {
-      status: res.status,
-      headers: { "Content-Type": responseContentType },
-    });
-  } catch (err: unknown) {
-    clearTimeout(timeoutId);
-    const isTimeout = err instanceof Error && err.name === "AbortError";
-    console.error("[base1-submit] Proxy error:", isTimeout ? "timeout" : err);
-    return NextResponse.json(
-      {
-        error: isTimeout
-          ? "Request to n8n timed out. Your submission may still have been received."
-          : "Failed to reach n8n webhook.",
-      },
-      { status: isTimeout ? 504 : 502 }
-    );
-  }
+  return NextResponse.json(
+    {
+      accepted: true,
+      async: true,
+      code: "ACCEPTED_FOR_PROCESSING",
+      message:
+        "Your submission was received and is being processed. Base 1 review typically takes 2–10 minutes—check the Lead Pipeline below and your email for the completed review.",
+    },
+    { status: 200 }
+  );
 }

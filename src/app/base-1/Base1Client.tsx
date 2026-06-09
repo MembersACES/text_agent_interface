@@ -26,6 +26,7 @@ type Base1Mode = "choice" | "form" | "chat";
 type LandingRow = Record<string, string>;
 
 const BASE1_SHEET_URL = "https://docs.google.com/spreadsheets/d/1FNQXlecyp-qrzao2TOzbndKoCfUPGFN_HgbkNmAs0jw/edit";
+const RECENT_RUNS_LIMIT = 10;
 
 function formatTimestamp(ts: string): string {
   if (!ts) return "";
@@ -62,6 +63,11 @@ export default function Base1Client({
       return new Date(tb).getTime() - new Date(ta).getTime();
     });
   }, [landingRows]);
+
+  const recentLandingRows = useMemo(
+    () => sortedLandingRows.slice(0, RECENT_RUNS_LIMIT),
+    [sortedLandingRows],
+  );
 
   useEffect(() => {
     console.log("[Base1Client] base1Url prop:", base1Url);
@@ -175,7 +181,14 @@ export default function Base1Client({
       {/* Section 1: Current Base 1 runs from sheet */}
       <div className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-lg font-semibold text-dark dark:text-white">Base 1 runs</h2>
+          <div>
+            <h2 className="text-lg font-semibold text-dark dark:text-white">Base 1 runs</h2>
+            {sortedLandingRows.length > RECENT_RUNS_LIMIT && (
+              <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                Showing {RECENT_RUNS_LIMIT} most recent of {sortedLandingRows.length} runs
+              </p>
+            )}
+          </div>
           <a
             href={BASE1_SHEET_URL}
             target="_blank"
@@ -223,7 +236,7 @@ export default function Base1Client({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sortedLandingRows.map((row, idx) => (
+                {recentLandingRows.map((row, idx) => (
                   <TableRow key={idx}>
                     <TableCell>{row["Company Name"] ?? ""}</TableCell>
                     <TableCell>{row["Contact Name"] ?? ""}</TableCell>
