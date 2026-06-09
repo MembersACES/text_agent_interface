@@ -3,6 +3,10 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Select } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { StageBadge } from "./shared/StageBadge";
+import { CLIENT_STAGES, CLIENT_STAGE_LABELS, type ClientStage } from "@/constants/crm";
 import { formatDate } from "./shared/formatDate";
 import {
   getContractsFromBusinessInfo,
@@ -19,6 +23,9 @@ export interface MemberProfileHeaderProps {
   fetchBusinessInfo?: () => Promise<Record<string, unknown> | null>;
   onOpenTools?: () => void;
   onDeleteMember?: () => void;
+  onStageChange?: (stage: ClientStage) => void | Promise<void>;
+  savingStage?: boolean;
+  onPromoteToExisting?: () => void | Promise<void>;
   offersCount?: number;
   lastActivityAt?: string | null;
 }
@@ -101,9 +108,15 @@ export function MemberProfileHeader({
   fetchBusinessInfo,
   onOpenTools,
   onDeleteMember,
+  onStageChange,
+  savingStage = false,
+  onPromoteToExisting,
   offersCount = 0,
   lastActivityAt = null,
 }: MemberProfileHeaderProps) {
+  const signedNotPromoted =
+    Boolean(client.has_signed_contract) &&
+    (client.stage === "lead" || client.stage === "qualified");
   const abn = getAbn(businessInfo);
   const [base2Opening, setBase2Opening] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
@@ -437,12 +450,30 @@ export function MemberProfileHeader({
                   <h1 className="truncate text-[18px] font-medium text-gray-900 dark:text-gray-100">
                     {client.business_name}
                   </h1>
+                  <StageBadge stage={client.stage} />
                   {client.entity_group_display_name ? (
                     <span
                       className="inline-flex shrink-0 items-center rounded-full border border-violet-200 bg-violet-50 px-2.5 py-0.5 text-[11px] font-medium text-violet-800 dark:border-violet-800/60 dark:bg-violet-900/30 dark:text-violet-200"
                       title={client.entity_group_slug ?? undefined}
                     >
                       {client.entity_group_display_name}
+                    </span>
+                  ) : null}
+                  {signedNotPromoted ? (
+                    <span className="inline-flex items-center gap-1">
+                      <Badge intent="warning" shape="pill" className="text-[10px] py-0">
+                        Signed — not promoted
+                      </Badge>
+                      {onPromoteToExisting ? (
+                        <button
+                          type="button"
+                          onClick={() => void onPromoteToExisting()}
+                          disabled={savingStage}
+                          className="text-[10px] font-semibold text-primary hover:underline disabled:opacity-50"
+                        >
+                          Promote
+                        </button>
+                      ) : null}
                     </span>
                   ) : null}
                   {driveUrl && (
@@ -465,7 +496,22 @@ export function MemberProfileHeader({
             </div>
           </div>
 
-          <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <div className="flex shrink-0 flex-wrap items-end gap-2">
+            {onStageChange ? (
+              <Select
+                label="Stage"
+                value={client.stage}
+                onChange={(e) => void onStageChange(e.target.value as ClientStage)}
+                disabled={savingStage}
+                wrapperClassName="min-w-[9rem]"
+              >
+                {CLIENT_STAGES.map((s) => (
+                  <option key={s} value={s}>
+                    {CLIENT_STAGE_LABELS[s]}
+                  </option>
+                ))}
+              </Select>
+            ) : null}
             <div className="relative" ref={generateDocumentsMenuRef}>
               <Button
                 type="button"
@@ -545,7 +591,7 @@ export function MemberProfileHeader({
                 ⋯ More
               </Button>
               {showMoreMenu && (
-                <div className="absolute right-0 top-full z-50 mt-1 min-w-[180px] rounded-lg border border-stroke bg-white py-1 shadow-md dark:border-dark-3 dark:bg-gray-dark">
+                <div className="absolute right-0 top-full z-[9999] mt-1 min-w-[180px] rounded-lg border border-stroke bg-white py-1 shadow-md dark:border-dark-3 dark:bg-gray-dark">
                   <button
                     type="button"
                     onClick={() => {

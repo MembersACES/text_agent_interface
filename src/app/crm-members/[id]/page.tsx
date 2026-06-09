@@ -328,6 +328,9 @@ export default function ClientDetailPage() {
                     setDeleteMemberConfirm(false);
                     setDeleteMemberOpen(true);
                   }}
+                  onStageChange={actions.handleStageChange}
+                  savingStage={actions.savingStage}
+                  onPromoteToExisting={() => actions.handleStageChange("existing_client")}
                   offersCount={offers.length}
                   lastActivityAt={lastActivityAt}
                 />

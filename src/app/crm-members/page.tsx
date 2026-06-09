@@ -218,10 +218,12 @@ export default function ClientsPage() {
   const [bulkStageOpen, setBulkStageOpen] = useState(false);
   const [bulkStage, setBulkStage] = useState<ClientStage>("lead");
   const [bulkStageSubmitting, setBulkStageSubmitting] = useState(false);
-  const [bulkPromoteOpen, setBulkPromoteOpen] = useState(false);
   const [bulkPromoteSubmitting, setBulkPromoteSubmitting] = useState(false);
   const [syncSubmitting, setSyncSubmitting] = useState(false);
+  const [syncModalOpen, setSyncModalOpen] = useState(false);
+  const [syncPromoteSigned, setSyncPromoteSigned] = useState(false);
   const [syncSummary, setSyncSummary] = useState<string | null>(null);
+  const [syncSignedNotPromotedCount, setSyncSignedNotPromotedCount] = useState(0);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -605,9 +607,17 @@ export default function ClientsPage() {
     }
   };
 
-  const handleBulkPromoteToExisting = async () => {
-    if (!token || selectedIds.size === 0) return;
-    const clientIds = Array.from(selectedIds).map((id) => Number(id));
+  const applyClientStageUpdates = useCallback((updated: Client[]) => {
+    setClients((prev) =>
+      prev.map((c) => {
+        const u = updated.find((x) => x.id === c.id);
+        return u ? { ...c, ...u, stage: u.stage } : c;
+      })
+    );
+  }, []);
+
+  const promoteClientsToExisting = async (clientIds: number[]) => {
+    if (!token || clientIds.length === 0) return;
     setBulkPromoteSubmitting(true);
     try {
       const res = await fetch(`${getApiBaseUrl()}/api/client-bulk-update`, {
@@ -633,22 +643,29 @@ export default function ClientsPage() {
         throw new Error(message);
       }
       const updated: Client[] = await res.json();
-      setClients((prev) =>
-        prev.map((c) => {
-          const u = updated.find((x) => x.id === c.id);
-          return u ? { ...c, stage: u.stage } : c;
-        })
-      );
-      setBulkPromoteOpen(false);
-      setSelectedIds(new Set());
-      setSelectMode(false);
+      applyClientStageUpdates(updated);
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : "Failed to promote members");
+      throw err;
     } finally {
       setBulkPromoteSubmitting(false);
     }
   };
+
+  const openBulkStageModal = useCallback(
+    (preset?: ClientStage) => {
+      if (selectedIds.size === 1) {
+        const id = Array.from(selectedIds)[0];
+        const client = clients.find((c) => c.id === id);
+        setBulkStage(client?.stage ?? preset ?? "lead");
+      } else {
+        setBulkStage(preset ?? "lead");
+      }
+      setBulkStageOpen(true);
+    },
+    [clients, selectedIds]
+  );
 
   const handleSyncSignedContracts = async () => {
     if (!token || !isAcesStaff) return;
@@ -661,18 +678,28 @@ export default function ClientsPage() {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
+        body: JSON.stringify({ promote_signed: syncPromoteSigned }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error((data as { detail?: string }).detail || "Sync failed");
       }
       const data = await res.json();
-      setSyncSummary(
+      const notPromoted = Number(data.signed_but_lead_or_qualified ?? 0);
+      const promoted = Number(data.promoted_to_existing ?? 0);
+      setSyncSignedNotPromotedCount(notPromoted);
+      let summary =
         `Synced ${data.meta?.clients_updated ?? "?"} clients — ` +
-          `${data.total_flagged ?? 0} signed via ACES, ` +
-          `${data.signed_but_lead_or_qualified ?? 0} signed but not promoted ` +
-          `(+${data.newly_flagged ?? 0} newly flagged)`
-      );
+        `${data.total_flagged ?? 0} signed via ACES`;
+      if (syncPromoteSigned && promoted > 0) {
+        summary += `, ${promoted} promoted to Existing Member`;
+      } else if (notPromoted > 0) {
+        summary += `, ${notPromoted} signed but not promoted`;
+      }
+      summary += ` (+${data.newly_flagged ?? 0} newly flagged)`;
+      setSyncSummary(summary);
+      setSyncModalOpen(false);
+      setSyncPromoteSigned(false);
       await fetchClients();
     } catch (err) {
       console.error(err);
@@ -713,12 +740,7 @@ export default function ClientsPage() {
         throw new Error(message);
       }
       const updated: Client[] = await res.json();
-      setClients((prev) =>
-        prev.map((c) => {
-          const u = updated.find((x) => x.id === c.id);
-          return u ? { ...c, stage: u.stage } : c;
-        })
-      );
+      applyClientStageUpdates(updated);
       setBulkStageOpen(false);
       setSelectedIds(new Set());
       setSelectMode(false);
@@ -876,9 +898,22 @@ export default function ClientsPage() {
                   </Badge>
                 ) : null}
                 {isSignedNotPromoted(client) ? (
-                  <Badge intent="warning" shape="pill" className="text-[10px] py-0">
-                    Signed — not promoted
-                  </Badge>
+                  <span className="inline-flex items-center gap-1">
+                    <Badge intent="warning" shape="pill" className="text-[10px] py-0">
+                      Signed — not promoted
+                    </Badge>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void promoteClientsToExisting([client.id]).catch(() => undefined);
+                      }}
+                      disabled={bulkPromoteSubmitting}
+                      className="rounded px-1.5 py-0.5 text-[10px] font-semibold text-primary hover:bg-primary/10 disabled:opacity-50"
+                    >
+                      Promote
+                    </button>
+                  </span>
                 ) : null}
                 {client.entity_group_display_name ? (
                   <Badge intent="neutral" shape="pill" className="text-[10px] py-0">
@@ -1111,7 +1146,11 @@ export default function ClientsPage() {
                 size="sm"
                 loading={syncSubmitting}
                 disabled={syncSubmitting}
-                onClick={() => void handleSyncSignedContracts()}
+                title="Updates signed-via-ACES flags from FILE_IDS sheet. Stage changes only if you opt in."
+                onClick={() => {
+                  setSyncPromoteSigned(false);
+                  setSyncModalOpen(true);
+                }}
               >
                 Sync signed status
               </Button>
@@ -1276,8 +1315,21 @@ export default function ClientsPage() {
         )}
 
         {syncSummary ? (
-          <div className="mb-4 rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-200">
-            {syncSummary}
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-200">
+            <span>{syncSummary}</span>
+            {syncSignedNotPromotedCount > 0 ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={() => {
+                  setFilterSignedNotPromoted(true);
+                  setFiltersOpen(true);
+                }}
+              >
+                Show {syncSignedNotPromotedCount} signed — not promoted
+              </Button>
+            ) : null}
           </div>
         ) : null}
 
@@ -1304,26 +1356,30 @@ export default function ClientsPage() {
             <Button type="button" size="sm" onClick={() => setBulkOwnerOpen(true)}>
               Assign owner
             </Button>
-            {selectMode || filterSignedNotPromoted ? (
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => setBulkPromoteOpen(true)}
-              >
-                Promote to Existing Member
-              </Button>
-            ) : null}
             <Button
               type="button"
               variant="secondary"
               size="sm"
+              loading={bulkPromoteSubmitting}
+              disabled={bulkPromoteSubmitting}
               onClick={() => {
-                setBulkStage("lead");
-                setBulkStageOpen(true);
+                void promoteClientsToExisting(Array.from(selectedIds))
+                  .then(() => {
+                    setSelectedIds(new Set());
+                    setSelectMode(false);
+                  })
+                  .catch(() => undefined);
               }}
             >
-              Change status
+              Promote to Existing Member
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => openBulkStageModal()}
+            >
+              Change stage
             </Button>
             <Button
               type="button"
@@ -1390,7 +1446,7 @@ export default function ClientsPage() {
           </div>
         ) : null}
 
-        {bulkPromoteOpen ? (
+        {syncModalOpen ? (
           <div
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
             role="dialog"
@@ -1398,29 +1454,43 @@ export default function ClientsPage() {
           >
             <div className="mx-2 w-full max-w-md rounded-lg border border-gray-200 bg-white p-4 shadow-lg dark:border-gray-700 dark:bg-gray-900">
               <h3 className="mb-2 text-sm font-semibold text-gray-800 dark:text-gray-100">
-                Promote {selectedIds.size} member{selectedIds.size === 1 ? "" : "s"} to Existing
-                Member?
+                Sync signed contract flags
               </h3>
               <p className="mb-3 text-xs text-gray-600 dark:text-gray-400">
-                This updates the CRM stage to Existing Member for the selected records only. Signed
-                contract flags are unchanged.
+                Reads the FILE_IDS sheet and updates which members are flagged as signed via ACES.
+                By default this does not change CRM stage.
               </p>
+              <label className="mb-4 flex cursor-pointer items-start gap-2 rounded-md border border-gray-200 bg-gray-50/80 p-3 dark:border-gray-700 dark:bg-gray-800/40">
+                <input
+                  type="checkbox"
+                  checked={syncPromoteSigned}
+                  onChange={(e) => setSyncPromoteSigned(e.target.checked)}
+                  className="mt-0.5 rounded border-gray-300 text-primary focus:ring-primary dark:border-gray-600"
+                />
+                <span className="text-xs text-gray-700 dark:text-gray-300">
+                  Also promote signed Lead/Qualified members to Existing Member
+                </span>
+              </label>
               <div className="flex justify-end gap-2 pt-2">
                 <Button
                   type="button"
                   variant="secondary"
-                  onClick={() => setBulkPromoteOpen(false)}
-                  disabled={bulkPromoteSubmitting}
+                  onClick={() => {
+                    if (syncSubmitting) return;
+                    setSyncModalOpen(false);
+                    setSyncPromoteSigned(false);
+                  }}
+                  disabled={syncSubmitting}
                 >
                   Cancel
                 </Button>
                 <Button
                   type="button"
-                  onClick={() => void handleBulkPromoteToExisting()}
-                  loading={bulkPromoteSubmitting}
-                  disabled={bulkPromoteSubmitting}
+                  onClick={() => void handleSyncSignedContracts()}
+                  loading={syncSubmitting}
+                  disabled={syncSubmitting}
                 >
-                  {bulkPromoteSubmitting ? "Promoting…" : "Promote"}
+                  {syncSubmitting ? "Syncing…" : "Run sync"}
                 </Button>
               </div>
             </div>
@@ -1435,16 +1505,16 @@ export default function ClientsPage() {
           >
             <div className="mx-2 w-full max-w-md rounded-lg border border-gray-200 bg-white p-4 shadow-lg dark:border-gray-700 dark:bg-gray-900">
               <h3 className="mb-3 text-sm font-semibold text-gray-800 dark:text-gray-100">
-                Change status for {selectedIds.size} member
+                Change stage for {selectedIds.size} member
                 {selectedIds.size === 1 ? "" : "s"}
               </h3>
               <form onSubmit={handleBulkUpdateStage} className="space-y-3">
                 <Select
-                  label="Select status"
+                  label="Select stage"
                   value={bulkStage}
                   onChange={(e) => setBulkStage(e.target.value as ClientStage)}
                 >
-                  {(["lead", "qualified"] as ClientStage[]).map((s) => (
+                  {CLIENT_STAGES.map((s) => (
                     <option key={s} value={s}>
                       {CLIENT_STAGE_LABELS[s]}
                     </option>
@@ -1459,7 +1529,7 @@ export default function ClientsPage() {
                     Cancel
                   </Button>
                   <Button type="submit" loading={bulkStageSubmitting} disabled={bulkStageSubmitting}>
-                    {bulkStageSubmitting ? "Saving…" : "Update status"}
+                    {bulkStageSubmitting ? "Saving…" : "Update stage"}
                   </Button>
                 </div>
               </form>
@@ -1608,7 +1678,7 @@ export default function ClientsPage() {
                     />
                   </div>
                 ) : null}
-                <Card className="overflow-hidden p-0 ring-1 ring-gray-200/60 dark:ring-gray-700/50">
+                <Card className="overflow-visible p-0 ring-1 ring-gray-200/60 dark:ring-gray-700/50">
                   <div>{list.map((client) => renderClientRow(client))}</div>
                 </Card>
               </section>

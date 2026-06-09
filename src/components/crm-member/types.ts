@@ -20,6 +20,7 @@ export interface Client {
   entity_group_id?: number | null;
   entity_group_slug?: string | null;
   entity_group_display_name?: string | null;
+  has_signed_contract?: boolean;
 }
 
 export interface Note {
