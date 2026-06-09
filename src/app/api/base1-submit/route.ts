@@ -23,9 +23,9 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  let body: Buffer;
+  let body: ArrayBuffer;
   try {
-    body = Buffer.from(await req.arrayBuffer());
+    body = await req.arrayBuffer();
   } catch (e) {
     console.error("[base1-submit] Failed to read body:", e);
     return NextResponse.json(
