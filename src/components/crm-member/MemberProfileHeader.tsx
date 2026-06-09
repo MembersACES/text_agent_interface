@@ -435,6 +435,14 @@ export function MemberProfileHeader({
                   <h1 className="truncate text-[18px] font-medium text-gray-900 dark:text-gray-100">
                     {client.business_name}
                   </h1>
+                  {client.entity_group_display_name ? (
+                    <span
+                      className="inline-flex shrink-0 items-center rounded-full border border-violet-200 bg-violet-50 px-2.5 py-0.5 text-[11px] font-medium text-violet-800 dark:border-violet-800/60 dark:bg-violet-900/30 dark:text-violet-200"
+                      title={client.entity_group_slug ?? undefined}
+                    >
+                      {client.entity_group_display_name}
+                    </span>
+                  ) : null}
                   {driveUrl && (
                     <a
                       href={driveUrl}

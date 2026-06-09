@@ -50,6 +50,16 @@ interface Client {
   signed_contract_checked_at?: string | null;
   created_at: string;
   updated_at: string;
+  entity_group_id?: number | null;
+  entity_group_slug?: string | null;
+  entity_group_display_name?: string | null;
+}
+
+interface EntityGroupOption {
+  id: number;
+  slug: string;
+  display_name: string;
+  member_count?: number;
 }
 
 function isSignedNotPromoted(client: Client): boolean {
@@ -184,6 +194,8 @@ export default function ClientsPage() {
   const [filterCreatedBefore, setFilterCreatedBefore] = useState<string>("");
   const [filterMine, setFilterMine] = useState(false);
   const [filterSignedNotPromoted, setFilterSignedNotPromoted] = useState(false);
+  const [filterEntityGroup, setFilterEntityGroup] = useState("");
+  const [entityGroupOptions, setEntityGroupOptions] = useState<EntityGroupOption[]>([]);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
   const [addClientOpen, setAddClientOpen] = useState(false);
@@ -192,6 +204,7 @@ export default function ClientsPage() {
     primary_contact_email: "",
     stage: "lead" as ClientStage,
     owner_email: "",
+    entity_group_id: "",
   });
   const [addClientSubmitting, setAddClientSubmitting] = useState(false);
   const [addClientError, setAddClientError] = useState<string | null>(null);
@@ -243,11 +256,28 @@ export default function ClientsPage() {
     filterCreatedBefore,
     filterMine,
     filterSignedNotPromoted,
+    filterEntityGroup,
   ].filter(Boolean).length;
 
   useEffect(() => {
     setRecentMembers(getRecentMemberViews());
   }, []);
+
+  useEffect(() => {
+    if (!token) return;
+    void (async () => {
+      try {
+        const res = await fetch(`${getApiBaseUrl()}/api/entity-groups`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return;
+        const data = (await res.json()) as EntityGroupOption[];
+        setEntityGroupOptions(Array.isArray(data) ? data : []);
+      } catch {
+        setEntityGroupOptions([]);
+      }
+    })();
+  }, [token]);
 
   const resolveBusinessToMember = useCallback(
     async (name: string) => {
@@ -359,6 +389,7 @@ export default function ClientsPage() {
       if (filterCreatedBefore) params.set("created_before", filterCreatedBefore);
       if (filterMine) params.set("mine", "1");
       if (filterSignedNotPromoted) params.set("signed_not_promoted", "1");
+      if (filterEntityGroup) params.set("entity_group", filterEntityGroup);
       const url = `${getApiBaseUrl()}/api/clients?${params.toString()}`;
 
       const res = await fetch(url, {
@@ -418,6 +449,7 @@ export default function ClientsPage() {
     filterCreatedBefore,
     filterMine,
     filterSignedNotPromoted,
+    filterEntityGroup,
   ]);
 
   useEffect(() => {
@@ -437,6 +469,7 @@ export default function ClientsPage() {
       if (filterCreatedBefore) params.set("created_before", filterCreatedBefore);
       if (filterMine) params.set("mine", "1");
       if (filterSignedNotPromoted) params.set("signed_not_promoted", "1");
+      if (filterEntityGroup) params.set("entity_group", filterEntityGroup);
       const res = await fetch(`${getApiBaseUrl()}/api/clients?${params.toString()}`, {
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       });
@@ -468,6 +501,9 @@ export default function ClientsPage() {
           primary_contact_email: addClientForm.primary_contact_email.trim() || undefined,
           stage: addClientForm.stage || "lead",
           owner_email: addClientForm.owner_email.trim() || undefined,
+          entity_group_id: addClientForm.entity_group_id
+            ? parseInt(addClientForm.entity_group_id, 10)
+            : undefined,
         }),
       });
       if (!res.ok) {
@@ -476,7 +512,13 @@ export default function ClientsPage() {
       }
       const created: Client = await res.json();
       setAddClientOpen(false);
-      setAddClientForm({ business_name: "", primary_contact_email: "", stage: "lead", owner_email: "" });
+      setAddClientForm({
+        business_name: "",
+        primary_contact_email: "",
+        stage: "lead",
+        owner_email: "",
+        entity_group_id: "",
+      });
       setClients((prev) => [created, ...prev]);
       window.location.href = `/crm-members/${created.id}`;
     } catch (err: any) {
@@ -767,6 +809,7 @@ export default function ClientsPage() {
     setFilterCreatedBefore("");
     setFilterMine(false);
     setFilterSignedNotPromoted(false);
+    setFilterEntityGroup("");
     setLegacyLookupExpanded(false);
   };
 
@@ -835,6 +878,11 @@ export default function ClientsPage() {
                 {isSignedNotPromoted(client) ? (
                   <Badge intent="warning" shape="pill" className="text-[10px] py-0">
                     Signed — not promoted
+                  </Badge>
+                ) : null}
+                {client.entity_group_display_name ? (
+                  <Badge intent="neutral" shape="pill" className="text-[10px] py-0">
+                    {client.entity_group_display_name}
                   </Badge>
                 ) : null}
               </span>
@@ -1012,6 +1060,18 @@ export default function ClientsPage() {
                       Signed but not promoted
                     </span>
                   </label>
+                  <Select
+                    label="Entity group"
+                    value={filterEntityGroup}
+                    onChange={(e) => setFilterEntityGroup(e.target.value)}
+                  >
+                    <option value="">All groups</option>
+                    {entityGroupOptions.map((g) => (
+                      <option key={g.id} value={g.slug}>
+                        {g.display_name}
+                      </option>
+                    ))}
+                  </Select>
                   {activeFilterCount > 0 ? (
                     <Button
                       type="button"
@@ -1024,6 +1084,7 @@ export default function ClientsPage() {
                         setFilterCreatedBefore("");
                         setFilterMine(false);
                         setFilterSignedNotPromoted(false);
+                        setFilterEntityGroup("");
                       }}
                     >
                       Clear filters
@@ -1066,6 +1127,7 @@ export default function ClientsPage() {
                 if (filterCreatedAfter) params.set("created_after", filterCreatedAfter);
                 if (filterCreatedBefore) params.set("created_before", filterCreatedBefore);
                 if (filterMine) params.set("mine", "1");
+                if (filterEntityGroup) params.set("entity_group", filterEntityGroup);
                 const url = `${getApiBaseUrl()}/api/clients/export?${params.toString()}`;
                 const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
                 if (!res.ok) return;
@@ -1088,6 +1150,7 @@ export default function ClientsPage() {
                   primary_contact_email: "",
                   stage: "lead",
                   owner_email: (session as { user?: { email?: string } })?.user?.email ?? "",
+                  entity_group_id: "",
                 });
               }}
             >
@@ -1175,6 +1238,20 @@ export default function ClientsPage() {
                   }
                   hint="Current user if left blank"
                 />
+                <Select
+                  label="Commercial entity group (optional)"
+                  value={addClientForm.entity_group_id}
+                  onChange={(e) =>
+                    setAddClientForm((f) => ({ ...f, entity_group_id: e.target.value }))
+                  }
+                >
+                  <option value="">— None —</option>
+                  {entityGroupOptions.map((g) => (
+                    <option key={g.id} value={String(g.id)}>
+                      {g.display_name}
+                    </option>
+                  ))}
+                </Select>
                 {addClientError ? (
                   <p className="text-sm text-red-600 dark:text-red-400">{addClientError}</p>
                 ) : null}
@@ -1495,6 +1572,7 @@ export default function ClientsPage() {
                           primary_contact_email: "",
                           stage: "lead",
                           owner_email: (session as any)?.user?.email ?? "",
+                          entity_group_id: "",
                         });
                       }}
                     >

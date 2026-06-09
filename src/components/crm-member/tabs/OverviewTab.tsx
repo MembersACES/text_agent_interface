@@ -13,7 +13,8 @@ import { RecordRow, RecordRowOpenAction } from "../shared/RecordRow";
 import { buildOfferRecordSubtitle } from "../shared/offerRecordMeta";
 import { getRecordRowIcon } from "../shared/recordRowIcons";
 import { formatDate } from "../shared/formatDate";
-import type { Task, Offer, Note } from "../types";
+import type { Task, Offer, Note, Client } from "../types";
+import { EntityGroupSection } from "../EntityGroupSection";
 import {
   getBusinessDocumentsForOverview,
   getContractsFromBusinessInfo,
@@ -24,6 +25,7 @@ import {
 
 export interface OverviewTabProps {
   clientId: number;
+  client: Client;
   businessInfo: Record<string, unknown> | null;
   businessInfoLoading?: boolean;
   setBusinessInfo: (info: Record<string, unknown> | null) => void;
@@ -33,6 +35,8 @@ export interface OverviewTabProps {
   offers: Offer[];
   notes: Note[];
   onCreateOfferClick: () => void;
+  onSaveEntityGroup: (entity_group_id: number | null) => Promise<void>;
+  savingEntityGroup?: boolean;
 }
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
@@ -143,6 +147,7 @@ function CountBadge({ count }: { count: number }) {
 
 export function OverviewTab({
   clientId,
+  client,
   businessInfo,
   businessInfoLoading = false,
   businessInfoOpen,
@@ -150,6 +155,8 @@ export function OverviewTab({
   offers,
   notes,
   onCreateOfferClick,
+  onSaveEntityGroup,
+  savingEntityGroup = false,
 }: OverviewTabProps) {
   const biz = (businessInfo as any)?.business_details ?? {};
   const contact = (businessInfo as any)?.contact_information ?? {};
@@ -187,6 +194,12 @@ export function OverviewTab({
 
   return (
     <div className="space-y-4">
+
+      <EntityGroupSection
+        client={client}
+        onSaveEntityGroup={onSaveEntityGroup}
+        saving={savingEntityGroup}
+      />
 
       {/* ── Business Information ── */}
       <Card>

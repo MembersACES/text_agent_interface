@@ -337,6 +337,7 @@ export default function ClientDetailPage() {
                   <div key="overview" className="pg-fade-up">
                   <OverviewTab
                     clientId={clientId}
+                    client={client}
                     businessInfo={businessInfo}
                     businessInfoLoading={businessInfoLoading}
                     setBusinessInfo={setBusinessInfo}
@@ -349,6 +350,8 @@ export default function ClientDetailPage() {
                       setCreateOfferOpen(true);
                       setError(null);
                     }}
+                    onSaveEntityGroup={actions.handleSaveEntityGroup}
+                    savingEntityGroup={actions.savingEntityGroup}
                   />
                   </div>
                 )}
