@@ -58,6 +58,7 @@ export const PINNED_NAV: NavLinkItem[] = [
 export const MAIN_NAV: NavLinkItem[] = [
   { title: "Dashboard", url: "/crm", icon: LayoutDashboard },
   { title: "Solution Range", url: "/solution-range", icon: LayoutGrid },
+  { title: "Base 1 Hub", url: "/base-1", icon: BarChart3 },
 ];
 
 /** Collapsible job-to-be-done groups (closed by default) */
@@ -68,7 +69,6 @@ export const JOB_GROUPS: NavGroupItem[] = [
     items: [
       { title: "Invoice & Data Lodgement", url: "/document-lodgement" },
       { title: "Invoicing", url: "/invoicing" },
-      { title: "Base 1 Hub", url: "/base-1" },
     ],
   },
   {
