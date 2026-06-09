@@ -311,3 +311,17 @@ The Base 1 Review is a lead-magnet quick win feature that allows users to upload
 - Extraction is **stub only** - returns placeholder fields with low confidence (0.3)
 - Full extraction requires Base 2 (not implemented yet)
 - All files are stored locally in the `storage/base1/` directory
+
+---
+
+## Marketing / film prep (Frankston RSL hero)
+
+For video shoots using the Frankston RSL demo member, see **[docs/frankston-rsl-film-pack.md](./docs/frankston-rsl-film-pack.md)** (routes, PDF links, crop guide, kanban Lead A).
+
+From `text_agent_backend`, print clickable URLs and optionally stage local autonomous run #3 for sidebar B-roll:
+
+```powershell
+cd "C:\My Projects\text_agent_backend"
+python scripts/frankston_film_prep.py --base-url http://localhost:8080
+python scripts/frankston_film_prep.py --stage-local-run 3   # local SQLite only
+```

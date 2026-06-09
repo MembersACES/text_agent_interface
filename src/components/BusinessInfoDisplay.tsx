@@ -1664,7 +1664,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
         
         {/* Quick Navigation */}
         <div className="mb-4">
-          <h3 className="text-lg font-bold text-gray-800 mb-3 text-center">Navigation Links</h3>
+          <h3 className="text-lg font-bold text-slate-300 mb-3 text-center">Navigation Links</h3>
           <div className="bg-gray-100 rounded-lg p-4">
             <nav className="flex flex-wrap justify-center gap-2">
             {/* LOA and SFA Display Items - Always show, positioned before other navigation links */}

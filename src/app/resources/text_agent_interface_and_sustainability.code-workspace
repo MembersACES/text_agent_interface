@@ -8,6 +8,9 @@
 		},
 		{
 			"path": "../../../../sustainability_reporting"
+		},
+		{
+			"path": "../../../../text_agent_template-1"
 		}
 	],
 	"settings": {}
