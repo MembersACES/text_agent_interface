@@ -5,8 +5,21 @@ import { Card, CardContent } from "@/components/ui/card";
 
 const WEBHOOK_URL = "/api/base1-submit";
 
-/** Time to wait for proxy → n8n (server has 25 min; client waits slightly longer). */
-const SUBMISSION_TIMEOUT_MS = 26 * 60 * 1000; // 26 minutes
+/** Client abort if the API proxy does not answer (upload + accept should be seconds). */
+const SUBMISSION_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
+
+function isLikelyDroppedLongRequest(err: unknown, elapsedSeconds: number): boolean {
+  if (elapsedSeconds < 30) return false;
+  if (!(err instanceof Error)) return false;
+  const m = err.message.trim();
+  return (
+    err.name === "TypeError" &&
+    (m === "Failed to fetch" ||
+      m === "Load failed" ||
+      m === "NetworkError when attempting to fetch resource." ||
+      /failed to fetch/i.test(m))
+  );
+}
 
 /** Response from n8n Respond to Webhook when Base 1 review is ready */
 interface WebhookSuccessResponse {
@@ -100,8 +113,16 @@ export default function UtilityBillReviewForm() {
       console.log("[Base1] Response received", { status: res.status, statusText: res.statusText, elapsedSeconds: elapsed });
       if (res.ok) {
         try {
-          const data = (await res.json()) as WebhookSuccessResponse;
-          if (data && (data.email_html != null || data.Base_1_review_sheet != null || data.g_drive_folder != null)) {
+          const data = (await res.json()) as WebhookSuccessResponse & {
+            accepted?: boolean;
+            async?: boolean;
+          };
+          if (
+            data &&
+            (data.email_html != null ||
+              data.Base_1_review_sheet != null ||
+              data.g_drive_folder != null)
+          ) {
             setWebhookResponse(data);
           }
         } catch {
@@ -116,9 +137,8 @@ export default function UtilityBillReviewForm() {
         // 524/504 = proxy or upstream timeout; n8n workflow often still completes and emails the result
         const isUpstreamTimeout = res.status === 524 || res.status === 504;
         if (isUpstreamTimeout) {
-          setError(
-            "The request timed out before we could show the result here. Your submission was received—check the Lead Pipeline (Base 1) below and your email; the review will appear once processing finishes. Contact business@acesolutions.com.au only if it doesn’t."
-          );
+          setSuccess(true);
+          setError(null);
         } else {
           setError("Submission failed. Please try again or contact business@acesolutions.com.au");
         }
@@ -133,11 +153,11 @@ export default function UtilityBillReviewForm() {
           ? `${err.name}: ${err.message} (after ${elapsed}s)`
           : String(err);
       console.error("[Base1] Request failed", { err, isTimeout, elapsedSeconds: elapsed });
-      if (isTimeout) {
+      const elapsedNum = parseFloat(elapsed);
+      if (isTimeout || isLikelyDroppedLongRequest(err, elapsedNum)) {
         setErrorDetail(detail);
-        setError(
-          "The request timed out before we could show the result. Your submission was received—check the Lead Pipeline (Base 1) below; your review should appear there once processing finishes. Contact business@acesolutions.com.au only if it doesn’t appear."
-        );
+        setSuccess(true);
+        setError(null);
       } else {
         setErrorDetail(detail);
         setError("Submission failed. Please try again or contact business@acesolutions.com.au");
@@ -420,7 +440,9 @@ export default function UtilityBillReviewForm() {
               <div className="h-14 w-14 animate-spin rounded-full border-4 border-gray-200 border-t-[#2d6b5a] dark:border-dark-3" />
               <div className="space-y-1">
                 <p className="font-semibold text-dark dark:text-white">Processing your submission</p>
-                <p className="text-sm text-gray-500">We&apos;re analysing your utility invoices. This can take up to 25 minutes—please keep this tab open.</p>
+                <p className="text-sm text-gray-500">
+                  Uploading your files and starting the Base 1 pipeline. Processing usually takes 2–10 minutes—you can keep this tab open or check the Lead Pipeline below shortly.
+                </p>
               </div>
               <div className="flex gap-1.5">
                 <span className="h-2 w-2 animate-bounce rounded-full bg-[#2d6b5a] [animation-delay:0ms]" />
