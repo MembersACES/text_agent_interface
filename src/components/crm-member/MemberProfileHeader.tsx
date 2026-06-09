@@ -18,6 +18,7 @@ export interface MemberProfileHeaderProps {
   /** When provided, called to load business info if missing when opening Base 2 (so Base 2 gets full URL like business-info). */
   fetchBusinessInfo?: () => Promise<Record<string, unknown> | null>;
   onOpenTools?: () => void;
+  onDeleteMember?: () => void;
   offersCount?: number;
   lastActivityAt?: string | null;
 }
@@ -99,6 +100,7 @@ export function MemberProfileHeader({
   businessInfo,
   fetchBusinessInfo,
   onOpenTools,
+  onDeleteMember,
   offersCount = 0,
   lastActivityAt = null,
 }: MemberProfileHeaderProps) {
@@ -566,6 +568,24 @@ export function MemberProfileHeader({
                       Tools
                     </button>
                   )}
+                  {onDeleteMember ? (
+                    <>
+                      <div
+                        className="my-1 border-t border-gray-200 dark:border-gray-600"
+                        role="separator"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowMoreMenu(false);
+                          onDeleteMember();
+                        }}
+                        className="w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                      >
+                        Delete member…
+                      </button>
+                    </>
+                  ) : null}
                 </div>
               )}
             </div>

@@ -36,7 +36,9 @@ export interface OverviewTabProps {
   notes: Note[];
   onCreateOfferClick: () => void;
   onSaveEntityGroup: (entity_group_id: number | null) => Promise<void>;
+  onSaveExternalBusinessId?: (external_business_id: string | null) => Promise<void>;
   savingEntityGroup?: boolean;
+  savingExternalBusinessId?: boolean;
 }
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
@@ -156,7 +158,9 @@ export function OverviewTab({
   notes,
   onCreateOfferClick,
   onSaveEntityGroup,
+  onSaveExternalBusinessId,
   savingEntityGroup = false,
+  savingExternalBusinessId = false,
 }: OverviewTabProps) {
   const biz = (businessInfo as any)?.business_details ?? {};
   const contact = (businessInfo as any)?.contact_information ?? {};
@@ -198,7 +202,9 @@ export function OverviewTab({
       <EntityGroupSection
         client={client}
         onSaveEntityGroup={onSaveEntityGroup}
+        onSaveExternalBusinessId={onSaveExternalBusinessId}
         saving={savingEntityGroup}
+        savingExternalBusinessId={savingExternalBusinessId}
       />
 
       {/* ── Business Information ── */}

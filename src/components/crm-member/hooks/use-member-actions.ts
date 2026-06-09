@@ -70,9 +70,13 @@ export interface UseMemberActionsResult {
   }) => Promise<void>;
   handleSaveReportingEntity: (reporting_entity: string) => Promise<void>;
   handleSaveEntityGroup: (entity_group_id: number | null) => Promise<void>;
+  handleSaveExternalBusinessId: (external_business_id: string | null) => Promise<void>;
+  handleDeleteClient: () => Promise<boolean>;
   savingAdvocateMeeting: boolean;
   savingReportingEntity: boolean;
   savingEntityGroup: boolean;
+  savingExternalBusinessId: boolean;
+  deletingClient: boolean;
 }
 
 export function useMemberActions({
@@ -96,6 +100,8 @@ export function useMemberActions({
   const [savingAdvocateMeeting, setSavingAdvocateMeeting] = useState(false);
   const [savingReportingEntity, setSavingReportingEntity] = useState(false);
   const [savingEntityGroup, setSavingEntityGroup] = useState(false);
+  const [deletingClient, setDeletingClient] = useState(false);
+  const [savingExternalBusinessId, setSavingExternalBusinessId] = useState(false);
 
   const handleStageChange = useCallback(
     async (value: ClientStage) => {
@@ -495,6 +501,68 @@ export function useMemberActions({
     [clientId, token, setClient, setError, showToast]
   );
 
+  const handleSaveExternalBusinessId = useCallback(
+    async (external_business_id: string | null) => {
+      if (!clientId || !token) return;
+      setSavingExternalBusinessId(true);
+      setError(null);
+      try {
+        const res = await fetch(`${getApiBaseUrl()}/api/clients/${clientId}`, {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ external_business_id }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(
+            (data as { detail?: string }).detail || "Failed to save Airtable LOA record ID"
+          );
+        }
+        const updated: Client = await res.json();
+        setClient(updated);
+        showToast("Airtable LOA record ID saved", "success");
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : "Failed to save Airtable LOA record ID";
+        setError(msg);
+        showToast(msg, "error");
+      } finally {
+        setSavingExternalBusinessId(false);
+      }
+    },
+    [clientId, token, setClient, setError, showToast]
+  );
+
+  const handleDeleteClient = useCallback(async (): Promise<boolean> => {
+    if (!clientId || !token) return false;
+    setDeletingClient(true);
+    setError(null);
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/clients/${clientId}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as { detail?: string }).detail || "Failed to delete member");
+      }
+      showToast("Member deleted", "success");
+      return true;
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Failed to delete member";
+      setError(msg);
+      showToast(msg, "error");
+      return false;
+    } finally {
+      setDeletingClient(false);
+    }
+  }, [clientId, token, setError, showToast]);
+
   return {
     savingStage,
     creatingNote,
@@ -514,6 +582,10 @@ export function useMemberActions({
     savingReportingEntity,
     handleSaveEntityGroup,
     savingEntityGroup,
+    handleSaveExternalBusinessId,
+    savingExternalBusinessId,
+    handleDeleteClient,
+    deletingClient,
     savingAdvocate,
   };
 }

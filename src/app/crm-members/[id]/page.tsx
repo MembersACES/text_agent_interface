@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useCallback, useEffect, type FormEvent } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useSearchParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 
 import { TaskModal } from "@/components/tasks/TaskModal";
@@ -36,6 +36,7 @@ import type {
 export default function ClientDetailPage() {
   const params = useParams();
   const searchParams = useSearchParams();
+  const router = useRouter();
 
   const clientId = useMemo(() => {
     const raw = (params as { id?: string | string[] } | null)?.id;
@@ -147,6 +148,8 @@ export default function ClientDetailPage() {
   const [newNote, setNewNote] = useState("");
   const [newNoteType, setNewNoteType] = useState("general");
   const [toolsOpen, setToolsOpen] = useState(false);
+  const [deleteMemberOpen, setDeleteMemberOpen] = useState(false);
+  const [deleteMemberConfirm, setDeleteMemberConfirm] = useState(false);
 
   useEffect(() => {
     if (rawTab === "tools") {
@@ -321,6 +324,10 @@ export default function ClientDetailPage() {
                   businessInfo={businessInfo}
                   fetchBusinessInfo={fetchBusinessInfoForBase2}
                   onOpenTools={() => setToolsOpen(true)}
+                  onDeleteMember={() => {
+                    setDeleteMemberConfirm(false);
+                    setDeleteMemberOpen(true);
+                  }}
                   offersCount={offers.length}
                   lastActivityAt={lastActivityAt}
                 />
@@ -351,7 +358,9 @@ export default function ClientDetailPage() {
                       setError(null);
                     }}
                     onSaveEntityGroup={actions.handleSaveEntityGroup}
+                    onSaveExternalBusinessId={actions.handleSaveExternalBusinessId}
                     savingEntityGroup={actions.savingEntityGroup}
+                    savingExternalBusinessId={actions.savingExternalBusinessId}
                   />
                   </div>
                 )}
@@ -750,6 +759,74 @@ export default function ClientDetailPage() {
                   />
                 </label>
               </form>
+            </Modal>
+
+            <Modal
+              open={deleteMemberOpen}
+              onClose={() => {
+                if (actions.deletingClient) return;
+                setDeleteMemberOpen(false);
+                setDeleteMemberConfirm(false);
+              }}
+              title="Delete member?"
+              size="default"
+              footer={
+                <div className="flex justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={actions.deletingClient}
+                    onClick={() => {
+                      setDeleteMemberOpen(false);
+                      setDeleteMemberConfirm(false);
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="bg-red-600 hover:bg-red-700 disabled:opacity-50"
+                    loading={actions.deletingClient}
+                    disabled={actions.deletingClient || !deleteMemberConfirm}
+                    onClick={async () => {
+                      const ok = await actions.handleDeleteClient();
+                      if (ok) {
+                        setDeleteMemberOpen(false);
+                        router.push("/crm-members");
+                      }
+                    }}
+                  >
+                    {actions.deletingClient ? "Deleting…" : "Delete member"}
+                  </Button>
+                </div>
+              }
+            >
+              <div className="space-y-3 text-sm text-gray-600 dark:text-gray-400">
+                <p>
+                  This will permanently remove{" "}
+                  <span className="font-medium text-gray-900 dark:text-gray-100">
+                    {client.business_name}
+                  </span>{" "}
+                  from the CRM, including offers, tasks, and status notes. This cannot be undone.
+                </p>
+                <p className="text-xs">
+                  Airtable LOA data and Google Drive files are not deleted — only this CRM record
+                  and linked CRM data.
+                </p>
+                <label className="flex cursor-pointer items-start gap-2 rounded-md border border-gray-200 bg-gray-50/80 p-3 dark:border-gray-700 dark:bg-gray-800/40">
+                  <input
+                    type="checkbox"
+                    checked={deleteMemberConfirm}
+                    onChange={(e) => setDeleteMemberConfirm(e.target.checked)}
+                    className="mt-0.5 rounded border-gray-300 text-red-600 focus:ring-red-500 dark:border-gray-600"
+                  />
+                  <span className="text-xs text-gray-700 dark:text-gray-300">
+                    I understand this member and all linked CRM data will be permanently deleted.
+                  </span>
+                </label>
+              </div>
             </Modal>
 
             <Modal

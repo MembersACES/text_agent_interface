@@ -34,13 +34,17 @@ function slugifyDisplayName(name: string): string {
 type EntityGroupSectionProps = {
   client: Client;
   onSaveEntityGroup: (entity_group_id: number | null) => Promise<void>;
+  onSaveExternalBusinessId?: (external_business_id: string | null) => Promise<void>;
   saving?: boolean;
+  savingExternalBusinessId?: boolean;
 };
 
 export function EntityGroupSection({
   client,
   onSaveEntityGroup,
+  onSaveExternalBusinessId,
   saving = false,
+  savingExternalBusinessId = false,
 }: EntityGroupSectionProps) {
   const { data: session } = useSession();
   const token =
@@ -60,10 +64,15 @@ export function EntityGroupSection({
   const [createSlug, setCreateSlug] = useState("");
   const [createSubmitting, setCreateSubmitting] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [loaRecordId, setLoaRecordId] = useState(client.external_business_id ?? "");
 
   useEffect(() => {
     setSelectedGroupId(client.entity_group_id != null ? String(client.entity_group_id) : "");
   }, [client.id, client.entity_group_id]);
+
+  useEffect(() => {
+    setLoaRecordId(client.external_business_id ?? "");
+  }, [client.id, client.external_business_id]);
 
   const fetchGroups = useCallback(async () => {
     if (!token) return;
@@ -197,11 +206,44 @@ export function EntityGroupSection({
           <p className="text-sm text-amber-800 dark:text-amber-200">No commercial group assigned.</p>
         )}
 
-        {client.external_business_id ? (
+        {onSaveExternalBusinessId ? (
+          <div className="flex flex-wrap items-end gap-3">
+            <Input
+              label="Airtable LOA record ID"
+              value={loaRecordId}
+              onChange={(e) => setLoaRecordId(e.target.value)}
+              className="font-mono text-xs"
+              placeholder="recXXXXXXXXXXXXXX"
+              hint="Row ID from LOA Business Details in Airtable (starts with rec)"
+              wrapperClassName="min-w-[14rem] flex-1"
+              disabled={savingExternalBusinessId}
+            />
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              loading={savingExternalBusinessId}
+              disabled={
+                savingExternalBusinessId ||
+                loaRecordId.trim() === (client.external_business_id ?? "").trim()
+              }
+              onClick={() =>
+                void onSaveExternalBusinessId(loaRecordId.trim() ? loaRecordId.trim() : null)
+              }
+            >
+              Save ID
+            </Button>
+          </div>
+        ) : client.external_business_id ? (
           <p className="text-xs text-gray-500 dark:text-gray-400">
-            LOA record: <span className="font-mono">{client.external_business_id}</span>
+            Airtable LOA record ID:{" "}
+            <span className="font-mono">{client.external_business_id}</span>
           </p>
-        ) : null}
+        ) : (
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            No Airtable LOA record ID linked yet (loads from business info).
+          </p>
+        )}
 
         <div className="flex flex-wrap items-end gap-3">
           <Select
