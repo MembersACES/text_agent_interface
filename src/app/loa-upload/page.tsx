@@ -2,7 +2,9 @@
 import React, { useState } from 'react';
 import BusinessDetailsDisplay from '../../components/BusinessDetailsDisplay';
 import IndustrySubfolderSelector from '../../components/IndustrySubfolderSelector';
-import { Alert } from '../../components/ui-elements/alert';
+import { PageHeader } from '@/components/Layouts/PageHeader';
+import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { notifyUtilityLinkedPostProcess } from '@/lib/utility-linked-notify';
 import {
   LOA_UPLOAD_UTILITY_API_ENDPOINTS,
@@ -35,6 +37,27 @@ const INDUSTRY_OPTIONS = [
   '003-Others',
   '003-Supermarkets',
 ];
+
+function LoaStepShell({
+  title,
+  description,
+  children,
+  wide = false,
+}: {
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+  wide?: boolean;
+}) {
+  return (
+    <div className={`mx-auto space-y-6 ${wide ? "max-w-4xl" : "max-w-xl"}`}>
+      <PageHeader pageName="LOA upload" title={title} description={description} />
+      <Card>
+        <CardContent className="pt-6">{children}</CardContent>
+      </Card>
+    </div>
+  );
+}
 
 export default function LoaUploadPage() {
   const [step, setStep] = useState(1);
@@ -476,15 +499,17 @@ export default function LoaUploadPage() {
   // UI rendering by step
   if (step === 1) {
     return (
-      <div className="max-w-xl mx-auto p-6 bg-white rounded shadow mt-8">
-        <h1 className="text-2xl font-bold mb-4">LOA Document Upload</h1>
+      <LoaStepShell
+        title="Google Drive — New Member"
+        description="Upload the LOA document to start folder creation and utility linking."
+      >
         <form onSubmit={handleUpload} className="space-y-4">
           <div>
             <label className="block font-medium mb-1">Document Type</label>
             <select
               value={utilityType}
               onChange={(e) => setUtilityType(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded"
+              className="w-full px-3 py-2 border border-stroke rounded-xl dark:border-dark-3 dark:bg-dark-2"
             >
               {LOA_OPTIONS.map((type) => (
                 <option key={type} value={type}>
@@ -503,77 +528,57 @@ export default function LoaUploadPage() {
               accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
             />
           </div>
-          <button
-            type="submit"
-            className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50"
-            disabled={loading || !file}
-          >
-            {loading ? 'Uploading...' : `Lodge ${utilityType.replace(/_/g, " ")}`}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setUploadResult(null);
-              setShowFolderPrompt(true);
-            }}
-            className="ml-3 px-4 py-2 rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-          >
-            LOA already uploaded
-          </button>
+          <div className="flex flex-wrap gap-3">
+            <Button type="submit" disabled={loading || !file} loading={loading}>
+              {`Lodge ${utilityType.replace(/_/g, " ")}`}
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                setUploadResult(null);
+                setShowFolderPrompt(true);
+              }}
+            >
+              LOA already uploaded
+            </Button>
+          </div>
         </form>
         
         {uploadResult && <div className="mt-4 text-center font-medium whitespace-pre-wrap">{uploadResult}</div>}
         
         {showFolderPrompt && (
-          <div className="mt-6 p-4 bg-gray-100 rounded">
-            <p className="mb-2">Would you like to create a Google Drive member folder for this client?</p>
-            <button className="bg-green-600 text-white px-3 py-1 rounded mr-2" onClick={() => handleFolderPrompt(true)}>Yes</button>
-            <button className="bg-gray-400 text-white px-3 py-1 rounded" onClick={() => handleFolderPrompt(false)}>No</button>
+          <div className="mt-6 rounded-xl border border-stroke bg-gray/50 p-4 dark:border-dark-3 dark:bg-dark-2">
+            <p className="mb-3">Would you like to create a Google Drive member folder for this client?</p>
+            <div className="flex gap-2">
+              <Button size="sm" onClick={() => handleFolderPrompt(true)}>Yes</Button>
+              <Button size="sm" variant="secondary" onClick={() => handleFolderPrompt(false)}>No</Button>
+            </div>
           </div>
         )}
-      </div>
+      </LoaStepShell>
     );
   }
 
   if (step === 3 && businessDetails) {
     return (
-      <div className="max-w-xl mx-auto p-6 bg-white rounded shadow mt-8">
-        <h2 className="text-xl font-bold mb-4">Confirm Business Details</h2>
+      <LoaStepShell title="Confirm business details">
         <BusinessDetailsDisplay details={businessDetails} />
-        <div className="flex gap-4 mt-4">
-          <button 
-            className="bg-green-600 text-white px-4 py-2 rounded disabled:opacity-50" 
-            onClick={() => handleConfirmBusiness(true)}
-            disabled={refreshing}
-          >
+        <div className="flex flex-wrap gap-3 mt-4">
+          <Button onClick={() => handleConfirmBusiness(true)} disabled={refreshing}>
             Confirm
-          </button>
-          <button 
-            className="bg-gray-400 text-white px-4 py-2 rounded disabled:opacity-50 flex items-center gap-2" 
-            onClick={() => handleConfirmBusiness(false)}
-            disabled={refreshing}
-          >
-            {refreshing ? (
-              <>
-                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
-                Refreshing...
-              </>
-            ) : (
-              'Refresh'
-            )}
-          </button>
+          </Button>
+          <Button variant="secondary" onClick={() => handleConfirmBusiness(false)} disabled={refreshing} loading={refreshing}>
+            Refresh
+          </Button>
         </div>
-      </div>
+      </LoaStepShell>
     );
   }
 
   if (step === 4) {
     return (
-      <div className="max-w-xl mx-auto p-6 bg-white rounded shadow mt-8">
-        <h2 className="text-xl font-bold mb-4">Select Industry Classification</h2>
+      <LoaStepShell title="Select industry classification">
         <IndustrySubfolderSelector
           industry={industry}
           setIndustry={handleIndustrySelect}
@@ -581,14 +586,13 @@ export default function LoaUploadPage() {
           setSubfolder={() => {}}
           step={4}
         />
-      </div>
+      </LoaStepShell>
     );
   }
 
   if (step === 5 && industry) {
     return (
-      <div className="max-w-xl mx-auto p-6 bg-white rounded shadow mt-8">
-        <h2 className="text-xl font-bold mb-4">Select State/Subfolder</h2>
+      <LoaStepShell title="Select state/subfolder">
         <IndustrySubfolderSelector
           industry={industry}
           setIndustry={() => {}}
@@ -596,33 +600,34 @@ export default function LoaUploadPage() {
           setSubfolder={handleSubfolderSelect}
           step={5}
         />
-      </div>
+      </LoaStepShell>
     );
   }
 
   if (step === 6) {
     return (
-      <div className="max-w-xl mx-auto p-6 bg-white rounded shadow mt-8">
-        <h2 className="text-xl font-bold mb-4">Folder Creation Result</h2>
+      <LoaStepShell title="Folder creation result">
         {loading ? <div>Processing...</div> : <div>{folderResult}</div>}
         
         {showUtilityPrompt && (
-          <div className="mt-6 p-4 bg-blue-100 rounded">
-            <p className="mb-2">Would you like to link a utility for this client?</p>
-            <button className="bg-green-600 text-white px-3 py-1 rounded mr-2" onClick={() => handleUtilityPrompt(true)}>Yes</button>
-            <button className="bg-gray-400 text-white px-3 py-1 rounded" onClick={() => handleUtilityPrompt(false)}>No</button>
+          <div className="mt-6 rounded-xl border border-stroke bg-primary/5 p-4 dark:border-dark-3">
+            <p className="mb-3">Would you like to link a utility for this client?</p>
+            <div className="flex gap-2">
+              <Button size="sm" onClick={() => handleUtilityPrompt(true)}>Yes</Button>
+              <Button size="sm" variant="secondary" onClick={() => handleUtilityPrompt(false)}>No</Button>
+            </div>
           </div>
         )}
-      </div>
+      </LoaStepShell>
     );
   }
 
   if (step === 7) {
     return (
-      <div className="max-w-xl mx-auto p-6 bg-white rounded shadow mt-8">
-        <h2 className="text-xl font-bold mb-4">Upload Utility Invoice</h2>
-        <p className="text-gray-600 mb-4">Upload a utility invoice to link it to {businessDetails?.['Business Name']}.</p>
-        
+      <LoaStepShell
+        title="Upload utility invoice"
+        description={`Upload a utility invoice to link it to ${businessDetails?.['Business Name']}.`}
+      >
         <div className="space-y-4">
           <div>
             <label className="block font-medium mb-1">Utility Type</label>
@@ -635,7 +640,7 @@ export default function LoaUploadPage() {
                     : (e.target.value as LoaUploadUtilityKey),
                 )
               }
-              className="w-full px-3 py-2 border border-gray-300 rounded"
+              className="w-full px-3 py-2 border border-stroke rounded-xl dark:border-dark-3 dark:bg-dark-2"
             >
               <option value="">Select Utility Type</option>
               {Object.entries(UTILITY_OPTIONS).map(([key, label]) => (
@@ -657,29 +662,30 @@ export default function LoaUploadPage() {
             <p className="text-xs text-gray-500 mt-1">Accepted: .pdf</p>
           </div>
           
-          <button
+          <Button
             onClick={handleUtilityUpload}
             disabled={utilityLoading || !utilityFile || !selectedUtility}
-            className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50"
+            loading={utilityLoading}
           >
-            {utilityLoading ? 'Uploading...' : 'Upload Utility Invoice'}
-          </button>
+            Upload utility invoice
+          </Button>
         </div>
         
         {utilityUploadResult && (
           <div className="mt-4 whitespace-pre-wrap text-sm">{utilityUploadResult}</div>
         )}
-      </div>
+      </LoaStepShell>
     );
   }
 
   if (step === 8 && utilityData) {
     return (
-      <div className="max-w-4xl mx-auto p-6 bg-white rounded shadow mt-8">
-        <h2 className="text-xl font-bold mb-4">Confirm Utility Information</h2>
-        <p className="text-gray-600 mb-4">Review the utility information below and confirm if it's correct.</p>
-        
-        <div className="bg-gray-50 rounded-lg p-6">
+      <LoaStepShell
+        wide
+        title="Confirm utility information"
+        description="Review the utility information below and confirm if it's correct."
+      >
+        <div className="bg-gray/50 rounded-xl p-6 dark:bg-dark-2">
           <h3 className="text-lg font-semibold text-gray-800 mb-4">
             {UTILITY_OPTIONS[selectedUtility as keyof typeof UTILITY_OPTIONS]} Utility Information
           </h3>
@@ -790,31 +796,13 @@ export default function LoaUploadPage() {
             </p>
           </div>
 
-          <div className="flex gap-4 mt-4">
-            <button 
-              className="bg-green-600 text-white px-6 py-2 rounded font-semibold hover:bg-green-700 focus:outline-none disabled:opacity-50" 
-              onClick={() => handleConfirmUtility(true)}
-              disabled={utilityRefreshing || utilityLoading}
-            >
+          <div className="flex flex-wrap gap-3 mt-4">
+            <Button onClick={() => handleConfirmUtility(true)} disabled={utilityRefreshing || utilityLoading}>
               Confirm
-            </button>
-            <button 
-              className="bg-gray-400 text-white px-6 py-2 rounded font-semibold hover:bg-gray-500 focus:outline-none disabled:opacity-50 flex items-center gap-2" 
-              onClick={() => handleConfirmUtility(false)}
-              disabled={utilityRefreshing || utilityLoading}
-            >
-              {utilityRefreshing ? (
-                <>
-                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
-                  Refreshing...
-                </>
-              ) : (
-                'Refresh'
-              )}
-            </button>
+            </Button>
+            <Button variant="secondary" onClick={() => handleConfirmUtility(false)} disabled={utilityRefreshing || utilityLoading} loading={utilityRefreshing}>
+              Refresh
+            </Button>
           </div>
 
           {utilitySuccessMessage && (
@@ -849,14 +837,13 @@ export default function LoaUploadPage() {
             </div>
           )}
         </div>
-      </div>
+      </LoaStepShell>
     );
   }
 
   if (step === 99) {
     return (
-      <div className="max-w-xl mx-auto p-6 bg-white rounded shadow mt-8">
-        <h2 className="text-xl font-bold mb-4">Process Complete</h2>
+      <LoaStepShell title="Process complete">
         <div className="space-y-3">
           <div>✅ LOA document has been successfully lodged.</div>
           {folderResult && <div>✅ Google Drive folder has been created.</div>}
@@ -873,21 +860,15 @@ export default function LoaUploadPage() {
         </div>
         <div className="mt-6 space-y-3">
           {businessDetails && (
-            <button 
-              onClick={handleLinkAnotherUtility}
-              className="w-full bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 font-medium"
-            >
-              Link Another Utility
-            </button>
+            <Button className="w-full" onClick={handleLinkAnotherUtility}>
+              Link another utility
+            </Button>
           )}
-          <button 
-            onClick={() => window.location.reload()} 
-            className="w-full bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-          >
-            Start New Process
-          </button>
+          <Button className="w-full" variant="secondary" onClick={() => window.location.reload()}>
+            Start new process
+          </Button>
         </div>
-      </div>
+      </LoaStepShell>
     );
   }
 

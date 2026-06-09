@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
+import { PageHeader } from "@/components/Layouts/PageHeader";
 
 // Define proper types
 interface OperatingHours {
@@ -348,7 +349,7 @@ const SiteProfilingForm = ({
 
       <div className="flex gap-2 flex-wrap">
         <button
-          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+          className="bg-primary text-white px-4 py-2 rounded hover:bg-primary/90"
           onClick={copyMondayToAll}
         >
           📋 Copy Monday to All Days
@@ -535,7 +536,7 @@ const SiteProfilingForm = ({
           </label>
         </div>
         <button
-          className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700"
+          className="bg-primary text-white px-6 py-2 rounded hover:bg-primary/90"
           onClick={() => goToStep("offer_provided")}
         >
           ➡️ Continue to Offer Provided
@@ -572,7 +573,7 @@ const SiteProfilingForm = ({
       </div>
 
       <button
-        className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700"
+        className="bg-primary text-white px-6 py-2 rounded hover:bg-primary/90"
         onClick={() => goToStep(nextStep)}
       >
         ➡️ Continue to Next Section
@@ -613,7 +614,7 @@ const SiteProfilingForm = ({
               {["owned", "leased"].map(option => (
                 <button
                   key={option}
-                  className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 capitalize"
+                  className="bg-primary text-white px-6 py-2 rounded hover:bg-primary/90 capitalize"
                   onClick={() => handleSelect("site_ownership", option, "number_of_sites")}
                 >
                   {option}
@@ -631,7 +632,7 @@ const SiteProfilingForm = ({
               {["1", "2", "3+"].map(option => (
                 <button
                   key={option}
-                  className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700"
+                  className="bg-primary text-white px-6 py-2 rounded hover:bg-primary/90"
                   onClick={() => handleSelect("number_of_sites", option, "staff_members")}
                 >
                   {option}
@@ -660,7 +661,7 @@ const SiteProfilingForm = ({
               {["1-10", "11-50", "51-100", "100+"].map(option => (
                 <button
                   key={option}
-                  className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700"
+                  className="bg-primary text-white px-6 py-2 rounded hover:bg-primary/90"
                   onClick={() => handleSelect("staff_members", option, "surface_area")}
                 >
                   {option}
@@ -689,7 +690,7 @@ const SiteProfilingForm = ({
               {["<1000", "1000-5000", "5000-10000", "10000+"].map(option => (
                 <button
                   key={option}
-                  className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700"
+                  className="bg-primary text-white px-6 py-2 rounded hover:bg-primary/90"
                   onClick={() => handleSelect("surface_area", option, "activity_start")}
                 >
                   {option}
@@ -718,7 +719,7 @@ const SiteProfilingForm = ({
               {["before_2000", "2000-2010", "2010-2020", "after_2020"].map(option => (
                 <button
                   key={option}
-                  className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700"
+                  className="bg-primary text-white px-6 py-2 rounded hover:bg-primary/90"
                   onClick={() => handleSelect("activity_start", option, "experience_age")}
                 >
                   {option.replace('_', ' ').replace('-', '–')}
@@ -752,7 +753,7 @@ const SiteProfilingForm = ({
                     key={option}
                     className={`px-6 py-2 rounded border-2 transition-colors ${
                       responses.years_in_industry === option
-                        ? 'bg-blue-600 text-white border-blue-600'
+                        ? 'bg-primary text-white border-primary'
                         : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
                     }`}
                     onClick={() => setResponses(prev => ({ ...prev, years_in_industry: option }))}
@@ -774,7 +775,7 @@ const SiteProfilingForm = ({
                     key={option}
                     className={`px-6 py-2 rounded border-2 transition-colors ${
                       responses.age_range === option
-                        ? 'bg-blue-600 text-white border-blue-600'
+                        ? 'bg-primary text-white border-primary'
                         : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
                     }`}
                     onClick={() => setResponses(prev => ({ ...prev, age_range: option }))}
@@ -792,7 +793,7 @@ const SiteProfilingForm = ({
             <button
               className={`px-6 py-2 rounded font-medium ${
                 responses.years_in_industry
-                  ? 'bg-blue-600 text-white hover:bg-blue-700'
+                  ? 'bg-primary text-white hover:bg-primary/90'
                   : 'bg-gray-300 text-gray-500 cursor-not-allowed'
               }`}
               onClick={() => goToStep("kitchen_info")}
@@ -816,7 +817,7 @@ const SiteProfilingForm = ({
                     key={option}
                     className={`px-6 py-2 rounded border-2 transition-colors ${
                       responses.kitchen_location === option
-                        ? 'bg-blue-600 text-white border-blue-600'
+                        ? 'bg-primary text-white border-primary'
                         : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
                     }`}
                     onClick={() => setResponses(prev => ({ ...prev, kitchen_location: option }))}
@@ -837,7 +838,7 @@ const SiteProfilingForm = ({
                       key={option}
                       className={`px-6 py-2 rounded border-2 transition-colors ${
                         responses.kitchen_operation === option
-                          ? 'bg-blue-600 text-white border-blue-600'
+                          ? 'bg-primary text-white border-primary'
                           : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
                       }`}
                       onClick={() => setResponses(prev => ({ ...prev, kitchen_operation: option }))}
@@ -853,7 +854,7 @@ const SiteProfilingForm = ({
             <button
               className={`px-6 py-2 rounded font-medium ${
                 responses.kitchen_location
-                  ? 'bg-blue-600 text-white hover:bg-blue-700'
+                  ? 'bg-primary text-white hover:bg-primary/90'
                   : 'bg-gray-300 text-gray-500 cursor-not-allowed'
               }`}
               onClick={() => goToStep("operating_hours")}
@@ -1127,9 +1128,11 @@ export default function SiteProfilingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-4xl mx-auto px-4">
-        <h1 className="text-3xl font-bold text-gray-900 mb-8 text-center">Site Profiling</h1>
+    <div className="mx-auto max-w-4xl space-y-6">
+      <PageHeader
+        pageName="Site profiling"
+        description="Interactive questionnaire to capture site characteristics for analysis."
+      />
 
         {!startInteractive ? (
           <div className="bg-white border rounded-lg shadow-sm p-8 text-center space-y-6">
@@ -1186,7 +1189,7 @@ export default function SiteProfilingPage() {
               </div>
  
               <button
-                className="w-full bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:bg-gray-400 disabled:cursor-not-allowed"
+                className="w-full bg-primary text-white px-6 py-3 rounded-lg hover:bg-primary/90 transition-colors font-medium disabled:bg-gray-400 disabled:cursor-not-allowed"
                 onClick={handleStartInteractive}
                 disabled={!businessName.trim() || isLoadingBusinessInfo}
               >
@@ -1201,7 +1204,6 @@ export default function SiteProfilingPage() {
         ) : (
           <SiteProfilingForm businessName={businessName} businessInfo={businessInfo} />
         )}
-      </div>
     </div>
   );
 }

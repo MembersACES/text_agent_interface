@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { useToast } from "@/components/ui/toast";
 
 export interface ToolsTabProps {
@@ -33,12 +34,13 @@ export function ToolsTab({
 
   if (!businessInfo) {
     return (
-      <Card className="border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+      <Card className="p-0">
         <CardContent className="p-4">
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            No business information loaded. Load the member&apos;s business
-            details to use business tools.
-          </p>
+          <EmptyState
+            title="No business information loaded."
+            description="Load the member's business details to use business tools."
+            className="py-4 items-start text-left [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:text-gray-500 [&_h3]:dark:text-gray-400"
+          />
         </CardContent>
       </Card>
     );
@@ -144,7 +146,7 @@ export function ToolsTab({
               type="button"
               onClick={handleSendRobotEmail}
               disabled={sendingRobotEmail}
-              className="px-3 py-1.5 mt-2 rounded bg-primary text-white text-xs font-medium hover:opacity-90 w-full disabled:opacity-60"
+              className="px-3 py-1.5 mt-2 rounded-full bg-primary text-white text-xs font-medium hover:bg-primary/90 w-full disabled:opacity-60"
             >
               {sendingRobotEmail ? "Sending..." : "Generate Step 1 email"}
             </button>

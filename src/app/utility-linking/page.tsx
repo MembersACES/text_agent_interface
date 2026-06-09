@@ -3,6 +3,9 @@
 import React, { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { notifyUtilityLinkedPostProcess } from "@/lib/utility-linked-notify";
+import { ToolPageLayout } from "@/components/Layouts/ToolPageLayout";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 
 const UTILITY_OPTIONS = {
   ELECTRICITY_CI: "ELECTRICITY C&I",
@@ -297,19 +300,14 @@ export default function UtilityLinkingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="bg-white rounded-lg shadow-sm p-8">
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">
-              Link Utility for {businessName}
-            </h1>
-            <p className="text-gray-600">
-              Select a utility type to view and link utility information for this business.
-            </p>
-          </div>
-
-          <div className="mb-8">
+    <ToolPageLayout
+      pageName="Utility Linking"
+      title={`Link utility for ${businessName}`}
+      description="Select a utility type to view and link utility information for this business."
+      width="2xl"
+    >
+      <Card>
+        <CardContent className="pt-6">
             <h2 className="text-xl font-semibold text-gray-800 mb-4">
               Select Utility Type:
             </h2>
@@ -322,8 +320,8 @@ export default function UtilityLinkingPage() {
                   className={`
                     px-4 py-3 rounded-lg border-2 font-semibold transition-all duration-200
                     ${selectedUtility === key 
-                      ? 'bg-blue-600 text-white border-blue-600 shadow-md' 
-                      : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400 hover:bg-blue-50 hover:shadow-sm'
+                      ? 'bg-primary text-white border-primary shadow-md' 
+                      : 'bg-white text-gray-700 border-gray-300 hover:border-primary/40 hover:bg-primary/5 hover:shadow-sm'
                     }
                     ${loading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
                     focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
@@ -341,7 +339,6 @@ export default function UtilityLinkingPage() {
                 </button>
               ))}
             </div>
-          </div>
 
           {error && (
             <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4">
@@ -547,8 +544,8 @@ export default function UtilityLinkingPage() {
               <p className="text-gray-500">Select a utility type above to get started</p>
             </div>
           )}
-        </div>
-      </div>
-    </div>
+        </CardContent>
+      </Card>
+    </ToolPageLayout>
   );
 }

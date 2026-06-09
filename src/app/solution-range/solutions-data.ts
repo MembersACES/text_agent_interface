@@ -157,15 +157,15 @@ export const solutionOptions: SolutionOption[] = [
   subSolutions: [
     {
       id: "aces_receptionist",
-      name: "ACES Receptionist (Mary)",
+      name: "Carbon Zero Receptionist (Mary)",
       description:
-        "Primary voice assistant for ACES handling all incoming calls, client enquiries, and transfers to specialist departments.",
+        "Primary voice assistant for Carbon Zero Australasia handling all incoming calls, client enquiries, and transfers to specialist departments.",
       agentCapabilities: [
         "Greet callers and determine purpose of call",
         "Transfer to Energy or Cleaning agents",
         "Collect details and log enquiries",
         "Escalate complex issues",
-        "Professional ACES representation"
+        "Professional Carbon Zero Australasia representation"
       ]
     },
     {
@@ -342,7 +342,7 @@ export const solutionOptions: SolutionOption[] = [
   id: "trojan_oil_docket_reader",
   name: "Trojan Oil API Docket Reader",
   description:
-    "An automated SMS/MMS & Email document processing system that extracts data from oil dockets using advanced OCR and ACES’ custom API. Drivers simply text a photo — the system identifies product types, volumes, pricing, and customer details, then logs structured data instantly. Removes all manual entry and reduces admin error.",
+    "An automated SMS/MMS & Email document processing system that extracts data from oil dockets using advanced OCR and Carbon Zero Australasia's custom API. Drivers simply text a photo — the system identifies product types, volumes, pricing, and customer details, then logs structured data instantly. Removes all manual entry and reduces admin error.",
   presentationId: "13jOv5xfI-R2RYKPfjlRNLZmAiDeDl4rACikyp8NcmP8",
   enabled: true,
   category: "ai_automation",
@@ -393,7 +393,7 @@ export const solutionOptions: SolutionOption[] = [
   id: "frankston_rsl_client_agent",
   name: "Member Agent SLM - Frankston RSL",
   description:
-    "A custom-made AI agent linked to the member profile, shared with the member so they can ask questions about their partnership and association with ACES. This agent is specifically configured for Frankston RSL and provides access to work in progress, action items, client profile details, invoice retrieval, and more.",
+    "A custom-made AI agent linked to the member profile, shared with the member so they can ask questions about their partnership and association with Carbon Zero Australasia. This agent is specifically configured for Frankston RSL and provides access to work in progress, action items, client profile details, invoice retrieval, and more.",
   enabled: true,
   category: "client_automation",
   agentType: "client",

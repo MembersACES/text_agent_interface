@@ -2,6 +2,13 @@
 
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
+import { SectionHeader } from "./shared/SectionHeader";
+import {
+  getOfferActivityEventVisual,
+  getStageChangeEventVisual,
+} from "./shared/activityEventTypes";
+import { RECORD_ICON_CHIP } from "./shared/recordRowIcons";
 import { formatDate } from "./shared/formatDate";
 import { OFFER_ACTIVITY_LABELS } from "@/constants/crm";
 import type { OfferActivityType } from "@/constants/crm";
@@ -30,23 +37,46 @@ export function MemberSidebar({
     ?.contact_information as Record<string, unknown> | undefined;
   const phone = contact?.telephone ?? contact?.phone;
   const address = contact?.postal_address ?? contact?.site_address;
+  const repName = (businessInfo as Record<string, unknown> | null | undefined)
+    ?.representative_details as { contact_name?: string } | undefined;
+  const contactInitials = (() => {
+    const name = repName?.contact_name?.trim();
+    if (name) {
+      const parts = name.split(/\s+/).filter(Boolean);
+      if (parts.length >= 2) {
+        return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+      }
+      return parts[0].slice(0, 2).toUpperCase();
+    }
+    if (client.primary_contact_email) {
+      return client.primary_contact_email.slice(0, 2).toUpperCase();
+    }
+    return "—";
+  })();
 
   return (
-    <div className="space-y-4">
+    <div className="min-w-0 space-y-4">
       {/* ── Contact ── */}
       <Card className="rounded-xl border border-gray-200/80 dark:border-dark-3 bg-white dark:bg-dark-2 shadow-sm ring-1 ring-gray-200/60 dark:ring-gray-700/50 overflow-hidden">
-        <CardContent className="p-4">
-          <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-3">
-            Contact
-          </h2>
-          <dl className="space-y-2 text-sm">
-            <div>
+        <CardContent className="min-w-0 p-4">
+          <SectionHeader title="Contact" className="mb-3" />
+          <div className="mb-3 flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary dark:bg-primary/20">
+              {contactInitials}
+            </div>
+            <div className="min-w-0 text-sm font-medium text-gray-800 dark:text-gray-100 truncate">
+              {repName?.contact_name || client.business_name || "Contact"}
+            </div>
+          </div>
+          <dl className="min-w-0 space-y-2 text-sm">
+            <div className="min-w-0">
               <dt className="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Email</dt>
-              <dd>
+              <dd className="min-w-0">
                 {client.primary_contact_email ? (
                   <a
                     href={`mailto:${client.primary_contact_email}`}
-                    className="text-primary hover:underline break-all"
+                    title={client.primary_contact_email}
+                    className="block truncate text-primary hover:underline"
                   >
                     {client.primary_contact_email}
                   </a>
@@ -55,15 +85,15 @@ export function MemberSidebar({
                 )}
               </dd>
             </div>
-            <div>
+            <div className="min-w-0">
               <dt className="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Phone</dt>
-              <dd className="text-gray-700 dark:text-gray-300">
+              <dd className="truncate text-gray-700 dark:text-gray-300">
                 {phone != null && String(phone).trim() !== "" ? String(phone) : "—"}
               </dd>
             </div>
-            <div>
+            <div className="min-w-0">
               <dt className="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Address</dt>
-              <dd className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+              <dd className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap break-words">
                 {address != null && String(address).trim() !== "" ? String(address) : "—"}
               </dd>
             </div>
@@ -73,33 +103,36 @@ export function MemberSidebar({
 
       {/* ── Tasks ── */}
       <Card className="rounded-xl border border-gray-200/80 dark:border-dark-3 bg-white dark:bg-dark-2 shadow-sm ring-1 ring-gray-200/60 dark:ring-gray-700/50 overflow-hidden">
-        <CardContent className="p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-100">
-              Tasks
-              {tasks.length > 0 && (
-                <span className="ml-1.5 inline-flex items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 text-xs w-5 h-5 font-medium">
+        <CardContent className="min-w-0 p-4">
+          <SectionHeader
+            title="Tasks"
+            className="mb-3"
+            badge={
+              tasks.length > 0 ? (
+                <span className="inline-flex size-5 items-center justify-center rounded-full bg-gray-100 text-xs font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-400">
                   {tasks.length}
                 </span>
-              )}
-            </h2>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={onAddTaskClick}
-                className="text-xs font-medium text-primary hover:underline"
-              >
-                Add task
-              </button>
-              <span className="text-gray-300 dark:text-gray-600">·</span>
-              <Link
-                href="/tasks"
-                className="text-xs text-gray-500 dark:text-gray-400 hover:underline"
-              >
-                Open Tasks
-              </Link>
-            </div>
-          </div>
+              ) : undefined
+            }
+            actions={
+              <>
+                <button
+                  type="button"
+                  onClick={onAddTaskClick}
+                  className="text-xs font-medium text-primary hover:underline"
+                >
+                  Add task
+                </button>
+                <span className="text-gray-300 dark:text-gray-600">·</span>
+                <Link
+                  href="/tasks"
+                  className="text-xs text-gray-500 dark:text-gray-400 hover:underline"
+                >
+                  Open Tasks
+                </Link>
+              </>
+            }
+          />
           {tasks.length === 0 ? (
             <p className="text-sm text-gray-500 dark:text-gray-400">
               No tasks linked to this client yet.
@@ -144,47 +177,76 @@ export function MemberSidebar({
 
       {/* ── Recent Activity ── */}
       <Card className="rounded-xl border border-gray-200/80 dark:border-dark-3 bg-white dark:bg-dark-2 shadow-sm ring-1 ring-gray-200/60 dark:ring-gray-700/50 overflow-hidden">
-        <CardContent className="p-4">
-          <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-1">
-            Recent activity
-          </h2>
-          <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">
-            Stage changes and offer activities.
-          </p>
+        <CardContent className="min-w-0 p-4">
+          <SectionHeader
+            title="Recent activity"
+            subtitle="Stage changes and offer activities."
+            className="mb-3"
+            actions={
+              timelineEvents.length > 0 ? (
+                <Link
+                  href="?tab=activity"
+                  scroll={false}
+                  className="shrink-0 text-xs font-semibold text-primary hover:underline"
+                >
+                  View all
+                </Link>
+              ) : undefined
+            }
+          />
           {timelineEvents.length === 0 ? (
             <p className="text-sm text-gray-500 dark:text-gray-400">
               No timeline events yet.
             </p>
           ) : (
-            <ul className="space-y-3 max-h-[280px] overflow-y-auto">
-              {timelineEvents.slice(0, 5).map((ev) => (
+            <ul className="min-w-0 space-y-3 max-h-[280px] overflow-y-auto">
+              {timelineEvents.slice(0, 5).map((ev) => {
+                const visual =
+                  ev.type === "stage_change"
+                    ? getStageChangeEventVisual()
+                    : getOfferActivityEventVisual(ev.activity_type ?? "");
+                const EventIcon = visual.icon;
+                return (
                 <li
                   key={ev.id}
-                  className="flex flex-col gap-1 text-sm border-l-2 border-gray-200 dark:border-gray-600 pl-3 py-1"
+                  className={cn(
+                    "min-w-0 flex flex-col gap-1 rounded-r-md border-l-2 py-1 pl-3 text-sm",
+                    visual.borderClass
+                  )}
                 >
+                  <div className="flex items-center gap-2">
+                    <span className={cn("h-2 w-2 shrink-0 rounded-full", visual.dotClass)} />
+                    <span
+                      className={cn(
+                        "flex h-5 w-5 shrink-0 items-center justify-center rounded",
+                        RECORD_ICON_CHIP[visual.iconIntent]
+                      )}
+                    >
+                      <EventIcon className="h-3 w-3" aria-hidden />
+                    </span>
+                    <span className="truncate font-medium text-gray-800 dark:text-gray-100">
+                      {ev.type === "stage_change"
+                        ? "Stage change"
+                        : ev.activity_type
+                          ? (OFFER_ACTIVITY_LABELS[
+                              ev.activity_type as OfferActivityType
+                            ] ?? ev.activity_type.replace(/_/g, " "))
+                          : "Activity"}
+                    </span>
+                  </div>
                   {ev.type === "stage_change" ? (
                     <>
-                      <span className="font-medium text-gray-800 dark:text-gray-100">
-                        Stage change
-                      </span>
                       {ev.note && (
-                        <p className="text-gray-700 dark:text-gray-300">{ev.note}</p>
+                        <p className="break-words text-gray-700 dark:text-gray-300">{ev.note}</p>
                       )}
-                      <span className="text-xs text-gray-500 dark:text-gray-400">
+                      <span className="truncate text-xs text-gray-500 dark:text-gray-400">
                         {formatDate(ev.created_at)}
                         {ev.user_email && ` · ${ev.user_email.split("@")[0]}`}
                       </span>
                     </>
                   ) : (
                     <>
-                      <span className="font-medium text-gray-800 dark:text-gray-100">
-                        {ev.activity_type
-                          ? (OFFER_ACTIVITY_LABELS[
-                              ev.activity_type as OfferActivityType
-                            ] ?? ev.activity_type.replace(/_/g, " "))
-                          : "Activity"}
-                      </span>
-                      <span className="text-xs text-gray-500 dark:text-gray-400">
+                      <span className="truncate text-xs text-gray-500 dark:text-gray-400">
                         {formatDate(ev.created_at)}
                         {ev.created_by && ` · ${ev.created_by}`}
                       </span>
@@ -213,7 +275,8 @@ export function MemberSidebar({
                     </>
                   )}
                 </li>
-              ))}
+              );
+              })}
             </ul>
           )}
         </CardContent>

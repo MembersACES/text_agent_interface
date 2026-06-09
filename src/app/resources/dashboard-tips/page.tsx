@@ -20,7 +20,7 @@ export default function DashboardTipsPage() {
       <div className="space-y-3">
         <h1 className="text-heading-3 font-bold text-dark dark:text-white">Dashboard Tips</h1>
         <p className="text-body-sm text-gray-600 dark:text-gray-400">
-          How to get the most out of the ACES dashboard and where to find key tools.
+          How to get the most out of the Carbon Zero Australasia dashboard and where to find key tools.
         </p>
 
         <div className="rounded-lg border border-primary/20 bg-primary/5 dark:bg-primary/10 px-4 py-3 text-sm text-gray-800 dark:text-gray-100">
@@ -140,7 +140,7 @@ export default function DashboardTipsPage() {
                   Solution Range
                 </Link>
               </strong>{" "}
-              — Browse ACES solutions (renewable, bots, voice agents, etc.).
+              — Browse Carbon Zero Australasia solutions (renewable, bots, voice agents, etc.).
             </li>
             <li>
               <strong>

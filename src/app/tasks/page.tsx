@@ -4,8 +4,12 @@ import { useSession } from "next-auth/react";
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { getApiBaseUrl } from "@/lib/utils";
-import Breadcrumb from "@/components/Breadcrumbs/Breadcrumb";
+import { PageHeader } from "@/components/Layouts/PageHeader";
+import { Button } from "@/components/ui/button";
+import { SegmentedControl } from "@/components/dashboard";
+import { Skeleton } from "@/components/ui/skeleton";
 import { TaskModal } from "@/components/tasks/TaskModal";
+import { Plus } from "lucide-react";
 
 interface Task {
   id: number;
@@ -771,33 +775,29 @@ export default function TasksPage() {
 
   return (
     <>
-      <Breadcrumb pageName="My Tasks" />
+      <PageHeader
+        pageName="Tasks"
+        description="Track tasks assigned to you, created by you, or across the team."
+        actions={
+          <Button leftIcon={<Plus className="size-4" />} onClick={() => setShowCreateModal(true)}>
+            New task
+          </Button>
+        }
+      />
 
-      <div className="mt-4">
-        {/* Header with Filter and Create Button */}
-        <div className="flex justify-between items-center mb-6">
-          <div className="flex items-center gap-4">
-            <h1 className="text-2xl font-semibold text-gray-800 dark:text-white">
-              Tasks
-            </h1>
-            <select
-              value={filter}
-              onChange={(e) => setFilter(e.target.value as TaskFilter)}
-              className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary dark:bg-gray-700 dark:text-white text-sm"
-            >
-              <option value="my">My Tasks</option>
-              <option value="assigned_by_me">Assigned By Me</option>
-              <option value="all">All Tasks</option>
-            </select>
-          </div>
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors flex items-center gap-2"
-          >
-            <span className="text-xl">+</span>
-            <span>New Task</span>
-          </button>
-        </div>
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+        <SegmentedControl
+          options={[
+            { value: "my", label: "My tasks" },
+            { value: "assigned_by_me", label: "Assigned by me" },
+            { value: "all", label: "All tasks" },
+          ]}
+          value={filter}
+          onChange={(v) => setFilter(v as TaskFilter)}
+        />
+      </div>
+
+      <div className="mt-2">
 
         {/* Error Message */}
         {error && (

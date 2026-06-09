@@ -110,7 +110,7 @@ export default function UtilityLinkingTool({ token, businessName, onBack }: Util
               className={`
                 px-4 py-3 rounded border-2 font-semibold transition-colors
                 ${selectedUtility === key 
-                  ? 'bg-blue-600 text-white border-blue-600' 
+                  ? 'bg-primary text-white border-primary' 
                   : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400 hover:bg-blue-50'
                 }
                 ${loading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
@@ -124,8 +124,9 @@ export default function UtilityLinkingTool({ token, businessName, onBack }: Util
       </div>
 
       {error && (
-        <div style={{ 
-          color: "#dc2626", 
+        <div
+          className="text-red"
+          style={{
           backgroundColor: "#fef2f2", 
           border: "1px solid #fecaca", 
           borderRadius: 6, 

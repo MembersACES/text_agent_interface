@@ -81,7 +81,7 @@
       },
       "One Month Savings Invoice": {
         "path": "/one-month-savings",
-        "description": "Generate and track 1st month savings tax invoices for clients where ACES has achieved savings on their services"
+        "description": "Generate and track 1st month savings tax invoices for clients where Carbon Zero Australasia has achieved savings on their services"
       }
     }
   },

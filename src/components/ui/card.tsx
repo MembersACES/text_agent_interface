@@ -17,12 +17,12 @@ export function Card({
   return (
     <div
       className={cn(
-        "rounded-xl border border-stroke bg-white dark:border-dark-3 dark:bg-gray-dark",
+        "rounded-2xl bg-white dark:bg-gray-dark",
+        (variant === "default" || variant === "elevated") && "shadow-sm",
         variant === "glass" &&
-          "backdrop-blur-lg bg-white/80 dark:bg-gray-dark/80 border-white/20",
-        variant === "elevated" && "shadow-1",
+          "border border-white/20 backdrop-blur-lg bg-white/80 dark:bg-gray-dark/80",
         hover &&
-          "transition-all duration-300 hover:shadow-xl hover:-translate-y-1 hover:border-primary/20",
+          "transition-all duration-300 hover:-translate-y-1 hover:shadow-md",
         "p-4 sm:p-6",
         className
       )}

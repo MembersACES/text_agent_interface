@@ -53,18 +53,18 @@ interface Resource {
 
 const RESOURCES: Resource[] = [
   {
-    name: "ACES Demo",
+    name: "Carbon Zero Demo",
     link: "https://acesdemo-672026052958.australia-southeast2.run.app/",
     password: "ACES_demo1@!",
-    notes: "ACES Demo is a demo of the Aces Solutions platform. It is used to test the platform and the features of the platform.",
+    notes: "Carbon Zero Demo is a demo of the Carbon Zero Australasia platform. It is used to test the platform and the features of the platform.",
     env: "development",
     category: "Demo",
   },
   {
-    name: "ACES Automation Hub",
+    name: "Carbon Zero Automation Hub",
     link: "https://aces-automation-hub-672026052958.australia-southeast2.run.app/",
     password: "ACES_auto_Hub1!",
-    notes: "ACES Automation Hub is a platform for automating the Aces Solutions platform. It is used to test the platform and the features of the platform.",
+    notes: "Carbon Zero Automation Hub automates the Carbon Zero Australasia platform. It is used to test the platform and the features of the platform.",
     env: "production",
     category: "Automation",
   },

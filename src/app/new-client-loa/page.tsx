@@ -3,6 +3,12 @@
 import React, { useState } from "react";
 import { useSession } from "next-auth/react";
 import { getApiBaseUrl } from "@/lib/utils";
+import { ToolPageLayout } from "@/components/Layouts/ToolPageLayout";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { QuickLinks, WorkflowSection } from "@/components/workflow";
+import { InsightCallout } from "@/components/dashboard";
+import { FileText } from "lucide-react";
 
 interface LOAFormData {
   business_name: string;
@@ -212,64 +218,26 @@ export default function BlankLOAClientCreationPage() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto mt-10 p-6 bg-white rounded-lg shadow-lg">
-      <h1 className="text-3xl font-bold mb-8 text-gray-800">New Client Creation - LOA Generation</h1>
-      
-       {/* Links Section */}
-      <div className="mb-6 bg-gray-50 border border-gray-200 rounded-lg p-4">
-        <h2 className="text-lg font-semibold text-gray-700 mb-2">🔗 Quick Access</h2>
-        <ul className="text-sm text-gray-600 space-y-1">
-          <li>
-            <span className="font-medium">Folder Link:</span>{' '}
-            <a
-              href="https://drive.google.com/drive/folders/1YQR8i2BOO8CGoztPT8e56Rx-2ZmtitiK"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-600 hover:underline"
-            >
-              Google Drive Folder
-            </a>
-          </li>
-          <li>
-            <span className="font-medium">Google Doc:</span>{' '}
-            <a
-              href="https://docs.google.com/document/d/14WVZD6bjBf34kKyQVy_xcPqGkbLbmimVHrcZaYJQDQ8/edit?tab=t.0"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-600 hover:underline"
-            >
-              Blank LOA Template
-            </a>
-          </li>
-          <li>
-            <span className="font-medium">PDF:</span>{' '}
-            <a
-              href="https://drive.google.com/file/d/10Fk9Vbhnud8XYrbw9IL6QvQrAQXif9UO/view?usp=drive_link" 
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-600 hover:underline"
-            >
-              Downloadable Blank LOA (PDF)
-            </a>
-          </li>
-        </ul>
-        <p className="text-xs text-gray-500 mt-2">
-          Use these if client details are unavailable and you need a blank LOA to send.
-        </p>
-      </div>
+    <ToolPageLayout
+      pageName="New member LOA"
+      title="New client LOA generation"
+      description="Create a Letter of Authority for a new client not yet in the system."
+      width="xl"
+    >
+      <QuickLinks
+        links={[
+          { label: "Google Drive folder", href: "https://drive.google.com/drive/folders/1YQR8i2BOO8CGoztPT8e56Rx-2ZmtitiK", description: "Client templates" },
+          { label: "Blank LOA template (Google Doc)", href: "https://docs.google.com/document/d/14WVZD6bjBf34kKyQVy_xcPqGkbLbmimVHrcZaYJQDQ8/edit?tab=t.0" },
+          { label: "Blank LOA (PDF)", href: "https://drive.google.com/file/d/1rNKhQ7__oJT-O_sxCv15BuB58xjM63oJ/view?usp=drive_link" },
+        ]}
+      />
 
-      <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
-        <h2 className="text-lg font-semibold text-blue-800 mb-2">
-          📄 Letter of Authority
-        </h2>
-        <p className="text-blue-700 text-sm">
-          Create a Letter of Authority for a new client by filling out all their business
-          information below. This document authorizes ACES to act on behalf of the business.
-        </p>
-      </div>
+      <InsightCallout title="Letter of Authority" icon={<FileText className="text-primary" />}>
+        Fill in business details below to generate an LOA that authorizes Carbon Zero Australasia to act on behalf of the client.
+      </InsightCallout>
 
-      {/* Business Information Form */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+      <WorkflowSection title="Business information" step={1}>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div>
           <label className="block font-medium mb-2 text-gray-700">
             Business Name *
@@ -409,61 +377,51 @@ export default function BlankLOAClientCreationPage() {
           />
         </div>
       </div>
+      </WorkflowSection>
 
-      {/* Submit Buttons */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-        <button
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <Button
           onClick={handleSubmit}
           disabled={loading || loadingBoth || !isFormValid()}
-          className="w-full px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-lg font-medium"
+          loading={loading}
+          className="w-full"
+          size="lg"
         >
-          {loading ? "Generating LOA..." : "Generate Letter of Authority"}
-        </button>
-        <button
+          Generate letter of authority
+        </Button>
+        <Button
           onClick={handleSubmitBoth}
           disabled={loading || loadingBoth || !isFormValid()}
-          className="w-full px-6 py-3 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-lg font-medium"
+          loading={loadingBoth}
+          variant="secondary"
+          className="w-full"
+          size="lg"
         >
-          {loadingBoth ? "Generating LOA & SFA..." : "Generate LOA & SFA"}
-        </button>
+          Generate LOA & SFA
+        </Button>
       </div>
 
-      {/* Result Display */}
       {result && (
-        <div className="mt-8 p-4 rounded-md">
-          <div 
-            className={`whitespace-pre-wrap text-sm ${
-              result.includes("✅") ? "text-green-700 bg-green-50 border border-green-200" : "text-red-700 bg-red-50 border border-red-200"
-            } p-4 rounded`}
-            dangerouslySetInnerHTML={{ 
+        <Card className="mt-4">
+          <CardContent className="pt-6">
+          <div
+            className={`whitespace-pre-wrap text-sm rounded-xl p-4 ${
+              result.includes("✅") ? "text-green-800 bg-green-50 border border-green-200 dark:bg-green-900/20 dark:text-green-200" : "text-red-800 bg-red-50 border border-red-200 dark:bg-red-900/20 dark:text-red-200"
+            }`}
+            dangerouslySetInnerHTML={{
               __html: result
                 .replace(/\n/g, '<br/>')
                 .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                .replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-blue-600 underline">$1</a>')
+                .replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-primary underline">$1</a>')
             }}
           />
-        </div>
+          </CardContent>
+        </Card>
       )}
 
-      {/* Instructions */}
-      <div className="mt-8 p-4 bg-gray-50 rounded-md">
-        <h3 className="font-medium text-gray-800 mb-2">Instructions:</h3>
-        <ul className="text-sm text-gray-600 space-y-1">
-          <li>1. Fill in all required business information fields</li>
-          <li>2. The "Trading As" field will auto-populate with the business name</li>
-          <li>3. Ensure email and Google Drive folder URL are valid</li>
-          <li>4. Click "Generate" to create the Letter of Authority</li>
-          <li>5. The LOA will be saved to the specified Google Drive folder</li>
-          <li>6. Use this for new clients who aren't in the system yet</li>
-        </ul>
-
-        <div className="mt-4 p-3 bg-yellow-50 rounded border border-yellow-200">
-          <p className="text-sm text-yellow-700">
-            ⚠️ <strong>Note:</strong> This page is for creating LOAs for completely new clients. 
-            If the business information already exists in the system, use the main "Document Generation" page instead.
-          </p>
-        </div>
-      </div>
-    </div>
+      <InsightCallout variant="warning" title="Note">
+        This page is for completely new clients. If the business already exists in the system, use Document Generation instead.
+      </InsightCallout>
+    </ToolPageLayout>
   );
 }

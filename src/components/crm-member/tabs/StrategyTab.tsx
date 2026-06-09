@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { getApiBaseUrl } from "@/lib/utils";
 import { Card, CardContent } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { SectionHeader } from "../shared/SectionHeader";
 import { Dropdown, DropdownContent, DropdownTrigger } from "@/components/ui/dropdown";
 import { useToast } from "@/components/ui/toast";
 import type { StrategyItem, StrategySection, Client, ClientReferral } from "../types";
@@ -67,7 +69,12 @@ const SECTIONS: { key: StrategySection; label: string; description: string }[] =
   },
 ];
 
-export function StrategyTab({ clientId, client, onSaveAdvocateMeeting, savingAdvocateMeeting = false }: StrategyTabProps) {
+export function StrategyTab({
+  clientId,
+  client,
+  onSaveAdvocateMeeting,
+  savingAdvocateMeeting = false,
+}: StrategyTabProps) {
   const { data: session } = useSession();
   const token =
     (session as { id_token?: string; accessToken?: string })?.id_token ??
@@ -647,7 +654,7 @@ export function StrategyTab({ clientId, client, onSaveAdvocateMeeting, savingAdv
 
   if (!hasToken) {
     return (
-      <Card className="border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+      <Card className="p-0">
         <CardContent className="p-4">
           <p className="text-sm text-gray-500 dark:text-gray-400">
             You must be logged in to view and edit Strategy &amp; WIP.
@@ -659,45 +666,42 @@ export function StrategyTab({ clientId, client, onSaveAdvocateMeeting, savingAdv
 
   return (
     <div className="space-y-4">
-      <Card className="border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
-        <CardContent className="p-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-100">
-              Strategy &amp; WIP
-            </h2>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              Structured view of this member&apos;s Strategy &amp; WIP template, with full
-              manual control over rows.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-gray-500 dark:text-gray-400" htmlFor="strategy-year">
-              Year
-            </label>
-            <input
-              id="strategy-year"
-              type="number"
-              value={year}
-              onChange={(e) => setYear(parseInt(e.target.value || String(currentYear), 10))}
-              className="w-20 px-2 py-1 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-xs text-gray-900 dark:text-gray-100"
-            />
-            <button
-              type="button"
-              onClick={handleSyncFromCrm}
-              disabled={syncFromCrmLoading || loading}
-              className="rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:pointer-events-none"
-            >
-              {syncFromCrmLoading ? "Syncing…" : "Sync from CRM"}
-            </button>
-            <button
-              type="button"
-              onClick={handleDownloadCsv}
-              disabled={downloadCsvLoading || loading}
-              className="rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:pointer-events-none"
-            >
-              {downloadCsvLoading ? "Downloading…" : "Download CSV"}
-            </button>
-          </div>
+      <Card className="p-0">
+        <CardContent className="p-4">
+          <SectionHeader
+            title="Strategy & WIP"
+            subtitle="Structured view of this member's Strategy & WIP template, with full manual control over rows."
+            actions={
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="text-xs text-gray-500 dark:text-gray-400" htmlFor="strategy-year">
+                  Year
+                </label>
+                <input
+                  id="strategy-year"
+                  type="number"
+                  value={year}
+                  onChange={(e) => setYear(parseInt(e.target.value || String(currentYear), 10))}
+                  className="w-20 px-2 py-1 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-xs text-gray-900 dark:text-gray-100"
+                />
+                <button
+                  type="button"
+                  onClick={handleSyncFromCrm}
+                  disabled={syncFromCrmLoading || loading}
+                  className="rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:pointer-events-none"
+                >
+                  {syncFromCrmLoading ? "Syncing…" : "Sync from CRM"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDownloadCsv}
+                  disabled={downloadCsvLoading || loading}
+                  className="rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:pointer-events-none"
+                >
+                  {downloadCsvLoading ? "Downloading…" : "Download CSV"}
+                </button>
+              </div>
+            }
+          />
         </CardContent>
       </Card>
 
@@ -708,7 +712,7 @@ export function StrategyTab({ clientId, client, onSaveAdvocateMeeting, savingAdv
       )}
 
       {loading && items.length === 0 ? (
-        <Card className="border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+        <Card className="p-0">
           <CardContent className="p-4 text-sm text-gray-500 dark:text-gray-400">
             Loading strategy items...
           </CardContent>
@@ -744,12 +748,21 @@ export function StrategyTab({ clientId, client, onSaveAdvocateMeeting, savingAdv
                 className="border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
               >
                 <CardContent className="p-4 space-y-3">
-                  <div>
-                    <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100">
-                      {section.label}
-                    </h3>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                      {section.description}
+                  <SectionHeader
+                    title={section.label}
+                    subtitle={section.description}
+                    as="h3"
+                  />
+
+                  {/* Sustainability reporting — configured on Climate tab */}
+                  <div className="rounded-lg border border-gray-100 dark:border-gray-800 p-4 bg-gray-50/50 dark:bg-gray-800/30">
+                    <p className="text-xs text-gray-600 dark:text-gray-400">
+                      <strong className="font-semibold text-gray-800 dark:text-gray-200">
+                        Sustainability reporting entity
+                      </strong>{" "}
+                      (A1 slug for Prograde) is set on the{" "}
+                      <strong className="font-semibold">Climate</strong> tab — required for linked utilities sync
+                      and disclosure workspace.
                     </p>
                   </div>
 
@@ -812,7 +825,7 @@ export function StrategyTab({ clientId, client, onSaveAdvocateMeeting, savingAdv
                           })
                         }
                         disabled={savingAdvocateMeeting}
-                        className="ml-auto px-4 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:opacity-90 disabled:opacity-50"
+                        className="ml-auto px-4 py-2 rounded-full bg-primary text-white text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
                       >
                         {savingAdvocateMeeting ? "Saving…" : "Save Meeting Details"}
                       </button>
@@ -879,7 +892,7 @@ export function StrategyTab({ clientId, client, onSaveAdvocateMeeting, savingAdv
                                 </DropdownTrigger>
                                 <DropdownContent
                                   align="start"
-                                  className="min-w-[200px] max-w-[320px] rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 shadow-lg overflow-hidden p-0"
+                                  className="min-w-[200px] max-w-[320px] rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 shadow-md overflow-hidden p-0"
                                 >
                                   <div className="p-2 border-b border-gray-100 dark:border-gray-700">
                                     <input
@@ -969,7 +982,7 @@ export function StrategyTab({ clientId, client, onSaveAdvocateMeeting, savingAdv
                                   handleSaveReferral(ref, v.advocate_client_id, v.advocate_business_name, v.active)
                                 }
                                 disabled={savingReferralId === ref.id}
-                                className="px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-medium hover:opacity-90 disabled:opacity-50"
+                                className="px-3 py-1.5 rounded-full bg-primary text-white text-xs font-medium hover:opacity-90 disabled:opacity-50"
                               >
                                 {savingReferralId === ref.id ? "Saving…" : "Save"}
                               </button>
@@ -1008,14 +1021,11 @@ export function StrategyTab({ clientId, client, onSaveAdvocateMeeting, savingAdv
             >
               <CardContent className="p-4 space-y-3">
                 <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                  <div>
-                    <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100">
-                      {section.label}
-                    </h3>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                      {section.description}
-                    </p>
-                  </div>
+                  <SectionHeader
+                    title={section.label}
+                    subtitle={section.description}
+                    as="h3"
+                  />
                   <div className="flex items-center gap-3">
                     <div className="text-[11px] text-gray-500 dark:text-gray-400">
                       <span className="font-semibold">Rows:</span> {rows.length}
@@ -1037,9 +1047,10 @@ export function StrategyTab({ clientId, client, onSaveAdvocateMeeting, savingAdv
                 </div>
 
                 {rows.length === 0 ? (
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    No rows yet for this section.
-                  </p>
+                  <EmptyState
+                    title="No rows yet for this section."
+                    className="py-6 items-start text-left [&_h3]:text-sm [&_h3]:font-normal [&_h3]:text-gray-500 [&_h3]:dark:text-gray-400 [&_h3]:mb-0"
+                  />
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="min-w-full text-xs border border-gray-100 dark:border-gray-800">
@@ -1331,7 +1342,7 @@ export function StrategyTab({ clientId, client, onSaveAdvocateMeeting, savingAdv
                       <button
                         type="submit"
                         disabled={saving}
-                        className="px-3 py-1.5 rounded-md bg-primary text-white text-xs font-medium shadow-sm hover:bg-primary/90 disabled:opacity-50"
+                        className="px-3 py-1.5 rounded-full bg-primary text-white text-xs font-medium shadow-sm hover:bg-primary/90 disabled:opacity-50"
                       >
                         {saving ? "Saving..." : form.id != null ? "Save changes" : "Add row"}
                       </button>
@@ -1359,22 +1370,23 @@ export function StrategyTab({ clientId, client, onSaveAdvocateMeeting, savingAdv
       </div>
 
       {showRemovedFromWip && (
-        <Card className="border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+        <Card className="p-0">
           <CardContent className="p-4 space-y-2">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100">
-                Removed from WIP (offer still tracked)
-              </h3>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowRemovedFromWip(false);
-                }}
-                className="text-xs text-gray-500 hover:underline"
-              >
-                Hide
-              </button>
-            </div>
+            <SectionHeader
+              title="Removed from WIP (offer still tracked)"
+              as="h3"
+              actions={
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowRemovedFromWip(false);
+                  }}
+                  className="text-xs text-gray-500 hover:underline"
+                >
+                  Hide
+                </button>
+              }
+            />
             {removedLoading ? (
               <p className="text-xs text-gray-500 dark:text-gray-400">Loading...</p>
             ) : removedItems.length === 0 ? (

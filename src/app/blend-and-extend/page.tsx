@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { getApiBaseUrl } from "@/lib/utils";
+import { ToolPageLayout } from "@/components/Layouts/ToolPageLayout";
 
 const BE_SUPPLIER_OPTIONS = ["Origin C&I", "Alinta C&I", "Shell C&I", "Momentum C&I", "Data Quote"] as const;
 
@@ -1003,20 +1004,22 @@ export default function BlendExtendRequestPage() {
   if (utility && utility !== "electricity_ci") {
     const qs = searchParams.toString();
     return (
-      <div className="min-h-screen bg-gray-50 p-6">
-        <div className="max-w-xl mx-auto bg-white rounded-lg shadow border p-6">
-          <h1 className="text-xl font-semibold text-gray-900 mb-2">Blend &amp; extend (B&amp;E)</h1>
-          <p className="text-gray-700 mb-4">
-            B&amp;E requests are only available for <strong>C&amp;I electricity</strong>. Use the standard quote request for other utilities.
+      <ToolPageLayout
+        pageName="Blend & Extend"
+        title="Blend & extend (B&E)"
+        description="B&E requests are only available for C&I electricity."
+        width="md"
+      >
+          <p className="text-gray-700 dark:text-gray-300 mb-4">
+            Use the standard quote request for other utilities.
           </p>
           <a
             href={`/quote-request${qs ? `?${qs}` : ""}`}
-            className="inline-block px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            className="inline-flex items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary/85 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:-translate-y-0.5 hover:shadow-md"
           >
             Open quote request
           </a>
-        </div>
-      </div>
+      </ToolPageLayout>
     );
   }
 
@@ -1024,15 +1027,13 @@ export default function BlendExtendRequestPage() {
   console.log('Debug - filteredUtilityResult:', filteredUtilityResult);
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-6xl mx-auto p-6 space-y-6">
-        <div className="bg-white rounded-lg shadow-sm border">
-          <div className="p-6 border-b">
-            <h1 className="text-3xl font-bold text-gray-900">Blend &amp; extend (B&amp;E)</h1>
-            <p className="text-gray-600 mt-2 text-sm">
-              Sent only to your current C&amp;I electricity retailer. Contract options are years added to the existing agreement (not a multi-retailer market quote).
-            </p>
-          </div>
+    <ToolPageLayout
+      pageName="Blend & extend"
+      title="Blend & extend (B&E)"
+      description="Sent only to your current C&I electricity retailer. Contract options are years added to the existing agreement."
+      width="2xl"
+    >
+        <div className="rounded-2xl border border-stroke bg-white shadow-sm dark:border-dark-3 dark:bg-gray-dark">
 
           {/* Business Information */}
           {businessInfo && Object.keys(businessInfo).length > 0 && (
@@ -1461,7 +1462,7 @@ export default function BlendExtendRequestPage() {
               <button 
                 onClick={handleSendQuoteRequest}
                 disabled={selectedRetailers.length === 0}
-                className="px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:bg-blue-400 disabled:cursor-not-allowed"
+                className="px-6 py-3 bg-primary text-white font-medium rounded-lg hover:bg-primary/90 transition-colors disabled:bg-blue-400 disabled:cursor-not-allowed"
               >
                 {selectedRetailers.length === 0 ? 'Set B&E recipient first' : 'Send B&E request'}
               </button>
@@ -1685,7 +1686,7 @@ export default function BlendExtendRequestPage() {
                   <button
                     onClick={handleSubmitQuoteRequest}
                     disabled={loading}
-                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-blue-400 disabled:cursor-not-allowed"
+                    className="flex-1 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors disabled:bg-blue-400 disabled:cursor-not-allowed"
                   >
                     {loading ? 'Sending...' : 'Confirm & Send'}
                   </button>
@@ -1744,7 +1745,6 @@ export default function BlendExtendRequestPage() {
             </div>
           )}
         </div>
-      </div>
-    </div>
+    </ToolPageLayout>
   );
 }

@@ -46,7 +46,7 @@ export default function DigitalInboundReceptionistOnePager() {
                 <p className="text-gray-600">
                   Based on the caller's enquiry, the system routes the call to the appropriate specialist agent:
                   <ul className="list-disc list-inside mt-2 space-y-1 text-gray-600">
-                    <li><strong>ACES Receptionist (Mary):</strong> Primary receptionist handling general enquiries and transfers</li>
+                    <li><strong>Carbon Zero Receptionist (Mary):</strong> Primary receptionist handling general enquiries and transfers</li>
                     <li><strong>Energy Expert (Alex):</strong> Specialized agent for commercial & industrial electricity and gas enquiries</li>
                     <li><strong>Cleaning Expert (George):</strong> Specialized agent for autonomous cleaning robot enquiries</li>
                   </ul>
@@ -89,7 +89,7 @@ export default function DigitalInboundReceptionistOnePager() {
           
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="p-6 bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg border border-purple-200">
-              <h3 className="font-bold text-purple-800 mb-3 text-lg">ACES Receptionist (Mary)</h3>
+              <h3 className="font-bold text-purple-800 mb-3 text-lg">Carbon Zero Receptionist (Mary)</h3>
               <p className="text-gray-700 text-sm mb-4">
                 Primary voice assistant handling all incoming calls, client enquiries, and transfers to specialist departments.
               </p>
@@ -220,7 +220,7 @@ export default function DigitalInboundReceptionistOnePager() {
               <div className="flex items-start gap-3">
                 <span className="font-bold text-purple-600">Mary answers:</span>
                 <div>
-                  <p>"Hello, thank you for calling ACES. How can I help you today?"</p>
+                  <p>"Hello, thank you for calling Carbon Zero Australasia. How can I help you today?"</p>
                   <p className="text-sm text-gray-600 mt-1">
                     Caller explains they have questions about their electricity bill.
                   </p>
@@ -305,7 +305,7 @@ export default function DigitalInboundReceptionistOnePager() {
         <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg p-8 border border-purple-200 text-center">
           <h2 className="text-2xl font-bold text-gray-800 mb-4">Ready to Enhance Your Call Handling?</h2>
           <p className="text-gray-600 mb-6 max-w-2xl mx-auto">
-            Contact ACES to learn more about how the Digital Inbound Receptionist can transform your 
+            Contact Carbon Zero Australasia to learn more about how the Digital Inbound Receptionist can transform your 
             customer service operations with 24/7 AI-powered call handling.
           </p>
           <a

@@ -3,6 +3,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { SectionHeader } from "../shared/SectionHeader";
 import { useToast } from "@/components/ui/toast";
 import {
   CalculateOneMonthSavingsModal,
@@ -29,7 +31,7 @@ export interface SavingsTabProps {
   businessInfo: Record<string, unknown> | null;
 }
 
-/** Utility type as in Member ACES Data sheet / backend */
+/** Utility type as in member data sheet / backend */
 const UTILITY_SHEET_MAP: Record<string, string> = {
   "C&I Electricity": "C&I Electricity",
   "SME Electricity": "SME Electricity",
@@ -270,47 +272,43 @@ export function SavingsTab({ businessInfo }: SavingsTabProps) {
       if (data.document_link) window.open(data.document_link, "_blank");
       showToast(data.message || "Testimonial generated.", "success");
       setCalculateModalOpen(false);
-      if (pathname) router.push(`${pathname}?tab=testimonials`);
+      if (pathname) router.push(`${pathname}?tab=commercial&subtab=testimonials`);
     } catch (e: unknown) {
       showToast(e instanceof Error ? e.message : "Failed to generate testimonial", "error");
     }
   };
 
   return (
-    <Card className="border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+    <Card className="p-0">
       <CardContent className="p-4 space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-100">
-              1st Month Savings
-            </h2>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              View and generate 1st Month Savings invoices for this member.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setCalculateModalOpen(true);
-              }}
-              disabled={linkedUtilityOptions.length === 0}
-              className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
-              title={linkedUtilityOptions.length === 0 ? "Link utilities in Business Info first" : "Calculate from Member ACES Data sheet"}
-            >
-              <IconCalculator />
-              Calculate 1 month savings
-            </button>
-            <button
-              type="button"
-              onClick={handleOpenOneMonthSavings}
-              className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
-            >
-              <IconPlus />
-              Generate invoice
-            </button>
-          </div>
-        </div>
+        <SectionHeader
+          title="1st Month Savings"
+          subtitle="View and generate 1st Month Savings invoices for this member."
+          actions={
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  setCalculateModalOpen(true);
+                }}
+                disabled={linkedUtilityOptions.length === 0}
+                className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+                title={linkedUtilityOptions.length === 0 ? "Link utilities in Business Info first" : "Calculate from member data sheet"}
+              >
+                <IconCalculator />
+                Calculate 1 month savings
+              </button>
+              <button
+                type="button"
+                onClick={handleOpenOneMonthSavings}
+                className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
+              >
+                <IconPlus />
+                Generate invoice
+              </button>
+            </>
+          }
+        />
 
         {!businessName ? (
           <p className="text-sm text-gray-400">
@@ -323,18 +321,20 @@ export function SavingsTab({ businessInfo }: SavingsTabProps) {
         ) : savingsError ? (
           <p className="text-sm text-red-500">{savingsError}</p>
         ) : invoices.length === 0 ? (
-          <div className="text-sm text-gray-400">
-            No 1st Month Savings invoices recorded yet.
-            <br />
-            <button
-              type="button"
-              onClick={handleOpenOneMonthSavings}
-              className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
-            >
-              <IconPlus />
-              Create the first invoice
-            </button>
-          </div>
+          <EmptyState
+            title="No 1st Month Savings invoices recorded yet."
+            className="py-6 items-start text-left [&_h3]:text-sm [&_h3]:font-normal [&_h3]:text-gray-400 [&_h3]:mb-0"
+            action={
+              <button
+                type="button"
+                onClick={handleOpenOneMonthSavings}
+                className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
+              >
+                <IconPlus />
+                Create the first invoice
+              </button>
+            }
+          />
         ) : (
           <div className="space-y-3">
             {latestInvoice && (

@@ -15,6 +15,8 @@ export interface Client {
   advocacy_meeting_date?: string | null;
   advocacy_meeting_time?: string | null;
   advocacy_meeting_completed?: boolean;
+  /** A1 entity_id slug — many members may share one reporting entity */
+  reporting_entity?: string | null;
 }
 
 export interface Note {
@@ -138,16 +140,12 @@ export interface StrategyItem {
 
 export type MemberTab =
   | "overview"
-  | "documents"
+  | "commercial"
   | "utilities"
-  | "offers"
-  | "savings"
-  | "testimonials"
+  | "documents"
   | "activity"
-  | "notes"
-  | "tools"
   | "solutions"
-  | "strategy";
+  | "climate";
 
 export interface ClientReferral {
   id: number;

@@ -240,7 +240,7 @@ export default function TestimonialContentPage() {
                       type="button"
                       onClick={() => handleSave(selectedItem)}
                       disabled={savingId === selectedItem.solution_type}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-primary text-white hover:opacity-90 disabled:opacity-50"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary text-white hover:bg-primary/90 disabled:opacity-50"
                     >
                       {savingId === selectedItem.solution_type ? "Saving…" : "Save overrides"}
                     </button>

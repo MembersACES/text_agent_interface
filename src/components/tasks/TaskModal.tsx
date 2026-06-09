@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { getApiBaseUrl } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
 type TaskModalMode = "create" | "edit";
 
@@ -514,27 +515,12 @@ export function TaskModal({
             </div>
 
             <div className="flex justify-end gap-3 mt-6">
-              <button
-                type="button"
-                onClick={handleClose}
-                className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                disabled={submitting}
-              >
+              <Button type="button" variant="secondary" onClick={handleClose} disabled={submitting}>
                 Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={submitting}
-                className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {submitting
-                  ? mode === "create"
-                    ? "Creating..."
-                    : "Updating..."
-                  : mode === "create"
-                  ? "Create Task"
-                  : "Update Task"}
-              </button>
+              </Button>
+              <Button type="submit" disabled={submitting} loading={submitting}>
+                {mode === "create" ? "Create task" : "Update task"}
+              </Button>
             </div>
           </form>
         </div>

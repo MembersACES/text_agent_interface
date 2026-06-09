@@ -5,6 +5,9 @@ import { useSession } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
 import { getApiBaseUrl } from "@/lib/utils";
 import { signIn } from "next-auth/react";
+import { ToolPageLayout } from "@/components/Layouts/ToolPageLayout";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 
 interface ContractTypes {
   contracts: string[];
@@ -759,9 +762,12 @@ useEffect(() => {
   };
 
   return (
-    <div className="max-w-2xl mx-auto mt-10 p-6 bg-white rounded-lg shadow-lg">
-      <h1 className="text-2xl font-bold mb-6 text-gray-800">Signed Agreement Lodgement</h1>
-
+    <ToolPageLayout
+      pageName="Signed Agreement Lodgement"
+      title="Signed agreement lodgement"
+      description="Submit signed contracts or EOIs for supplier notification and filing."
+      width="md"
+    >
       {/* Agreement Type Selection */}
       <div className="mb-6">
         <label className="block font-medium mb-2 text-gray-700">Agreement Type</label>
@@ -972,8 +978,7 @@ useEffect(() => {
         )}
       </div>
 
-      {/* Submit Button */}
-      <button
+      <Button
         onClick={handleSubmit}
         disabled={
           loading || 
@@ -982,37 +987,24 @@ useEffect(() => {
           !contractType || 
           !businessName.trim()
         }
-        className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        loading={loading}
+        className="w-full"
       >
-        {loading ? "Submitting..." : `Submit Signed ${agreementType === "contract" ? "Contract" : "EOI"}${multipleAttachments ? "s" : ""}`}
-      </button>
+        {`Submit signed ${agreementType === "contract" ? "contract" : "EOI"}${multipleAttachments ? "s" : ""}`}
+      </Button>
 
-      {/* Result Display */}
       {result && (
-        <div className="mt-6 p-4 rounded-md">
+        <Card className="mt-6">
+          <CardContent className="pt-6">
           <div 
-            className={`whitespace-pre-wrap text-sm ${
-              result.includes("✅") ? "text-green-700 bg-green-50 border border-green-200" : "text-red-700 bg-red-50 border border-red-200"
-            } p-3 rounded`}
+            className={`whitespace-pre-wrap text-sm rounded-xl p-4 ${
+              result.includes("✅") ? "text-green-800 bg-green-50 border border-green-200" : "text-red-800 bg-red-50 border border-red-200"
+            }`}
             dangerouslySetInnerHTML={{ __html: result.replace(/\n/g, '<br/>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') }}
           />
-        </div>
+          </CardContent>
+        </Card>
       )}
-
-      {/* Instructions */}
-      <div className="mt-6 p-4 bg-gray-50 rounded-md">
-        <h3 className="font-medium text-gray-800 mb-2">Instructions:</h3>
-        <ul className="text-sm text-gray-600 space-y-1">
-          <li>1. Select whether you're submitting a Contract or EOI</li>
-          <li>2. {agreementType === "contract" && "For contracts, optionally enable 'Multiple Attachments' to upload several agreements at once"}</li>
-          <li>{agreementType === "contract" ? "3" : "2"}. Choose the utility type/size (e.g., "C&I Electricity") or service category</li>
-          <li>{agreementType === "contract" ? "4" : "3"}. Select the specific supplier or service</li>
-          <li>{agreementType === "contract" ? "5" : "4"}. Enter the business name</li>
-          <li>{agreementType === "contract" ? "6" : "5"}. Optionally enter the NMI (electricity/DMA) or MIRN (gas) if applicable</li>
-          <li>{agreementType === "contract" ? "7" : "6"}. Upload the signed PDF agreement{multipleAttachments ? "s" : ""}</li>
-          <li>{agreementType === "contract" ? "8" : "7"}. The system will automatically email the supplier and file the document{multipleAttachments ? "s" : ""}</li>
-        </ul>
-      </div>
-    </div>
+    </ToolPageLayout>
   );
 }

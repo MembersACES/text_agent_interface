@@ -3,6 +3,15 @@ import { useSession } from "next-auth/react";
 import ReactMarkdown from 'react-markdown';
 import { getApiBaseUrl } from "@/lib/utils";
 import { formatBackendErrorBody } from "@/lib/api-errors";
+import { ToolPageLayout } from "@/components/Layouts/ToolPageLayout";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
+import { InsightCallout } from "@/components/dashboard";
+import { AlertCircle } from "lucide-react";
 
 // Normalize document link before sending to API: strip leading =, fix https:/ → https://.
 function normalizeDocumentLink(link: string | undefined): string | undefined {
@@ -3737,67 +3746,67 @@ Total Savings Over ${formData.periodYears} Years: ${formatCurrency(calculations.
 }
 
 function ResultMessage({ message }: { message: string }) {
-  // Split into lines and process
   const lines = message
     .split('\n')
     .filter((line: string) => !line.includes('Request ID') && !line.includes('LOA File ID'));
 
-  // Helper to bold key labels and highlight key data
   function formatLine(line: string) {
-    // Bold key labels
     let formatted = line
       .replace(/^(Business|Service Type|Account|Subject|Sent to|Supplier):/g, '**$1:**');
-    // Highlight key data
-    formatted = formatted.replace(/^(Business|Service Type|Account): (.*)$/g, '**$1:** <span style="background:#f0f6ff;padding:2px 6px;border-radius:4px;font-weight:600;">$2</span>');
-    // Make emails clickable
+    formatted = formatted.replace(/^(Business|Service Type|Account): (.*)$/g, '**$1:** <span class="rounded bg-primary/10 px-1.5 py-0.5 font-semibold text-dark dark:text-white">$2</span>');
     if (formatted.startsWith('**Sent to:**')) {
-      formatted = formatted.replace(/([\w.-]+@[\w.-]+\.[A-Za-z]{2,})/g, '<a href="mailto:$1" style="color:#2563eb;text-decoration:underline;">$1</a>');
+      formatted = formatted.replace(/([\w.-]+@[\w.-]+\.[A-Za-z]{2,})/g, '<a href="mailto:$1" class="text-primary underline">$1</a>');
     }
     return formatted;
   }
 
-  // Section headers with icons and larger font
   function sectionHeader(line: string) {
     if (/^\s*Request Details:?\s*$/i.test(line)) {
-      return <div style={{ marginTop: 18, marginBottom: 6, fontWeight: 700, fontSize: 18, display: 'flex', alignItems: 'center' }}><span style={{ marginRight: 8 }}>📄</span>Request Details:</div>;
+      return (
+        <div className="mt-4 mb-2 flex items-center text-lg font-bold text-dark dark:text-white">
+          <span className="mr-2">📄</span>Request Details:
+        </div>
+      );
     }
     if (/^\s*Email Information:?\s*$/i.test(line)) {
-      return <div style={{ marginTop: 18, marginBottom: 6, fontWeight: 700, fontSize: 18, display: 'flex', alignItems: 'center' }}><span style={{ marginRight: 8 }}>✉️</span>Email Information:</div>;
+      return (
+        <div className="mt-4 mb-2 flex items-center text-lg font-bold text-dark dark:text-white">
+          <span className="mr-2">✉️</span>Email Information:
+        </div>
+      );
     }
     return null;
   }
 
-  // Find first non-empty line (success)
   const firstLineIdx = lines.findIndex(l => l.trim());
-  // Find warning line(s)
   const warningIdx = lines.findIndex(l => l.includes('Note:'));
 
   return (
-    <div style={{ fontFamily: 'inherit', textAlign: 'left' }}>
+    <div className="text-left font-[inherit]">
       {lines.map((line, idx) => {
         if (idx === firstLineIdx) {
-          // Success line
           return (
-            <div key={idx} style={{ background: '#e6f9ed', color: '#217a4a', padding: 10, borderRadius: 6, marginBottom: 10, fontWeight: 600, fontSize: 17, display: 'flex', alignItems: 'center' }}>
-              <span style={{ fontSize: 22, marginRight: 8 }}>✅</span>
+            <div key={idx} className="mb-3 flex items-center rounded-xl border border-brand-disclosure/30 bg-brand-disclosure/10 px-4 py-3 text-base font-semibold text-emerald-800 dark:text-emerald-200">
+              <span className="mr-2 text-xl">✅</span>
               <span>{line.replace(/^✅ /, '')}</span>
             </div>
           );
         }
         if (idx === warningIdx) {
-          // Warning line
           return (
-            <div key={idx} style={{ background: '#fffbe6', color: '#b38600', padding: 10, borderRadius: 6, marginTop: 16, fontWeight: 500, border: '1px solid #ffe58f', display: 'flex', alignItems: 'center' }}>
-              <span style={{ fontSize: 20, marginRight: 8 }}>⚠️</span>
+            <div key={idx} className="mt-4 flex items-center rounded-xl border border-semantic-flag/30 bg-semantic-flag/10 px-4 py-3 font-medium text-amber-800 dark:text-amber-200">
+              <span className="mr-2 text-lg">⚠️</span>
               <span>{line.replace(/^⚠️ /, '')}</span>
             </div>
           );
         }
-        // Section headers
         const header = sectionHeader(line);
         if (header) return <div key={idx}>{header}</div>;
-        // Normal line (with markdown and custom HTML)
-        return <div key={idx} style={{ marginBottom: 3 }}><ReactMarkdown components={{ span: ({node, ...props}) => <span {...props} dangerouslySetInnerHTML={{__html: props.children as string}} /> }}>{formatLine(line)}</ReactMarkdown></div>;
+        return (
+          <div key={idx} className="mb-1 text-sm text-gray-700 dark:text-gray-300">
+            <ReactMarkdown components={{ span: ({node, ...props}) => <span {...props} dangerouslySetInnerHTML={{__html: props.children as string}} /> }}>{formatLine(line)}</ReactMarkdown>
+          </div>
+        );
       })}
     </div>
   );
@@ -5838,20 +5847,22 @@ function InvoiceResult({ result, session, token, autoOpenDMA = false, autoExpand
   if (!type) {
     console.warn('⚠️ InvoiceResult - No matching invoice type found. Result keys:', Object.keys(result || {}));
     return (
-      <div style={{ marginTop: 20, background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', padding: 16 }}>
-        <div style={{ color: '#dc2626', fontWeight: 600, marginBottom: 12 }}>
-          ⚠️ No matching invoice type found in result
-        </div>
-        <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>
-          Available keys in result: {Object.keys(result || {}).join(', ') || 'none'}
-        </div>
-        <details style={{ marginTop: 12 }}>
-          <summary style={{ cursor: 'pointer', color: '#2563eb', fontWeight: 600 }}>View Full Result</summary>
-          <pre style={{ background: '#f4f4f4', padding: 12, borderRadius: 6, marginTop: 8, overflow: 'auto', maxHeight: '400px' }}>
-            {JSON.stringify(result, null, 2)}
-          </pre>
-        </details>
-      </div>
+      <Card className="mt-5">
+        <CardContent className="pt-6">
+          <p className="font-semibold text-red-600 dark:text-red-400 mb-3">
+            No matching invoice type found in result
+          </p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+            Available keys in result: {Object.keys(result || {}).join(', ') || 'none'}
+          </p>
+          <details className="mt-3">
+            <summary className="cursor-pointer text-sm font-semibold text-primary">View full result</summary>
+            <pre className="mt-2 max-h-[400px] overflow-auto rounded-xl bg-gray/50 p-3 text-xs dark:bg-dark-2">
+              {JSON.stringify(result, null, 2)}
+            </pre>
+          </details>
+        </CardContent>
+      </Card>
     );
   }
   
@@ -5878,24 +5889,24 @@ function InvoiceResult({ result, session, token, autoOpenDMA = false, autoExpand
     
     if (isLink) {
       return (
-        <div style={{ background: '#f8fafc', padding: 16, borderRadius: 8, border: '1px solid #e5e7eb' }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: '#6b7280', marginBottom: 8 }}>{label}</div>
-          <a 
-            href={value} 
-            target="_blank" 
+        <div className="rounded-xl border border-stroke bg-gray/30 p-4 dark:border-dark-3 dark:bg-dark-2">
+          <div className="mb-2 text-sm font-semibold text-gray-500 dark:text-gray-400">{label}</div>
+          <a
+            href={value}
+            target="_blank"
             rel="noopener noreferrer"
-            style={{ color: '#2563eb', textDecoration: 'underline', fontSize: 16, fontWeight: 600 }}
+            className="text-base font-semibold text-primary underline"
           >
             View Invoice
           </a>
         </div>
       );
     }
-    
+
     return (
-      <div style={{ background: '#f8fafc', padding: 16, borderRadius: 8, border: '1px solid #e5e7eb' }}>
-        <div style={{ fontSize: 14, fontWeight: 600, color: '#6b7280', marginBottom: 8 }}>{label}</div>
-        <div style={{ fontSize: 16, fontWeight: 600, color: '#111827' }}>
+      <div className="rounded-xl border border-stroke bg-gray/30 p-4 dark:border-dark-3 dark:bg-dark-2">
+        <div className="mb-2 text-sm font-semibold text-gray-500 dark:text-gray-400">{label}</div>
+        <div className="text-base font-semibold text-dark dark:text-white">
           {displayValue}
         </div>
       </div>
@@ -5903,186 +5914,113 @@ function InvoiceResult({ result, session, token, autoOpenDMA = false, autoExpand
   }
 
   return (
-    <div style={{ marginTop: 20, background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-      {/* Updated Header Section - NEW LAYOUT */}
-      <div style={{ padding: type.key === 'cleaning_invoice_details' ? '16px 20px' : '24px', borderBottom: '1px solid #e5e7eb' }}>
-        {/* Top row with title and total cost */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: type.key === 'cleaning_invoice_details' ? '12px' : '16px' }}>
+    <Card className="mt-5 overflow-hidden">
+      <div className={type.key === 'cleaning_invoice_details' ? 'p-4 sm:p-5 border-b border-stroke dark:border-dark-3' : 'p-6 border-b border-stroke dark:border-dark-3'}>
+        <div className={`flex justify-between items-start ${type.key === 'cleaning_invoice_details' ? 'mb-3' : 'mb-4'}`}>
           <div>
-            <h3 style={{ fontSize: type.key === 'cleaning_invoice_details' ? '22px' : '28px', fontWeight: 700, color: '#111827', margin: 0, lineHeight: 1.2 }}>
+            <h3 className={`font-bold text-dark dark:text-white m-0 leading-tight ${type.key === 'cleaning_invoice_details' ? 'text-xl' : 'text-2xl'}`}>
               {type.label.replace('C&I', 'C&I')} Analysis
             </h3>
           </div>
           {(details.total_invoice_cost || details.total_amount) && (
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: type.key === 'cleaning_invoice_details' ? '28px' : '36px', fontWeight: 700, color: '#111827', lineHeight: 1 }}>
+            <div className="text-right">
+              <div className={`font-bold text-dark dark:text-white leading-none ${type.key === 'cleaning_invoice_details' ? 'text-2xl' : 'text-3xl'}`}>
                 ${parseFloat((details.total_invoice_cost || details.total_amount).toString().replace(/[^0-9.\-]/g, '')).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </div>
-              <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>Total Invoice Cost</div>
+              <div className="mt-0.5 text-xs text-gray-500">Total Invoice Cost</div>
             </div>
           )}
         </div>
 
-        {/* Metadata row - Invoice, NMI, Period */}
-        <div style={{ 
-          display: 'flex', 
-          gap: type.key === 'cleaning_invoice_details' ? '16px' : '24px', 
-          fontSize: 13, 
-          color: '#6b7280',
-          marginBottom: type.key === 'cleaning_invoice_details' ? '12px' : '20px',
-          flexWrap: 'wrap'
-        }}>
+        <div className={`flex flex-wrap gap-4 text-sm text-gray-500 ${type.key === 'cleaning_invoice_details' ? 'mb-3' : 'mb-5'}`}>
           {details.invoice_number && (
             <div>
-              <span style={{ fontWeight: 600, color: '#374151' }}>Invoice:</span> {details.invoice_number}
+              <span className="font-semibold text-gray-700 dark:text-gray-300">Invoice:</span> {details.invoice_number}
             </div>
           )}
           {details.nmi && (
             <div>
-              <span style={{ fontWeight: 600, color: '#374151' }}>NMI:</span> {details.nmi}
+              <span className="font-semibold text-gray-700 dark:text-gray-300">NMI:</span> {details.nmi}
             </div>
           )}
           {details.mrin && (
             <div>
-              <span style={{ fontWeight: 600, color: '#374151' }}>MRIN:</span> {details.mrin}
+              <span className="font-semibold text-gray-700 dark:text-gray-300">MRIN:</span> {details.mrin}
             </div>
           )}
           {(details.invoice_review_period || details.period) && (
             <div>
-              <span style={{ fontWeight: 600, color: '#374151' }}>Period:</span> {details.invoice_review_period || details.period}
+              <span className="font-semibold text-gray-700 dark:text-gray-300">Period:</span> {details.invoice_review_period || details.period}
             </div>
           )}
           {details.invoice_date && (
             <div>
-              <span style={{ fontWeight: 600, color: '#374151' }}>Date:</span> {details.invoice_date}
+              <span className="font-semibold text-gray-700 dark:text-gray-300">Date:</span> {details.invoice_date}
             </div>
           )}
         </div>
 
-        {/* Business details section */}
-        <div style={{ 
-          display: 'grid', 
-          gridTemplateColumns: type.key === 'cleaning_invoice_details' ? 'repeat(auto-fit, minmax(180px, 1fr))' : 'repeat(auto-fit, minmax(200px, 1fr))', 
-          gap: type.key === 'cleaning_invoice_details' ? '12px' : '16px',
-          marginBottom: type.key === 'cleaning_invoice_details' ? '12px' : '20px'
-        }}>
+        <div className={`grid gap-3 sm:gap-4 ${type.key === 'cleaning_invoice_details' ? 'mb-3 grid-cols-[repeat(auto-fit,minmax(180px,1fr))]' : 'mb-5 grid-cols-[repeat(auto-fit,minmax(200px,1fr))]'}`}>
           {(details.business_name || details.client_name) && (
             <div>
-              <div style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 2 }}>{details.client_name ? 'Member Name' : 'Business'}</div>
-              <div style={{ fontSize: type.key === 'cleaning_invoice_details' ? '14px' : '16px', fontWeight: 600, color: '#111827' }}>{details.business_name || details.client_name}</div>
+              <div className="mb-0.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500">{details.client_name ? 'Member Name' : 'Business'}</div>
+              <div className={`font-semibold text-dark dark:text-white ${type.key === 'cleaning_invoice_details' ? 'text-sm' : 'text-base'}`}>{details.business_name || details.client_name}</div>
             </div>
           )}
           {details.site_address && (
             <div>
-              <div style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 2 }}>Site Address</div>
-              <div style={{ fontSize: type.key === 'cleaning_invoice_details' ? '14px' : '16px', fontWeight: 600, color: '#111827' }}>{details.site_address}</div>
+              <div className="mb-0.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Site Address</div>
+              <div className={`font-semibold text-dark dark:text-white ${type.key === 'cleaning_invoice_details' ? 'text-sm' : 'text-base'}`}>{details.site_address}</div>
             </div>
           )}
           {(details.retailer || details.supplier_name) && (
             <div>
-              <div style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 2 }}>{details.supplier_name ? 'Supplier' : 'Retailer'}</div>
-              <div style={{ fontSize: type.key === 'cleaning_invoice_details' ? '14px' : '16px', fontWeight: 600, color: '#111827' }}>{details.retailer || details.supplier_name}</div>
+              <div className="mb-0.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500">{details.supplier_name ? 'Supplier' : 'Retailer'}</div>
+              <div className={`font-semibold text-dark dark:text-white ${type.key === 'cleaning_invoice_details' ? 'text-sm' : 'text-base'}`}>{details.retailer || details.supplier_name}</div>
             </div>
           )}
         </div>
 
-        {/* Action buttons row */}
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div className="flex flex-wrap items-center gap-2">
           {details.invoice_link && (
-            <a 
-              href={details.invoice_link} 
-              target="_blank" 
+            <a
+              href={details.invoice_link}
+              target="_blank"
               rel="noopener noreferrer"
-              style={{
-                padding: '8px 16px',
-                backgroundColor: '#374151',
-                color: 'white',
-                textDecoration: 'none',
-                border: 'none',
-                borderRadius: 6,
-                cursor: 'pointer',
-                fontWeight: 600,
-                fontSize: 14
-              }}
+              className="inline-flex items-center justify-center gap-2 rounded-full border border-stroke bg-white px-3 py-1.5 text-xs font-semibold text-dark shadow-sm transition hover:bg-gray/80 dark:border-dark-3 dark:bg-gray-dark dark:text-white dark:hover:bg-dark-3"
             >
-              View Invoice
+              View invoice
             </a>
           )}
-          
-          {/* Enhanced Details Toggle */}
+
           {(type.key === 'electricity_ci_invoice_details' || type.key === 'gas_invoice_details') && (
-            <button
+            <Button
+              size="sm"
+              variant={type.key === 'electricity_ci_invoice_details' ? 'primary' : 'danger'}
               onClick={() => setExpandedDetails(!expandedDetails)}
-              style={{
-                padding: '8px 16px',
-                backgroundColor: type.key === 'electricity_ci_invoice_details' ? '#059669' : '#dc2626',
-                color: 'white',
-                border: 'none',
-                borderRadius: 6,
-                cursor: 'pointer',
-                fontWeight: 600,
-                fontSize: 14
-              }}
             >
-              {expandedDetails ? 'Hide' : 'Show'} Enhanced Details
-            </button>
+              {expandedDetails ? 'Hide' : 'Show'} enhanced details
+            </Button>
           )}
 
-          {/* Comparison buttons for C&I Electricity */}
           {type.key === 'electricity_ci_invoice_details' && (
             <>
-              <button
-                onClick={() => setShowCIOfferModal(true)}
-                style={{
-                  padding: '8px 16px',
-                  backgroundColor: '#7c3aed',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: 6,
-                  cursor: 'pointer',
-                  fontWeight: 600,
-                  fontSize: 14
-                }}
-              >
-                C&I E Offer
-              </button>
-              <button
-                onClick={() => setShowDMAModal(true)}
-                style={{
-                  padding: '8px 16px',
-                  backgroundColor: '#2563eb',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: 6,
-                  cursor: 'pointer',
-                  fontWeight: 600,
-                  fontSize: 14
-                }}
-              >
+              <Button size="sm" variant="secondary" onClick={() => setShowCIOfferModal(true)}>
+                C&I E offer
+              </Button>
+              <Button size="sm" onClick={() => setShowDMAModal(true)}>
                 DMA
-              </button>
+              </Button>
             </>
           )}
-          
-          {/* Comparison button for C&I Gas */}
+
           {type.key === 'gas_invoice_details' && (
-            <button
-              onClick={() => setShowCIGasOfferModal(true)}
-              style={{
-                padding: '8px 16px',
-                backgroundColor: '#dc2626',
-                color: 'white',
-                border: 'none',
-                borderRadius: 6,
-                cursor: 'pointer',
-                fontWeight: 600,
-                fontSize: 14
-              }}
-            >
-              C&I Gas Offer
-            </button>
+            <Button size="sm" variant="danger" onClick={() => setShowCIGasOfferModal(true)}>
+              C&I gas offer
+            </Button>
           )}
         </div>
+      </div>
 
         {/* Enhanced Invoice Details */}
         {type.key === 'electricity_ci_invoice_details' && expandedDetails && (
@@ -6165,8 +6103,7 @@ function InvoiceResult({ result, session, token, autoOpenDMA = false, autoExpand
             </div>
           </div>
         )}
-      </div>
-      
+
       {/* Modals remain unchanged */}
       {type.key === 'electricity_ci_invoice_details' && (
         <>
@@ -6201,7 +6138,7 @@ function InvoiceResult({ result, session, token, autoOpenDMA = false, autoExpand
           businessInfo={result}
         />
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -7056,245 +6993,156 @@ export default function InfoToolPage({ title, description, endpoint, extraFields
     return null;
   };
 
+  const closeResultModal = () => {
+    setShowResultModal(false);
+    if (autoSubmit) {
+      if (window.opener) {
+        window.close();
+      } else {
+        setTimeout(() => {
+          if (window.history.length > 1) window.history.back();
+          else window.close();
+        }, 100);
+      }
+    }
+  };
+
   return (
-    <div style={{ maxWidth: 900, margin: "24px auto", padding: 32, background: "#fff", borderRadius: 10, boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}>
-      <h2 style={{ marginBottom: 12 }}>{title}</h2>
-      <div style={{ marginBottom: 20, color: '#555' }}>{description}</div>
-      <form onSubmit={handleSubmit} ref={formElement}>
-        <div style={{ 
-          display: 'grid', 
-          gridTemplateColumns: secondaryField ? '1fr 1fr' : '1fr', 
-          gap: 16, 
-          marginBottom: 16 
-        }}>
-          <div>
-            <label htmlFor="business-name-input" style={{ display: 'block', marginBottom: 4, fontWeight: 600, fontSize: 16 }}>
-              Business Name:
-            </label>
-            <input
-              id="business-name-input"
-              type="text"
-              value={businessName}
-              onChange={e => setBusinessName(e.target.value)}
-              placeholder="Enter a business name..."
-              style={{ width: '100%', padding: "8px 14px", fontSize: "16px", borderRadius: 6, border: '1px solid #ccc', outline: 'none' }}
-            />
-          </div>
-          {secondaryField && (
-            <div>
-              <label htmlFor={secondaryField.name} style={{ display: 'block', marginBottom: 4, fontWeight: 600, fontSize: 16 }}>
-                {secondaryField.label}:
-              </label>
-              <input
-                id={secondaryField.name}
-                type="text"
-                value={secondaryValue}
-                onChange={e => setSecondaryValue(e.target.value)}
-                placeholder={`Enter a ${secondaryField.label.toLowerCase()}...`}
-                style={{ width: '100%', padding: "8px 14px", fontSize: "16px", borderRadius: 6, border: '1px solid #ccc', outline: 'none' }}
+    <ToolPageLayout pageName={title} title={title} description={description} width="xl">
+      <Card>
+        <CardContent className="pt-6">
+          <form onSubmit={handleSubmit} ref={formElement} className="space-y-4">
+            <div className={secondaryField ? "grid gap-4 sm:grid-cols-2" : ""}>
+              <Input
+                id="business-name-input"
+                label="Business name"
+                value={businessName}
+                onChange={(e) => setBusinessName(e.target.value)}
+                placeholder="Enter a business name…"
               />
+              {secondaryField && (
+                <Input
+                  id={secondaryField.name}
+                  label={secondaryField.label}
+                  value={secondaryValue}
+                  onChange={(e) => setSecondaryValue(e.target.value)}
+                  placeholder={`Enter a ${secondaryField.label.toLowerCase()}…`}
+                />
+              )}
             </div>
+
+            {extraFields.map((f) =>
+              f.type === "select" && f.options ? (
+                <Select
+                  key={f.name}
+                  id={f.name}
+                  label={f.label}
+                  value={fields[f.name] || ""}
+                  onChange={(e) => handleFieldChange(f.name, e.target.value)}
+                  required={f.required}
+                >
+                  <option value="">Select…</option>
+                  {f.options.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
+                </Select>
+              ) : f.type === "textarea" ? (
+                <Textarea
+                  key={f.name}
+                  id={f.name}
+                  label={f.label}
+                  value={fields[f.name] || ""}
+                  onChange={(e) => handleFieldChange(f.name, e.target.value)}
+                  required={f.required}
+                />
+              ) : (
+                <Input
+                  key={f.name}
+                  id={f.name}
+                  label={f.label}
+                  type={f.type || "text"}
+                  value={fields[f.name] || ""}
+                  onChange={(e) => handleFieldChange(f.name, e.target.value)}
+                  required={f.required}
+                />
+              ),
+            )}
+
+            {isFileUpload && (
+              <div className="space-y-1">
+                <label htmlFor="file-upload" className="block text-sm font-medium text-dark dark:text-white">
+                  File
+                </label>
+                <input
+                  id="file-upload"
+                  type="file"
+                  onChange={(e) => setFile(e.target.files?.[0] || null)}
+                  required
+                  className="block w-full text-sm text-gray-600 file:mr-3 file:rounded-full file:border-0 file:bg-primary/10 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-primary hover:file:bg-primary/15 dark:text-gray-400"
+                />
+              </div>
+            )}
+
+            <Button type="submit" loading={loading} disabled={loading}>
+              {loading ? "Loading…" : "Submit"}
+            </Button>
+          </form>
+
+          {error && (
+            <InsightCallout variant="warning" title="Request failed" icon={<AlertCircle className="text-semantic-flag" />} className="mt-4">
+              {error}
+            </InsightCallout>
           )}
-        </div>
-        {extraFields.map((f) => (
-          <div key={f.name} style={{ marginBottom: 16 }}>
-            <label htmlFor={f.name} style={{ marginRight: 12, fontWeight: 600, fontSize: 16 }}>{f.label}:</label>
-            {f.type === "select" && f.options ? (
-              <select
-                id={f.name}
-                value={fields[f.name] || ""}
-                onChange={e => handleFieldChange(f.name, e.target.value)}
-                style={{ padding: "8px 14px", fontSize: "16px", borderRadius: 6, border: '1px solid #ccc', outline: 'none' }}
-                required={f.required}
-              >
-                <option value="">Select...</option>
-                {f.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-              </select>
-            ) : f.type === "textarea" ? (
-              <textarea
-                id={f.name}
-                value={fields[f.name] || ""}
-                onChange={e => handleFieldChange(f.name, e.target.value)}
-                style={{ padding: "8px 14px", fontSize: "16px", borderRadius: 6, border: '1px solid #ccc', outline: 'none', minHeight: 60, minWidth: 220 }}
-              />
+        </CardContent>
+      </Card>
+
+      {result && (
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle className="text-base">Result</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {typeof result === "object" && result.message ? (
+              <div className="rounded-xl bg-gray/50 p-4 dark:bg-dark-3/40">
+                <ResultMessage message={result.message} />
+              </div>
             ) : (
-              <input
-                id={f.name}
-                type={f.type || "text"}
-                value={fields[f.name] || ""}
-                onChange={e => handleFieldChange(f.name, e.target.value)}
-                style={{ padding: "8px 14px", fontSize: "16px", borderRadius: 6, border: '1px solid #ccc', outline: 'none' }}
-                required={f.required}
+              <InvoiceResult
+                result={result}
+                session={session}
+                token={token}
+                autoOpenDMA={autoOpenDMA}
+                autoExpandDetails={autoSubmit}
+                offerId={offerId}
+                clientId={clientId}
               />
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      <Modal
+        open={showResultModal && !!(result && typeof result === "object" && result.message)}
+        onClose={closeResultModal}
+        title="Data request result"
+        size="lg"
+        footer={
+          <div className="flex justify-end">
+            <Button onClick={closeResultModal}>Close</Button>
           </div>
-        ))}
-        {isFileUpload && (
-          <div style={{ marginBottom: 16 }}>
-            <label htmlFor="file-upload" style={{ marginRight: 12, fontWeight: 600, fontSize: 16 }}>File:</label>
-            <input
-              id="file-upload"
-              type="file"
-              onChange={e => setFile(e.target.files?.[0] || null)}
-              required
-            />
+        }
+      >
+        {result?.message && (
+          <div className="rounded-xl bg-gray/50 p-4 dark:bg-dark-3/40">
+            <ResultMessage message={result.message} />
           </div>
         )}
-        <button
-          type="submit"
-          style={{ padding: "10px 20px", fontSize: "16px", borderRadius: 6, background: '#2563eb', color: '#fff', border: 'none', fontWeight: 600 }}
-          disabled={loading}
-        >
-          {loading ? "Loading..." : "Submit"}
-        </button>
-      </form>
-      {error && <div style={{ color: "red", marginTop: 18 }}>{error}</div>}
-      {result && (
-        <div style={{ marginTop: 28, textAlign: "left" }}>
-          <h3>Result:</h3>
-          {typeof result === 'object' && result.message ? (
-            <div style={{ background: '#f4f4f4', padding: 12, borderRadius: 6 }}>
-              <ResultMessage message={result.message} />
-            </div>
-          ) : (
-            <InvoiceResult
-              result={result}
-              session={session}
-              token={token}
-              autoOpenDMA={autoOpenDMA}
-              autoExpandDetails={autoSubmit}
-              offerId={offerId}
-              clientId={clientId}
-            />
-          )}
-        </div>
-      )}
-      
-      {/* Result Modal for auto-submitted data requests */}
-      {showResultModal && result && typeof result === 'object' && result.message && (
-        <div 
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 9999,
-            padding: '20px'
-          }}
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              setShowResultModal(false);
-              if (autoSubmit) {
-                // Try to close the window/tab if it was opened by window.open
-                if (window.opener) {
-                  window.close();
-                } else {
-                  // If we can't close, at least try to go back or close
-                  setTimeout(() => {
-                    if (window.history.length > 1) {
-                      window.history.back();
-                    } else {
-                      window.close();
-                    }
-                  }, 100);
-                }
-              }
-            }
-          }}
-        >
-          <div style={{
-            backgroundColor: 'white',
-            borderRadius: 8,
-            padding: 24,
-            width: '100%',
-            maxWidth: '800px',
-            maxHeight: '90vh',
-            overflow: 'auto',
-            boxShadow: '0 25px 50px rgba(0, 0, 0, 0.25)',
-            position: 'relative'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <h2 style={{ margin: 0, fontSize: 24, fontWeight: 600 }}>Data Request Result</h2>
-              <button 
-                onClick={() => {
-                  setShowResultModal(false);
-                  if (autoSubmit) {
-                    // Try to close the window/tab if it was opened by window.open
-                    if (window.opener) {
-                      window.close();
-                    } else {
-                      // If we can't close, at least try to go back or close
-                      setTimeout(() => {
-                        if (window.history.length > 1) {
-                          window.history.back();
-                        } else {
-                          window.close();
-                        }
-                      }, 100);
-                    }
-                  }
-                }}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  fontSize: 24,
-                  cursor: 'pointer',
-                  color: '#666',
-                  padding: '0 8px'
-                }}
-              >
-                ×
-              </button>
-            </div>
-            <div style={{ background: '#f4f4f4', padding: 16, borderRadius: 6 }}>
-              <ResultMessage message={result.message} />
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 20 }}>
-              <button
-                onClick={() => {
-                  setShowResultModal(false);
-                  if (autoSubmit) {
-                    // Try to close the window/tab if it was opened by window.open
-                    if (window.opener) {
-                      window.close();
-                    } else {
-                      // If we can't close, at least try to go back or close
-                      setTimeout(() => {
-                        if (window.history.length > 1) {
-                          window.history.back();
-                        } else {
-                          window.close();
-                        }
-                      }, 100);
-                    }
-                  }
-                }}
-                style={{
-                  padding: '10px 24px',
-                  backgroundColor: '#2563eb',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: 6,
-                  cursor: 'pointer',
-                  fontWeight: 600,
-                  fontSize: 14
-                }}
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      
-      {/* Interval Data Section - Only show for electricity and gas */}
+      </Modal>
+
       {result && getIdentifierForIntervalData() && (
-        <IntervalDataSection 
+        <IntervalDataSection
           title={title}
           identifier={getIdentifierForIntervalData()!}
           result={result}
@@ -7304,6 +7152,6 @@ export default function InfoToolPage({ title, description, endpoint, extraFields
           setShowDemandModal={setShowDemandModal}
         />
       )}
-    </div>
+    </ToolPageLayout>
   );
 }

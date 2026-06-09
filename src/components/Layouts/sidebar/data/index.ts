@@ -18,14 +18,13 @@ import {
   Sparkles,
   Users,
   AlertTriangle,
+  Wallet,
+  Cpu,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import ACESLogo from "@/../public/images/logo/CARBON ZERO Logo.png";
+import { BRAND } from "@/lib/brand";
 
-export const ACES_BRAND = {
-  name: "ACES",
-  logo: ACESLogo,
-};
+export { BRAND };
 
 export type NavItemIcon = LucideIcon;
 
@@ -33,6 +32,8 @@ export interface NavLinkItem {
   title: string;
   url: string;
   icon?: NavItemIcon;
+  /** Show a numeric badge (e.g. pending tasks) */
+  badge?: number;
 }
 
 export interface NavGroupItem {
@@ -46,29 +47,47 @@ export interface NavSection {
   items: (NavLinkItem | NavGroupItem)[];
 }
 
-export const NAV_DATA: NavSection[] = [
+/** Daily-use items — always visible at top, never below the fold */
+export const PINNED_NAV: NavLinkItem[] = [
+  { title: "Member Profile", url: "/business-info", icon: Building2 },
+  { title: "Tasks", url: "/tasks", icon: CheckSquare },
+  { title: "Workflows", url: "/workflows", icon: GitBranch },
+];
+
+/** Core navigation — always listed under Main */
+export const MAIN_NAV: NavLinkItem[] = [
+  { title: "Dashboard", url: "/crm", icon: LayoutDashboard },
+  { title: "Solution Range", url: "/solution-range", icon: LayoutGrid },
+];
+
+/** Collapsible job-to-be-done groups (closed by default) */
+export const JOB_GROUPS: NavGroupItem[] = [
   {
-    label: "Main",
+    title: "Finance & lodgement",
+    icon: Wallet,
     items: [
-      { title: "Tasks", url: "/tasks", icon: CheckSquare },
-      { title: "Member Profile", url: "/business-info", icon: Building2 },
-      { title: "Workflows", url: "/workflows", icon: GitBranch },
-      { title: "Solution Range", url: "/solution-range", icon: LayoutGrid },
-      { title: "Invoice & Data Lodgement", url: "/document-lodgement", icon: FileUp },
-      { title: "Base 1 Hub", url: "/base-1", icon: BarChart3 },
-      { title: "Robot Dashboard", url: "/robot-dashboard", icon: Bot },
-      { title: "Invoicing", url: "/invoicing", icon: FileText },
-      { title: "GHG Reporting", url: "/ghg-reporting", icon: FileText },
-      { title: "Personal Assistant", url: "/personal-assistant", icon: Sparkles },
+      { title: "Invoice & Data Lodgement", url: "/document-lodgement" },
+      { title: "Invoicing", url: "/invoicing" },
+      { title: "Base 1 Hub", url: "/base-1" },
     ],
   },
   {
+    title: "Automation",
+    icon: Cpu,
+    items: [
+      { title: "Autonomous Agent", url: "/autonomous-agent" },
+      { title: "Robot Dashboard", url: "/robot-dashboard" },
+      { title: "Personal Assistant", url: "/personal-assistant" },
+    ],
+  },
+];
+
+export const NAV_DATA: NavSection[] = [
+  {
     label: "CRM",
     items: [
-      { title: "Dashboard", url: "/crm", icon: LayoutDashboard },
       { title: "Members", url: "/crm-members", icon: Users },
       { title: "Offers", url: "/offers", icon: HandCoins },
-      { title: "Autonomous Agent", url: "/autonomous-agent", icon: Bot },
       { title: "Activity Report", url: "/reports/activities", icon: Activity },
     ],
   },
@@ -81,6 +100,7 @@ export const NAV_DATA: NavSection[] = [
       { title: "Testimonial content", url: "/resources/testimonial-content", icon: FileText },
       { title: "Contract Ending / Expiring", url: "/resources/contract-ending", icon: CalendarClock },
       { title: "Discrepancy Check", url: "/resources/discrepancy-check", icon: AlertTriangle },
+      { title: "Design System", url: "/design-system", icon: LayoutGrid },
     ],
   },
   {

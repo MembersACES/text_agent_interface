@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { combineFilesIntoPdf } from "@/lib/combineFiles";
 import { PrimaryButton, SecondaryButton, LinkButton } from "@/components/BusinessInfoButtons";
+import { BRAND } from "@/lib/brand";
 import { Modal } from "@/components/ui/modal";
 
 
@@ -178,7 +179,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
 
   const router = useRouter();
   const businessName = business.name || "";
-  const [driveModalContractStatus, setDriveModalContractStatus] = useState<string>('Signed via ACES');
+  const [driveModalContractStatus, setDriveModalContractStatus] = useState<string>(BRAND.signedContractStatusValue);
   const [showDriveModal, setShowDriveModal] = useState(false);
   const [driveModalFilingType, setDriveModalFilingType] = useState("");
   const [driveModalBusinessName, setDriveModalBusinessName] = useState("");
@@ -1631,9 +1632,9 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
 
   return (
     <React.Fragment>
-      <div className="bg-white rounded-lg shadow-sm border mt-6">
+      <div className="bg-white rounded-2xl shadow-sm border mt-6 dark:border-dark-3 dark:bg-gray-dark">
       {/* Header with Business Name and Key Actions */}
-      <div className="px-6 py-5 border-b rounded-t-lg" style={{background: 'linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%)'}}>
+      <div className="px-6 py-5 border-b rounded-t-2xl bg-gradient-to-br from-pg-navy to-pg-blue">
         <div className="text-center mb-4">
           <h1 className="text-3xl font-bold text-white mb-3">{business.name || 'Business Details'}</h1>
           <div className="flex items-center justify-center gap-4 text-sm text-slate-300">
@@ -1650,7 +1651,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                 href={driveUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 transition-colors text-base shadow-md"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary text-white font-semibold hover:bg-primary/90 transition-colors text-base shadow-sm"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
@@ -1756,7 +1757,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
       </div>
 
       {/* Quick Actions */}
-      <div className="border-b bg-gray-50 px-6 py-4">
+      <div className="border-b border-stroke bg-gray/30 px-6 py-4 dark:border-dark-3 dark:bg-dark-2/50">
         <div className="flex items-center justify-center gap-4 flex-wrap">
           {/* Generate Documents dropdown */}
           <div className="relative" ref={generateDocumentsMenuRef}>
@@ -1848,7 +1849,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
       </div>
 
       {/* Client Status Notes Section */}
-      <div className="border-b bg-gray-50 px-6 py-4">
+      <div className="border-b border-stroke bg-gray/30 px-6 py-4 dark:border-dark-3 dark:bg-dark-2/50">
         <div className="flex items-center justify-between mb-2">
           <div className="flex-1"></div>
           <div className="flex items-center gap-2">
@@ -2205,7 +2206,8 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                             <div className="text-xs text-gray-500">Not available</div>
                           )}
                           {items.map((item, idx) => {
-                            const isACESSigned =
+                            const isBrandSigned =
+                              item.status?.toLowerCase().includes("carbon zero") ||
                               item.status?.toLowerCase().includes("aces") ||
                               item.status?.toLowerCase().includes("signed via aces");
                             return (
@@ -2222,12 +2224,12 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                                 {item.status && (
                                   <span
                                     className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                                      isACESSigned
+                                      isBrandSigned
                                         ? "bg-green-100 text-green-700"
                                         : "bg-blue-100 text-blue-700"
                                     }`}
                                   >
-                                    {isACESSigned ? "✓ ACES Signed" : item.status}
+                                    {isBrandSigned ? "✓ Carbon Zero Signed" : item.status}
                                   </span>
                                 )}
                               </div>
@@ -3145,7 +3147,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                                     href={fileUrl} 
                                     target="_blank" 
                                     rel="noopener noreferrer"
-                                    className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 transition-colors"
+                                    className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-primary text-white rounded-md text-sm font-medium hover:bg-primary/90 transition-colors"
                                   >
                                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -3607,6 +3609,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                           ...(wipDocId && { wip_document_id: wipDocId })
                         };
 
+                        // TODO(retire-business-info): remove n8n advocacy mirror once CRM is canonical
                         const response = await fetch('https://membersaces.app.n8n.cloud/webhook/save_advocacy_WIP', {
                           method: 'POST',
                           headers: {
@@ -3625,7 +3628,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                         alert('Error saving meeting details');
                       }
                     }}
-                    className="px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium text-sm"
+                    className="px-3 py-1.5 bg-primary text-white rounded-md hover:bg-primary/90 font-medium text-sm"
                   >
                     Save Meeting Details
                   </button>
@@ -3790,7 +3793,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                   </div>
 
                   <button
-                    className="px-3 py-1.5 mt-2 rounded bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 w-full"
+                    className="px-3 py-1.5 mt-2 rounded bg-primary text-white text-xs font-medium hover:bg-primary/90 w-full"
                     onClick={async () => {
                       try {
                         const payload = {
@@ -3990,12 +3993,12 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                         <input
                           type="radio"
                           name="contractStatus"
-                          value="Signed via ACES"
-                          checked={driveModalContractStatus === 'Signed via ACES'}
+                          value={BRAND.signedContractStatusValue}
+                          checked={driveModalContractStatus === BRAND.signedContractStatusValue}
                           onChange={(e) => setDriveModalContractStatus(e.target.value)}
                           className="mr-2"
                         />
-                        <span className="text-sm">Signed via ACES</span>
+                        <span className="text-sm">{BRAND.signedContractStatusLabel}</span>
                       </label>
                       <label className="flex items-center cursor-pointer">
                         <input
@@ -4122,7 +4125,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                           return (
                             <a
                               href={url}
-                              className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors font-medium text-sm text-center block"
+                              className="w-full px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90 transition-colors font-medium text-sm text-center block"
                               target="_blank"
                               rel="noopener noreferrer"
                             >
@@ -4144,7 +4147,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                     Cancel
                   </button>
                   <button
-                    className="px-4 py-2 rounded bg-blue-600 text-white font-semibold hover:bg-blue-700 focus:outline-none"
+                    className="px-4 py-2 rounded bg-primary text-white font-semibold hover:bg-primary/90 focus:outline-none"
                     onClick={async () => {
                       const isSigned = driveModalFilingType.startsWith("signed_");
                       let filesToUpload: File[] = [];
@@ -4422,7 +4425,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                     Cancel
                   </button>
                   <button
-                    className="px-4 py-2 rounded bg-blue-600 text-white font-semibold hover:bg-blue-700 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-4 py-2 rounded bg-primary text-white font-semibold hover:bg-primary/90 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
                     disabled={dataRequestLoading}
                     onClick={async () => {
                       setDataRequestLoading(true);
@@ -4508,7 +4511,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
             </div>
             <div className="flex justify-end">
               <button
-                className="px-4 py-2 rounded bg-blue-600 text-white font-semibold hover:bg-blue-700 focus:outline-none"
+                className="px-4 py-2 rounded bg-primary text-white font-semibold hover:bg-primary/90 focus:outline-none"
                 onClick={() => {
                   setShowDataRequestResultModal(false);
                   setDataRequestResult(null);
@@ -4555,7 +4558,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                 Cancel
               </button>
               <button
-                className="px-4 py-2 rounded bg-blue-600 text-white font-semibold hover:bg-blue-700 focus:outline-none"
+                className="px-4 py-2 rounded bg-primary text-white font-semibold hover:bg-primary/90 focus:outline-none"
                 onClick={handleEOISubmit}
                 disabled={!eoiFile || eoiLoading}
               >
@@ -4628,7 +4631,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                 Cancel
               </button>
               <button
-                className="px-4 py-2 rounded bg-blue-600 text-white font-semibold hover:bg-blue-700 focus:outline-none"
+                className="px-4 py-2 rounded bg-primary text-white font-semibold hover:bg-primary/90 focus:outline-none"
                 onClick={handleAdditionalDocSubmit}
               disabled={!additionalDocFiles.length || !additionalDocType.trim() || additionalDocLoading}
               >
@@ -4691,7 +4694,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                 Cancel
               </button>
               <button
-                className="px-4 py-2 rounded bg-blue-600 text-white font-semibold hover:bg-blue-700 focus:outline-none"
+                className="px-4 py-2 rounded bg-primary text-white font-semibold hover:bg-primary/90 focus:outline-none"
                 onClick={handleEngagementFormSubmit}
                 disabled={!engagementFormFile || !engagementFormType.trim() || engagementFormLoading}
               >
@@ -4783,7 +4786,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                   }
                 }}
                 disabled={!currentNote.trim()}
-                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                className="px-4 py-2 bg-primary text-white rounded hover:bg-primary/90 disabled:opacity-50"
               >
                 {editingNoteId ? 'Update' : 'Save'}
               </button>

@@ -12,7 +12,7 @@ export default function FloatingAgentPage() {
       <div>
         <h1 className="text-heading-3 font-bold text-dark dark:text-white mb-2">Floating Agent</h1>
         <p className="text-body-sm text-gray-600 dark:text-gray-400">
-          Use the ACES Floating Agent (chat bubble in the bottom-right) to search clients, view tasks, and get help navigating the dashboard.
+          Use the Carbon Zero Assistant (chat bubble in the bottom-right) to search clients, view tasks, and get help navigating the dashboard.
         </p>
       </div>
 

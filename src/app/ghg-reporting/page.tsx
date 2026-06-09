@@ -4,6 +4,9 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "re
 import { useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/Layouts/PageHeader";
 import { getApiBaseUrl } from "@/lib/utils";
 
 type Row = Record<string, unknown>;
@@ -653,27 +656,23 @@ export default function GhgReportingPage() {
 
   return (
     <div className="space-y-4">
+      <PageHeader
+        pageName="GHG reporting"
+        description="Search a business, inspect utility invoice health, and review GHG readiness."
+      />
       <Card variant="elevated">
-        <CardHeader>
-          <CardTitle className="text-xl">GHG Reporting</CardTitle>
-          <CardDescription>Search a business, inspect utility invoice health, and review GHG readiness.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={onSearch} className="flex flex-col gap-2 sm:flex-row">
-            <input
-              type="text"
+        <CardContent className="pt-6">
+          <form onSubmit={onSearch} className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <Input
+              label="Business name"
               value={businessName}
               onChange={(e) => setBusinessName(e.target.value)}
               placeholder="Enter business name"
-              className="w-full rounded-lg border border-stroke bg-white px-3 py-2 text-sm dark:border-dark-3 dark:bg-dark-2"
+              wrapperClassName="min-w-0 flex-1"
             />
-            <button
-              type="submit"
-              disabled={loading || !businessName.trim()}
-              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
-            >
-              {loading ? "Loading..." : "Load Context"}
-            </button>
+            <Button type="submit" loading={loading} disabled={loading || !businessName.trim()}>
+              Search
+            </Button>
           </form>
           {error ? <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p> : null}
         </CardContent>

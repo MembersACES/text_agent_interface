@@ -798,7 +798,7 @@ export default function OfferDetailPage() {
                           type="button"
                           onClick={handleSaveDetails}
                           disabled={savingDetails}
-                          className="px-3 py-1.5 rounded-md bg-primary text-white text-xs font-medium hover:opacity-90 disabled:opacity-50"
+                          className="px-3 py-1.5 rounded-full bg-primary text-white text-xs font-medium hover:opacity-90 disabled:opacity-50"
                         >
                           {savingDetails ? "Saving…" : "Save"}
                         </button>
@@ -1203,7 +1203,7 @@ export default function OfferDetailPage() {
                 type="button"
                 onClick={handleAddDocument}
                 disabled={addDocumentSaving || !addDocumentUrl.trim()}
-                className="px-3 py-1.5 rounded-md bg-primary text-white text-xs font-medium hover:opacity-90 disabled:opacity-50"
+                className="px-3 py-1.5 rounded-full bg-primary text-white text-xs font-medium hover:opacity-90 disabled:opacity-50"
               >
                 {addDocumentSaving ? "Adding…" : "Add"}
               </button>
@@ -1263,7 +1263,7 @@ export default function OfferDetailPage() {
                 type="button"
                 onClick={handleAddActivity}
                 disabled={addActivitySaving || (!addActivityNote.trim() && !addActivityLink.trim())}
-                className="px-3 py-1.5 rounded-md bg-primary text-white text-xs font-medium hover:opacity-90 disabled:opacity-50"
+                className="px-3 py-1.5 rounded-full bg-primary text-white text-xs font-medium hover:opacity-90 disabled:opacity-50"
               >
                 {addActivitySaving ? "Adding…" : "Add"}
               </button>

@@ -5,6 +5,8 @@ import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { getApiBaseUrl } from "@/lib/utils";
 import { PageHeader } from "@/components/Layouts/PageHeader";
+import { Button } from "@/components/ui/button";
+import { Select } from "@/components/ui/select";
 import {
   OfferStatus,
   OFFER_STATUSES,
@@ -280,8 +282,9 @@ export default function OffersPage() {
                 />
                 <span className="text-sm text-gray-700 dark:text-gray-300">My offers</span>
               </label>
-              <button
-                type="button"
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={async () => {
                   if (!token) return;
                   const params = new URLSearchParams();
@@ -302,17 +305,26 @@ export default function OffersPage() {
                   a.click();
                   URL.revokeObjectURL(a.href);
                 }}
-                className="px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
               >
                 Export CSV
-              </button>
-              <button
-                type="button"
-                onClick={() => { setCreateOfferOpen(true); setCreateOfferError(null); setCreateOfferForm({ client_id: "", business_name: "", utility_type: "", utility_type_identifier: "", identifier: "", estimated_value: "" }); }}
-                className="px-3 py-1.5 rounded-md bg-primary text-white text-sm font-medium hover:opacity-90"
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => {
+                  setCreateOfferOpen(true);
+                  setCreateOfferError(null);
+                  setCreateOfferForm({
+                    client_id: "",
+                    business_name: "",
+                    utility_type: "",
+                    utility_type_identifier: "",
+                    identifier: "",
+                    estimated_value: "",
+                  });
+                }}
               >
                 Create offer
-              </button>
+              </Button>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-3 text-sm">
@@ -669,7 +681,7 @@ export default function OffersPage() {
                   <button
                     type="submit"
                     disabled={createOfferSubmitting}
-                    className="px-3 py-1.5 rounded-md bg-primary text-white text-xs font-medium hover:opacity-90 disabled:opacity-50"
+                    className="px-3 py-1.5 rounded-full bg-primary text-white text-xs font-medium hover:opacity-90 disabled:opacity-50"
                   >
                     {createOfferSubmitting ? "Creating…" : "Create"}
                   </button>

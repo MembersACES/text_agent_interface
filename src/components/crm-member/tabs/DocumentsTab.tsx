@@ -1,12 +1,21 @@
 "use client";
 
 import type React from "react";
-import { useCallback, useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { FileLink } from "../shared/FileLink";
-import { getApiBaseUrl } from "@/lib/utils";
+import { cn, getApiBaseUrl } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import type { ButtonProps } from "@/components/ui/button";
 import { formatBackendErrorBody } from "@/lib/api-errors";
 import { useToast } from "@/components/ui/toast";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Badge } from "@/components/ui/badge";
+import { FileText } from "lucide-react";
+import { BRAND } from "@/lib/brand";
+import { RecordRow, RecordRowOpenAction } from "../shared/RecordRow";
+import { getRecordRowIcon } from "../shared/recordRowIcons";
 import { combineFilesIntoPdf } from "@/lib/combineFiles";
 import {
   getBusinessDocumentFileUrl,
@@ -61,84 +70,107 @@ export { getDocumentsCountFromBusinessInfo } from "./documentHelpers";
 // ─── Sub-tab definitions ──────────────────────────────────────────────────────
 
 type DocTab = "contracts" | "businessDocs" | "eois" | "engagement" | "additional";
+type DocFilter = DocTab | "all";
+type UploadCategory = "eoi" | "engagement" | "additional";
 
-const DOC_TABS: { id: DocTab; label: string }[] = [
-  { id: "contracts",    label: "Contracts & Signed Agreements" },
-  { id: "businessDocs", label: "Business Documents" },
-  { id: "eois",         label: "Signed EOIs" },
-  { id: "engagement",   label: "Signed Engagement Forms" },
-  { id: "additional",   label: "Additional Documents" },
+const FILTER_CHIPS: { id: DocFilter; label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "contracts", label: "Contracts" },
+  { id: "businessDocs", label: "Business" },
+  { id: "eois", label: "EOIs" },
+  { id: "engagement", label: "Engagement" },
+  { id: "additional", label: "Additional" },
 ];
+
+const CATEGORY_SECTION_LABELS: Record<DocTab, string> = {
+  contracts: "Contracts & Signed Agreements",
+  businessDocs: "Business Documents",
+  eois: "Signed EOIs",
+  engagement: "Signed Engagement Forms",
+  additional: "Additional Documents",
+};
 
 // ─── Design primitives ────────────────────────────────────────────────────────
 
 function Panel({ children }: { children: React.ReactNode }) {
+  return <Card className="overflow-hidden p-0">{children}</Card>;
+}
+
+function DocSecondaryBtn({ className, ...props }: ButtonProps) {
+  return <Button variant="secondary" size="sm" radius="md" className={className} {...props} />;
+}
+
+function DocOpenBtn({ className, ...props }: ButtonProps) {
   return (
-    <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200/80 dark:border-gray-800 shadow-[0_1px_4px_rgba(0,0,0,0.06)] dark:shadow-none overflow-hidden">
-      {children}
-    </div>
+    <Button
+      variant="ghost"
+      size="sm"
+      radius="md"
+      className={cn(
+        "record-row-open shrink-0 border border-primary/20 bg-primary/5 text-primary hover:bg-primary/10",
+        className
+      )}
+      {...props}
+    />
   );
 }
 
-/** Inner sub-tab bar — matches the main tab bar visual language */
-function SubTabBar({
-  tabs,
-  active,
-  onChange,
-  actions,
-}: {
-  tabs: { id: DocTab; label: string; count?: number }[];
-  active: DocTab;
-  onChange: (id: DocTab) => void;
-  actions?: React.ReactNode;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-2 border-b border-gray-100 dark:border-gray-800 px-5 bg-gray-50/60 dark:bg-gray-800/20">
-      <div className="flex items-center gap-0 -mb-px overflow-x-auto scrollbar-none">
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => onChange(t.id)}
-            className={`
-              shrink-0 flex items-center gap-1.5 px-3.5 py-2.5 text-xs font-semibold border-b-2 transition-colors whitespace-nowrap
-              ${active === t.id
-                ? "border-gray-900 dark:border-white text-gray-900 dark:text-white"
-                : "border-transparent text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600"
-              }
-            `}
-          >
-            {t.label}
-            {t.count !== undefined && t.count > 0 && (
-              <span className={`inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold ${active === t.id ? "bg-gray-900 dark:bg-white text-white dark:text-gray-900" : "bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400"}`}>
-                {t.count}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
-      {actions && <div className="flex items-center gap-2 shrink-0 pl-3">{actions}</div>}
-    </div>
+function contractStatusBadge(status: string | undefined, hasUrl: boolean) {
+  const s = (status ?? "").toLowerCase();
+  if (!hasUrl && !status) {
+    return (
+      <Badge intent="neutral" shape="pill">
+        Not available
+      </Badge>
+    );
+  }
+  if (status === BRAND.signedContractStatusValue || s.includes("signed via aces")) {
+    return (
+      <Badge intent="success" shape="pill">
+        {status || BRAND.signedContractStatusLabel}
+      </Badge>
+    );
+  }
+  if (s.includes("existing")) {
+    return (
+      <Badge intent="neutral" shape="pill">
+        {status}
+      </Badge>
+    );
+  }
+  if (status) {
+    return (
+      <Badge intent="info" shape="pill">
+        {status}
+      </Badge>
+    );
+  }
+  return hasUrl ? (
+    <Badge intent="success" shape="pill">
+      Available
+    </Badge>
+  ) : (
+    <Badge intent="neutral" shape="pill">
+      Not available
+    </Badge>
   );
 }
 
-const ghostBtn =
-  "inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium " +
-  "text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-800 " +
-  "border border-gray-200 dark:border-gray-700 " +
-  "hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors " +
-  "disabled:opacity-40 disabled:pointer-events-none";
-
-const linkBtn =
-  "text-xs font-medium text-gray-400 dark:text-gray-500 " +
-  "hover:text-gray-600 dark:hover:text-gray-300 transition-colors " +
-  "disabled:opacity-40 disabled:pointer-events-none";
-
-/** Looks like a real button — used for "Open Contract", "Open EOI" etc. */
-const openBtn =
-  "inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium " +
-  "text-primary bg-primary/5 hover:bg-primary/10 border border-primary/20 " +
-  "transition-colors shrink-0";
+function DocLinkBtn({
+  className,
+  ...props
+}: React.ButtonHTMLAttributes<HTMLButtonElement>) {
+  return (
+    <button
+      type="button"
+      className={cn(
+        "text-xs font-medium text-primary hover:underline disabled:pointer-events-none disabled:opacity-40",
+        className
+      )}
+      {...props}
+    />
+  );
+}
 
 // ─── Modal ────────────────────────────────────────────────────────────────────
 
@@ -175,16 +207,19 @@ function MFooter({ onCancel, onSubmit, label, disabled, loading }: {
 }) {
   return (
     <div className="flex justify-end gap-2 pt-1">
-      <button type="button" onClick={onCancel} className={ghostBtn}>Cancel</button>
+      <DocSecondaryBtn onClick={onCancel}>Cancel</DocSecondaryBtn>
       {onSubmit && (
-        <button
+        <Button
           type="button"
+          variant="primary"
+          size="sm"
+          radius="md"
           onClick={onSubmit}
           disabled={disabled || loading}
-          className="px-3.5 py-1.5 rounded-md text-xs font-semibold bg-gray-900 dark:bg-white text-white dark:text-gray-900 hover:opacity-90 transition-opacity disabled:opacity-40 disabled:pointer-events-none"
+          loading={loading}
         >
           {loading ? "Uploading…" : label}
-        </button>
+        </Button>
       )}
     </div>
   );
@@ -237,7 +272,9 @@ export function DocumentsTab({
       ? (info.business_documents as Record<string, any>)
       : {};
 
-  const [activeTab, setActiveTab] = useState<DocTab>("businessDocs");
+  const [docFilter, setDocFilter] = useState<DocFilter>("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [uploadCategory, setUploadCategory] = useState<UploadCategory>("additional");
   const [eoiRefreshing, setEoiRefreshing] = useState(false);
   const [additionalDocs, setAdditionalDocs] = useState<SimpleDoc[]>([]);
   const [engagementForms, setEngagementForms] = useState<SimpleDoc[]>([]);
@@ -247,7 +284,7 @@ export function DocumentsTab({
   const [driveFilingType, setDriveFilingType] = useState("");
   const [driveBizName, setDriveBizName] = useState("");
   const [driveContractKey, setDriveContractKey] = useState<string | null>(null);
-  const [driveContractStatus, setDriveContractStatus] = useState("Signed via ACES");
+  const [driveContractStatus, setDriveContractStatus] = useState<string>(BRAND.signedContractStatusValue);
   const [driveContractUpdateMode, setDriveContractUpdateMode] = useState<
     "replace" | "append" | "append_multiple"
   >("replace");
@@ -776,6 +813,14 @@ export function DocumentsTab({
   );
 
   const contractCount = contracts.reduce((n, c) => n + c.items.length, 0);
+  const contractCategoriesWithFiles = contracts.filter((c) => c.items.length > 0).length;
+  const signedViaAcesCount = contracts
+    .flatMap((c) => c.items)
+    .filter(
+      (item) =>
+        item.status === BRAND.signedContractStatusValue ||
+        item.status?.toLowerCase().includes("signed via aces")
+    ).length;
 
   const businessDocsCount =
     Object.keys(docs)
@@ -786,94 +831,141 @@ export function DocumentsTab({
     (loaUrl ? 1 : 0) +
     (sfaUrl ? 1 : 0);
 
-  const tabsWithCounts = DOC_TABS.map((t) => ({
-    ...t,
-    count:
-      t.id === "contracts"
-        ? contractCount
-        : t.id === "businessDocs"
-          ? businessDocsCount
-          : t.id === "eois"
-            ? eoiEntries.length
-            : t.id === "engagement"
-              ? engagementForms.length
-              : t.id === "additional"
-                ? additionalDocs.length
-                : undefined,
-  }));
-
-  // ── Tab-level actions ───────────────────────────────────────────────────────
-
-  const tabActions: Record<DocTab, React.ReactNode> = {
-    contracts: null,
-    businessDocs: null,
-    eois: (
-      <>
-        <button
-          type="button"
-          onClick={fetchEOI}
-          disabled={eoiRefreshing}
-          className={linkBtn}
-        >
-          {eoiRefreshing ? "Refreshing…" : "Refresh"}
-        </button>
-        <button
-          type="button"
-          onClick={() => setShowEOIModal(true)}
-          className={ghostBtn}
-        >
-          Upload EOI
-        </button>
-      </>
-    ),
-    engagement: (
-      <>
-        <input
-          ref={efRef}
-          type="file"
-          accept="application/pdf"
-          className="hidden"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) uploadEF(f);
-            e.target.value = "";
-          }}
-        />
-        <button
-          type="button"
-          onClick={() => efRef.current?.click()}
-          disabled={efLoading}
-          className={ghostBtn}
-        >
-          {efLoading ? "Uploading…" : "Upload Form"}
-        </button>
-      </>
-    ),
-    additional: (
-      <>
-        <button
-          type="button"
-          onClick={fetchWIP}
-          disabled={wipLoading}
-          className={linkBtn}
-        >
-          {wipLoading ? "Refreshing…" : "Refresh"}
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setShowAddDocModal(true);
-            setAddDocFiles([]);
-            setAddDocType("");
-            setAddDocResult("");
-          }}
-          className={ghostBtn}
-        >
-          Upload Document
-        </button>
-      </>
-    ),
+  const filterCounts: Record<DocFilter, number> = {
+    all:
+      contractCount +
+      businessDocsCount +
+      eoiEntries.length +
+      engagementForms.length +
+      additionalDocs.length,
+    contracts: contractCount,
+    businessDocs: businessDocsCount,
+    eois: eoiEntries.length,
+    engagement: engagementForms.length,
+    additional: additionalDocs.length,
   };
+
+  const listCaption =
+    docFilter === "contracts" && contractCategoriesWithFiles > 0
+      ? `${contractCategoriesWithFiles} contract${contractCategoriesWithFiles === 1 ? "" : "s"} · ${signedViaAcesCount} signed via ACES`
+      : `${filterCounts[docFilter]} document${filterCounts[docFilter] === 1 ? "" : "s"}`;
+
+  useEffect(() => {
+    if (docFilter === "eois") setUploadCategory("eoi");
+    else if (docFilter === "engagement") setUploadCategory("engagement");
+    else if (docFilter === "additional") setUploadCategory("additional");
+  }, [docFilter]);
+
+  const handleRefreshDocuments = () => {
+    void fetchEOI();
+    void fetchWIP();
+  };
+
+  const triggerUpload = () => {
+    if (uploadCategory === "eoi") {
+      setShowEOIModal(true);
+      return;
+    }
+    if (uploadCategory === "engagement") {
+      efRef.current?.click();
+      return;
+    }
+    setShowAddDocModal(true);
+    setAddDocFiles([]);
+    setAddDocType("");
+    setAddDocResult("");
+  };
+
+  const normalizedSearch = searchQuery.trim().toLowerCase();
+  const matchesSearch = (text: string) =>
+    !normalizedSearch || text.toLowerCase().includes(normalizedSearch);
+
+  const businessDocNames = useMemo(
+    () =>
+      [
+        KEY_DOC_LABELS.loa,
+        KEY_DOC_LABELS.sfa,
+        ...Object.keys(docs),
+        KEY_DOC_LABELS.wip,
+        KEY_DOC_LABELS.amortisation,
+      ]
+        .filter((doc, index, arr) => arr.indexOf(doc) === index)
+        .sort((docA, docB) => {
+          const order = (doc: string) => {
+            if (doc === KEY_DOC_LABELS.loa) return 0;
+            if (doc === KEY_DOC_LABELS.sfa) return 1;
+            if (doc === KEY_DOC_LABELS.wip) return 2;
+            if (doc === KEY_DOC_LABELS.amortisation) return 3;
+            return 4;
+          };
+          const oa = order(docA);
+          const ob = order(docB);
+          if (oa !== ob) return oa - ob;
+
+          const isWipA = docA === KEY_DOC_LABELS.wip;
+          const isWipB = docB === KEY_DOC_LABELS.wip;
+          const isAmortA = docA === KEY_DOC_LABELS.amortisation;
+          const isAmortB = docB === KEY_DOC_LABELS.amortisation;
+
+          const fileUrlA =
+            docA === KEY_DOC_LABELS.loa
+              ? loaUrl
+              : docA === KEY_DOC_LABELS.sfa
+                ? sfaUrl
+                : isWipA
+                  ? wipUrl
+                  : isAmortA
+                    ? amortExcelUrl || amortPdfUrl
+                    : getBusinessDocumentFileUrl(docA, processed);
+          const fileUrlB =
+            docB === KEY_DOC_LABELS.loa
+              ? loaUrl
+              : docB === KEY_DOC_LABELS.sfa
+                ? sfaUrl
+                : isWipB
+                  ? wipUrl
+                  : isAmortB
+                    ? amortExcelUrl || amortPdfUrl
+                    : getBusinessDocumentFileUrl(docB, processed);
+
+          if (fileUrlA && !fileUrlB) return -1;
+          if (!fileUrlA && fileUrlB) return 1;
+          return 0;
+        }),
+    [docs, loaUrl, sfaUrl, wipUrl, amortExcelUrl, amortPdfUrl, processed]
+  );
+
+  const visibleCategories: DocTab[] =
+    docFilter === "all"
+      ? ["contracts", "businessDocs", "eois", "engagement", "additional"]
+      : [docFilter];
+
+  const categoryHasVisibleItems = (category: DocTab): boolean => {
+    if (category === "contracts") {
+      return sortedContracts.some((c) => {
+        if (c.items.length === 0) return matchesSearch(c.key);
+        return c.items.some((item, idx) =>
+          matchesSearch(
+            c.items.length > 1 ? `${c.key} (#${idx + 1})` : c.key
+          )
+        );
+      });
+    }
+    if (category === "businessDocs") {
+      return businessDocNames.some((doc) => matchesSearch(displayDocName(doc)));
+    }
+    if (category === "eois") {
+      return eoiEntries.some(([key]) =>
+        matchesSearch(key.replace(/^eoi_/, "").replace(/_/g, " "))
+      );
+    }
+    if (category === "engagement") {
+      return engagementForms.some((f) => matchesSearch(f.fileName));
+    }
+    return additionalDocs.some((doc) => matchesSearch(doc.fileName));
+  };
+
+  const hasVisibleDocuments = visibleCategories.some(categoryHasVisibleItems);
 
   // ── Not loaded state ───────────────────────────────────────────────────────
 
@@ -881,7 +973,10 @@ export function DocumentsTab({
     return (
       <Panel>
         <div className="px-5 py-12 text-center">
-          <p className="text-sm text-gray-400">No business information loaded yet.</p>
+          <EmptyState
+            title="No business information loaded yet."
+            className="py-6 items-start text-left [&_h3]:text-sm [&_h3]:font-normal [&_h3]:text-gray-400 [&_h3]:mb-0"
+          />
           <p className="text-xs text-gray-300 dark:text-gray-600 mt-1">Load the member&apos;s business details to see documents.</p>
         </div>
       </Panel>
@@ -893,416 +988,355 @@ export function DocumentsTab({
   return (
     <>
       <Panel>
-        {/* Sub-tab bar */}
-        <SubTabBar
-          tabs={tabsWithCounts}
-          active={activeTab}
-          onChange={setActiveTab}
-          actions={tabActions[activeTab]}
-        />
-
-        {/* ── Business Documents ── */}
-        {activeTab === "businessDocs" && (
-          <div className="px-5 py-5">
-            {Object.keys(docs).length === 0 &&
-            !wipUrl &&
-            !amortExcelUrl &&
-            !amortPdfUrl &&
-            !loaUrl &&
-            !sfaUrl ? (
-              <p className="text-sm text-gray-400">
-                No business documents available.
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {[
-                  KEY_DOC_LABELS.loa,
-                  KEY_DOC_LABELS.sfa,
-                  ...Object.keys(docs),
-                  KEY_DOC_LABELS.wip,
-                  KEY_DOC_LABELS.amortisation,
-                ]
-                  .filter((doc, index, arr) => arr.indexOf(doc) === index)
-                  .sort((docA, docB) => {
-                    const order = (doc: string) => {
-                      if (doc === KEY_DOC_LABELS.loa) return 0;
-                      if (doc === KEY_DOC_LABELS.sfa) return 1;
-                      if (doc === KEY_DOC_LABELS.wip) return 2;
-                      if (doc === KEY_DOC_LABELS.amortisation) return 3;
-                      return 4;
-                    };
-                    const oa = order(docA);
-                    const ob = order(docB);
-                    if (oa !== ob) return oa - ob;
-
-                    const isWipA = docA === KEY_DOC_LABELS.wip;
-                    const isWipB = docB === KEY_DOC_LABELS.wip;
-                    const isAmortA = docA === KEY_DOC_LABELS.amortisation;
-                    const isAmortB = docB === KEY_DOC_LABELS.amortisation;
-
-                    const fileUrlA =
-                      docA === KEY_DOC_LABELS.loa
-                        ? loaUrl
-                        : docA === KEY_DOC_LABELS.sfa
-                          ? sfaUrl
-                          : isWipA
-                            ? wipUrl
-                            : isAmortA
-                              ? amortExcelUrl || amortPdfUrl
-                              : getBusinessDocumentFileUrl(docA, processed);
-                    const fileUrlB =
-                      docB === KEY_DOC_LABELS.loa
-                        ? loaUrl
-                        : docB === KEY_DOC_LABELS.sfa
-                          ? sfaUrl
-                          : isWipB
-                            ? wipUrl
-                            : isAmortB
-                              ? amortExcelUrl || amortPdfUrl
-                              : getBusinessDocumentFileUrl(docB, processed);
-
-                    if (fileUrlA && !fileUrlB) return -1;
-                    if (!fileUrlA && fileUrlB) return 1;
-                    return 0;
-                  })
-                  .map((doc) => {
-                    const isLoa = doc === KEY_DOC_LABELS.loa;
-                    const isSfa = doc === KEY_DOC_LABELS.sfa;
-                    const isWip = doc === KEY_DOC_LABELS.wip;
-                    const isAmort = doc === KEY_DOC_LABELS.amortisation;
-                    const fileUrl = isLoa
-                      ? loaUrl
-                      : isSfa
-                        ? sfaUrl
-                        : isWip
-                          ? wipUrl
-                          : isAmort
-                            ? amortExcelUrl || amortPdfUrl
-                            : getBusinessDocumentFileUrl(doc, processed);
-
-                    return (
-                      <div
-                        key={doc}
-                        className={`flex items-center justify-between px-4 py-2 rounded border transition-colors ${
-                          fileUrl
-                            ? "bg-emerald-50 border-emerald-200 dark:bg-emerald-900/10 dark:border-emerald-800"
-                            : "bg-gray-50 border-gray-200 dark:bg-gray-900/40 dark:border-gray-700"
-                        }`}
-                      >
-                        <div className="min-w-0 pr-2">
-                          <div className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">
-                            {displayDocName(doc)}
-                          </div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                            {isAmort ? (
-                              <>
-                                {amortExcelUrl && (
-                                  <>
-                                    <FileLink
-                                      label="Excel"
-                                      url={amortExcelUrl}
-                                    />
-                                    {amortPdfUrl && " | "}
-                                  </>
-                                )}
-                                {amortPdfUrl && (
-                                  <FileLink label="PDF" url={amortPdfUrl} />
-                                )}
-                                {!amortExcelUrl &&
-                                  !amortPdfUrl &&
-                                  "Not available"}
-                              </>
-                            ) : fileUrl ? (
-                              <FileLink
-                                label={isLoa || isSfa ? "Open file" : "View File"}
-                                url={fileUrl}
-                              />
-                            ) : (
-                              "Not available"
-                            )}
-                          </div>
-                        </div>
-                        {!isWip && !isAmort && (
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                let filingType = doc
-                                  .toLowerCase()
-                                  .replace(/[^a-z0-9]+/g, "_");
-                                if (filingType === "site_profling")
-                                  filingType = "site_profiling";
-                                if (filingType === "service_fee_agreement")
-                                  filingType = "savings";
-                                if (
-                                  filingType.includes("exit_map") ||
-                                  filingType.includes("exitmap") ||
-                                  filingType.includes("floor_plan_exit_map")
-                                ) {
-                                  filingType = "site_map_upload";
-                                }
-                                setDriveFilingType(filingType);
-                                setDriveBizName(business?.name || "");
-                                setDriveContractKey(null);
-                                setDriveContractUpdateMode("replace");
-                                setDriveBatchFiles([]);
-                                setDriveResult(null);
-                                setDriveFile(null);
-                                setShowDriveModal(true);
-                              }}
-                              className={ghostBtn}
-                            >
-                              File
-                            </button>
-                            {(doc === "Site Profling" ||
-                              doc === "Site Profiling") && (
-                              <button
-                                type="button"
-                                onClick={openSiteProfiling}
-                                className={ghostBtn}
-                              >
-                                New
-                              </button>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ── Contracts & Signed Agreements ── */}
-        {activeTab === "contracts" && (
-          <div className="divide-y divide-gray-50 dark:divide-gray-800/40">
-            {sortedContracts.map((c) => (
-              <div
-                key={c.key}
-                className="px-5 py-3.5 hover:bg-gray-50/50 dark:hover:bg-white/[0.02] transition-colors"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <span
-                      className={`w-2 h-2 rounded-full shrink-0 mt-1.5 ${
-                        c.items.length > 0
-                          ? "bg-emerald-400"
-                          : "bg-gray-200 dark:bg-gray-700"
-                      }`}
-                    />
-                    <span className="text-sm font-medium text-gray-800 dark:text-gray-200">
-                      {c.key}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDriveFilingType(
-                        CONTRACT_TO_FILING[c.key] ??
-                          c.key.toLowerCase().replace(/[^a-z0-9]+/g, "_")
-                      );
-                      setDriveBizName(business?.name || "");
-                      setDriveContractKey(c.key);
-                      setDriveContractUpdateMode("replace");
-                      setDriveResult(null);
-                      setDriveFile(null);
-                      setDriveBatchFiles([]);
-                      setShowDriveModal(true);
-                    }}
-                    className={ghostBtn}
-                  >
-                    File
-                  </button>
-                </div>
-                <div className="mt-2 ml-4 space-y-1.5">
-                  {c.items.length === 0 && (
-                    <span className="text-[11px] text-gray-400">Not available</span>
+        <div className="space-y-3 border-b border-gray-100 px-5 py-4 dark:border-gray-800/60">
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search documents…"
+            className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/30 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+          />
+          <div className="flex flex-wrap gap-2">
+            {FILTER_CHIPS.map((chip) => {
+              const isActive = docFilter === chip.id;
+              const count = filterCounts[chip.id];
+              return (
+                <button
+                  key={chip.id}
+                  type="button"
+                  onClick={() => setDocFilter(chip.id)}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors",
+                    isActive
+                      ? "bg-primary text-white"
+                      : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
                   )}
-                  {c.items.map((item, idx) => (
-                    <div
-                      key={`${c.key}-${idx}`}
-                      className="flex flex-wrap items-center gap-2 text-[11px] text-gray-500 dark:text-gray-400"
-                    >
-                      {c.items.length > 1 && (
-                        <span className="text-gray-400 shrink-0">#{idx + 1}</span>
+                >
+                  {chip.label}
+                  {count > 0 && (
+                    <span
+                      className={cn(
+                        "inline-flex min-w-[1.25rem] items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] font-medium",
+                        isActive
+                          ? "bg-white/20 text-white"
+                          : "bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-400"
                       )}
-                      {item.url ? (
-                        <a
-                          href={item.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className={openBtn}
-                        >
-                          <svg
-                            className="w-3 h-3"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth={2}
-                            viewBox="0 0 24 24"
-                            aria-hidden
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                    >
+                      {count > 99 ? "99+" : count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 bg-gray-50/40 px-5 py-2 dark:border-gray-800/60 dark:bg-gray-900/20">
+          <p className="min-w-0 text-[11px] font-medium text-gray-500 dark:text-gray-400">
+            {listCaption}
+          </p>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <input
+              ref={efRef}
+              type="file"
+              accept="application/pdf"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) uploadEF(f);
+                e.target.value = "";
+              }}
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              radius="md"
+              onClick={handleRefreshDocuments}
+              disabled={eoiRefreshing || wipLoading}
+              loading={eoiRefreshing || wipLoading}
+            >
+              {eoiRefreshing || wipLoading ? "Refreshing…" : "Refresh"}
+            </Button>
+            <select
+              value={uploadCategory}
+              onChange={(e) => setUploadCategory(e.target.value as UploadCategory)}
+              className="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
+            >
+              <option value="eoi">Signed EOI</option>
+              <option value="engagement">Engagement form</option>
+              <option value="additional">Additional document</option>
+            </select>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              radius="md"
+              onClick={triggerUpload}
+              disabled={efLoading && uploadCategory === "engagement"}
+              loading={efLoading && uploadCategory === "engagement"}
+            >
+              {efLoading && uploadCategory === "engagement" ? "Uploading…" : "Upload"}
+            </Button>
+          </div>
+        </div>
+
+        <div className="px-5 py-5">
+          {efResult && (
+            <div className="mb-3">
+              <Alert msg={efResult} successStart="Engagement form uploaded" />
+            </div>
+          )}
+          {!hasVisibleDocuments ? (
+            <EmptyState
+              title={
+                normalizedSearch
+                  ? "No documents match your search."
+                  : "No documents in this category yet."
+              }
+              className="py-6 items-start text-left [&_h3]:text-sm [&_h3]:font-normal [&_h3]:text-gray-400 [&_h3]:mb-0"
+            />
+          ) : (
+            <div className="space-y-5">
+              {visibleCategories.map((category) => {
+                if (!categoryHasVisibleItems(category)) return null;
+                return (
+                  <div key={category}>
+                    {docFilter === "all" && (
+                      <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">
+                        {CATEGORY_SECTION_LABELS[category]}
+                      </p>
+                    )}
+                    <div className="divide-y divide-gray-50 dark:divide-gray-800/40 -mx-4">
+                      {category === "contracts" &&
+                        sortedContracts.flatMap((c) => {
+                          const categoryIcon = getRecordRowIcon(c.key);
+                          const openFileModal = () => {
+                            setDriveFilingType(
+                              CONTRACT_TO_FILING[c.key] ??
+                                c.key.toLowerCase().replace(/[^a-z0-9]+/g, "_")
+                            );
+                            setDriveBizName(business?.name || "");
+                            setDriveContractKey(c.key);
+                            setDriveContractUpdateMode("replace");
+                            setDriveResult(null);
+                            setDriveFile(null);
+                            setDriveBatchFiles([]);
+                            setShowDriveModal(true);
+                          };
+
+                          if (c.items.length === 0) {
+                            if (!matchesSearch(c.key)) return [];
+                            return (
+                              <RecordRow
+                                key={c.key}
+                                leadingIcon={categoryIcon.icon}
+                                iconIntent={categoryIcon.intent}
+                                title={c.key}
+                                status={contractStatusBadge(undefined, false)}
+                                muted
+                                actions={
+                                  <DocSecondaryBtn onClick={openFileModal}>File</DocSecondaryBtn>
+                                }
+                              />
+                            );
+                          }
+
+                          return c.items
+                            .map((item, idx) => {
+                              const title =
+                                c.items.length > 1 ? `${c.key} (#${idx + 1})` : c.key;
+                              if (!matchesSearch(title)) return null;
+                              return (
+                                <RecordRow
+                                  key={`${c.key}-${idx}`}
+                                  leadingIcon={categoryIcon.icon}
+                                  iconIntent={categoryIcon.intent}
+                                  title={title}
+                                  status={contractStatusBadge(item.status, !!item.url)}
+                                  muted={!item.url}
+                                  actions={
+                                    <>
+                                      {item.url ? (
+                                        <RecordRowOpenAction href={item.url} />
+                                      ) : null}
+                                      {idx === 0 ? (
+                                        <DocSecondaryBtn onClick={openFileModal}>
+                                          File
+                                        </DocSecondaryBtn>
+                                      ) : null}
+                                    </>
+                                  }
+                                />
+                              );
+                            })
+                            .filter(Boolean);
+                        })}
+
+                      {category === "businessDocs" &&
+                        businessDocNames.map((doc) => {
+                          const isLoa = doc === KEY_DOC_LABELS.loa;
+                          const isSfa = doc === KEY_DOC_LABELS.sfa;
+                          const isWip = doc === KEY_DOC_LABELS.wip;
+                          const isAmort = doc === KEY_DOC_LABELS.amortisation;
+                          const fileUrl = isLoa
+                            ? loaUrl
+                            : isSfa
+                              ? sfaUrl
+                              : isWip
+                                ? wipUrl
+                                : isAmort
+                                  ? amortExcelUrl || amortPdfUrl
+                                  : getBusinessDocumentFileUrl(doc, processed);
+                          const title = displayDocName(doc);
+                          if (!matchesSearch(title)) return null;
+                          const docIcon = getRecordRowIcon(doc);
+                          return (
+                            <RecordRow
+                              key={doc}
+                              leadingIcon={docIcon.icon}
+                              iconIntent={docIcon.intent}
+                              title={title}
+                              subtitle={
+                                isAmort ? (
+                                  <>
+                                    {amortExcelUrl && (
+                                      <>
+                                        <FileLink label="Excel" url={amortExcelUrl} />
+                                        {amortPdfUrl && " | "}
+                                      </>
+                                    )}
+                                    {amortPdfUrl && <FileLink label="PDF" url={amortPdfUrl} />}
+                                    {!amortExcelUrl && !amortPdfUrl && "Not available"}
+                                  </>
+                                ) : fileUrl ? (
+                                  <FileLink
+                                    label={isLoa || isSfa ? "Open file" : "View File"}
+                                    url={fileUrl}
+                                  />
+                                ) : (
+                                  "Not available"
+                                )
+                              }
+                              status={
+                                fileUrl || amortExcelUrl || amortPdfUrl ? (
+                                  <Badge intent="success" shape="pill">
+                                    Available
+                                  </Badge>
+                                ) : (
+                                  <Badge intent="neutral" shape="pill">
+                                    Not available
+                                  </Badge>
+                                )
+                              }
+                              muted={!fileUrl && !amortExcelUrl && !amortPdfUrl}
+                              actions={
+                                !isWip && !isAmort ? (
+                                  <>
+                                    <DocSecondaryBtn
+                                      onClick={() => {
+                                        let filingType = doc
+                                          .toLowerCase()
+                                          .replace(/[^a-z0-9]+/g, "_");
+                                        if (filingType === "site_profling")
+                                          filingType = "site_profiling";
+                                        if (filingType === "service_fee_agreement")
+                                          filingType = "savings";
+                                        if (
+                                          filingType.includes("exit_map") ||
+                                          filingType.includes("exitmap") ||
+                                          filingType.includes("floor_plan_exit_map")
+                                        ) {
+                                          filingType = "site_map_upload";
+                                        }
+                                        setDriveFilingType(filingType);
+                                        setDriveBizName(business?.name || "");
+                                        setDriveContractKey(null);
+                                        setDriveContractUpdateMode("replace");
+                                        setDriveBatchFiles([]);
+                                        setDriveResult(null);
+                                        setDriveFile(null);
+                                        setShowDriveModal(true);
+                                      }}
+                                    >
+                                      File
+                                    </DocSecondaryBtn>
+                                    {(doc === "Site Profling" || doc === "Site Profiling") && (
+                                      <DocSecondaryBtn onClick={openSiteProfiling}>
+                                        New
+                                      </DocSecondaryBtn>
+                                    )}
+                                  </>
+                                ) : undefined
+                              }
                             />
-                          </svg>
-                          Open Contract
-                        </a>
-                      ) : null}
-                      {item.status ? (
-                        <span className="truncate text-gray-400">{item.status}</span>
-                      ) : null}
+                          );
+                        })}
+
+                      {category === "eois" &&
+                        eoiEntries.map(([key, url]) => {
+                          const title = key.replace(/^eoi_/, "").replace(/_/g, " ");
+                          if (!matchesSearch(title)) return null;
+                          return (
+                            <RecordRow
+                              key={key}
+                              leadingIcon={FileText}
+                              iconIntent="neutral"
+                              title={title}
+                              status={
+                                <Badge intent="success" shape="pill">
+                                  Available
+                                </Badge>
+                              }
+                              actions={<RecordRowOpenAction href={String(url)} />}
+                            />
+                          );
+                        })}
+
+                      {category === "engagement" &&
+                        engagementForms.map((f) => {
+                          if (!matchesSearch(f.fileName)) return null;
+                          return (
+                            <RecordRow
+                              key={f.id}
+                              leadingIcon={FileText}
+                              iconIntent="neutral"
+                              title={f.fileName}
+                              status={
+                                <Badge intent="success" shape="pill">
+                                  Signed
+                                </Badge>
+                              }
+                              actions={<RecordRowOpenAction href={driveFileUrl(f.id)} />}
+                            />
+                          );
+                        })}
+
+                      {category === "additional" &&
+                        additionalDocs.map((doc) => {
+                          if (!matchesSearch(doc.fileName)) return null;
+                          return (
+                            <RecordRow
+                              key={doc.id}
+                              leadingIcon={FileText}
+                              iconIntent="neutral"
+                              title={doc.fileName}
+                              status={
+                                <Badge intent="success" shape="pill">
+                                  Available
+                                </Badge>
+                              }
+                              actions={<RecordRowOpenAction href={driveFileUrl(doc.id)} />}
+                            />
+                          );
+                        })}
                     </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* ── Signed EOIs ── */}
-        {activeTab === "eois" && (
-          <div className="px-5 py-5">
-            {eoiEntries.length === 0 ? (
-              <p className="text-sm text-gray-400">
-                No EOIs have been processed yet.
-              </p>
-            ) : (
-              <ul className="divide-y divide-gray-50 dark:divide-gray-800/40">
-                {eoiEntries.map(([key, url]) => (
-                  <li
-                    key={key}
-                    className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
-                  >
-                    <span className="text-sm text-gray-700 dark:text-gray-300 truncate">
-                      {key.replace(/^eoi_/, "").replace(/_/g, " ")}
-                    </span>
-                    <a
-                      href={String(url)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={openBtn}
-                    >
-                      <svg
-                        className="w-3 h-3"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth={2}
-                        viewBox="0 0 24 24"
-                        aria-hidden
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                        />
-                      </svg>
-                      Open EOI
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
-
-        {/* ── Signed Engagement Forms ── */}
-        {activeTab === "engagement" && (
-          <div className="px-5 py-5 space-y-4">
-            {efResult && (
-              <Alert
-                msg={efResult}
-                successStart="Engagement form uploaded"
-              />
-            )}
-            {engagementForms.length === 0 ? (
-              <p className="text-sm text-gray-400">No engagement forms found.</p>
-            ) : (
-              <ul className="divide-y divide-gray-50 dark:divide-gray-800/40">
-                {engagementForms.map((f) => (
-                  <li
-                    key={f.id}
-                    className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
-                  >
-                    <span className="text-sm text-gray-700 dark:text-gray-300 truncate">
-                      {f.fileName}
-                    </span>
-                    <a
-                      href={driveFileUrl(f.id)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={openBtn}
-                    >
-                      <svg
-                        className="w-3 h-3"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth={2}
-                        viewBox="0 0 24 24"
-                        aria-hidden
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                        />
-                      </svg>
-                      Open Form
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
-
-        {/* ── Additional Documents ── */}
-        {activeTab === "additional" && (
-          <div className="px-5 py-5">
-            {additionalDocs.length === 0 ? (
-              <p className="text-sm text-gray-400">
-                No additional documents found.
-              </p>
-            ) : (
-              <ul className="divide-y divide-gray-50 dark:divide-gray-800/40">
-                {additionalDocs.map((doc) => (
-                  <li
-                    key={doc.id}
-                    className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
-                  >
-                    <span className="text-sm text-gray-700 dark:text-gray-300 truncate">
-                      {doc.fileName}
-                    </span>
-                    <a
-                      href={driveFileUrl(doc.id)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={openBtn}
-                    >
-                      <svg
-                        className="w-3 h-3"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth={2}
-                        viewBox="0 0 24 24"
-                        aria-hidden
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                        />
-                      </svg>
-                      Open
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </Panel>
 
       {/* ── Drive filing modal ── */}
@@ -1344,10 +1378,13 @@ export function DocumentsTab({
         {driveFilingType.startsWith("signed_") && (
           <MField label="Contract Status">
             <div className="flex gap-5 mt-0.5">
-              {["Signed via ACES","Existing Contract"].map((v) => (
-                <label key={v} className="flex items-center gap-2 cursor-pointer text-sm text-gray-700 dark:text-gray-300">
-                  <input type="radio" name="driveStatus" checked={driveContractStatus === v} onChange={() => setDriveContractStatus(v)} className="accent-gray-900 dark:accent-white" />
-                  {v === "Existing Contract" ? "Existing Contract (Copy)" : v}
+              {[
+                { value: BRAND.signedContractStatusValue, label: BRAND.signedContractStatusLabel },
+                { value: "Existing Contract", label: "Existing Contract (Copy)" },
+              ].map(({ value, label }) => (
+                <label key={value} className="flex items-center gap-2 cursor-pointer text-sm text-gray-700 dark:text-gray-300">
+                  <input type="radio" name="driveStatus" checked={driveContractStatus === value} onChange={() => setDriveContractStatus(value)} className="accent-gray-900 dark:accent-white" />
+                  {label}
                 </label>
               ))}
             </div>
@@ -1403,7 +1440,7 @@ export function DocumentsTab({
                 return `/signed-agreement-lodgement?${p.toString()}`;
               })()}
               target="_blank" rel="noopener noreferrer"
-              className="text-xs font-semibold text-blue-700 dark:text-blue-300 hover:underline"
+              className="text-xs font-semibold text-primary hover:underline"
             >
               Lodge Agreement with Retailer →
             </a>

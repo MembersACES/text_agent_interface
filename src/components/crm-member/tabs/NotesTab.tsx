@@ -2,6 +2,9 @@
 
 import { Card, CardContent } from "@/components/ui/card";
 import { NoteTypeBadge } from "../shared/NoteTypeBadge";
+import { EmptyState } from "@/components/ui/empty-state";
+import { SectionHeader } from "../shared/SectionHeader";
+import { Button } from "@/components/ui/button";
 import { formatDate } from "../shared/formatDate";
 import type { Note } from "../types";
 
@@ -36,11 +39,9 @@ export function NotesTab({
   onDeleteNote,
 }: NotesTabProps) {
   return (
-    <Card className="border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+    <Card className="p-0">
       <CardContent className="p-4 space-y-3">
-        <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-100">
-          Notes & activity
-        </h2>
+        <SectionHeader title="Notes & activity" />
         <form onSubmit={onSubmitNote} className="space-y-2">
           <div className="flex gap-2 items-center">
             <label className="text-xs font-medium text-gray-600 dark:text-gray-400">
@@ -69,9 +70,13 @@ export function NotesTab({
             Type your note above, then click Add Note.
           </p>
           <div className="flex justify-end">
-            <button
+            <Button
               type="submit"
+              variant="primary"
+              size="sm"
+              radius="md"
               disabled={creatingNote || !newNote.trim()}
+              loading={creatingNote}
               title={
                 creatingNote
                   ? "Saving..."
@@ -79,24 +84,22 @@ export function NotesTab({
                     ? "Type a note above first"
                     : undefined
               }
-              className={`px-3 py-1.5 rounded-md bg-primary text-xs font-medium text-white hover:bg-primary/90 disabled:opacity-50 ${
-                creatingNote ? "disabled:cursor-wait" : "disabled:cursor-default"
-              }`}
             >
               {creatingNote ? "Saving..." : "Add Note"}
-            </button>
+            </Button>
           </div>
         </form>
         <div className="border-t border-gray-200 dark:border-gray-700 pt-3 space-y-2 max-h-[320px] overflow-y-auto">
           {notes.length === 0 ? (
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              No notes yet. Start by adding one above.
-            </p>
+            <EmptyState
+              title="No notes yet. Start by adding one above."
+              className="py-4 items-start text-left [&_h3]:text-sm [&_h3]:font-normal [&_h3]:text-gray-500 [&_h3]:dark:text-gray-400 [&_h3]:mb-0"
+            />
           ) : (
             notes.map((n) => (
               <div
                 key={n.id}
-                className="p-2 rounded-md bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm"
+                className="rounded-md border border-gray-200 bg-gray-50 p-2 text-sm transition-colors duration-[120ms] hover:bg-gray-2 dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-dark-2"
               >
                 <div className="flex items-center gap-2 mb-1">
                   <NoteTypeBadge noteType={n.note_type || "general"} />

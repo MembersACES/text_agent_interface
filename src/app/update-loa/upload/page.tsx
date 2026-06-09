@@ -2,6 +2,8 @@
 import React, { useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { postLoaDocument } from '@/lib/invoice-api-endpoints';
+import { ToolPageLayout } from '@/components/Layouts/ToolPageLayout';
+import { Button } from '@/components/ui/button';
 
 export default function UploadLOAPage() {
   const router = useRouter();
@@ -68,9 +70,12 @@ export default function UploadLOAPage() {
   };
 
   return (
-    <div className="max-w-xl mx-auto p-6 bg-white rounded shadow mt-8">
-      <h1 className="text-2xl font-bold mb-4">Upload LOA Document</h1>
-
+    <ToolPageLayout
+      pageName="Update LOA"
+      title="Upload LOA document"
+      description={businessName ? `For ${businessName}` : undefined}
+      width="md"
+    >
       <form onSubmit={handleUpload} className="space-y-4">
         <div>
           <label className="block font-medium mb-1">LOA File</label>
@@ -83,13 +88,9 @@ export default function UploadLOAPage() {
           />
         </div>
 
-        <button
-          type="submit"
-          className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50"
-          disabled={loading || !file}
-        >
-          {loading ? 'Uploading...' : 'Upload & Process LOA'}
-        </button>
+        <Button type="submit" disabled={loading || !file} loading={loading}>
+          Upload & process LOA
+        </Button>
       </form>
 
       {result && (
@@ -102,6 +103,6 @@ export default function UploadLOAPage() {
           {error}
         </div>
       )}
-    </div>
+    </ToolPageLayout>
   );
 }

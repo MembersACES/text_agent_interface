@@ -4,30 +4,26 @@ import {
   OFFER_STATUS_LABELS,
   type OfferStatus,
 } from "@/constants/crm";
+import { Badge, type BadgeIntent } from "@/components/ui/badge";
 
-const base =
-  "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium";
-
-const statusStyles: Record<string, string> = {
-  requested:
-    "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
-  awaiting_response:
-    "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
-  response_received:
-    "bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-300",
-  autonomous_agent_trigger:
-    "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-300",
-  autonomous_agent_stopped:
-    "bg-fuchsia-100 text-fuchsia-800 dark:bg-fuchsia-900/30 dark:text-fuchsia-300",
-  accepted:
-    "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
-  lost: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
+const statusIntents: Record<string, BadgeIntent> = {
+  requested: "warning",
+  awaiting_response: "info",
+  response_received: "info",
+  autonomous_agent_trigger: "info",
+  autonomous_agent_stopped: "warning",
+  accepted: "success",
+  lost: "danger",
 };
 
 export function OfferStatusBadge({ status }: { status: string }) {
   const label =
     OFFER_STATUS_LABELS[status as OfferStatus] ?? status.replace(/_/g, " ");
-  const style = statusStyles[status] ?? "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200";
+  const intent = statusIntents[status] ?? "neutral";
 
-  return <span className={`${base} ${style}`}>{label}</span>;
+  return (
+    <Badge intent={intent} shape="pill">
+      {label}
+    </Badge>
+  );
 }

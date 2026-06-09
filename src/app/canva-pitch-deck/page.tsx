@@ -201,7 +201,7 @@ export default function CanvaPitchDeckPage() {
             <button
               onClick={testCanvaCapabilities}
               disabled={testing}
-              className="px-3 py-1 bg-blue-600 text-white rounded text-sm disabled:opacity-50"
+              className="px-3 py-1 bg-primary text-white rounded text-sm disabled:opacity-50"
             >
               {testing ? "Testing..." : "🧪 Test Capabilities"}
             </button>

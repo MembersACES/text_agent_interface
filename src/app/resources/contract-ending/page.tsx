@@ -323,7 +323,7 @@ export default function ContractEndingPage() {
             type="button"
             onClick={() => fetchData(true)}
             disabled={loading || syncing}
-            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-primary text-white hover:bg-primary/90 disabled:opacity-50 text-sm"
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-primary text-white hover:bg-primary/90 disabled:opacity-50 text-sm"
           >
             <RefreshCw className={syncing ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
             Sync from Sheet & Refresh
@@ -361,7 +361,7 @@ export default function ContractEndingPage() {
                 {lastSync.identifiers_not_in_airtable.gas?.length
                   ? `${lastSync.identifiers_not_in_airtable.gas.length} MRIN(s) (C&I Gas)`
                   : ""}
-                {" "}in the Member ACES Data sheet could not be matched to an Airtable utility record. Add these accounts in Airtable or remove them from the sheet.
+                {" "}in the member data sheet could not be matched to an Airtable utility record. Add these accounts in Airtable or remove them from the sheet.
               </p>
               <p className="text-xs font-medium text-amber-700 dark:text-amber-300 mt-1.5">
                 {showNotInAirtableList ? "Click to collapse list" : "Click to show unmatched NMIs and MRINs"}
@@ -574,7 +574,7 @@ export default function ContractEndingPage() {
             ) : (
               <>
                 <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
-                  No contract end date in Airtable. Use &quot;Sync from Sheet & Refresh&quot; to pull dates from the Member ACES Data spreadsheet, or update in Airtable.
+                  No contract end date in Airtable. Use &quot;Sync from Sheet & Refresh&quot; to pull dates from the member data spreadsheet, or update in Airtable.
                 </p>
                 {filteredUndefined.length === 0 ? (
                   <p className="text-sm text-gray-500 italic">None.</p>
@@ -609,7 +609,7 @@ export default function ContractEndingPage() {
               type="button"
               onClick={handleSaveEdit}
               disabled={editSaving}
-              className="px-3 py-1.5 rounded bg-primary text-white hover:opacity-90 disabled:opacity-50 text-sm"
+              className="px-3 py-1.5 rounded-full bg-primary text-white hover:opacity-90 disabled:opacity-50 text-sm"
             >
               {editSaving ? "Saving…" : "Save"}
             </button>

@@ -17,7 +17,7 @@ interface PageMap {
 }
 
 /**
- * Context-aware ACES help tool
+ * Context-aware Carbon Zero help tool
  * Directs users to correct navigation paths with Business Info as central hub
  */
 export async function runHelpTool(message: string): Promise<ToolResponse> {
@@ -214,7 +214,7 @@ You can also use **Site Profiling** to run it manually.`,
     lower.includes("finance partner")
   ) {
     return {
-      message: `💰 **Solution Range** — Explore ACES's comprehensive sustainable solutions:
+      message: `💰 **Solution Range** — Explore Carbon Zero Australasia's comprehensive sustainable solutions:
 
 📋 **Available Categories:**
 • 🌱 Sustainable Platform — Integrated sustainability initiatives
@@ -294,7 +294,7 @@ You can also use **Site Profiling** to run it manually.`,
 
   // --- DEFAULT HELP ---
   return {
-    message: `🤖 I can help you navigate the ACES Dashboard.  
+    message: `🤖 I can help you navigate the Carbon Zero Australasia dashboard.  
 Try asking:  
 - "Where do I upload an agreement?"  
 - "How can I view C&I gas invoices?"  

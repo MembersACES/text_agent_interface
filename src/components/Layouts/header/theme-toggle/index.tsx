@@ -2,48 +2,22 @@ import { cn } from "@/lib/utils";
 import { useTheme } from "next-themes";
 import { Moon, Sun } from "./icons";
 
-const THEMES = [
-  {
-    name: "light",
-    Icon: Sun,
-  },
-  {
-    name: "dark",
-    Icon: Moon,
-  },
-];
-
 export function ThemeToggleSwitch() {
   const { setTheme, resolvedTheme } = useTheme();
   if (!resolvedTheme) {
     return null;
   }
 
+  const isDark = resolvedTheme === "dark";
+
   return (
     <button
-      onClick={() => setTheme(resolvedTheme === "light" ? "dark" : "light")}
-      className="group rounded-full bg-gray-3 p-[5px] text-[#111928] outline-1 outline-primary focus-visible:outline dark:bg-[#020D1A] dark:text-current"
+      type="button"
+      onClick={() => setTheme(isDark ? "light" : "dark")}
+      className="flex size-9 shrink-0 items-center justify-center rounded-full border border-stroke text-gray-600 transition-colors hover:bg-gray/50 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 dark:border-dark-3 dark:text-gray-400 dark:hover:bg-dark-3 dark:hover:text-white"
+      aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
     >
-      <span className="sr-only">
-        Switch to {resolvedTheme === "light" ? "dark" : "light"} mode
-      </span>
-
-      <span aria-hidden className="relative flex gap-2.5">
-        {/* Indicator */}
-        <span className="absolute size-[38px] rounded-full border border-gray-200 bg-white transition-all dark:translate-x-[48px] dark:border-none dark:bg-dark-2 dark:group-hover:bg-dark-3" />
-
-        {THEMES.map(({ name, Icon }) => (
-          <span
-            key={name}
-            className={cn(
-              "relative grid size-[38px] place-items-center rounded-full",
-              name === "dark" && "dark:text-white",
-            )}
-          >
-            <Icon />
-          </span>
-        ))}
-      </span>
+      {isDark ? <Sun className="size-4" /> : <Moon className="size-4" />}
     </button>
   );
 }

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { getApiBaseUrl } from "@/lib/utils";
+import { PageHeader } from "@/components/Layouts/PageHeader";
 
 export default function QuoteRequestPage() {
   const { data: session } = useSession();
@@ -1097,12 +1098,14 @@ export default function QuoteRequestPage() {
   console.log('Debug - filteredUtilityResult:', filteredUtilityResult);
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-6xl mx-auto p-6 space-y-6">
-        <div className="bg-white rounded-lg shadow-sm border">
-          <div className="p-6 border-b">
-            <h1 className="text-3xl font-bold text-gray-900">Supplier Quote Request</h1>
-          </div>
+    <div className="space-y-6">
+      <PageHeader
+        pageName="Quote request"
+        title="Supplier quote request"
+        description="Build and send supplier quote requests from linked utility and business data."
+      />
+      <div className="space-y-6">
+        <div className="rounded-2xl border border-stroke bg-white shadow-sm dark:border-dark-3 dark:bg-gray-dark">
 
           {/* Business Information */}
           {businessInfo && Object.keys(businessInfo).length > 0 && (
@@ -1549,7 +1552,7 @@ export default function QuoteRequestPage() {
               <button 
                 onClick={handleSendQuoteRequest}
                 disabled={selectedRetailers.length === 0}
-                className="px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:bg-blue-400 disabled:cursor-not-allowed"
+                className="px-6 py-3 bg-primary text-white font-medium rounded-lg hover:bg-primary/90 transition-colors disabled:bg-blue-400 disabled:cursor-not-allowed"
               >
                 {selectedRetailers.length === 0 ? 'Select Retailers First' : 'Send Quote Request'}
               </button>
@@ -1777,7 +1780,7 @@ export default function QuoteRequestPage() {
                   <button
                     onClick={handleSubmitQuoteRequest}
                     disabled={loading}
-                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-blue-400 disabled:cursor-not-allowed"
+                    className="flex-1 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors disabled:bg-blue-400 disabled:cursor-not-allowed"
                   >
                     {loading ? 'Sending...' : 'Confirm & Send'}
                   </button>

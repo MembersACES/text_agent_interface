@@ -4,7 +4,8 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { getApiBaseUrl, getAutonomousApiBaseUrl } from "@/lib/utils";
-import { PageHeader } from "@/components/Layouts/PageHeader";
+import { ToolPageLayout } from "@/components/Layouts/ToolPageLayout";
+import { Button } from "@/components/ui/button";
 
 /** SME Gas → C&I comparison: how current SME bill is interpreted in the UI */
 type SmeGasComparisonMode = "invoice_blocks" | "ci_offer" | "sme_benchmark_stub";
@@ -2098,10 +2099,11 @@ export default function Base2Page() {
   // ─── Render ────────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-gray-50/70">
-      <div className="container mx-auto px-6 py-6 max-w-6xl">
-        <PageHeader pageName="Base 2 Review" title="Base 2 Review - Quick Rate Comparison" />
-
+    <ToolPageLayout
+      pageName="Base 2 Review"
+      title="Base 2 Review — quick rate comparison"
+      width="2xl"
+    >
         {/* Business Information Card */}
         {businessInfo && (
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm mb-5 overflow-hidden">
@@ -2548,7 +2550,6 @@ export default function Base2Page() {
             <p className="text-sm font-semibold text-emerald-700">Comparison saved successfully!</p>
           </div>
         )}
-      </div>
 
       {/* ── Modals ── */}
 
@@ -2681,33 +2682,26 @@ export default function Base2Page() {
               ))}
             </ul>
             <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-              <button
+              <Button
                 type="button"
+                variant="secondary"
                 onClick={cancelAutonomousSequenceConfirm}
                 disabled={autonomousSequenceStarting}
-                className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
               >
                 Not now
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 onClick={() => void confirmAutonomousSequenceStarts()}
                 disabled={autonomousSequenceStarting}
-                className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-sm font-semibold text-white bg-primary hover:bg-primary/90 disabled:opacity-50 inline-flex items-center justify-center gap-2"
+                loading={autonomousSequenceStarting}
               >
-                {autonomousSequenceStarting ? (
-                  <>
-                    <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                    Starting…
-                  </>
-                ) : (
-                  "Start sequence(s)"
-                )}
-              </button>
+                Start sequence(s)
+              </Button>
             </div>
           </div>
         </div>
       )}
-    </div>
+    </ToolPageLayout>
   );
 }

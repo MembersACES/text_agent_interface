@@ -76,7 +76,7 @@ export default function TrojanOilDocketReaderOnePager() {
               <div className="flex-1">
                 <h3 className="text-lg font-semibold text-gray-800 mb-2">API Integration</h3>
                 <p className="text-gray-600">
-                  Extracted data is automatically processed through ACES' custom API and logged directly 
+                  Extracted data is automatically processed through Carbon Zero Australasia's custom API and logged directly 
                   into a Google Sheets output document. The structured data is immediately available for 
                   integration with accounting systems, inventory management, and reporting tools.
                 </p>
@@ -185,7 +185,7 @@ export default function TrojanOilDocketReaderOnePager() {
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="text-purple-600 mt-1">•</span>
-                  <span>Custom ACES API endpoints</span>
+                  <span>Custom Carbon Zero API endpoints</span>
                 </li>
               </ul>
             </div>
@@ -218,7 +218,7 @@ export default function TrojanOilDocketReaderOnePager() {
         <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg p-8 border border-purple-200 text-center">
           <h2 className="text-2xl font-bold text-gray-800 mb-4">Ready to Automate Your Delivery Processing?</h2>
           <p className="text-gray-600 mb-6 max-w-2xl mx-auto">
-            Contact ACES to learn more about how the Trojan Oil Docket Reader can streamline your operations 
+            Contact Carbon Zero Australasia to learn more about how the Trojan Oil Docket Reader can streamline your operations 
             and eliminate manual data entry.
           </p>
           <a

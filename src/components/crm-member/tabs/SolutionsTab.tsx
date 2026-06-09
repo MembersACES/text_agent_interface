@@ -1,18 +1,34 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { useToast } from "@/components/ui/toast";
+import { MemberSubTabs } from "../shared/MemberSubTabs";
+import { SectionHeader } from "../shared/SectionHeader";
+import { Button } from "@/components/ui/button";
+import { RecordRowSkeleton } from "@/components/ui/skeleton";
+import type { Client } from "../types";
 
 export interface SolutionsTabProps {
   businessInfo: Record<string, unknown> | null;
   setBusinessInfo: (info: Record<string, unknown> | null) => void;
+  client?: Client | null;
+  onSaveAdvocateMeeting?: (params: {
+    advocacy_meeting_date: string;
+    advocacy_meeting_time: string;
+    advocacy_meeting_completed: boolean;
+  }) => Promise<void>;
+  savingAdvocateMeeting?: boolean;
 }
 
 type DataTab = "automation" | "discrepancy" | "advocacy" | "ghgreporting";
 
 export function SolutionsTab({
   businessInfo,
+  client,
+  onSaveAdvocateMeeting,
+  savingAdvocateMeeting = false,
 }: SolutionsTabProps) {
   const { showToast } = useToast();
   const info = businessInfo as any;
@@ -30,6 +46,18 @@ export function SolutionsTab({
   const [advocacyMeetingCompleted, setAdvocacyMeetingCompleted] =
     useState<boolean>(false);
   const [ghgLoading, setGhgLoading] = useState(false);
+
+  useEffect(() => {
+    if (!client) return;
+    setAdvocacyMeetingDate(client.advocacy_meeting_date ?? "");
+    setAdvocacyMeetingTime(client.advocacy_meeting_time ?? "");
+    setAdvocacyMeetingCompleted(client.advocacy_meeting_completed === true);
+  }, [
+    client?.id,
+    client?.advocacy_meeting_date,
+    client?.advocacy_meeting_time,
+    client?.advocacy_meeting_completed,
+  ]);
   const [ghgData, setGhgData] = useState<any[] | null>(null);
 
   const wipDocId = useMemo(() => {
@@ -98,59 +126,13 @@ export function SolutionsTab({
       setAdvocacyLoading(true);
       const data = await callWipWebhook("Advocacy Members");
       setAdvocacyData(data);
-
-      if (Array.isArray(data) && data.length > 0) {
-        const mainBusinessRow = data.find((row: any) => {
-          const memberName =
-            row.advocacy_member ||
-            row.ADVOCACY_MEMBER ||
-            row["Advocacy Member"] ||
-            "";
-          return memberName === business.name;
-        });
-
-        if (mainBusinessRow) {
-          if (
-            mainBusinessRow.advocacy_meeting_date ||
-            mainBusinessRow["Advocacy Meeting Date"]
-          ) {
-            setAdvocacyMeetingDate(
-              mainBusinessRow.advocacy_meeting_date ||
-                mainBusinessRow["Advocacy Meeting Date"] ||
-                ""
-            );
-          }
-          if (
-            mainBusinessRow.advocacy_meeting_time ||
-            mainBusinessRow["Advocacy Meeting Time"]
-          ) {
-            setAdvocacyMeetingTime(
-              mainBusinessRow.advocacy_meeting_time ||
-                mainBusinessRow["Advocacy Meeting Time"] ||
-                ""
-            );
-          }
-          if (
-            mainBusinessRow.advocacy_meeting_conducted ||
-            mainBusinessRow["Advocacy Meeting Conducted"]
-          ) {
-            const conducted =
-              mainBusinessRow.advocacy_meeting_conducted ||
-              mainBusinessRow["Advocacy Meeting Conducted"] ||
-              "";
-            setAdvocacyMeetingCompleted(
-              String(conducted).toLowerCase() === "yes"
-            );
-          }
-        }
-      }
     } catch (err) {
       console.error("Error fetching advocacy data:", err);
       showToast("Error fetching data", "error");
     } finally {
       setAdvocacyLoading(false);
     }
-  }, [callWipWebhook, business.name]);
+  }, [callWipWebhook]);
 
   const loadGhg = useCallback(async () => {
     try {
@@ -186,65 +168,49 @@ export function SolutionsTab({
 
   if (!businessInfo) {
     return (
-      <Card className="border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+      <Card className="p-0">
         <CardContent className="p-4">
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            No business information loaded. Load the member&apos;s business
-            details to see solutions & outcomes.
-          </p>
+          <EmptyState
+            title="No business information loaded."
+            description="Load the member's business details to see solutions & outcomes."
+            className="py-4 items-start text-left [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:text-gray-500 [&_h3]:dark:text-gray-400"
+          />
         </CardContent>
       </Card>
     );
   }
 
-  const TabButton = ({
-    value,
-    label,
-  }: {
-    value: DataTab;
-    label: string;
-  }) => (
-    <button
-      type="button"
-      onClick={() => setActiveDataTab(value)}
-      className={`px-4 py-2 font-medium text-xs md:text-sm transition-colors border-b-2 ${
-        activeDataTab === value
-          ? "border-primary text-primary"
-          : "border-transparent text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-gray-100 hover:border-gray-300 dark:hover:border-gray-600"
-      }`}
-    >
-      {label}
-    </button>
-  );
-
   return (
     <Card className="border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
       <CardContent className="p-4 space-y-4">
-        <div className="flex flex-col gap-2">
-          <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-100">
-            Solutions & outcomes
-          </h2>
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            Insights and work-in-progress data for automation, discrepancy,
-            advocacy, and GHG reporting.
-          </p>
-        </div>
+        <SectionHeader
+          title="Solutions & outcomes"
+          subtitle="Insights and work-in-progress data for automation, discrepancy, advocacy, and GHG reporting."
+        />
 
-        <div className="flex border-b border-gray-200 dark:border-gray-700 -mx-4 px-4 overflow-x-auto">
-          <TabButton value="automation" label="Automation & LLMs" />
-          <TabButton value="discrepancy" label="Discrepancy Adjustments" />
-          <TabButton value="advocacy" label="Advocacy Members" />
-          <TabButton value="ghgreporting" label="GHG Reporting" />
-        </div>
+        <MemberSubTabs
+          className="-mx-4 px-4"
+          tabs={[
+            { id: "automation", label: "Automation & LLMs" },
+            { id: "discrepancy", label: "Discrepancy Adjustments" },
+            { id: "advocacy", label: "Advocacy Members" },
+            { id: "ghgreporting", label: "GHG Reporting" },
+          ]}
+          active={activeDataTab}
+          onChange={(id) => setActiveDataTab(id as DataTab)}
+        />
 
         {activeDataTab === "automation" && (
           <div className="space-y-3">
             <div className="flex items-center justify-end gap-2">
-              <button
+              <Button
                 type="button"
+                variant="secondary"
+                size="sm"
+                radius="md"
                 onClick={loadAutomation}
                 disabled={automationLoading}
-                className="px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-200 text-xs font-medium hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 transition-colors flex items-center gap-1"
+                loading={automationLoading}
               >
                 <svg
                   className="w-3 h-3"
@@ -260,7 +226,7 @@ export function SolutionsTab({
                   />
                 </svg>
                 {automationLoading ? "Loading..." : "Refresh"}
-              </button>
+              </Button>
             </div>
             <div className="border rounded-lg p-4 bg-gray-50 dark:bg-gray-900/40">
               {automationData && Array.isArray(automationData) && automationData.length > 0 ? (
@@ -286,16 +252,31 @@ export function SolutionsTab({
                   ))}
                 </div>
               ) : (
-                <div className="text-center py-8 text-sm text-gray-400 dark:text-gray-500">
-                  {automationLoading ? (
-                    <div className="flex items-center justify-center gap-2">
-                      <div className="animate-spin h-5 w-5 border-2 border-blue-600 border-t-transparent rounded-full" />
-                      Loading...
-                    </div>
-                  ) : (
-                    'No data available - Click "Refresh" to fetch'
-                  )}
-                </div>
+                automationLoading ? (
+                  <div className="space-y-2 py-2">
+                    <RecordRowSkeleton />
+                    <RecordRowSkeleton />
+                    <RecordRowSkeleton />
+                  </div>
+                ) : (
+                  <EmptyState
+                    title="No automation data yet"
+                    description="Pull the latest WIP sheet data for this member."
+                    action={
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        radius="md"
+                        onClick={loadAutomation}
+                        loading={automationLoading}
+                      >
+                        Refresh
+                      </Button>
+                    }
+                    className="py-8 [&_h3]:text-sm [&_h3]:font-normal [&_h3]:text-gray-400 [&_h3]:dark:text-gray-500 [&_h3]:mb-0"
+                  />
+                )
               )}
             </div>
           </div>
@@ -304,27 +285,27 @@ export function SolutionsTab({
         {activeDataTab === "discrepancy" && (
           <div className="space-y-3">
             <div className="flex items-center justify-end gap-2">
-              <button
+              <Button
                 type="button"
+                variant="secondary"
+                size="sm"
+                radius="md"
                 onClick={loadDiscrepancy}
                 disabled={discrepancyLoading}
-                className="px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-200 text-xs font-medium hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 transition-colors flex items-center gap-1"
+                loading={discrepancyLoading}
+                leftIcon={
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                    />
+                  </svg>
+                }
               >
-                <svg
-                  className="w-3 h-3"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                  />
-                </svg>
                 {discrepancyLoading ? "Loading..." : "Refresh"}
-              </button>
+              </Button>
             </div>
             <div className="border rounded-lg p-4 bg-gray-50 dark:bg-gray-900/40">
               {discrepancyData &&
@@ -369,17 +350,30 @@ export function SolutionsTab({
                     </div>
                   ))}
                 </div>
-              ) : (
-                <div className="text-center py-8 text-sm text-gray-400 dark:text-gray-500">
-                  {discrepancyLoading ? (
-                    <div className="flex items-center justify-center gap-2">
-                      <div className="animate-spin h-5 w-5 border-2 border-blue-600 border-t-transparent rounded-full" />
-                      Loading...
-                    </div>
-                  ) : (
-                    'No data available - Click "Refresh" to fetch'
-                  )}
+              ) : discrepancyLoading ? (
+                <div className="space-y-2 py-2">
+                  <RecordRowSkeleton />
+                  <RecordRowSkeleton />
+                  <RecordRowSkeleton />
                 </div>
+              ) : (
+                <EmptyState
+                  title="No discrepancy data yet"
+                  description="Pull the latest WIP sheet data for this member."
+                  action={
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      radius="md"
+                      onClick={loadDiscrepancy}
+                      loading={discrepancyLoading}
+                    >
+                      Refresh
+                    </Button>
+                  }
+                  className="py-8 [&_h3]:text-sm [&_h3]:font-normal [&_h3]:text-gray-400 [&_h3]:dark:text-gray-500 [&_h3]:mb-0"
+                />
               )}
             </div>
           </div>
@@ -388,11 +382,14 @@ export function SolutionsTab({
         {activeDataTab === "advocacy" && (
           <div className="space-y-3">
             <div className="flex items-center justify-end gap-2">
-              <button
+              <Button
                 type="button"
+                variant="secondary"
+                size="sm"
+                radius="md"
                 onClick={loadAdvocacy}
                 disabled={advocacyLoading}
-                className="px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-200 text-xs font-medium hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 transition-colors flex items-center gap-1"
+                loading={advocacyLoading}
               >
                 <svg
                   className="w-3 h-3"
@@ -408,58 +405,33 @@ export function SolutionsTab({
                   />
                 </svg>
                 {advocacyLoading ? "Loading..." : "Refresh"}
-              </button>
+              </Button>
             </div>
 
-            {advocacyData &&
-              Array.isArray(advocacyData) &&
-              advocacyData.length > 0 && (
+            {client && onSaveAdvocateMeeting && (
                 <div className="mb-4 p-4 border rounded-lg bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-sm md:text-base font-semibold text-gray-800 dark:text-gray-100">
-                      Advocacy meeting details
-                    </h3>
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        try {
-                          const payload: Record<string, unknown> = {
-                            business_name: business.name,
+                  <SectionHeader
+                    title="Advocacy meeting details"
+                    as="h3"
+                    titleClassName="text-sm md:text-base"
+                    className="mb-3"
+                    actions={
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onSaveAdvocateMeeting({
                             advocacy_meeting_date: advocacyMeetingDate,
                             advocacy_meeting_time: advocacyMeetingTime,
-                            advocacy_meeting_conducted: advocacyMeetingCompleted
-                              ? "Yes"
-                              : "No",
-                          };
-                          if (wipDocId) {
-                            payload.wip_document_id = wipDocId;
-                          }
-                          const res = await fetch(
-                            "https://membersaces.app.n8n.cloud/webhook/save_advocacy_WIP",
-                            {
-                              method: "POST",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify(payload),
-                            }
-                          );
-                          if (res.ok) {
-                            showToast("Advocacy meeting details saved successfully!", "success");
-                          } else {
-                            showToast("Error saving meeting details", "error");
-                          }
-                        } catch (err) {
-                          console.error(
-                            "Error saving advocacy meeting:",
-                            err
-                          );
-                          showToast("Error saving meeting details", "error");
+                            advocacy_meeting_completed: advocacyMeetingCompleted,
+                          })
                         }
-                      }}
-                      className="px-3 py-1.5 bg-primary text-white rounded-md hover:opacity-90 font-medium text-xs md:text-sm"
-                    >
-                      Save meeting details
-                    </button>
-                  </div>
+                        disabled={savingAdvocateMeeting}
+                        className="px-3 py-1.5 rounded-full bg-primary text-white hover:opacity-90 font-medium text-xs md:text-sm disabled:opacity-50"
+                      >
+                        {savingAdvocateMeeting ? "Saving…" : "Save meeting details"}
+                      </button>
+                    }
+                  />
                   <p className="text-xs md:text-sm text-gray-600 dark:text-gray-300 mb-3">
                     To qualify for advocacy referral benefits, an advocacy
                     meeting must be organised and completed.
@@ -556,17 +528,30 @@ export function SolutionsTab({
                       </div>
                     ))}
                 </div>
-              ) : (
-                <div className="text-center py-8 text-sm text-gray-400 dark:text-gray-500">
-                  {advocacyLoading ? (
-                    <div className="flex items-center justify-center gap-2">
-                      <div className="animate-spin h-5 w-5 border-2 border-blue-600 border-t-transparent rounded-full" />
-                      Loading...
-                    </div>
-                  ) : (
-                    'No data available - Click "Refresh" to fetch'
-                  )}
+              ) : advocacyLoading ? (
+                <div className="space-y-2 py-2">
+                  <RecordRowSkeleton />
+                  <RecordRowSkeleton />
+                  <RecordRowSkeleton />
                 </div>
+              ) : (
+                <EmptyState
+                  title="No advocacy data yet"
+                  description="Pull the latest WIP sheet data for this member."
+                  action={
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      radius="md"
+                      onClick={loadAdvocacy}
+                      loading={advocacyLoading}
+                    >
+                      Refresh
+                    </Button>
+                  }
+                  className="py-8 [&_h3]:text-sm [&_h3]:font-normal [&_h3]:text-gray-400 [&_h3]:dark:text-gray-500 [&_h3]:mb-0"
+                />
               )}
             </div>
           </div>
@@ -575,11 +560,14 @@ export function SolutionsTab({
         {activeDataTab === "ghgreporting" && (
           <div className="space-y-3">
             <div className="flex items-center justify-end gap-2">
-              <button
+              <Button
                 type="button"
+                variant="secondary"
+                size="sm"
+                radius="md"
                 onClick={loadGhg}
                 disabled={ghgLoading}
-                className="px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-200 text-xs font-medium hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 transition-colors flex items-center gap-1"
+                loading={ghgLoading}
               >
                 <svg
                   className="w-3 h-3"
@@ -595,7 +583,7 @@ export function SolutionsTab({
                   />
                 </svg>
                 {ghgLoading ? "Loading..." : "Refresh"}
-              </button>
+              </Button>
             </div>
             <div className="border rounded-lg bg-white dark:bg-gray-900 overflow-hidden">
               {ghgData && Array.isArray(ghgData) && ghgData.length > 0 ? (
@@ -686,35 +674,45 @@ export function SolutionsTab({
                     </div>
                   )}
                 </>
-              ) : (
-                <div className="text-center py-12 text-sm text-gray-400 dark:text-gray-500">
-                  {ghgLoading ? (
-                    <div className="flex items-center justify-center gap-2">
-                      <div className="animate-spin h-5 w-5 border-2 border-blue-600 border-t-transparent rounded-full" />
-                      <span>Loading GHG reports...</span>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      <svg
-                        className="w-10 h-10 mx-auto text-gray-300 dark:text-gray-600"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={1.5}
-                          d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                        />
-                      </svg>
-                      <p>No GHG reports available</p>
-                      <p className="text-xs">
-                        Click &quot;Refresh&quot; to fetch reports
-                      </p>
-                    </div>
-                  )}
+              ) : ghgLoading ? (
+                <div className="space-y-2 p-4">
+                  <RecordRowSkeleton />
+                  <RecordRowSkeleton />
+                  <RecordRowSkeleton />
                 </div>
+              ) : (
+                <EmptyState
+                  icon={
+                    <svg
+                      className="w-10 h-10"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={1.5}
+                        d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                      />
+                    </svg>
+                  }
+                  title="No GHG reports available"
+                  description="Pull the latest GHG reporting data for this member."
+                  action={
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      radius="md"
+                      onClick={loadGhg}
+                      loading={ghgLoading}
+                    >
+                      Refresh
+                    </Button>
+                  }
+                  className="py-12 [&_h3]:text-sm [&_h3]:font-normal [&_h3]:text-gray-400 [&_h3]:dark:text-gray-500"
+                />
               )}
             </div>
           </div>

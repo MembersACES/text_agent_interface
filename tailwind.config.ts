@@ -18,7 +18,11 @@ const config: Config = {
         current: "currentColor",
         transparent: "transparent",
         white: "#FFFFFF",
-        primary: "#5750F1",
+        primary: {
+          DEFAULT: "#5750F1",
+          hover: "#4840E0",
+          active: "#3F38C9",
+        },
         stroke: "#E6EBF1",
         "stroke-dark": "#27303E",
         dark: {
@@ -93,6 +97,29 @@ const config: Config = {
             DEFAULT: "#FCD34D",
             4: "#FFFBEB",
           },
+        },
+        canvas: {
+          DEFAULT: "#FAFAF7",
+          dark: "#020D1A",
+        },
+        surface: "#FFFFFF",
+        brand: {
+          disclosure: "#3FA749",
+          "disclosure-dim": "#358F3F",
+        },
+        semantic: {
+          ok: "#3FA749",
+          flag: "#D89614",
+          block: "#C44545",
+        },
+        scope: {
+          1: "#E07856",
+          2: "#3D8FB2",
+          3: "#5BA76C",
+        },
+        pg: {
+          navy: "#0E2742",
+          blue: "#1A3D7C",
         },
       },
       fontSize: {
@@ -279,6 +306,10 @@ const config: Config = {
         12: "12px",
       },
       boxShadow: {
+        xs: "0 1px 2px 0 rgb(16 24 40 / 0.04)",
+        sm: "0 1px 3px 0 rgb(16 24 40 / 0.06), 0 1px 2px -1px rgb(16 24 40 / 0.06)",
+        md: "0 4px 12px -2px rgb(16 24 40 / 0.08)",
+        lg: "0 12px 32px -8px rgb(16 24 40 / 0.16)",
         default: "0px 4px 7px 0px rgba(0, 0, 0, 0.14)",
         error: "0px 12px 34px 0px rgba(13, 10, 44, 0.05)",
         card: "0px 1px 2px 0px rgba(0, 0, 0, 0.12)",

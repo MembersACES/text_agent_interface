@@ -1,7 +1,14 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { formatDate } from "./shared/formatDate";
+import {
+  getContractsFromBusinessInfo,
+  getKeyDocumentsFromBusinessInfo,
+  getSfaFilesFromBusinessInfo,
+} from "./tabs/documentHelpers";
 import type { Client } from "./types";
 
 export interface MemberProfileHeaderProps {
@@ -10,6 +17,47 @@ export interface MemberProfileHeaderProps {
   businessInfo?: Record<string, unknown> | null;
   /** When provided, called to load business info if missing when opening Base 2 (so Base 2 gets full URL like business-info). */
   fetchBusinessInfo?: () => Promise<Record<string, unknown> | null>;
+  onOpenTools?: () => void;
+  offersCount?: number;
+  lastActivityAt?: string | null;
+}
+
+function TabCountBadge({ count, href }: { count: number; href: string }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center justify-center min-w-[1.25rem] rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-primary/15 dark:hover:bg-primary/25 hover:text-primary transition-colors"
+    >
+      {count}
+    </a>
+  );
+}
+
+function HeaderStat({
+  label,
+  value,
+  withDivider,
+}: {
+  label: string;
+  value: React.ReactNode;
+  withDivider?: boolean;
+}) {
+  return (
+    <div
+      className={`flex flex-1 flex-col items-center px-3 py-3 text-center sm:px-4 ${
+        withDivider ? "border-l border-stroke dark:border-dark-3" : ""
+      }`}
+    >
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+        {label}
+      </span>
+      <span className="mt-0.5 flex items-center justify-center gap-1.5 text-[15px] font-medium tabular-nums text-gray-900 dark:text-gray-100">
+        {value}
+      </span>
+    </div>
+  );
 }
 
 function getAbn(info: Record<string, unknown> | null | undefined): string | null {
@@ -50,9 +98,81 @@ export function MemberProfileHeader({
   firstOfferId,
   businessInfo,
   fetchBusinessInfo,
+  onOpenTools,
+  offersCount = 0,
+  lastActivityAt = null,
 }: MemberProfileHeaderProps) {
   const abn = getAbn(businessInfo);
   const [base2Opening, setBase2Opening] = useState(false);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+
+  const tradingName = useMemo(() => {
+    if (!businessInfo || typeof businessInfo !== "object") return null;
+    const biz = businessInfo.business_details as Record<string, unknown> | undefined;
+    const name = biz?.trading_name;
+    return typeof name === "string" && name.trim() ? name.trim() : null;
+  }, [businessInfo]);
+
+  const loaSignedDate = useMemo(() => {
+    if (!businessInfo || typeof businessInfo !== "object") return null;
+    const rep = businessInfo.representative_details as Record<string, unknown> | undefined;
+    const date = rep?.signed_date;
+    return typeof date === "string" && date.trim() ? date.trim() : null;
+  }, [businessInfo]);
+
+  const contractCount = useMemo(() => {
+    const contracts = getContractsFromBusinessInfo(businessInfo ?? null);
+    return contracts.reduce((n, c) => n + c.items.length, 0);
+  }, [businessInfo]);
+
+  const loaFileLink = useMemo(() => {
+    if (!businessInfo || typeof businessInfo !== "object") return null;
+    const processed = businessInfo._processed_file_ids as Record<string, unknown> | undefined;
+    const fromProcessed = processed?.business_LOA;
+    const { loaUrl } = getKeyDocumentsFromBusinessInfo(businessInfo);
+    const url =
+      (typeof fromProcessed === "string" && fromProcessed.trim() ? fromProcessed : null) ??
+      loaUrl ??
+      null;
+    return url;
+  }, [businessInfo]);
+
+  const { count: sfaCount, url: sfaFileUrl } = useMemo(
+    () => getSfaFilesFromBusinessInfo(businessInfo ?? null),
+    [businessInfo]
+  );
+
+  const driveUrl = useMemo(() => {
+    if (client.gdrive_folder_url?.trim()) return client.gdrive_folder_url.trim();
+    if (!businessInfo || typeof businessInfo !== "object") return null;
+    const gdrive = businessInfo.gdrive as Record<string, unknown> | undefined;
+    const url = gdrive?.folder_url;
+    return typeof url === "string" && url.trim() ? url.trim() : null;
+  }, [client.gdrive_folder_url, businessInfo]);
+
+  const subtitleParts = useMemo(() => {
+    const parts: string[] = [];
+    if (tradingName) parts.push(tradingName);
+    if (abn) parts.push(`ABN ${abn}`);
+    const owner = client.owner_email?.trim();
+    if (owner) {
+      const ownerLabel = owner.includes("@") ? owner.split("@")[0] : owner;
+      parts.push(`Owner ${ownerLabel}`);
+    }
+    return parts.length > 0 ? parts.join(" · ") : "—";
+  }, [tradingName, abn, client.owner_email]);
+
+  useEffect(() => {
+    if (!showMoreMenu) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) {
+        setShowMoreMenu(false);
+      }
+    };
+    document.addEventListener("click", onDocClick);
+    return () => document.removeEventListener("click", onDocClick);
+  }, [showMoreMenu]);
 
   /** Build the same businessInfo payload that business-info passes to Base 2 (from raw API shape). */
   function buildBase2Params(info: Record<string, unknown>): URLSearchParams {
@@ -115,15 +235,10 @@ export function MemberProfileHeader({
     window.open(url, "_blank");
   };
 
-  const handleOpenGhg = () => {
+  const handleUpdateLoa = () => {
     const params = new URLSearchParams();
-    let name = client.business_name ?? "";
-    if (businessInfo && typeof businessInfo === "object") {
-      const bd = businessInfo.business_details as Record<string, unknown> | undefined;
-      if (bd?.name && typeof bd.name === "string" && bd.name.trim()) name = bd.name.trim();
-    }
-    if (name) params.set("businessName", name);
-    window.open(`/ghg-reporting?${params.toString()}`, "_blank", "noopener,noreferrer");
+    if (client.business_name) params.set("businessName", client.business_name);
+    window.open(`/update-loa/upload?${params.toString()}`, "_blank", "noopener,noreferrer");
   };
 
   const [showGenerateDocumentsMenu, setShowGenerateDocumentsMenu] = useState(false);
@@ -298,48 +413,61 @@ export function MemberProfileHeader({
   };
 
   return (
-    <Card className="border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm ring-1 ring-gray-200/60 dark:ring-gray-700/50 border-l-4 border-l-primary">
-      <CardContent className="p-4">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          {/* Left: avatar + identity */}
-          <div className="flex items-center gap-4 min-w-0">
-            <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-gray-100 dark:bg-gray-800 border border-gray-200/80 dark:border-gray-700 shrink-0" aria-hidden>
-              {client.business_name ? (
-                <span className="text-lg font-semibold text-gray-500 dark:text-gray-400">
-                  {client.business_name.charAt(0).toUpperCase()}
-                </span>
-              ) : (
-                <IconBuilding />
-              )}
-            </div>
-            <div className="min-w-0">
-              <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100 truncate">
-                {client.business_name}
-              </h1>
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-0.5">
-                {abn && (
-                  <span className="text-sm text-gray-500 dark:text-gray-400">
-                    ABN: {abn}
+    <Card className="border border-stroke bg-white shadow-sm ring-1 ring-gray-200/60 dark:border-dark-3 dark:bg-gray-dark dark:ring-gray-700/50">
+      <CardContent className="p-0">
+        <div className="flex flex-col gap-4 p-4 lg:p-5 md:flex-row md:items-start md:justify-between">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start gap-3">
+              <div
+                className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-stroke bg-gray/30 dark:border-dark-3 dark:bg-dark-2"
+                aria-hidden
+              >
+                {client.business_name ? (
+                  <span className="text-base font-semibold text-gray-500 dark:text-gray-400">
+                    {client.business_name.charAt(0).toUpperCase()}
                   </span>
+                ) : (
+                  <IconBuilding />
                 )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="truncate text-[18px] font-medium text-gray-900 dark:text-gray-100">
+                    {client.business_name}
+                  </h1>
+                  {driveUrl && (
+                    <a
+                      href={driveUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Open Google Drive folder"
+                      className="inline-flex shrink-0 items-center gap-1 rounded-full border border-stroke bg-white px-2.5 py-1 text-[11px] font-semibold text-dark transition-all hover:bg-gray-2 dark:border-dark-3 dark:bg-gray-dark dark:text-white dark:hover:bg-dark-2"
+                    >
+                      <IconDrive />
+                      Drive
+                    </a>
+                  )}
+                </div>
+                <p className="mt-0.5 truncate text-sm text-gray-500 dark:text-gray-400">
+                  {subtitleParts}
+                </p>
               </div>
             </div>
           </div>
 
-          {/* Right: action toolbar */}
-          <div className="flex flex-wrap items-center gap-3 shrink-0">
-            {/* Generate Documents dropdown — CRM button style */}
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
             <div className="relative" ref={generateDocumentsMenuRef}>
-              <button
+              <Button
                 type="button"
+                variant="primary"
+                size="sm"
                 onClick={() => setShowGenerateDocumentsMenu((v) => !v)}
                 title="Generate documents"
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-600 transition-colors"
               >
                 Generate Documents {showGenerateDocumentsMenu ? "▲" : "▼"}
-              </button>
+              </Button>
               {showGenerateDocumentsMenu && (
-                <div className="absolute left-0 top-full mt-1 z-50 min-w-[220px] rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 py-1 shadow-lg">
+                <div className="absolute left-0 top-full mt-1 z-50 min-w-[220px] rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 py-1 shadow-md">
                   <button
                     type="button"
                     onClick={() => handleOpenDocumentGeneration("business-documents")}
@@ -383,47 +511,94 @@ export function MemberProfileHeader({
               )}
             </div>
 
-            {/* Divider */}
-            <div className="hidden md:block h-8 w-px bg-gray-200 dark:bg-gray-700" aria-hidden />
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => handleOpenBase2()}
+              disabled={base2Opening}
+              title="Open Base 2 analysis"
+              leftIcon={<IconBase />}
+            >
+              {base2Opening ? "Opening…" : "Base 2"}
+            </Button>
 
-            {/* Action toolbar — Drive & Base 2 as prominent buttons */}
-            <div className="flex items-center gap-2">
-              {/* Drive — prominent button */}
-              {client.gdrive_folder_url && (
-                <a
-                  href={client.gdrive_folder_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title="Open Google Drive folder"
-                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-600 transition-colors"
-                >
-                  <IconDrive />
-                  Drive
-                </a>
+            <div className="relative" ref={moreMenuRef}>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => setShowMoreMenu((v) => !v)}
+                title="More actions"
+                aria-expanded={showMoreMenu}
+              >
+                ⋯ More
+              </Button>
+              {showMoreMenu && (
+                <div className="absolute right-0 top-full z-50 mt-1 min-w-[180px] rounded-lg border border-stroke bg-white py-1 shadow-md dark:border-dark-3 dark:bg-gray-dark">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowMoreMenu(false);
+                      handleUpdateLoa();
+                    }}
+                    className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray/50 dark:text-gray-200 dark:hover:bg-dark-2"
+                  >
+                    Update LOA
+                  </button>
+                  {onOpenTools && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowMoreMenu(false);
+                        onOpenTools();
+                      }}
+                      className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray/50 dark:text-gray-200 dark:hover:bg-dark-2"
+                    >
+                      Tools
+                    </button>
+                  )}
+                </div>
               )}
-
-              {/* Base 2 — prominent button */}
-              <button
-                type="button"
-                onClick={() => handleOpenBase2()}
-                disabled={base2Opening}
-                title="Open Base 2 analysis"
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-600 transition-colors disabled:opacity-50"
-              >
-                <IconBase />
-                {base2Opening ? "Opening…" : "Base 2"}
-              </button>
-
-              <button
-                type="button"
-                onClick={handleOpenGhg}
-                title="Open GHG Reporting for this business"
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-600 transition-colors"
-              >
-                GHG
-              </button>
             </div>
           </div>
+        </div>
+
+        <div className="flex border-t border-stroke dark:border-dark-3">
+          <HeaderStat label="Offers" value={String(offersCount)} />
+          <HeaderStat
+            label="Contracts"
+            value={businessInfo ? String(contractCount) : "—"}
+            withDivider
+          />
+          <div
+            className={`flex flex-1 flex-col items-center px-3 py-3 text-center sm:px-4 border-l border-stroke dark:border-dark-3`}
+          >
+            {(loaFileLink || (sfaCount > 0 && sfaFileUrl)) && (
+              <span className="flex items-center justify-center gap-3 text-[11px] font-semibold tracking-wide text-gray-700 dark:text-gray-300">
+                {loaFileLink && (
+                  <span className="inline-flex items-center gap-1">
+                    LOA
+                    <TabCountBadge count={1} href={loaFileLink} />
+                  </span>
+                )}
+                {sfaCount > 0 && sfaFileUrl && (
+                  <span className="inline-flex items-center gap-1">
+                    SFA
+                    <TabCountBadge count={sfaCount} href={sfaFileUrl} />
+                  </span>
+                )}
+              </span>
+            )}
+            <span className="mt-0.5 text-[15px] font-medium tabular-nums text-gray-900 dark:text-gray-100">
+              {loaSignedDate ?? "—"}
+            </span>
+          </div>
+          <HeaderStat
+            label="Last activity"
+            value={lastActivityAt ? formatDate(lastActivityAt) : "—"}
+            withDivider
+          />
         </div>
       </CardContent>
     </Card>
