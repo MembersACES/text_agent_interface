@@ -44,6 +44,16 @@ interface BucketsPayload {
   };
 }
 
+function formatSaveError(data: {
+  error?: string;
+  details?: Array<{ path: string; message: string }>;
+}): string {
+  if (Array.isArray(data.details) && data.details.length > 0) {
+    return data.details.map((d) => `${d.path}: ${d.message}`).join(" · ");
+  }
+  return data.error || "Save failed";
+}
+
 function NumInput({
   label,
   value,
@@ -118,7 +128,7 @@ export function Base1ComparisonBucketsEditor() {
         return;
       }
       if (!res.ok) {
-        setError(data.error || "Save failed");
+        setError(formatSaveError(data));
         return;
       }
       setBuckets(data.buckets);
