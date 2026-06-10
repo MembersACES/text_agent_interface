@@ -14,6 +14,7 @@ import { getApiBaseUrl } from "@/lib/utils";
 import { MemberProfileHeader } from "@/components/crm-member/MemberProfileHeader";
 import { MemberTabs } from "@/components/crm-member/MemberTabs";
 import { MemberSidebar } from "@/components/crm-member/MemberSidebar";
+import { EntityGroupSection } from "@/components/crm-member/EntityGroupSection";
 import { MemberLoadingSkeleton } from "@/components/crm-member/MemberLoadingSkeleton";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
@@ -316,30 +317,32 @@ export default function ClientDetailPage() {
           />
         ) : (
           <>
-                        <div className="rounded-xl border border-gray-200/80 dark:border-dark-3 bg-white dark:bg-dark-2 shadow-sm ring-1 ring-gray-200/60 dark:ring-gray-700/50">
-              <div className="px-4 py-3 lg:px-5 lg:py-4">
-                <MemberProfileHeader
-                  client={client}
-                  firstOfferId={offers[0]?.id ?? null}
-                  businessInfo={businessInfo}
-                  fetchBusinessInfo={fetchBusinessInfoForBase2}
-                  onOpenTools={() => setToolsOpen(true)}
-                  onDeleteMember={() => {
-                    setDeleteMemberConfirm(false);
-                    setDeleteMemberOpen(true);
-                  }}
-                  onStageChange={actions.handleStageChange}
-                  savingStage={actions.savingStage}
-                  onPromoteToExisting={() => actions.handleStageChange("existing_client")}
-                  offersCount={offers.length}
-                  lastActivityAt={lastActivityAt}
-                />
-              </div>
+            <MemberProfileHeader
+              client={client}
+              firstOfferId={offers[0]?.id ?? null}
+              businessInfo={businessInfo}
+              businessInfoLoading={businessInfoLoading}
+              fetchBusinessInfo={fetchBusinessInfoForBase2}
+              onOpenTools={() => setToolsOpen(true)}
+              onDeleteMember={() => {
+                setDeleteMemberConfirm(false);
+                setDeleteMemberOpen(true);
+              }}
+              onStageChange={actions.handleStageChange}
+              savingStage={actions.savingStage}
+              onPromoteToExisting={() => actions.handleStageChange("existing_client")}
+              offersCount={offers.length}
+              lastActivityAt={lastActivityAt}
+              tabsSlot={<MemberTabs basePath={basePath} tabs={tabConfig} />}
+            />
 
-              <div className="border-t border-gray-200/80 dark:border-dark-3 px-3">
-                <MemberTabs basePath={basePath} tabs={tabConfig} />
-              </div>
-            </div>
+            <EntityGroupSection
+              client={client}
+              onSaveEntityGroup={actions.handleSaveEntityGroup}
+              onSaveExternalBusinessId={actions.handleSaveExternalBusinessId}
+              saving={actions.savingEntityGroup}
+              savingExternalBusinessId={actions.savingExternalBusinessId}
+            />
 
             <div className="grid gap-4 lg:gap-6 lg:grid-cols-4">
               <main className="space-y-4 lg:space-y-5 lg:col-span-3">
@@ -360,10 +363,6 @@ export default function ClientDetailPage() {
                       setCreateOfferOpen(true);
                       setError(null);
                     }}
-                    onSaveEntityGroup={actions.handleSaveEntityGroup}
-                    onSaveExternalBusinessId={actions.handleSaveExternalBusinessId}
-                    savingEntityGroup={actions.savingEntityGroup}
-                    savingExternalBusinessId={actions.savingExternalBusinessId}
                   />
                   </div>
                 )}
@@ -433,7 +432,7 @@ export default function ClientDetailPage() {
                 {tab === "solutions" && clientId != null && (
                   <div key="solutions" className="pg-fade-up">
                   <SolutionsStrategyTabPanel
-                    initialSubTab={(subTab as SolutionsSubTab) ?? "solutions"}
+                    initialSubTab={(subTab as SolutionsSubTab) ?? "strategy"}
                     businessInfo={businessInfo}
                     setBusinessInfo={setBusinessInfo}
                     clientId={clientId}
