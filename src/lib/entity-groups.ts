@@ -14,6 +14,8 @@ export interface EntityGroupListItem {
   slug: string;
   display_name: string;
   primary_abn?: string | null;
+  /** Climate disclosure slug (A1 entity_id); members may inherit when unset on client */
+  reporting_entity?: string | null;
   notes?: string | null;
   member_count: number;
   created_at: string;
@@ -31,10 +33,23 @@ export interface EntityGroupSummary {
   total_offers: number;
   any_signed: boolean;
   stage_breakdown: Record<string, number>;
+  group_reporting_entity?: string | null;
+  members_in_climate_rollup?: number;
+  staged_activity_total?: number;
   reporting_entity: {
     aligned: boolean;
     distinct_values: string[];
   };
+}
+
+export function platformBaseUrl(): string {
+  const fromEnv = process.env.NEXT_PUBLIC_SUSTAINABILITY_PLATFORM_URL?.trim();
+  if (fromEnv) return fromEnv.replace(/\/$/, "");
+  return "https://prograde-sustainability-dev-672026052958.australia-southeast2.run.app";
+}
+
+export function progradeWorkspaceUrl(entitySlug: string, period = "FY26"): string {
+  return `${platformBaseUrl()}/?entity=${encodeURIComponent(entitySlug)}&period=${encodeURIComponent(period)}`;
 }
 
 export interface EntityGroupSuggestionMember {

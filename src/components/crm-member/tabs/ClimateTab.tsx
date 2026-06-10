@@ -54,6 +54,18 @@ type LinkedUtilitySite = {
   retailer: string;
 };
 
+type BackendLinkedUtilities = {
+  effective_reporting_entity?: string | null;
+  disclosure_source?: string | null;
+  group_reporting_entity?: string | null;
+  sites?: Array<{
+    utility_type: string;
+    identifier: string;
+    retailer?: string;
+  }>;
+  site_count?: number;
+};
+
 type SiteInvoiceStats = {
   totalCount: number;
   loading: boolean;
@@ -204,10 +216,16 @@ export function ClimateTab({
     (session as { id_token?: string; accessToken?: string })?.id_token ??
     (session as { id_token?: string; accessToken?: string })?.accessToken;
 
-  const entity = (client.reporting_entity || "").trim();
+  const [backendLinked, setBackendLinked] = useState<BackendLinkedUtilities | null>(null);
+  const [backendLinkedLoading, setBackendLinkedLoading] = useState(false);
+
+  const memberSlug = (client.reporting_entity || "").trim();
+  const effectiveEntity =
+    (backendLinked?.effective_reporting_entity || memberSlug || "").trim();
+  const disclosureSource = backendLinked?.disclosure_source;
   const period = "FY26";
-  const iframeSrc = entity
-    ? `${platformBaseUrl()}/?entity=${encodeURIComponent(entity)}&period=${encodeURIComponent(period)}`
+  const iframeSrc = effectiveEntity
+    ? `${platformBaseUrl()}/?entity=${encodeURIComponent(effectiveEntity)}&period=${encodeURIComponent(period)}`
     : null;
   const disclosureHref = iframeSrc;
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -219,8 +237,30 @@ export function ClimateTab({
     }
   }, []);
 
-  const linkedSites = useMemo(() => parseAllLinkedUtilities(businessInfo), [businessInfo]);
+  const linkedSitesFromBackend = useMemo((): LinkedUtilitySite[] => {
+    const sites = backendLinked?.sites;
+    if (!Array.isArray(sites) || sites.length === 0) return [];
+    return sites
+      .map((s) => ({
+        utilityType: s.utility_type as EtlUtilityType,
+        identifier: s.identifier,
+        retailer: s.retailer ?? "",
+      }))
+      .filter((s) => ETL_UTILITY_TYPES.includes(s.utilityType) && s.identifier);
+  }, [backendLinked?.sites]);
+
+  const linkedSitesFromBusinessInfo = useMemo(
+    () => parseAllLinkedUtilities(businessInfo),
+    [businessInfo],
+  );
+
+  const linkedSites =
+    linkedSitesFromBackend.length > 0 ? linkedSitesFromBackend : linkedSitesFromBusinessInfo;
   const linkedIds = useMemo(() => linkedUtilityIdentifiers(linkedSites), [linkedSites]);
+  const utilityCountMismatch =
+    backendLinked?.site_count != null &&
+    linkedSitesFromBusinessInfo.length > 0 &&
+    backendLinked.site_count !== linkedSitesFromBusinessInfo.length;
 
   const [driftEvents, setDriftEvents] = useState<DriftEvent[]>([]);
   const [driftLoading, setDriftLoading] = useState(false);
@@ -291,6 +331,33 @@ export function ClimateTab({
   useEffect(() => {
     void fetchClimateData();
   }, [fetchClimateData]);
+
+  useEffect(() => {
+    if (!client.id || !token) {
+      setBackendLinked(null);
+      return;
+    }
+    let cancelled = false;
+    setBackendLinkedLoading(true);
+    void (async () => {
+      try {
+        const res = await fetch(
+          `${getApiBaseUrl()}/api/clients/${client.id}/climate/linked-utilities`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+        if (!res.ok) throw new Error("Failed to load linked utilities");
+        const data = (await res.json()) as BackendLinkedUtilities;
+        if (!cancelled) setBackendLinked(data);
+      } catch {
+        if (!cancelled) setBackendLinked(null);
+      } finally {
+        if (!cancelled) setBackendLinkedLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [client.id, token]);
 
   const fetchInvoiceStats = useCallback(async () => {
     if (!token || linkedSites.length === 0) {
@@ -393,8 +460,8 @@ export function ClimateTab({
         showToast("Sign in required", "error");
         return;
       }
-      if (!entity) {
-        showToast("Set sustainability reporting entity below first", "error");
+      if (!effectiveEntity) {
+        showToast("Set sustainability reporting entity (or group disclosure slug) first", "error");
         return;
       }
       const idTrim = identifier.trim();
@@ -444,13 +511,13 @@ export function ClimateTab({
         setEtlLoading(false);
       }
     },
-    [client.id, token, entity, identifier, utilityType, period, showToast, fetchClimateData],
+    [client.id, token, effectiveEntity, identifier, utilityType, period, showToast, fetchClimateData],
   );
 
   const runEtlSyncForSite = useCallback(
     async (site: LinkedUtilitySite, dryRun: boolean): Promise<EtlSyncResponse & { ok: boolean }> => {
-      if (!client.id || !token || !entity) {
-        return { ok: false, detail: "Missing client, token, or reporting entity" };
+      if (!client.id || !token || !effectiveEntity) {
+        return { ok: false, detail: "Missing client, token, or effective reporting entity" };
       }
       const res = await fetch(`${getApiBaseUrl()}/api/clients/${client.id}/climate/etl/sync`, {
         method: "POST",
@@ -469,7 +536,7 @@ export function ClimateTab({
       const data = (await res.json().catch(() => ({}))) as EtlSyncResponse & { detail?: string };
       return { ...data, ok: res.ok };
     },
-    [client.id, token, entity, period],
+    [client.id, token, effectiveEntity, period],
   );
 
   const runSyncAll = useCallback(
@@ -478,8 +545,8 @@ export function ClimateTab({
         showToast("Sign in required", "error");
         return;
       }
-      if (!entity) {
-        showToast("Set sustainability reporting entity below first", "error");
+      if (!effectiveEntity) {
+        showToast("Set sustainability reporting entity (or group disclosure slug) first", "error");
         return;
       }
       if (linkedSites.length === 0) {
@@ -531,7 +598,7 @@ export function ClimateTab({
         setEtlLoading(false);
       }
     },
-    [client.id, token, entity, linkedSites, runEtlSyncForSite, showToast, fetchClimateData],
+    [client.id, token, effectiveEntity, linkedSites, runEtlSyncForSite, showToast, fetchClimateData],
   );
 
   const highestSeverity = driftEvents.reduce<string | null>((best, ev) => {
@@ -579,9 +646,15 @@ export function ClimateTab({
               Save
             </Button>
           </div>
-          {entity ? (
+          {effectiveEntity ? (
             <p className="text-xs text-emerald-700 dark:text-emerald-300">
-              Active slug: <span className="font-mono">{entity}</span>
+              Effective disclosure slug: <span className="font-mono">{effectiveEntity}</span>
+              {disclosureSource === "group_inherit" ? " (inherited from group)" : null}
+              {disclosureSource === "member" && !memberSlug && backendLinked?.group_reporting_entity
+                ? null
+                : disclosureSource === "member" && memberSlug
+                  ? " (site-level)"
+                  : null}
               {disclosureHref ? (
                 <>
                   {" "}
@@ -594,9 +667,19 @@ export function ClimateTab({
             </p>
           ) : (
             <p className="text-xs text-amber-800 dark:text-amber-200">
-              Save an entity slug to enable linked utilities sync and the disclosure workspace below.
+              Save a site slug or assign a group with a disclosure slug to enable sync and the workspace
+              below.
             </p>
           )}
+          {backendLinkedLoading ? (
+            <p className="text-xs text-gray-500">Loading linked utilities from LOA…</p>
+          ) : null}
+          {utilityCountMismatch ? (
+            <p className="text-xs text-amber-800 dark:text-amber-200">
+              Utility count from business info ({linkedSitesFromBusinessInfo.length}) differs from backend
+              LOA resolver ({backendLinked?.site_count}) — using backend list for sync.
+            </p>
+          ) : null}
           {client.external_business_id && (
             <p className="text-xs text-gray-500">
               LOA record: <span className="font-mono">{client.external_business_id}</span>
@@ -674,7 +757,7 @@ export function ClimateTab({
                 variant="secondary"
                 size="sm"
                 loading={etlLoading}
-                disabled={!entity || etlLoading}
+                disabled={!effectiveEntity || etlLoading}
                 onClick={() => void runSyncAll(true)}
               >
                 Preview all
@@ -683,7 +766,7 @@ export function ClimateTab({
                 variant="primary"
                 size="sm"
                 loading={etlLoading}
-                disabled={!entity || etlLoading}
+                disabled={!effectiveEntity || etlLoading}
                 onClick={() => void runSyncAll(false)}
               >
                 Sync all to SQL
@@ -810,7 +893,7 @@ export function ClimateTab({
               variant="secondary"
               size="sm"
               loading={etlLoading}
-              disabled={!entity || etlLoading}
+              disabled={!effectiveEntity || etlLoading}
               onClick={() => void runEtlSync(true)}
             >
               Preview (dry run)
@@ -819,7 +902,7 @@ export function ClimateTab({
               variant="primary"
               size="sm"
               loading={etlLoading}
-              disabled={!entity || etlLoading}
+              disabled={!effectiveEntity || etlLoading}
               onClick={() => void runEtlSync(false)}
             >
               Sync to SQL
@@ -890,7 +973,7 @@ export function ClimateTab({
             <div>
               <CardTitle className="text-base">Climate disclosure workspace</CardTitle>
               <CardDescription>
-                Prograde preview for <span className="font-mono">{entity}</span>
+                Prograde preview for <span className="font-mono">{effectiveEntity}</span>
               </CardDescription>
             </div>
             <div className="flex flex-wrap items-center gap-2">
