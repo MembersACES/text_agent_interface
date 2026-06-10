@@ -14,13 +14,17 @@ import { GroupSiteDetail } from "@/components/crm-groups/GroupSiteDetail";
 import { useGroupBusinessInfoCache } from "@/components/crm-groups/useGroupBusinessInfoCache";
 import { StageBadge } from "@/components/crm-member/shared/StageBadge";
 import type { Client } from "@/components/crm-member/types";
-import type { EntityGroupListItem, EntityGroupSummary } from "@/lib/entity-groups";
+import {
+  progradeWorkspaceUrl,
+  type EntityGroupListItem,
+  type EntityGroupSummary,
+} from "@/lib/entity-groups";
 import type { ClientStage } from "@/constants/crm";
 import { useToast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { AddSiteToGroupModal } from "@/components/crm-groups/AddSiteToGroupModal";
-import { AlertTriangle, Plus, Trash2 } from "lucide-react";
+import { AlertTriangle, ExternalLink, Plus, RefreshCw, Trash2 } from "lucide-react";
 import type { EntityGroupDeleteResult } from "@/lib/entity-groups";
 import { getTradingName } from "@/lib/business-info-fields";
 
@@ -51,6 +55,10 @@ export default function CrmGroupHubPage() {
   const [deleting, setDeleting] = useState(false);
   const [allGroups, setAllGroups] = useState<EntityGroupListItem[]>([]);
   const [savingMembershipClientId, setSavingMembershipClientId] = useState<number | null>(null);
+  const [reportingEntityDraft, setReportingEntityDraft] = useState("");
+  const [savingReportingEntity, setSavingReportingEntity] = useState(false);
+  const [syncAllLoading, setSyncAllLoading] = useState(false);
+  const [syncAllProgress, setSyncAllProgress] = useState<string | null>(null);
   const { showToast } = useToast();
 
   const siteParam = searchParams.get("site");
@@ -145,6 +153,111 @@ export default function CrmGroupHubPage() {
   useEffect(() => {
     void fetchData();
   }, [fetchData]);
+
+  useEffect(() => {
+    setReportingEntityDraft(group?.reporting_entity ?? "");
+  }, [group?.id, group?.reporting_entity]);
+
+  const climateRollupSlug = (summary?.group_reporting_entity || group?.reporting_entity || "").trim();
+  const membersNotInRollup =
+    summary && climateRollupSlug
+      ? Math.max(0, summary.member_count - (summary.members_in_climate_rollup ?? 0))
+      : 0;
+
+  const saveGroupReportingEntity = useCallback(async () => {
+    if (!token || !slug) return;
+    setSavingReportingEntity(true);
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/entity-groups/${encodeURIComponent(slug)}`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ reporting_entity: reportingEntityDraft.trim() || null }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as { detail?: string }).detail || "Failed to save disclosure slug");
+      }
+      showToast("Group disclosure slug saved", "success");
+      await fetchData();
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : "Failed to save", "error");
+    } finally {
+      setSavingReportingEntity(false);
+    }
+  }, [token, slug, reportingEntityDraft, showToast, fetchData]);
+
+  const runGroupSyncAll = useCallback(async () => {
+    if (!token || !climateRollupSlug || !group?.members?.length) {
+      showToast("Set a group disclosure slug first", "warning");
+      return;
+    }
+    setSyncAllLoading(true);
+    let totalCreated = 0;
+    let totalUpdated = 0;
+    let failures = 0;
+    try {
+      const rollupMembers = group.members.filter((m) => {
+        const memberSlug = (m.reporting_entity || "").trim().toLowerCase();
+        return !memberSlug || memberSlug === climateRollupSlug.toLowerCase();
+      });
+      for (const member of rollupMembers) {
+        setSyncAllProgress(member.business_name);
+        const luRes = await fetch(
+          `${getApiBaseUrl()}/api/clients/${member.id}/climate/linked-utilities`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+        if (!luRes.ok) {
+          failures += 1;
+          continue;
+        }
+        const lu = (await luRes.json()) as {
+          sites?: Array<{ utility_type: string; identifier: string }>;
+        };
+        const sites = Array.isArray(lu.sites) ? lu.sites : [];
+        for (const site of sites) {
+          setSyncAllProgress(`${member.business_name} · ${site.utility_type}`);
+          const syncRes = await fetch(
+            `${getApiBaseUrl()}/api/clients/${member.id}/climate/etl/sync`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                utility_type: site.utility_type,
+                identifier: site.identifier,
+                reporting_period_label: "FY26",
+                max_records: 100,
+                dry_run: false,
+              }),
+            },
+          );
+          if (!syncRes.ok) {
+            failures += 1;
+            continue;
+          }
+          const data = (await syncRes.json()) as { created?: number; updated?: number };
+          totalCreated += data.created ?? 0;
+          totalUpdated += data.updated ?? 0;
+        }
+      }
+      showToast(
+        `Sync all: ${totalCreated} created, ${totalUpdated} updated` +
+          (failures ? ` · ${failures} step(s) failed` : ""),
+        failures > 0 ? "warning" : "success",
+      );
+      await fetchData();
+    } catch {
+      showToast("Group sync failed", "error");
+    } finally {
+      setSyncAllProgress(null);
+      setSyncAllLoading(false);
+    }
+  }, [token, climateRollupSlug, group?.members, showToast, fetchData]);
 
   useEffect(() => {
     if (!token) return;
@@ -381,12 +494,79 @@ export default function CrmGroupHubPage() {
         stageCount={stageCount}
       />
 
+      <div className="mb-4 rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-dark">
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+          Climate disclosure (group)
+        </p>
+        <div className="flex flex-wrap items-end gap-3">
+          <Input
+            label="Reporting entity slug"
+            value={reportingEntityDraft}
+            onChange={(e) => setReportingEntityDraft(e.target.value)}
+            placeholder="e.g. frankston-rsl"
+            className="font-mono text-sm"
+            wrapperClassName="min-w-[14rem] flex-1"
+          />
+          <Button
+            type="button"
+            size="sm"
+            loading={savingReportingEntity}
+            disabled={savingReportingEntity}
+            onClick={() => void saveGroupReportingEntity()}
+          >
+            Save slug
+          </Button>
+          {climateRollupSlug ? (
+            <>
+              <a
+                href={progradeWorkspaceUrl(climateRollupSlug)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+              >
+                <ExternalLink className="size-3.5" aria-hidden />
+                Open Prograde
+              </a>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                loading={syncAllLoading}
+                disabled={syncAllLoading}
+                onClick={() => void runGroupSyncAll()}
+              >
+                <RefreshCw className="size-3.5" aria-hidden />
+                {syncAllProgress ? `Syncing… ${syncAllProgress}` : "Sync all in rollup"}
+              </Button>
+            </>
+          ) : null}
+        </div>
+        {summary.members_in_climate_rollup != null ? (
+          <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+            Climate rollup: {summary.members_in_climate_rollup} of {summary.member_count} site(s)
+            {summary.staged_activity_total != null
+              ? ` · ${summary.staged_activity_total} staged activity record(s)`
+              : ""}
+          </p>
+        ) : null}
+      </div>
+
       {!summary.reporting_entity.aligned ? (
         <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <p>
-            Mixed reporting entity across sites — Climate may differ per member (
+            Mixed member-level reporting slugs — some sites may use separate Prograde workspaces (
             {summary.reporting_entity.distinct_values.join(", ")}).
+          </p>
+        </div>
+      ) : null}
+
+      {membersNotInRollup > 0 ? (
+        <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <p>
+            {membersNotInRollup} site(s) excluded from the group climate rollup — they have a different
+            member-level disclosure slug.
           </p>
         </div>
       ) : null}

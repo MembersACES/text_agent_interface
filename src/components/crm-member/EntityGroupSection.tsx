@@ -66,6 +66,7 @@ export function EntityGroupSection({
     client.entity_group_id != null ? String(client.entity_group_id) : ""
   );
   const [siblings, setSiblings] = useState<Client[]>([]);
+  const [groupReportingEntity, setGroupReportingEntity] = useState<string | null>(null);
   const [siblingsLoading, setSiblingsLoading] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [manageOpen, setManageOpen] = useState(false);
@@ -120,6 +121,7 @@ export function EntityGroupSection({
   useEffect(() => {
     if (!token || !groupSlug) {
       setSiblings([]);
+      setGroupReportingEntity(null);
       setSiblingsExpanded(false);
       return;
     }
@@ -139,6 +141,7 @@ export function EntityGroupSection({
               ? data.members.filter((m) => m.id !== client.id)
               : []
           );
+          setGroupReportingEntity(data.reporting_entity ?? null);
         }
       } catch {
         if (!cancelled) setSiblings([]);
@@ -174,6 +177,16 @@ export function EntityGroupSection({
 
   const siteCountLabel = siteCount === 1 ? "1 site" : `${siteCount} sites`;
   const canExpandSiblings = isAssigned && Boolean(groupSlug);
+  const memberSlug = (client.reporting_entity || "").trim().toLowerCase();
+  const groupSlugNorm = (groupReportingEntity || "").trim().toLowerCase();
+  const disclosureMode =
+    memberSlug && groupSlugNorm && memberSlug !== groupSlugNorm
+      ? "override"
+      : !memberSlug && groupSlugNorm
+        ? "inherit"
+        : memberSlug
+          ? "member"
+          : null;
 
   return (
     <div
@@ -233,6 +246,19 @@ export function EntityGroupSection({
                     </span>
                   ) : null}
                 </span>
+              ) : null}
+              {groupReportingEntity ? (
+                <>
+                  <span className="text-gray-400 dark:text-gray-500">·</span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                    Disclosure{" "}
+                    <span className="font-mono text-gray-700 dark:text-gray-300">
+                      {groupReportingEntity}
+                    </span>
+                    {disclosureMode === "inherit" ? " (inherited)" : null}
+                    {disclosureMode === "override" ? " (site uses different slug)" : null}
+                  </span>
+                </>
               ) : null}
             </>
           ) : (
