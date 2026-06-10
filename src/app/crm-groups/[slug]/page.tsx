@@ -22,14 +22,10 @@ import { Modal } from "@/components/ui/modal";
 import { AddSiteToGroupModal } from "@/components/crm-groups/AddSiteToGroupModal";
 import { AlertTriangle, Plus, Trash2 } from "lucide-react";
 import type { EntityGroupDeleteResult } from "@/lib/entity-groups";
+import { getTradingName } from "@/lib/business-info-fields";
 
 interface EntityGroupDetail extends EntityGroupListItem {
   members: Client[];
-}
-
-function truncateLoa(id: string, max = 12): string {
-  if (id.length <= max) return id;
-  return `${id.slice(0, max)}…`;
 }
 
 export default function CrmGroupHubPage() {
@@ -426,6 +422,13 @@ export default function CrmGroupHubPage() {
               ) : (
                 filteredMembers.map((member) => {
                   const selected = member.id === effectiveSelectedId;
+                  const memberTrading = getTradingName(
+                    businessInfoCache[member.id]?.data ?? null
+                  );
+                  const tradingSubtitle =
+                    memberTrading && memberTrading !== member.business_name
+                      ? memberTrading
+                      : null;
                   return (
                     <li key={member.id}>
                       <button
@@ -438,12 +441,18 @@ export default function CrmGroupHubPage() {
                             : "border-transparent hover:bg-gray-50 dark:hover:bg-gray-800/40"
                         )}
                       >
-                        <span className="block truncate text-sm font-medium text-gray-900 dark:text-gray-100">
+                        <span
+                          className="block truncate text-sm font-medium text-gray-900 dark:text-gray-100"
+                          title={member.business_name}
+                        >
                           {member.business_name}
                         </span>
-                        {member.external_business_id ? (
-                          <span className="mt-0.5 block font-mono text-[10px] text-gray-400">
-                            {truncateLoa(member.external_business_id)}
+                        {tradingSubtitle ? (
+                          <span
+                            className="mt-0.5 block truncate text-[11px] text-gray-500 dark:text-gray-400"
+                            title={tradingSubtitle}
+                          >
+                            {tradingSubtitle}
                           </span>
                         ) : null}
                         <div className="mt-2">
