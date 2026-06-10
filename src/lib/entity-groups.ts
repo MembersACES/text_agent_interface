@@ -20,6 +20,12 @@ export interface EntityGroupListItem {
   updated_at: string;
 }
 
+export interface EntityGroupDeleteResult {
+  deleted: boolean;
+  slug: string;
+  unlinked_member_count: number;
+}
+
 export interface EntityGroupSummary {
   member_count: number;
   total_offers: number;
