@@ -6,15 +6,19 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Card as UiCard } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SectionHeader } from "../shared/SectionHeader";
-import { FileText } from "lucide-react";
+import { FileText, Building2 } from "lucide-react";
 import { BusinessInfoRow } from "../shared/BusinessInfoRow";
+import {
+  MEMBER_CARD_BODY,
+  MEMBER_CARD_HEADER,
+  MEMBER_CARD_SHELL,
+} from "../shared/memberCardShell";
 import { OfferStatusBadge } from "../shared/OfferStatusBadge";
 import { RecordRow, RecordRowOpenAction } from "../shared/RecordRow";
 import { buildOfferRecordSubtitle } from "../shared/offerRecordMeta";
 import { getRecordRowIcon } from "../shared/recordRowIcons";
 import { formatDate } from "../shared/formatDate";
 import type { Task, Offer, Note, Client } from "../types";
-import { EntityGroupSection } from "../EntityGroupSection";
 import {
   getBusinessDocumentsForOverview,
   getContractsFromBusinessInfo,
@@ -35,10 +39,6 @@ export interface OverviewTabProps {
   offers: Offer[];
   notes: Note[];
   onCreateOfferClick: () => void;
-  onSaveEntityGroup: (entity_group_id: number | null) => Promise<void>;
-  onSaveExternalBusinessId?: (external_business_id: string | null) => Promise<void>;
-  savingEntityGroup?: boolean;
-  savingExternalBusinessId?: boolean;
 }
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
@@ -90,7 +90,7 @@ function IconQuote() {
 
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
-    <UiCard className={cn("overflow-hidden p-0 ring-1 ring-gray-200/60 dark:ring-gray-700/50", className)}>
+    <UiCard className={cn(MEMBER_CARD_SHELL, className)}>
       {children}
     </UiCard>
   );
@@ -109,7 +109,7 @@ function CardHeader({
 }) {
   return (
     <SectionHeader
-      className="px-5 py-4"
+      className={MEMBER_CARD_HEADER}
       icon={icon}
       title={title}
       badge={badge}
@@ -157,10 +157,6 @@ export function OverviewTab({
   offers,
   notes,
   onCreateOfferClick,
-  onSaveEntityGroup,
-  onSaveExternalBusinessId,
-  savingEntityGroup = false,
-  savingExternalBusinessId = false,
 }: OverviewTabProps) {
   const biz = (businessInfo as any)?.business_details ?? {};
   const contact = (businessInfo as any)?.contact_information ?? {};
@@ -199,14 +195,6 @@ export function OverviewTab({
   return (
     <div className="space-y-4">
 
-      <EntityGroupSection
-        client={client}
-        onSaveEntityGroup={onSaveEntityGroup}
-        onSaveExternalBusinessId={onSaveExternalBusinessId}
-        saving={savingEntityGroup}
-        savingExternalBusinessId={savingExternalBusinessId}
-      />
-
       {/* ── Business Information ── */}
       <Card>
         <button
@@ -216,8 +204,8 @@ export function OverviewTab({
           aria-expanded={businessInfoOpen}
         >
           <div className="flex items-center gap-2.5">
-            <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-500 shrink-0">
-              <IconBuilding />
+            <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary dark:bg-primary/20">
+              <Building2 className="size-4" aria-hidden />
             </span>
             <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">Business Information</span>
             {businessInfoLoading && (
@@ -579,29 +567,23 @@ export function OverviewTab({
             </>
           }
         />
-        <Divider />
         {offers.length === 0 ? (
-          <EmptyState
-            icon={
-              <div className="w-10 h-10 rounded-full bg-gray-50 dark:bg-gray-800 flex items-center justify-center text-gray-500 dark:text-gray-400">
-                <IconQuote />
-              </div>
-            }
-            title="No offers recorded yet."
-            className="py-10 [&_h3]:text-sm [&_h3]:font-normal [&_h3]:text-gray-400"
-            action={
-              <button
-                type="button"
-                onClick={onCreateOfferClick}
-                className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
-              >
-                <IconPlus />
-                Create the first offer
-              </button>
-            }
-          />
+          <div className="flex flex-col items-center py-6 text-center">
+            <div className="mb-2 flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary dark:bg-primary/20">
+              <IconQuote />
+            </div>
+            <p className="text-sm text-gray-500 dark:text-gray-400">No offers recorded yet.</p>
+            <button
+              type="button"
+              onClick={onCreateOfferClick}
+              className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
+            >
+              <IconPlus />
+              Create the first offer
+            </button>
+          </div>
         ) : (
-          <div className="divide-y divide-gray-50 dark:divide-gray-800/50">
+          <div className={cn(MEMBER_CARD_BODY, "pt-0 divide-y divide-gray-50 dark:divide-gray-800/50")}>
             {offers.slice(0, 5).map((o) => {
               const utilityLabel =
                 o.utility_display || o.utility_type_identifier || o.utility_type || "Offer";

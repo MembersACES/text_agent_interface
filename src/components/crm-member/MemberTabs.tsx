@@ -43,7 +43,7 @@ function TabLink({
       className={cn(
         "inline-flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium whitespace-nowrap rounded-t-lg transition-colors",
         isActive
-          ? "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-b-0 border-gray-200 dark:border-gray-700 -mb-px"
+          ? "border-b-2 border-primary bg-primary/5 text-primary dark:bg-primary/10 -mb-px"
           : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-800/50",
         className
       )}
@@ -116,7 +116,7 @@ export function MemberTabs({ basePath, tabs }: MemberTabsProps) {
               className={cn(
                 "inline-flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium whitespace-nowrap rounded-t-lg transition-colors",
                 overflowActive
-                  ? "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-b-0 border-gray-200 dark:border-gray-700 -mb-px"
+                  ? "border-b-2 border-primary bg-primary/5 text-primary dark:bg-primary/10 -mb-px"
                   : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-800/50"
               )}
             >
@@ -136,7 +136,7 @@ export function MemberTabs({ basePath, tabs }: MemberTabsProps) {
                     className={cn(
                       "flex items-center justify-between gap-2 px-3 py-2 text-sm transition-colors",
                       current === key
-                        ? "text-primary font-medium bg-gray-50 dark:bg-gray-700/50"
+                        ? "text-primary font-medium bg-primary/5 dark:bg-primary/10"
                         : "text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
                     )}
                   >

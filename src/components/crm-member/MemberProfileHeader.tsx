@@ -1,12 +1,22 @@
 "use client";
 
-import { useState, useRef, useEffect, useMemo } from "react";
-import { Card, CardContent } from "@/components/ui/card";
+import { useState, useRef, useEffect, useMemo, type ReactNode } from "react";
+import {
+  ChevronDown,
+  Clock,
+  FileCheck,
+  FileText,
+  Folder,
+  Layers,
+  ScrollText,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Select } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { StageBadge } from "./shared/StageBadge";
-import { CLIENT_STAGES, CLIENT_STAGE_LABELS, type ClientStage } from "@/constants/crm";
+import { Skeleton } from "@/components/ui/skeleton";
+import { getMemberInitials } from "@/lib/member-profile-recent";
+import { cn } from "@/lib/utils";
+import { type ClientStage } from "@/constants/crm";
+import { StageSelectShell } from "./shared/StageSelectShell";
 import { formatDate } from "./shared/formatDate";
 import {
   getContractsFromBusinessInfo,
@@ -28,6 +38,9 @@ export interface MemberProfileHeaderProps {
   onPromoteToExisting?: () => void | Promise<void>;
   offersCount?: number;
   lastActivityAt?: string | null;
+  businessInfoLoading?: boolean;
+  /** Tabs row rendered inside the header shell (border-top below stats). */
+  tabsSlot?: ReactNode;
 }
 
 function TabCountBadge({ count, href }: { count: number; href: string }) {
@@ -43,27 +56,39 @@ function TabCountBadge({ count, href }: { count: number; href: string }) {
   );
 }
 
-function HeaderStat({
+function HeaderStatTile({
+  icon,
   label,
   value,
-  withDivider,
+  loading = false,
+  withDivider = false,
 }: {
+  icon: ReactNode;
   label: string;
-  value: React.ReactNode;
+  value: ReactNode;
+  loading?: boolean;
   withDivider?: boolean;
 }) {
   return (
     <div
-      className={`flex flex-1 flex-col items-center px-3 py-3 text-center sm:px-4 ${
-        withDivider ? "border-l border-stroke dark:border-dark-3" : ""
-      }`}
+      className={cn(
+        "flex min-w-0 flex-1 flex-col gap-1.5 px-4 py-3 sm:px-5",
+        withDivider && "border-l border-stroke/60 dark:border-dark-3/60"
+      )}
     >
-      <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-        {label}
-      </span>
-      <span className="mt-0.5 flex items-center justify-center gap-1.5 text-[15px] font-medium tabular-nums text-gray-900 dark:text-gray-100">
-        {value}
-      </span>
+      <div className="flex items-center gap-2">
+        <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary dark:bg-primary/20">
+          {icon}
+        </span>
+        <span className="truncate text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+          {label}
+        </span>
+      </div>
+      {loading ? (
+        <Skeleton variant="text" className="h-5 w-16 max-w-full" />
+      ) : (
+        <div className="text-sm font-semibold tabular-nums text-gray-900 dark:text-gray-100">{value}</div>
+      )}
     </div>
   );
 }
@@ -77,14 +102,6 @@ function getAbn(info: Record<string, unknown> | null | undefined): string | null
 }
 
 // Simple inline SVG icons — no extra dependency needed
-function IconDrive() {
-  return (
-    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-    </svg>
-  );
-}
-
 function IconBase() {
   return (
     <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -113,6 +130,8 @@ export function MemberProfileHeader({
   onPromoteToExisting,
   offersCount = 0,
   lastActivityAt = null,
+  businessInfoLoading = false,
+  tabsSlot,
 }: MemberProfileHeaderProps) {
   const signedNotPromoted =
     Boolean(client.has_signed_contract) &&
@@ -175,8 +194,13 @@ export function MemberProfileHeader({
       const ownerLabel = owner.includes("@") ? owner.split("@")[0] : owner;
       parts.push(`Owner ${ownerLabel}`);
     }
-    return parts.length > 0 ? parts.join(" · ") : "—";
+    return parts.length > 0 ? parts.join(" · ") : null;
   }, [tradingName, abn, client.owner_email]);
+
+  const statsPending = businessInfoLoading && !businessInfo;
+  const avatarInitial = client.business_name
+    ? getMemberInitials(client.business_name).slice(0, 1)
+    : null;
 
   useEffect(() => {
     if (!showMoreMenu) return;
@@ -427,254 +451,258 @@ export function MemberProfileHeader({
     window.open(`/vinyl-robot-wrap?${params.toString()}`, "_blank");
   };
 
+  const actionButtonClass =
+    "h-9 rounded-lg border border-stroke bg-white text-dark hover:bg-gray-2 dark:border-dark-3 dark:bg-gray-dark dark:text-white dark:hover:bg-dark-2";
+
   return (
-    <Card className="border border-stroke bg-white shadow-sm ring-1 ring-gray-200/60 dark:border-dark-3 dark:bg-gray-dark dark:ring-gray-700/50">
-      <CardContent className="p-0">
-        <div className="flex flex-col gap-4 p-4 lg:p-5 md:flex-row md:items-start md:justify-between">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-start gap-3">
-              <div
-                className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-stroke bg-gray/30 dark:border-dark-3 dark:bg-dark-2"
-                aria-hidden
-              >
-                {client.business_name ? (
-                  <span className="text-base font-semibold text-gray-500 dark:text-gray-400">
-                    {client.business_name.charAt(0).toUpperCase()}
+    <div className="rounded-xl border border-stroke/40 bg-white shadow-sm ring-1 ring-gray-200/60 dark:border-dark-3/60 dark:bg-dark-2 dark:ring-gray-700/50">
+      <div className="flex flex-col gap-4 p-4 lg:p-5 md:flex-row md:items-start md:justify-between">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start gap-3.5">
+            <div
+              className="flex size-[52px] shrink-0 items-center justify-center rounded-[14px] bg-violet-50 text-lg font-semibold text-violet-800 dark:bg-violet-900/30 dark:text-violet-200"
+              aria-hidden
+            >
+              {avatarInitial ?? <IconBuilding />}
+            </div>
+            <div className="min-w-0 flex-1">
+              <h1 className="text-[21px] font-medium leading-tight text-gray-900 dark:text-gray-100">
+                {client.business_name}
+              </h1>
+              {subtitleParts ? (
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{subtitleParts}</p>
+              ) : null}
+              {signedNotPromoted ? (
+                <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center gap-1">
+                    <Badge intent="warning" shape="pill" className="text-[10px] py-0">
+                      Signed — not promoted
+                    </Badge>
+                    {onPromoteToExisting ? (
+                      <button
+                        type="button"
+                        onClick={() => void onPromoteToExisting()}
+                        disabled={savingStage}
+                        className="text-[10px] font-semibold text-primary hover:underline disabled:opacity-50"
+                      >
+                        Promote
+                      </button>
+                    ) : null}
                   </span>
-                ) : (
-                  <IconBuilding />
-                )}
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h1 className="truncate text-[18px] font-medium text-gray-900 dark:text-gray-100">
-                    {client.business_name}
-                  </h1>
-                  <StageBadge stage={client.stage} />
-                  {client.entity_group_display_name ? (
-                    <span
-                      className="inline-flex shrink-0 items-center rounded-full border border-violet-200 bg-violet-50 px-2.5 py-0.5 text-[11px] font-medium text-violet-800 dark:border-violet-800/60 dark:bg-violet-900/30 dark:text-violet-200"
-                      title={client.entity_group_slug ?? undefined}
-                    >
-                      {client.entity_group_display_name}
-                    </span>
-                  ) : null}
-                  {signedNotPromoted ? (
-                    <span className="inline-flex items-center gap-1">
-                      <Badge intent="warning" shape="pill" className="text-[10px] py-0">
-                        Signed — not promoted
-                      </Badge>
-                      {onPromoteToExisting ? (
-                        <button
-                          type="button"
-                          onClick={() => void onPromoteToExisting()}
-                          disabled={savingStage}
-                          className="text-[10px] font-semibold text-primary hover:underline disabled:opacity-50"
-                        >
-                          Promote
-                        </button>
-                      ) : null}
-                    </span>
-                  ) : null}
-                  {driveUrl && (
-                    <a
-                      href={driveUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      title="Open Google Drive folder"
-                      className="inline-flex shrink-0 items-center gap-1 rounded-full border border-stroke bg-white px-2.5 py-1 text-[11px] font-semibold text-dark transition-all hover:bg-gray-2 dark:border-dark-3 dark:bg-gray-dark dark:text-white dark:hover:bg-dark-2"
-                    >
-                      <IconDrive />
-                      Drive
-                    </a>
-                  )}
                 </div>
-                <p className="mt-0.5 truncate text-sm text-gray-500 dark:text-gray-400">
-                  {subtitleParts}
-                </p>
-              </div>
+              ) : null}
             </div>
           </div>
+        </div>
 
-          <div className="flex shrink-0 flex-wrap items-end gap-2">
-            {onStageChange ? (
-              <Select
-                label="Stage"
-                value={client.stage}
-                onChange={(e) => void onStageChange(e.target.value as ClientStage)}
-                disabled={savingStage}
-                wrapperClassName="min-w-[9rem]"
-              >
-                {CLIENT_STAGES.map((s) => (
-                  <option key={s} value={s}>
-                    {CLIENT_STAGE_LABELS[s]}
-                  </option>
-                ))}
-              </Select>
-            ) : null}
-            <div className="relative" ref={generateDocumentsMenuRef}>
-              <Button
-                type="button"
-                variant="primary"
-                size="sm"
-                onClick={() => setShowGenerateDocumentsMenu((v) => !v)}
-                title="Generate documents"
-              >
-                Generate Documents {showGenerateDocumentsMenu ? "▲" : "▼"}
-              </Button>
-              {showGenerateDocumentsMenu && (
-                <div className="absolute left-0 top-full mt-1 z-50 min-w-[220px] rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 py-1 shadow-md">
-                  <button
-                    type="button"
-                    onClick={() => handleOpenDocumentGeneration("business-documents")}
-                    className="w-full px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
-                  >
-                    Generate LOA and SFA
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleOpenDocumentGeneration("eoi-ef")}
-                    className="w-full px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
-                  >
-                    Generate EOI or EF
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => openSolutionsStrategyGenerator()}
-                    className="w-full px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
-                  >
-                    Generate Solution Documents
-                  </button>
-                  <div
-                    className="my-1 border-t border-gray-200 dark:border-gray-600"
-                    role="separator"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => void openSolarCleaningQuote()}
-                    className="w-full px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
-                  >
-                    Solar Panel Cleaning Quote
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void openVinylRobotWrap()}
-                    className="w-full px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
-                  >
-                    Vinyl Robot Wrap
-                  </button>
-                </div>
+        <div className="relative z-20 flex shrink-0 flex-wrap items-center gap-2 md:justify-end">
+          {driveUrl ? (
+            <a
+              href={driveUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Open Drive folder"
+              title="Open Drive folder"
+              className={cn(
+                "inline-flex h-9 shrink-0 items-center gap-1.5 px-3 text-xs font-medium transition-colors",
+                actionButtonClass
               )}
-            </div>
-
+            >
+              <Folder className="size-4 shrink-0" aria-hidden />
+              Drive Folder
+            </a>
+          ) : null}
+          {onStageChange ? (
+            <StageSelectShell
+              value={client.stage}
+              onChange={(stage) => void onStageChange(stage)}
+              disabled={savingStage}
+            />
+          ) : null}
+          <div className="relative" ref={generateDocumentsMenuRef}>
             <Button
               type="button"
               variant="secondary"
               size="sm"
-              onClick={() => handleOpenBase2()}
-              disabled={base2Opening}
-              title="Open Base 2 analysis"
-              leftIcon={<IconBase />}
+              radius="md"
+              className={actionButtonClass}
+              onClick={() => setShowGenerateDocumentsMenu((v) => !v)}
+              title="Generate documents"
             >
-              {base2Opening ? "Opening…" : "Base 2"}
+              <FileText className="size-4 shrink-0" aria-hidden />
+              Generate documents
+              <ChevronDown
+                className={cn("size-3.5 shrink-0", showGenerateDocumentsMenu && "rotate-180")}
+                aria-hidden
+              />
             </Button>
+            {showGenerateDocumentsMenu && (
+              <div className="absolute left-0 top-full z-[9999] mt-1 min-w-[220px] rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-600 dark:bg-gray-800">
+                <button
+                  type="button"
+                  onClick={() => handleOpenDocumentGeneration("business-documents")}
+                  className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+                >
+                  Generate LOA and SFA
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleOpenDocumentGeneration("eoi-ef")}
+                  className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+                >
+                  Generate EOI or EF
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openSolutionsStrategyGenerator()}
+                  className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+                >
+                  Generate Solution Documents
+                </button>
+                <div className="my-1 border-t border-gray-200 dark:border-gray-600" role="separator" />
+                <button
+                  type="button"
+                  onClick={() => void openSolarCleaningQuote()}
+                  className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+                >
+                  Solar Panel Cleaning Quote
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void openVinylRobotWrap()}
+                  className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+                >
+                  Vinyl Robot Wrap
+                </button>
+              </div>
+            )}
+          </div>
 
-            <div className="relative" ref={moreMenuRef}>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => setShowMoreMenu((v) => !v)}
-                title="More actions"
-                aria-expanded={showMoreMenu}
-              >
-                ⋯ More
-              </Button>
-              {showMoreMenu && (
-                <div className="absolute right-0 top-full z-[9999] mt-1 min-w-[180px] rounded-lg border border-stroke bg-white py-1 shadow-md dark:border-dark-3 dark:bg-gray-dark">
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            radius="md"
+            className={actionButtonClass}
+            onClick={() => handleOpenBase2()}
+            disabled={base2Opening}
+            title="Open Base 2 analysis"
+            leftIcon={<IconBase />}
+          >
+            {base2Opening ? "Opening…" : "Base 2"}
+          </Button>
+
+          <div className="relative" ref={moreMenuRef}>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              radius="md"
+              className={cn(actionButtonClass, "px-3")}
+              onClick={() => setShowMoreMenu((v) => !v)}
+              title="More actions"
+              aria-expanded={showMoreMenu}
+            >
+              ⋯ More
+            </Button>
+            {showMoreMenu && (
+              <div className="absolute right-0 top-full z-[9999] mt-1 min-w-[180px] rounded-lg border border-stroke bg-white py-1 shadow-lg dark:border-dark-3 dark:bg-gray-dark">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowMoreMenu(false);
+                    handleUpdateLoa();
+                  }}
+                  className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray/50 dark:text-gray-200 dark:hover:bg-dark-2"
+                >
+                  Update LOA
+                </button>
+                {onOpenTools && (
                   <button
                     type="button"
                     onClick={() => {
                       setShowMoreMenu(false);
-                      handleUpdateLoa();
+                      onOpenTools();
                     }}
                     className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray/50 dark:text-gray-200 dark:hover:bg-dark-2"
                   >
-                    Update LOA
+                    Tools
                   </button>
-                  {onOpenTools && (
+                )}
+                {onDeleteMember ? (
+                  <>
+                    <div className="my-1 border-t border-gray-200 dark:border-gray-600" role="separator" />
                     <button
                       type="button"
                       onClick={() => {
                         setShowMoreMenu(false);
-                        onOpenTools();
+                        onDeleteMember();
                       }}
-                      className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray/50 dark:text-gray-200 dark:hover:bg-dark-2"
+                      className="w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
                     >
-                      Tools
+                      Delete member…
                     </button>
-                  )}
-                  {onDeleteMember ? (
-                    <>
-                      <div
-                        className="my-1 border-t border-gray-200 dark:border-gray-600"
-                        role="separator"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowMoreMenu(false);
-                          onDeleteMember();
-                        }}
-                        className="w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
-                      >
-                        Delete member…
-                      </button>
-                    </>
+                  </>
+                ) : null}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-col border-t border-stroke/60 sm:flex-row dark:border-dark-3/60">
+        <HeaderStatTile
+          icon={<Layers className="size-3.5" aria-hidden />}
+          label="Offers"
+          value={String(offersCount)}
+        />
+        <HeaderStatTile
+          icon={<FileCheck className="size-3.5" aria-hidden />}
+          label="Contracts"
+          value={String(contractCount)}
+          loading={statsPending}
+          withDivider
+        />
+        <HeaderStatTile
+          icon={<ScrollText className="size-3.5" aria-hidden />}
+          label="Agreements · LOA, SFA"
+          loading={statsPending}
+          withDivider
+          value={
+            <div className="space-y-1">
+              {(loaFileLink || (sfaCount > 0 && sfaFileUrl)) && (
+                <div className="flex flex-wrap items-center gap-2 text-[11px] font-medium text-gray-600 dark:text-gray-400">
+                  {loaFileLink ? (
+                    <span className="inline-flex items-center gap-1">
+                      LOA
+                      <TabCountBadge count={1} href={loaFileLink} />
+                    </span>
+                  ) : null}
+                  {sfaCount > 0 && sfaFileUrl ? (
+                    <span className="inline-flex items-center gap-1">
+                      SFA
+                      <TabCountBadge count={sfaCount} href={sfaFileUrl} />
+                    </span>
                   ) : null}
                 </div>
               )}
-            </div>
-          </div>
-        </div>
-
-        <div className="flex border-t border-stroke dark:border-dark-3">
-          <HeaderStat label="Offers" value={String(offersCount)} />
-          <HeaderStat
-            label="Contracts"
-            value={businessInfo ? String(contractCount) : "—"}
-            withDivider
-          />
-          <div
-            className={`flex flex-1 flex-col items-center px-3 py-3 text-center sm:px-4 border-l border-stroke dark:border-dark-3`}
-          >
-            {(loaFileLink || (sfaCount > 0 && sfaFileUrl)) && (
-              <span className="flex items-center justify-center gap-3 text-[11px] font-semibold tracking-wide text-gray-700 dark:text-gray-300">
-                {loaFileLink && (
-                  <span className="inline-flex items-center gap-1">
-                    LOA
-                    <TabCountBadge count={1} href={loaFileLink} />
-                  </span>
-                )}
-                {sfaCount > 0 && sfaFileUrl && (
-                  <span className="inline-flex items-center gap-1">
-                    SFA
-                    <TabCountBadge count={sfaCount} href={sfaFileUrl} />
-                  </span>
-                )}
+              <span>
+                {loaSignedDate ? `Signed ${loaSignedDate}` : "Not signed yet"}
               </span>
-            )}
-            <span className="mt-0.5 text-[15px] font-medium tabular-nums text-gray-900 dark:text-gray-100">
-              {loaSignedDate ?? "—"}
-            </span>
-          </div>
-          <HeaderStat
-            label="Last activity"
-            value={lastActivityAt ? formatDate(lastActivityAt) : "—"}
-            withDivider
-          />
-        </div>
-      </CardContent>
-    </Card>
+            </div>
+          }
+        />
+        <HeaderStatTile
+          icon={<Clock className="size-3.5" aria-hidden />}
+          label="Last activity"
+          value={lastActivityAt ? formatDate(lastActivityAt) : "No activity yet"}
+          withDivider
+        />
+      </div>
+
+      {tabsSlot ? (
+        <div className="border-t border-stroke/60 px-3 dark:border-dark-3/60">{tabsSlot}</div>
+      ) : null}
+    </div>
   );
 }
