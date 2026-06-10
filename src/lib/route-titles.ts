@@ -25,6 +25,7 @@ const ROUTE_TITLES: Record<string, string> = {
   "/design-system": "Design System",
   "/crm": "CRM Dashboard",
   "/crm-members": "Members",
+  "/crm-groups": "Groups",
   "/clients": "Members",
   "/pipeline": "Pipeline",
   "/offers": "Offers",
@@ -68,6 +69,7 @@ const ROUTE_TITLES: Record<string, string> = {
 /** Prefix matches for dynamic segments (e.g. /crm-members/123 -> "Member") */
 const ROUTE_PREFIX_TITLES: { prefix: string; title: string }[] = [
   { prefix: "/crm-members/", title: "Member" },
+  { prefix: "/crm-groups/", title: "Group" },
   { prefix: "/clients/", title: "Member" },
   { prefix: "/offers/", title: "Offer" },
   { prefix: "/autonomous-agent/", title: "Autonomous run" },

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { getApiBaseUrl } from "@/lib/utils";
@@ -8,27 +8,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Card as UiCard } from "@/components/ui/card";
+import { CreateGroupForm } from "@/components/crm-groups/CreateGroupForm";
+import type { EntityGroupListItem } from "@/lib/entity-groups";
 import { SectionHeader } from "./shared/SectionHeader";
 import type { Client } from "./types";
 
-export interface EntityGroupOption {
-  id: number;
-  slug: string;
-  display_name: string;
-  member_count?: number;
-}
+export type EntityGroupOption = EntityGroupListItem;
 
 interface EntityGroupDetail extends EntityGroupOption {
   members: Client[];
-}
-
-function slugifyDisplayName(name: string): string {
-  return name
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .replace(/-+/g, "-");
 }
 
 type EntityGroupSectionProps = {
@@ -58,12 +46,7 @@ export function EntityGroupSection({
   );
   const [siblings, setSiblings] = useState<Client[]>([]);
   const [siblingsLoading, setSiblingsLoading] = useState(false);
-
   const [createOpen, setCreateOpen] = useState(false);
-  const [createDisplayName, setCreateDisplayName] = useState("");
-  const [createSlug, setCreateSlug] = useState("");
-  const [createSubmitting, setCreateSubmitting] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null);
   const [loaRecordId, setLoaRecordId] = useState(client.external_business_id ?? "");
 
   useEffect(() => {
@@ -129,48 +112,6 @@ export function EntityGroupSection({
       cancelled = true;
     };
   }, [token, groupSlug, client.id]);
-
-  const autoSlug = useMemo(
-    () => slugifyDisplayName(createDisplayName),
-    [createDisplayName]
-  );
-
-  const handleCreateGroup = async () => {
-    if (!token) return;
-    const displayName = createDisplayName.trim();
-    const slug = (createSlug.trim() || autoSlug).trim();
-    if (!displayName || !slug) {
-      setCreateError("Display name and slug are required.");
-      return;
-    }
-    setCreateSubmitting(true);
-    setCreateError(null);
-    try {
-      const res = await fetch(`${getApiBaseUrl()}/api/entity-groups`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ slug, display_name: displayName }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error((data as { detail?: string }).detail || "Failed to create group");
-      }
-      const created = (await res.json()) as EntityGroupOption;
-      await fetchGroups();
-      setSelectedGroupId(String(created.id));
-      await onSaveEntityGroup(created.id);
-      setCreateOpen(false);
-      setCreateDisplayName("");
-      setCreateSlug("");
-    } catch (e: unknown) {
-      setCreateError(e instanceof Error ? e.message : "Failed to create group");
-    } finally {
-      setCreateSubmitting(false);
-    }
-  };
 
   const handleAssign = async () => {
     const id = selectedGroupId ? parseInt(selectedGroupId, 10) : null;
@@ -275,48 +216,25 @@ export function EntityGroupSection({
             type="button"
             variant="secondary"
             size="sm"
-            onClick={() => {
-              setCreateOpen((o) => !o);
-              setCreateError(null);
-            }}
+            onClick={() => setCreateOpen((o) => !o)}
           >
             {createOpen ? "Cancel new" : "New group"}
           </Button>
         </div>
 
-        {createOpen ? (
-          <div className="rounded-lg border border-gray-200 bg-gray-50/80 p-4 dark:border-gray-700 dark:bg-gray-800/40 space-y-3">
-            <Input
-              label="Group display name"
-              value={createDisplayName}
-              onChange={(e) => {
-                setCreateDisplayName(e.target.value);
-                if (!createSlug.trim()) {
-                  setCreateSlug(slugifyDisplayName(e.target.value));
-                }
+        {createOpen && token ? (
+          <div className="rounded-lg border border-gray-200 bg-gray-50/80 p-4 dark:border-gray-700 dark:bg-gray-800/40">
+            <CreateGroupForm
+              token={token}
+              submitLabel="Create & assign to this member"
+              onCancel={() => setCreateOpen(false)}
+              onCreated={async (created) => {
+                await fetchGroups();
+                setSelectedGroupId(String(created.id));
+                await onSaveEntityGroup(created.id);
+                setCreateOpen(false);
               }}
-              placeholder="e.g. Bentleigh RSL Group"
             />
-            <Input
-              label="Slug"
-              value={createSlug || autoSlug}
-              onChange={(e) => setCreateSlug(e.target.value)}
-              className="font-mono"
-              placeholder="bentleigh-rsl-group"
-              hint="Lowercase kebab-case; used in API filters"
-            />
-            {createError ? (
-              <p className="text-xs text-red-600 dark:text-red-400">{createError}</p>
-            ) : null}
-            <Button
-              type="button"
-              size="sm"
-              loading={createSubmitting}
-              disabled={createSubmitting}
-              onClick={() => void handleCreateGroup()}
-            >
-              Create & assign to this member
-            </Button>
           </div>
         ) : null}
 

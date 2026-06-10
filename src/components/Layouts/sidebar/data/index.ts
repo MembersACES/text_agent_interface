@@ -3,6 +3,7 @@ import {
   BarChart3,
   Bot,
   Building2,
+  Layers,
   CalendarClock,
   CheckSquare,
   FileText,
@@ -87,6 +88,7 @@ export const NAV_DATA: NavSection[] = [
     label: "CRM",
     items: [
       { title: "Members", url: "/crm-members", icon: Users },
+      { title: "Groups", url: "/crm-groups", icon: Layers },
       { title: "Offers", url: "/offers", icon: HandCoins },
       { title: "Activity Report", url: "/reports/activities", icon: Activity },
     ],
