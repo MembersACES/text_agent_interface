@@ -1,15 +1,16 @@
 "use client";
 
-import { useMemo, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { ExternalLink, AlertTriangle } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, getApiBaseUrl } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StageBadge } from "@/components/crm-member/shared/StageBadge";
-import type { Client } from "@/components/crm-member/types";
+import type { Client, ClientReferral } from "@/components/crm-member/types";
 import { CLIENT_STAGES, CLIENT_STAGE_LABELS, type ClientStage } from "@/constants/crm";
+import type { EntityGroupListItem } from "@/lib/entity-groups";
 import {
   getContactEmail,
   getContactName,
@@ -24,25 +25,75 @@ import type { BusinessInfoCacheEntry } from "./useGroupBusinessInfoCache";
 interface GroupSiteDetailProps {
   client: Client | null;
   token: string;
+  currentGroupId: number;
+  otherGroups?: EntityGroupListItem[];
   offerCount?: number;
   cacheEntry?: BusinessInfoCacheEntry | null;
   onRetry?: () => void;
   onStageChange?: (stage: ClientStage) => void | Promise<void>;
   savingStage?: boolean;
+  onRemoveFromGroup?: () => void | Promise<void>;
+  onTransferToGroup?: (targetGroupId: number) => void | Promise<void>;
+  savingMembership?: boolean;
+}
+
+function formatMeetingDate(iso: string | null | undefined): string | null {
+  if (!iso?.trim()) return null;
+  const d = iso.trim().slice(0, 10);
+  const parts = d.split("-");
+  if (parts.length !== 3) return d;
+  return `${parts[2]}/${parts[1]}/${parts[0]}`;
+}
+
+function AdvocacyMeetingBadge({ client }: { client: Client }) {
+  const completed = Boolean(client.advocacy_meeting_completed);
+  const dateLabel = formatMeetingDate(client.advocacy_meeting_date);
+  const time = client.advocacy_meeting_time?.trim();
+
+  if (completed) {
+    return (
+      <span className="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200">
+        Advocacy meeting completed
+        {dateLabel ? ` · ${dateLabel}` : ""}
+      </span>
+    );
+  }
+  if (dateLabel) {
+    return (
+      <span className="inline-flex items-center rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-semibold text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
+        Meeting scheduled {dateLabel}
+        {time ? ` ${time}` : ""}
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-[11px] font-semibold text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+      No advocacy meeting scheduled
+    </span>
+  );
 }
 
 export function GroupSiteDetail({
   client,
   token,
+  currentGroupId,
+  otherGroups = [],
   offerCount,
   cacheEntry,
   onRetry,
   onStageChange,
   savingStage = false,
+  onRemoveFromGroup,
+  onTransferToGroup,
+  savingMembership = false,
 }: GroupSiteDetailProps) {
   const businessInfo = cacheEntry?.data ?? null;
   const verified = cacheEntry?.verified ?? false;
   const loading = cacheEntry?.loading ?? false;
+
+  const [referrals, setReferrals] = useState<ClientReferral[]>([]);
+  const [referralsLoading, setReferralsLoading] = useState(false);
+  const [transferTargetId, setTransferTargetId] = useState("");
 
   const tradingName = useMemo(() => getTradingName(businessInfo), [businessInfo]);
   const driveUrl = useMemo(
@@ -59,6 +110,39 @@ export function GroupSiteDetail({
   }, [client?.business_name, token]);
 
   const profileHref = client ? `/crm-members/${client.id}` : "#";
+  const strategyHref = client
+    ? `/crm-members/${client.id}?tab=solutions&subtab=strategy`
+    : "#";
+
+  const fetchReferrals = useCallback(async () => {
+    if (!token || !client?.id) {
+      setReferrals([]);
+      return;
+    }
+    setReferralsLoading(true);
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/clients/${client.id}/referrals`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Failed to load advocates");
+      const data = (await res.json()) as ClientReferral[];
+      setReferrals(Array.isArray(data) ? data : []);
+    } catch {
+      setReferrals([]);
+    } finally {
+      setReferralsLoading(false);
+    }
+  }, [token, client?.id]);
+
+  useEffect(() => {
+    void fetchReferrals();
+    setTransferTargetId("");
+  }, [fetchReferrals]);
+
+  const activeAdvocates = useMemo(
+    () => referrals.filter((r) => r.active),
+    [referrals]
+  );
 
   if (!client) {
     return (
@@ -136,6 +220,8 @@ export function GroupSiteDetail({
     return stages;
   }, [client.stage]);
 
+  const transferOptions = otherGroups.filter((g) => g.id !== currentGroupId);
+
   return (
     <Card className="flex min-h-[280px] flex-col overflow-hidden p-0">
       <div className="border-b border-stroke px-5 py-4 dark:border-dark-3">
@@ -207,7 +293,7 @@ export function GroupSiteDetail({
             ) : null}
 
             {(enrichedFields.length > 0 || crmFields.length > 0) && (
-              <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
+              <dl className="mb-5 grid gap-x-6 gap-y-3 sm:grid-cols-2">
                 {[...enrichedFields, ...crmFields].map((row) => (
                   <div key={row.label}>
                     <dt className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
@@ -219,8 +305,71 @@ export function GroupSiteDetail({
               </dl>
             )}
 
-            {!loading && enrichedFields.length === 0 && crmFields.length === 0 && !showError ? (
-              <p className="text-sm text-gray-500 dark:text-gray-400">
+            <section className="rounded-lg border border-gray-200 bg-gray-50/50 p-3 dark:border-gray-700 dark:bg-gray-800/30">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                  Advocates
+                </h3>
+                <NewTabLink
+                  href={strategyHref}
+                  className="text-[11px] font-semibold text-primary hover:underline"
+                >
+                  Edit in Strategy & WIP →
+                </NewTabLink>
+              </div>
+              <div className="mb-2.5">
+                <AdvocacyMeetingBadge client={client} />
+              </div>
+              {referralsLoading ? (
+                <div className="space-y-2">
+                  <Skeleton className="h-6 w-32" />
+                  <Skeleton className="h-6 w-40" />
+                </div>
+              ) : activeAdvocates.length === 0 ? (
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  No active advocates linked. Add advocates in Strategy & WIP.
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {activeAdvocates.map((ref) => {
+                    const label =
+                      ref.advocate_display_name?.trim() ||
+                      ref.advocate_business_name?.trim() ||
+                      "Unnamed advocate";
+                    if (ref.advocate_client_id) {
+                      return (
+                        <button
+                          key={ref.id}
+                          type="button"
+                          onClick={() =>
+                            openInNewTab(`/crm-members/${ref.advocate_client_id}`)
+                          }
+                          className="inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-[11px] font-medium text-violet-800 transition-colors hover:bg-violet-100 dark:border-violet-800/60 dark:bg-violet-900/30 dark:text-violet-200 dark:hover:bg-violet-900/50"
+                        >
+                          {label}
+                        </button>
+                      );
+                    }
+                    return (
+                      <span
+                        key={ref.id}
+                        className="inline-flex items-center rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-medium text-gray-700 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-300"
+                      >
+                        {label}
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+
+            {!loading &&
+            enrichedFields.length === 0 &&
+            crmFields.length === 0 &&
+            !showError &&
+            activeAdvocates.length === 0 &&
+            !referralsLoading ? (
+              <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">
                 No additional details available. Open full profile for more.
               </p>
             ) : null}
@@ -228,13 +377,61 @@ export function GroupSiteDetail({
         )}
       </div>
 
-      <div className="flex flex-wrap gap-2 border-t border-stroke px-5 py-3 dark:border-dark-3">
-        <QuickLink href={profileHref} label="Full profile" newTab />
-        {driveUrl ? <QuickLink href={driveUrl} label="Drive" external /> : null}
-        {utilitiesHref ? <QuickLink href={utilitiesHref} label="Utilities" external /> : null}
-        {(offerCount ?? 0) > 0 ? (
-          <QuickLink href={`/crm-members/${client.id}?tab=offers`} label="Offers" newTab />
-        ) : null}
+      <div className="space-y-3 border-t border-stroke px-5 py-3 dark:border-dark-3">
+        <div className="flex flex-wrap gap-2">
+          <QuickLink href={profileHref} label="Full profile" newTab />
+          {driveUrl ? <QuickLink href={driveUrl} label="Drive" external /> : null}
+          {utilitiesHref ? <QuickLink href={utilitiesHref} label="Utilities" external /> : null}
+          {(offerCount ?? 0) > 0 ? (
+            <QuickLink href={`/crm-members/${client.id}?tab=offers`} label="Offers" newTab />
+          ) : null}
+        </div>
+
+        {(onRemoveFromGroup || onTransferToGroup) && (
+          <div className="flex flex-wrap items-end gap-2 border-t border-stroke/60 pt-3 dark:border-dark-3/60">
+            {onRemoveFromGroup ? (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={savingMembership}
+                onClick={() => void onRemoveFromGroup()}
+              >
+                Remove from group
+              </Button>
+            ) : null}
+            {onTransferToGroup && transferOptions.length > 0 ? (
+              <div className="flex min-w-0 flex-1 flex-wrap items-end gap-2 sm:max-w-md">
+                <Select
+                  label="Transfer to"
+                  value={transferTargetId}
+                  onChange={(e) => setTransferTargetId(e.target.value)}
+                  disabled={savingMembership}
+                  wrapperClassName="min-w-[10rem] flex-1"
+                >
+                  <option value="">— Select group —</option>
+                  {transferOptions.map((g) => (
+                    <option key={g.id} value={String(g.id)}>
+                      {g.display_name}
+                    </option>
+                  ))}
+                </Select>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={savingMembership || !transferTargetId}
+                  onClick={() => {
+                    const id = parseInt(transferTargetId, 10);
+                    if (!Number.isNaN(id)) void onTransferToGroup(id);
+                  }}
+                >
+                  Transfer
+                </Button>
+              </div>
+            ) : null}
+          </div>
+        )}
       </div>
     </Card>
   );
@@ -259,7 +456,6 @@ function openInNewTab(href: string) {
   window.open(resolveTabUrl(href), "_blank", "noopener,noreferrer");
 }
 
-/** Button — not <a href> — so Next.js does not client-navigate the current tab. */
 function NewTabLink({
   href,
   className,

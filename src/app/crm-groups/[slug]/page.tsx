@@ -17,7 +17,11 @@ import type { Client } from "@/components/crm-member/types";
 import type { EntityGroupListItem, EntityGroupSummary } from "@/lib/entity-groups";
 import type { ClientStage } from "@/constants/crm";
 import { useToast } from "@/components/ui/toast";
-import { AlertTriangle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
+import { AddSiteToGroupModal } from "@/components/crm-groups/AddSiteToGroupModal";
+import { AlertTriangle, Plus, Trash2 } from "lucide-react";
+import type { EntityGroupDeleteResult } from "@/lib/entity-groups";
 
 interface EntityGroupDetail extends EntityGroupListItem {
   members: Client[];
@@ -45,6 +49,12 @@ export default function CrmGroupHubPage() {
   const [error, setError] = useState<string | null>(null);
   const [siteFilter, setSiteFilter] = useState("");
   const [savingStageId, setSavingStageId] = useState<number | null>(null);
+  const [addSiteOpen, setAddSiteOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [allGroups, setAllGroups] = useState<EntityGroupListItem[]>([]);
+  const [savingMembershipClientId, setSavingMembershipClientId] = useState<number | null>(null);
   const { showToast } = useToast();
 
   const siteParam = searchParams.get("site");
@@ -140,6 +150,22 @@ export default function CrmGroupHubPage() {
     void fetchData();
   }, [fetchData]);
 
+  useEffect(() => {
+    if (!token) return;
+    void (async () => {
+      try {
+        const res = await fetch(`${getApiBaseUrl()}/api/entity-groups`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return;
+        const data = (await res.json()) as EntityGroupListItem[];
+        setAllGroups(Array.isArray(data) ? data : []);
+      } catch {
+        setAllGroups([]);
+      }
+    })();
+  }, [token]);
+
   const { cache: businessInfoCache, retry: retryBusinessInfo } = useGroupBusinessInfoCache(
     sortedMembers,
     token ?? ""
@@ -200,6 +226,88 @@ export default function CrmGroupHubPage() {
     });
   };
 
+  const patchSiteMembership = useCallback(
+    async (clientId: number, entity_group_id: number | null) => {
+      if (!token) return;
+      setSavingMembershipClientId(clientId);
+      try {
+        const res = await fetch(`${getApiBaseUrl()}/api/clients/${clientId}`, {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ entity_group_id }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error((data as { detail?: string }).detail || "Failed to update group");
+        }
+        return true;
+      } catch (e: unknown) {
+        showToast(e instanceof Error ? e.message : "Failed to update group", "error");
+        return false;
+      } finally {
+        setSavingMembershipClientId(null);
+      }
+    },
+    [token, showToast]
+  );
+
+  const handleRemoveFromGroup = useCallback(async () => {
+    if (!selectedMember) return;
+    const clientId = selectedMember.id;
+    const ok = await patchSiteMembership(clientId, null);
+    if (!ok) return;
+    showToast(`${selectedMember.business_name} removed from group`, "success");
+    await fetchData();
+  }, [selectedMember, patchSiteMembership, showToast, fetchData]);
+
+  const handleTransferToGroup = useCallback(
+    async (targetGroupId: number) => {
+      if (!selectedMember) return;
+      const target = allGroups.find((g) => g.id === targetGroupId);
+      const ok = await patchSiteMembership(selectedMember.id, targetGroupId);
+      if (!ok) return;
+      showToast(
+        `${selectedMember.business_name} moved to ${target?.display_name ?? "group"}`,
+        "success"
+      );
+      await fetchData();
+    },
+    [selectedMember, allGroups, patchSiteMembership, showToast, fetchData]
+  );
+
+  const handleDeleteGroup = useCallback(async () => {
+    if (!token || !slug) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/entity-groups/${encodeURIComponent(slug)}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as { detail?: string }).detail || "Failed to delete group");
+      }
+      const result = (await res.json()) as EntityGroupDeleteResult;
+      const count = result.unlinked_member_count;
+      showToast(
+        count === 1
+          ? "Group deleted — 1 site unlinked"
+          : `Group deleted — ${count} sites unlinked`,
+        "success"
+      );
+      setDeleteOpen(false);
+      setDeleteConfirm(false);
+      router.push("/crm-groups");
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : "Failed to delete group", "error");
+    } finally {
+      setDeleting(false);
+    }
+  }, [token, slug, router, showToast]);
+
   if (loading) {
     return (
       <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
@@ -237,12 +345,24 @@ export default function CrmGroupHubPage() {
         title={group.display_name}
         description={`Commercial multisite group · ${group.slug}`}
         actions={
-          <Link
-            href="/crm-groups"
-            className="text-sm font-medium text-primary hover:underline"
-          >
-            All groups
-          </Link>
+          <div className="flex flex-wrap items-center gap-3">
+            <Link
+              href="/crm-groups"
+              className="text-sm font-medium text-primary hover:underline"
+            >
+              All groups
+            </Link>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
+              onClick={() => setDeleteOpen(true)}
+            >
+              <Trash2 className="size-3.5" aria-hidden />
+              Delete group
+            </Button>
+          </div>
         }
       />
 
@@ -278,7 +398,17 @@ export default function CrmGroupHubPage() {
       <div className="grid gap-4 lg:grid-cols-[260px_1fr] lg:items-start">
         <aside className="lg:sticky lg:top-4 lg:max-h-[calc(100vh-8rem)] lg:overflow-y-auto">
           <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-dark">
-            <div className="border-b border-gray-100 p-3 dark:border-gray-800">
+            <div className="space-y-2 border-b border-gray-100 p-3 dark:border-gray-800">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="w-full"
+                onClick={() => setAddSiteOpen(true)}
+              >
+                <Plus className="size-3.5" aria-hidden />
+                Add site
+              </Button>
               <Input
                 placeholder="Filter sites…"
                 value={siteFilter}
@@ -332,6 +462,8 @@ export default function CrmGroupHubPage() {
           <GroupSiteDetail
             client={selectedMember}
             token={token ?? ""}
+            currentGroupId={group.id}
+            otherGroups={allGroups}
             offerCount={selectedOfferCount}
             cacheEntry={
               selectedMember ? businessInfoCache[selectedMember.id] ?? null : null
@@ -347,9 +479,91 @@ export default function CrmGroupHubPage() {
                 : undefined
             }
             savingStage={selectedMember != null && savingStageId === selectedMember.id}
+            onRemoveFromGroup={selectedMember && token ? handleRemoveFromGroup : undefined}
+            onTransferToGroup={selectedMember && token ? handleTransferToGroup : undefined}
+            savingMembership={
+              selectedMember != null && savingMembershipClientId === selectedMember.id
+            }
           />
         </div>
       </div>
+
+      {token ? (
+        <AddSiteToGroupModal
+          open={addSiteOpen}
+          onClose={() => setAddSiteOpen(false)}
+          token={token}
+          groupId={group.id}
+          groupDisplayName={group.display_name}
+          existingMemberIds={sortedMembers.map((m) => m.id)}
+          onAdded={() => void fetchData()}
+        />
+      ) : null}
+
+      <Modal
+        open={deleteOpen}
+        onClose={() => {
+          if (deleting) return;
+          setDeleteOpen(false);
+          setDeleteConfirm(false);
+        }}
+        title="Delete group?"
+        size="default"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={deleting}
+              onClick={() => {
+                setDeleteOpen(false);
+                setDeleteConfirm(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              className="bg-red-600 hover:bg-red-700 disabled:opacity-50"
+              loading={deleting}
+              disabled={deleting || !deleteConfirm}
+              onClick={() => void handleDeleteGroup()}
+            >
+              {deleting ? "Deleting…" : "Delete group"}
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-3 text-sm text-gray-600 dark:text-gray-400">
+          <p>
+            This will permanently delete{" "}
+            <span className="font-medium text-gray-900 dark:text-gray-100">
+              {group.display_name}
+            </span>{" "}
+            and unlink{" "}
+            <span className="font-medium text-gray-900 dark:text-gray-100">
+              {summary.member_count === 1
+                ? "1 site"
+                : `${summary.member_count} sites`}
+            </span>{" "}
+            from the group. CRM members are not deleted — they stay in the pipeline with no
+            commercial group assigned.
+          </p>
+          <label className="flex cursor-pointer items-start gap-2 rounded-md border border-gray-200 bg-gray-50/80 p-3 dark:border-gray-700 dark:bg-gray-800/40">
+            <input
+              type="checkbox"
+              checked={deleteConfirm}
+              onChange={(e) => setDeleteConfirm(e.target.checked)}
+              className="mt-0.5 rounded border-gray-300 text-red-600 focus:ring-red-500 dark:border-gray-600"
+            />
+            <span className="text-xs text-gray-700 dark:text-gray-300">
+              I understand this group will be deleted and all linked sites will be unassigned.
+            </span>
+          </label>
+        </div>
+      </Modal>
     </div>
   );
 }
