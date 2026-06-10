@@ -12,9 +12,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { InsightCallout } from "@/components/dashboard";
 import {
+  CrmLinkBanner,
   MemberProfilePreviewSkeleton,
   RecentMembersRow,
 } from "@/components/member-profile";
+import { isCrmLinkMatched, type CrmLink } from "@/lib/crm-link";
 import { AlertCircle, Search } from "lucide-react";
 
 interface BusinessInfoToolProps {
@@ -101,7 +103,8 @@ export default function BusinessInfoTool({
 
         const resolvedName =
           data?.business_details?.name || data?.business_details?.["Business Name"] || queryName;
-        const clientId = data?.client_id ?? null;
+        const crmLink = data?.crm_link as CrmLink | undefined;
+        const clientId = isCrmLinkMatched(crmLink) ? crmLink.client_id : null;
         recordMemberProfileView({ businessName: resolvedName, clientId });
         setRecentMembers(getRecentMemberViews());
       } catch (err: unknown) {
@@ -141,6 +144,38 @@ export default function BusinessInfoTool({
   const handleRecentSelect = (entry: RecentMemberView) => {
     void getBusinessInfo(entry.businessName);
   };
+
+  const handleCrmLinked = useCallback(
+    (clientId: number) => {
+      setBusinessInfo((prev: Record<string, unknown> | null) => {
+        if (!prev || typeof prev !== "object") return prev;
+        const recordId = (prev.record_ID as string | undefined) ?? null;
+        return {
+          ...prev,
+          client_id: clientId,
+          crm_link: {
+            status: "matched",
+            client_id: clientId,
+            record_id: recordId,
+            reason: "CRM member linked by LOA record ID",
+            candidates: [],
+          } satisfies CrmLink,
+        };
+      });
+      const resolvedName =
+        businessInfo?.business_details?.name ||
+        businessInfo?.business_details?.["Business Name"] ||
+        businessName;
+      recordMemberProfileView({ businessName: resolvedName, clientId });
+      setRecentMembers(getRecentMemberViews());
+    },
+    [businessInfo, businessName],
+  );
+
+  const resolvedBusinessName =
+    businessInfo?.business_details?.name ||
+    businessInfo?.business_details?.["Business Name"] ||
+    businessName;
 
   const showPreviewSkeleton = loading || (!businessInfo && !error);
 
@@ -204,20 +239,17 @@ export default function BusinessInfoTool({
         <MemberProfilePreviewSkeleton loading={loading} />
       )}
 
-      {businessInfo &&
-        typeof businessInfo === "object" &&
-        businessInfo !== null &&
-        (businessInfo as { client_id?: number }).client_id != null && (
-          <p className="text-sm text-gray-600 dark:text-gray-400">
-            CRM member saved —{" "}
-            <Link
-              href={`/crm-members/${(businessInfo as { client_id: number }).client_id}`}
-              className="font-semibold text-primary hover:underline"
-            >
-              View in CRM
-            </Link>
-          </p>
-        )}
+      {businessInfo && typeof businessInfo === "object" && businessInfo !== null && (
+        <CrmLinkBanner
+          crmLink={businessInfo.crm_link as CrmLink | undefined}
+          recordId={businessInfo.record_ID as string | undefined}
+          businessName={resolvedBusinessName}
+          primaryContactEmail={businessInfo.contact_information?.email}
+          gdriveFolderUrl={businessInfo.gdrive?.folder_url}
+          token={token}
+          onLinked={handleCrmLinked}
+        />
+      )}
 
       {loading && businessInfo && (
         <MemberProfilePreviewSkeleton loading />
