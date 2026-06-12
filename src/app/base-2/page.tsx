@@ -170,6 +170,93 @@ function getUtilityConfig(type: string) {
   return UTILITY_CONFIG[type] ?? { color: "#6B7280", bg: "#F9FAFB", text: "#374151", icon: "📋", label: type };
 }
 
+interface AvailableUtilityType {
+  utilityType: string;
+  identifierLabel: string;
+  identifiers: string[];
+  count: number;
+}
+
+const BASE2_UTILITY_SOURCES: { utilityType: string; keys: string[]; identifierLabel: string }[] = [
+  { utilityType: "C&I Electricity", keys: ["C&I Electricity"], identifierLabel: "NMI" },
+  { utilityType: "SME Electricity", keys: ["SME Electricity"], identifierLabel: "NMI" },
+  { utilityType: "C&I Gas", keys: ["C&I Gas"], identifierLabel: "MRIN" },
+  { utilityType: "SME Gas", keys: ["SME Gas", "Small Gas"], identifierLabel: "MRIN" },
+  { utilityType: "Oil", keys: ["Oil", "COOKING_OIL"], identifierLabel: "Account Name" },
+  { utilityType: "Waste", keys: ["Waste", "WASTE"], identifierLabel: "Customer Number" },
+];
+
+function getUtilityIdentifiers(utilityData: unknown): string[] {
+  if (typeof utilityData === "string") {
+    return utilityData.split(",").map((id) => id.trim()).filter(Boolean);
+  }
+  if (Array.isArray(utilityData) && utilityData.length > 0) {
+    const first = utilityData[0];
+    if (first != null && typeof first === "object" && "identifier" in first) {
+      return utilityData
+        .map((o: { identifier?: unknown }) =>
+          o.identifier != null && typeof o.identifier === "string" ? o.identifier : String(o.identifier ?? "")
+        )
+        .filter(Boolean);
+    }
+    if (first != null && typeof first === "object" && "value" in first) {
+      return utilityData
+        .map((o: { value?: unknown }) =>
+          o.value != null && typeof o.value === "string" ? o.value : String(o.value ?? "")
+        )
+        .filter(Boolean);
+    }
+    return utilityData
+      .map((v: unknown) => (typeof v === "string" || typeof v === "number" ? String(v) : ""))
+      .filter(Boolean);
+  }
+  return [];
+}
+
+function getUtilityIdentifiersFromRecord(utilities: Record<string, unknown>, keys: string[]): string[] {
+  for (const key of keys) {
+    const data = utilities[key];
+    if (data != null && data !== "") {
+      const ids = getUtilityIdentifiers(data);
+      if (ids.length > 0) return ids;
+    }
+  }
+  return [];
+}
+
+function buildAvailableUtilityTypes(
+  utilities: Record<string, unknown>,
+  opts: { hasCleaningDocuments: boolean; cleaningIdentifier: string }
+): AvailableUtilityType[] {
+  const items: AvailableUtilityType[] = [];
+  for (const src of BASE2_UTILITY_SOURCES) {
+    const identifiers = getUtilityIdentifiersFromRecord(utilities, src.keys);
+    if (identifiers.length > 0) {
+      items.push({
+        utilityType: src.utilityType,
+        identifierLabel: src.identifierLabel,
+        identifiers,
+        count: identifiers.length,
+      });
+    }
+  }
+  if (opts.hasCleaningDocuments) {
+    items.push({
+      utilityType: "Cleaning",
+      identifierLabel: "Business",
+      identifiers: [opts.cleaningIdentifier],
+      count: 1,
+    });
+  }
+  return items;
+}
+
+function extractFileIdFromDriveUrl(url: string | undefined): string | null {
+  if (!url || typeof url !== "string") return null;
+  const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  return match ? match[1] : null;
+}
+
 /** Skeleton shimmer row */
 const SkeletonRow = ({ width = "w-full" }: { width?: string }) => (
   <div className={`h-3 rounded-full bg-gray-200 animate-pulse ${width}`} />
@@ -378,6 +465,7 @@ function formatAud(value: number | undefined, empty = "—"): string {
 
 const AU_GST_DIVISOR = 1.1;
 const DEFAULT_CI_GAS_COMPARISON_RATE_PER_GJ = 17.8;
+const DEFAULT_OIL_COMPARISON_RATE_PER_L = 3;
 /** Keep in sync with backend `AIRTABLE_SME_GAS_NEAR_SCREEN_GJ` (default 850). */
 const SME_GAS_NEAR_BAND_LOW_GJ = 850;
 const SME_GAS_GAP_DAYS_BADGE_MIN = 30;
@@ -463,6 +551,24 @@ function normalizeMoneyToNumber(value: unknown): number | undefined {
   return undefined;
 }
 
+/** n8n webhooks may return a single object or `[{ ... }]` with comma-formatted money strings. */
+function parseWebhookResult(responseText: string): Record<string, unknown> | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(responseText);
+  } catch {
+    return null;
+  }
+  if (Array.isArray(parsed)) {
+    const first = parsed.find((item) => item != null && typeof item === "object" && !Array.isArray(item));
+    return first ? (first as Record<string, unknown>) : null;
+  }
+  if (parsed != null && typeof parsed === "object" && !Array.isArray(parsed)) {
+    return parsed as Record<string, unknown>;
+  }
+  return null;
+}
+
 type AutonomousCiLane = "ci_gas" | "ci_electricity";
 
 /** Persisted on the autonomous run `context` for the run detail UI (gas vs electricity vs legacy offer-only). */
@@ -522,6 +628,9 @@ interface GenerateResultItem {
   utilityType: string;
   pdfUrl?: string;
   spreadsheetUrl?: string;
+  annualSavings?: number;
+  currentCost?: number;
+  newCost?: number;
 }
 
 interface GenerateResultModalState {
@@ -576,6 +685,7 @@ function offerComparisonKindLabel(c: UtilityComparison): string {
   if (c.utilityType === "SME Gas" && (c.smeGasComparisonMode ?? "invoice_blocks") === "ci_offer") {
     return "SME G Offer Comparison";
   }
+  if (c.utilityType === "Oil") return "Oil Offer Comparison";
   return "Comparison";
 }
 
@@ -605,6 +715,8 @@ export default function Base2Page() {
   const [error, setError] = useState<string | null>(null);
   const [businessInfoData, setBusinessInfoData] = useState<any>(null);
   const [businessInfoFetchDone, setBusinessInfoFetchDone] = useState(false);
+  const [loadingUtilityTypes, setLoadingUtilityTypes] = useState<string[]>([]);
+  const [loadedUtilityTypes, setLoadedUtilityTypes] = useState<string[]>([]);
 
   const [generateChoiceModal, setGenerateChoiceModal] = useState<GenerateChoiceModalState>({
     open: false,
@@ -638,6 +750,23 @@ export default function Base2Page() {
     const parsed = parseBusinessInfoParam(urlBusinessInfo);
     if (parsed) setBusinessInfo(parsed);
   }, [urlBusinessName, urlBusinessInfo]);
+
+  const availableUtilityTypes = useMemo((): AvailableUtilityType[] => {
+    const utilities = (businessInfo?.utilities || {}) as Record<string, unknown>;
+    let hasCleaningDocuments = false;
+    if (businessInfoData?._processed_file_ids) {
+      const fileIds = businessInfoData._processed_file_ids;
+      const floorPlanUrl = fileIds.business_site_map_upload || fileIds["Floor Plan"];
+      const cleaningInvoiceUrl = fileIds.invoice_Cleaning || fileIds["Cleaning Invoice"];
+      const floorPlanFileId = extractFileIdFromDriveUrl(floorPlanUrl) || floorPlanUrl;
+      const cleaningInvoiceFileId = extractFileIdFromDriveUrl(cleaningInvoiceUrl) || cleaningInvoiceUrl;
+      hasCleaningDocuments = !!(floorPlanFileId && cleaningInvoiceFileId);
+    }
+    return buildAvailableUtilityTypes(utilities, {
+      hasCleaningDocuments,
+      cleaningIdentifier: businessName || businessInfo?.name || "Cleaning Service",
+    });
+  }, [businessInfo, businessInfoData, businessName]);
 
   const smeCiGasReferenceKey = useMemo(
     () =>
@@ -893,11 +1022,7 @@ export default function Base2Page() {
     void run();
   }, [token, smeAirtableAnnualUsageKey]);
 
-  const extractFileIdFromUrl = (url: string | undefined): string | null => {
-    if (!url || typeof url !== 'string') return null;
-    const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
-    return match ? match[1] : null;
-  };
+  const extractFileIdFromUrl = extractFileIdFromDriveUrl;
 
   useEffect(() => {
     if (!token) return;
@@ -933,10 +1058,10 @@ export default function Base2Page() {
   }, [businessName, token]);
 
   useEffect(() => {
-    if (businessInfo && token && businessInfoFetchDone) {
-      fetchUtilityInvoices();
-    }
-  }, [businessInfo, token, businessInfoFetchDone]);
+    setUtilityComparisons([]);
+    setLoadingUtilityTypes([]);
+    setLoadedUtilityTypes([]);
+  }, [businessName, urlBusinessInfo]);
 
   const extractCurrentRates = (invoiceData: any, utilityType: string): Partial<UtilityComparison> => {
     const rates: Partial<UtilityComparison> = {};
@@ -1086,26 +1211,28 @@ export default function Base2Page() {
       }
     } else if (utilityType === 'Oil') {
       const details = invoiceData?.oil_invoice_details || invoiceData || {};
-      console.log('Oil extraction - Full invoiceData keys:', Object.keys(invoiceData || {}));
-      console.log('Oil extraction - details keys:', Object.keys(details));
-      let weightedRate = 0;
-      let totalQuantity = 0;
-      if (details.quantity_1 && details.rate_1) {
-        const qty1 = parseFloat(String(details.quantity_1));
-        const rate1 = parseFloat(String(details.rate_1));
-        if (!isNaN(qty1) && !isNaN(rate1) && qty1 > 0 && rate1 > 0) { weightedRate += (qty1 * rate1); totalQuantity += qty1; }
+      const oilLines: { qty: number; rate: number }[] = [];
+      const pushOilLine = (qtyRaw: unknown, rateRaw: unknown) => {
+        const qty = parseFloat(String(qtyRaw ?? "").trim());
+        const rate = parseFloat(String(rateRaw ?? "").trim());
+        if (Number.isFinite(qty) && Number.isFinite(rate) && qty > 0 && rate > 0) {
+          oilLines.push({ qty, rate });
+        }
+      };
+      pushOilLine(details.quantity_1, details.rate_1);
+      pushOilLine(details.quantity_2, details.rate_2 ?? details.rate_3);
+      const totalQuantity = oilLines.reduce((sum, line) => sum + line.qty, 0);
+      let avgOilRate = 0;
+      if (oilLines.length === 1) {
+        avgOilRate = oilLines[0].rate;
+      } else if (totalQuantity > 0) {
+        const weightedRate = oilLines.reduce((sum, line) => sum + line.qty * line.rate, 0);
+        avgOilRate = parseFloat((weightedRate / totalQuantity).toFixed(4));
       }
-      if (details.quantity_2 && details.rate_3) {
-        const qty2 = parseFloat(String(details.quantity_2));
-        const rate3 = parseFloat(String(details.rate_3));
-        if (!isNaN(qty2) && !isNaN(rate3) && qty2 > 0 && rate3 > 0) { weightedRate += (qty2 * rate3); totalQuantity += qty2; }
-      }
-      const avgOilRate = totalQuantity > 0 ? (weightedRate / totalQuantity) : 0;
-      rates.currentOilRate = avgOilRate > 0 ? avgOilRate : undefined;
-      rates.oilUsage = totalQuantity > 0 ? totalQuantity : undefined;
-      rates.monthlyUsage = totalQuantity > 0 ? totalQuantity : undefined;
-      rates.comparisonOilRate = rates.currentOilRate && rates.currentOilRate > 0 ? parseFloat((rates.currentOilRate * 0.95).toFixed(4)) : undefined;
-      console.log('Oil extraction result:', { avgOilRate, totalQuantity, currentOilRate: rates.currentOilRate });
+      rates.currentOilRate = avgOilRate > 0 ? parseFloat(avgOilRate.toFixed(4)) : undefined;
+      rates.oilUsage = totalQuantity > 0 ? parseFloat(totalQuantity.toFixed(2)) : undefined;
+      rates.monthlyUsage = rates.oilUsage;
+      rates.comparisonOilRate = DEFAULT_OIL_COMPARISON_RATE_PER_L;
     } else if (utilityType === 'Waste') {
       const details = invoiceData?.waste_invoice_details || invoiceData || {};
       const fullData = details?.full_invoice_data || details || {};
@@ -1128,86 +1255,91 @@ export default function Base2Page() {
     return rates;
   };
 
-  const fetchUtilityInvoices = async () => {
+  const fetchUtilityTypeInvoices = async (utilityType: string) => {
     if (!token) return;
-    const utilities = businessInfo?.utilities || {};
-    let hasCleaningDocuments = false;
-    if (businessInfoData?._processed_file_ids) {
-      const fileIds = businessInfoData._processed_file_ids;
-      const floorPlanUrl = fileIds.business_site_map_upload || fileIds['Floor Plan'];
-      const cleaningInvoiceUrl = fileIds.invoice_Cleaning || fileIds['Cleaning Invoice'];
-      const floorPlanFileId = extractFileIdFromUrl(floorPlanUrl) || floorPlanUrl;
-      const cleaningInvoiceFileId = extractFileIdFromUrl(cleaningInvoiceUrl) || cleaningInvoiceUrl;
-      hasCleaningDocuments = !!(floorPlanFileId && cleaningInvoiceFileId);
-    }
-    if (Object.keys(utilities).length === 0 && !hasCleaningDocuments) { setUtilityComparisons([]); return; }
-    const getIdentifiers = (utilityData: any): string[] => {
-      if (typeof utilityData === 'string') return utilityData.split(',').map((id: string) => id.trim()).filter(Boolean);
-      if (Array.isArray(utilityData) && utilityData.length > 0) {
-        const first = utilityData[0];
-        if (first != null && typeof first === 'object' && 'identifier' in first) return utilityData.map((o: { identifier?: unknown }) => o.identifier != null && typeof o.identifier === 'string' ? o.identifier : String(o.identifier ?? '')).filter(Boolean);
-        if (first != null && typeof first === 'object' && 'value' in first) return utilityData.map((o: { value?: unknown }) => o.value != null && typeof o.value === 'string' ? o.value : String(o.value ?? '')).filter(Boolean);
-        return utilityData.map((v: unknown) => typeof v === 'string' || typeof v === 'number' ? String(v) : '').filter(Boolean);
-      }
-      return [];
-    };
-    const comparisons: UtilityComparison[] = [];
-    if (utilities["C&I Electricity"]) getIdentifiers(utilities["C&I Electricity"]).forEach(nmi => comparisons.push({ utilityType: "C&I Electricity", identifier: nmi, identifierLabel: "NMI", invoiceData: null, loading: true, error: null }));
-    if (utilities["SME Electricity"]) getIdentifiers(utilities["SME Electricity"]).forEach(nmi => comparisons.push({ utilityType: "SME Electricity", identifier: nmi, identifierLabel: "NMI", invoiceData: null, loading: true, error: null }));
-    if (utilities["C&I Gas"]) getIdentifiers(utilities["C&I Gas"]).forEach(mrin => comparisons.push({ utilityType: "C&I Gas", identifier: mrin, identifierLabel: "MRIN", invoiceData: null, loading: true, error: null }));
-    if (utilities["SME Gas"] || utilities["Small Gas"]) getIdentifiers(utilities["SME Gas"] || utilities["Small Gas"]).forEach(mrin => comparisons.push({ utilityType: "SME Gas", identifier: mrin, identifierLabel: "MRIN", invoiceData: null, loading: true, error: null }));
-    if (utilities["Oil"] || utilities["COOKING_OIL"]) getIdentifiers(utilities["Oil"] || utilities["COOKING_OIL"]).forEach(accountName => comparisons.push({ utilityType: "Oil", identifier: accountName, identifierLabel: "Account Name", invoiceData: null, loading: true, error: null }));
-    if (utilities["Waste"] || utilities["WASTE"]) getIdentifiers(utilities["Waste"] || utilities["WASTE"]).forEach(customerNumber => comparisons.push({ utilityType: "Waste", identifier: customerNumber, identifierLabel: "Customer Number", invoiceData: null, loading: true, error: null }));
-    if (businessInfoData?._processed_file_ids) {
-      const fileIds = businessInfoData._processed_file_ids;
-      const floorPlanUrl = fileIds.business_site_map_upload || fileIds['Floor Plan'];
-      const cleaningInvoiceUrl = fileIds.invoice_Cleaning || fileIds['Cleaning Invoice'];
-      const floorPlanFileId = extractFileIdFromUrl(floorPlanUrl) || floorPlanUrl;
-      const cleaningInvoiceFileId = extractFileIdFromUrl(cleaningInvoiceUrl) || cleaningInvoiceUrl;
-      console.log('Cleaning eligibility check:', { hasFloorPlan: !!floorPlanFileId, hasCleaningInvoice: !!cleaningInvoiceFileId });
-      if (floorPlanFileId && cleaningInvoiceFileId) {
-        const cleaningIdentifier = businessName || businessInfo?.name || 'Cleaning Service';
-        comparisons.push({ utilityType: "Cleaning", identifier: cleaningIdentifier, identifierLabel: "Business", invoiceData: null, loading: true, error: null });
-      }
-    }
-    setUtilityComparisons(comparisons);
+    if (loadingUtilityTypes.includes(utilityType) || loadedUtilityTypes.includes(utilityType)) return;
+
+    const availability = availableUtilityTypes.find((item) => item.utilityType === utilityType);
+    if (!availability || availability.identifiers.length === 0) return;
+
+    setLoadingUtilityTypes((prev) => [...prev, utilityType]);
+
+    const placeholders: UtilityComparison[] = availability.identifiers.map((identifier) => ({
+      utilityType,
+      identifier,
+      identifierLabel: availability.identifierLabel,
+      invoiceData: null,
+      loading: true,
+      error: null,
+    }));
+
+    setUtilityComparisons((prev) => [
+      ...prev.filter((comparison) => comparison.utilityType !== utilityType),
+      ...placeholders,
+    ]);
+
     const results = await Promise.all(
-      comparisons.map(async (comparison): Promise<{ index: number; update: Partial<UtilityComparison> & { invoiceData?: any; loading: boolean; error?: string | null } }> => {
-        const index = comparisons.findIndex(c => c.utilityType === comparison.utilityType && c.identifier === comparison.identifier);
+      placeholders.map(async (comparison): Promise<{ identifier: string; update: Partial<UtilityComparison> & { invoiceData?: any; loading: boolean; error?: string | null } }> => {
         try {
-          let endpoint = '';
-          let body: any = { business_name: businessName || businessInfo?.name || '' };
-          if (comparison.utilityType === 'C&I Electricity') { endpoint = `${getApiBaseUrl()}/api/get-electricity-ci-info`; body.nmi = comparison.identifier; }
-          else if (comparison.utilityType === 'SME Electricity') { endpoint = `${getApiBaseUrl()}/api/get-electricity-sme-info`; body.nmi = comparison.identifier; }
-          else if (comparison.utilityType === 'C&I Gas') { endpoint = `${getApiBaseUrl()}/api/get-gas-ci-info`; body.mrin = comparison.identifier; }
-          else if (comparison.utilityType === 'SME Gas') { endpoint = `${getApiBaseUrl()}/api/get-gas-sme-info`; body.mrin = comparison.identifier; }
-          else if (comparison.utilityType === 'Oil') { endpoint = `${getApiBaseUrl()}/api/get-oil-info`; body.business_name = comparison.identifier; }
-          else if (comparison.utilityType === 'Waste') { endpoint = `${getApiBaseUrl()}/api/get-waste-info`; body.customer_number = comparison.identifier; }
-          else if (comparison.utilityType === 'Cleaning') return { index, update: { loading: false, error: 'Cleaning API endpoint not yet available' } };
-          if (!endpoint) { console.log(`No endpoint for utility type: ${comparison.utilityType}`); return { index, update: { loading: false, error: `No API endpoint available for ${comparison.utilityType}` } }; }
-          const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(body) });
+          let endpoint = "";
+          let body: Record<string, string> = { business_name: businessName || businessInfo?.name || "" };
+          if (comparison.utilityType === "C&I Electricity") {
+            endpoint = `${getApiBaseUrl()}/api/get-electricity-ci-info`;
+            body.nmi = comparison.identifier;
+          } else if (comparison.utilityType === "SME Electricity") {
+            endpoint = `${getApiBaseUrl()}/api/get-electricity-sme-info`;
+            body.nmi = comparison.identifier;
+          } else if (comparison.utilityType === "C&I Gas") {
+            endpoint = `${getApiBaseUrl()}/api/get-gas-ci-info`;
+            body.mrin = comparison.identifier;
+          } else if (comparison.utilityType === "SME Gas") {
+            endpoint = `${getApiBaseUrl()}/api/get-gas-sme-info`;
+            body.mrin = comparison.identifier;
+          } else if (comparison.utilityType === "Oil") {
+            endpoint = `${getApiBaseUrl()}/api/get-oil-info`;
+            body.business_name = comparison.identifier;
+          } else if (comparison.utilityType === "Waste") {
+            endpoint = `${getApiBaseUrl()}/api/get-waste-info`;
+            body.customer_number = comparison.identifier;
+          } else if (comparison.utilityType === "Cleaning") {
+            return { identifier: comparison.identifier, update: { loading: false, error: "Cleaning API endpoint not yet available" } };
+          }
+          if (!endpoint) {
+            return {
+              identifier: comparison.identifier,
+              update: { loading: false, error: `No API endpoint available for ${comparison.utilityType}` },
+            };
+          }
+          const response = await fetch(endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify(body),
+          });
           if (response.ok) {
             const data = await response.json();
-            console.log(`Full API response for ${comparison.utilityType} ${comparison.identifier}:`, JSON.stringify(data, null, 2));
             const extractedRates = extractCurrentRates(data, comparison.utilityType);
-            return { index, update: { ...extractedRates, invoiceData: data, loading: false, error: null } };
+            return { identifier: comparison.identifier, update: { ...extractedRates, invoiceData: data, loading: false, error: null } };
           }
-          throw new Error('Failed to fetch invoice data');
-        } catch (err: any) {
-          return { index, update: { loading: false, error: err.message } };
+          throw new Error("Failed to fetch invoice data");
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : "Failed to fetch invoice data";
+          return { identifier: comparison.identifier, update: { loading: false, error: message } };
         }
       })
     );
-    setUtilityComparisons(prev => {
-      const next = [...prev];
-      for (const { index, update } of results) {
-        if (index >= 0 && index < next.length) {
-          const merged = { ...next[index], ...update };
-          next[index] = merged.utilityType === "SME Gas" ? withSmeGasCiDerivedRates(merged) : merged;
-        }
-      }
-      return next;
-    });
+
+    setUtilityComparisons((prev) =>
+      prev.map((comparison) => {
+        if (comparison.utilityType !== utilityType) return comparison;
+        const result = results.find((entry) => entry.identifier === comparison.identifier);
+        if (!result) return comparison;
+        const merged = { ...comparison, ...result.update };
+        return merged.utilityType === "SME Gas" ? withSmeGasCiDerivedRates(merged) : merged;
+      })
+    );
+
+    setLoadingUtilityTypes((prev) => prev.filter((type) => type !== utilityType));
+    setLoadedUtilityTypes((prev) => (prev.includes(utilityType) ? prev : [...prev, utilityType]));
   };
 
   const updateComparisonRate = (utilityType: string, identifier: string, field: keyof UtilityComparison, value: string) => {
@@ -1558,13 +1690,58 @@ export default function Base2Page() {
             pcCal != null && Number.isFinite(pcCal) ? pcCal.toFixed(2) : "";
           payload.commission_aud_per_gj = util.ciGasCommissionAudPerGj!.toFixed(4);
           payload.commission_unit_gas = "$/GJ";
+        } else if (util.utilityType === "Oil") {
+          webhookUrl = "https://membersaces.app.n8n.cloud/webhook/generate-oil-comparaison-review-b2";
+          const details = util.invoiceData?.oil_invoice_details || util.invoiceData || {};
+          const recordId =
+            (typeof businessInfoData?.record_ID === "string" && businessInfoData.record_ID) ||
+            (typeof businessInfoData?.record_id === "string" && businessInfoData.record_id) ||
+            (typeof details?.record_id === "string" && details.record_id) ||
+            "";
+          payload.account_name = util.identifier;
+          payload.record_id = recordId;
+          payload.invoice_id = details?.invoice_id || details?.invoice_number || "";
+          payload.site_address = businessInfo?.site_address || "";
+          payload.invoice_number = details?.invoice_number || "";
+          payload.invoice_link = details?.invoice_link || "";
+          payload.oil_rate_invoice = util.currentOilRate?.toFixed(4) || "0";
+          const oilUsage = util.oilUsage || util.monthlyUsage || 0;
+          const oilUsageStr = oilUsage > 0 ? oilUsage.toFixed(2) : "0";
+          payload.oil_usage_invoice = oilUsageStr;
+          payload.total_monthly_usage = oilUsageStr;
+          payload.offer1OilRate = util.comparisonOilRate?.toFixed(4) || "0";
+          payload.offer1Retailer = "Comparison Offer";
+          payload.offer1Validity = "12 months";
+          payload.offer1Type = "smoothed";
+          payload.offer1PeriodYears = "1";
+          payload.offer1StartDate = new Date().toISOString().split("T")[0];
+          const currentRate = util.currentOilRate || 0;
+          const offerRate = util.comparisonOilRate || 0;
+          const usageNum = oilUsage > 0 ? oilUsage : 0;
+          const currentCostOil = usageNum * currentRate;
+          const newOfferCostOil = usageNum * offerRate;
+          payload.current_usage_oil = oilUsageStr;
+          payload.current_cost_oil = currentCostOil.toFixed(2);
+          payload.current_monthly_invoice_cost = currentCostOil.toFixed(2);
+          payload.new_offer_cost_oil = newOfferCostOil.toFixed(2);
+          payload.current_rebate_usage = details?.current_rebate_usage != null ? String(details.current_rebate_usage) : "0";
+          payload.current_rebate_rate = details?.current_rebate_rate != null ? String(details.current_rebate_rate) : "0";
+          payload.new_offer_rebate_rate = "0";
+          if (details?.quantity_1 != null) payload.quantity_1 = String(details.quantity_1);
+          if (details?.rate_1 != null) payload.rate_1 = String(details.rate_1);
+          if (details?.quantity_2 != null) payload.quantity_2 = String(details.quantity_2);
+          if (details?.rate_2 != null) payload.rate_2 = String(details.rate_2);
+          if (details?.rate_3 != null) payload.rate_3 = String(details.rate_3);
+          const oilSavings = calculateSavings(util);
+          if (oilSavings.totalAnnualSavings != null && Number.isFinite(oilSavings.totalAnnualSavings)) {
+            payload.annual_savings_ui = oilSavings.totalAnnualSavings.toFixed(2);
+          }
         } else { errors.push(`${util.identifier}: Comparison generation not yet supported for this utility type`); setSending(null); continue; }
         const response = await fetch(webhookUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(payload) });
         const responseText = await response.text();
         console.log('[Base2 webhook]', { url: webhookUrl, status: response.status, ok: response.ok, identifier: util.identifier, action, responsePreview: responseText.slice(0, 500) });
-        let result: Record<string, unknown>;
-        try { result = JSON.parse(responseText) as Record<string, unknown>; } catch (parseErr) { console.error('[Base2 webhook] Response is not JSON:', parseErr); errors.push(`${util.identifier}: Webhook response was not valid JSON`); setSending(null); continue; }
-        if (Array.isArray(result) && result.length > 0 && typeof result[0] === 'object' && result[0] !== null) { result = result[0] as Record<string, unknown>; console.log('[Base2 webhook] Unwrapped array response to first item'); }
+        const result = parseWebhookResult(responseText);
+        if (!result) { console.error('[Base2 webhook] Response is not valid JSON object/array'); errors.push(`${util.identifier}: Webhook response was not valid JSON`); setSending(null); continue; }
         console.log('[Base2 webhook] Parsed result keys and link/savings fields:', { keys: Object.keys(result), pdf_document_link: result.pdf_document_link, pdf_DMA_link: result.pdf_DMA_link, spreadsheet_document_link: result.spreadsheet_document_link, annual_savings: result.annual_savings, current_cost: result.current_cost, new_cost: result.new_cost, email_ID: result.email_ID ?? result.email_id });
         if (response.ok) { const actionName = action === 'dma' ? 'DMA Review' : 'Comparison'; let message = `${util.utilityType} ${actionName} generated successfully for ${util.identifier}`; if (result.pdf_document_link) message += `\nPDF: ${result.pdf_document_link}`; if (result.spreadsheet_document_link) message += `\nSpreadsheet: ${result.spreadsheet_document_link}`; results.push(message); successResults.push({ util, result }); }
         else { console.error('[Base2 webhook] Non-OK response body:', responseText.slice(0, 800)); errors.push(`${util.identifier}: ${responseText.slice(0, 200)}`); }
@@ -1573,7 +1750,15 @@ export default function Base2Page() {
     }
     if (results.length > 0 || errors.length > 0) {
       const actionName = action === 'dma' ? 'DMA Review' : 'Comparison';
-      const resultItems: GenerateResultItem[] = successResults.map(({ util, result }) => ({ identifier: util.identifier, utilityType: util.utilityType, pdfUrl: (result.pdf_document_link ?? result.pdf_DMA_link) || undefined, spreadsheetUrl: result.spreadsheet_document_link || undefined }));
+      const resultItems: GenerateResultItem[] = successResults.map(({ util, result }) => ({
+        identifier: util.identifier,
+        utilityType: util.utilityType,
+        pdfUrl: normalizeDocumentLink(result.pdf_document_link ?? result.pdf_DMA_link),
+        spreadsheetUrl: normalizeDocumentLink(result.spreadsheet_document_link),
+        annualSavings: normalizeMoneyToNumber(result.annual_savings),
+        currentCost: normalizeMoneyToNumber(result.current_cost),
+        newCost: normalizeMoneyToNumber(result.new_cost),
+      }));
       setGenerateResultModal({ open: true, actionName, results: resultItems, errors });
       if (errors.length > 0) setError(`${errors.length} error(s) occurred. See summary for details.`);
       else setError(null);
@@ -2161,24 +2346,89 @@ export default function Base2Page() {
           </div>
         )}
 
-        {/* Loading Linked Utilities */}
-        {utilityComparisons.length === 0 && businessInfo?.utilities && (
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 mb-5 flex items-center gap-4">
-            <div className="flex-shrink-0">
-              <svg className="animate-spin h-5 w-5 text-blue-500" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-              </svg>
+        {/* Utility type picker — load on demand */}
+        {businessInfoFetchDone && availableUtilityTypes.length > 0 && (
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm mb-5 overflow-hidden">
+            <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/50">
+              <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Select utility type</h2>
+              <p className="text-xs text-gray-500 mt-1">Choose a utility to load invoice data. Only selected types are fetched.</p>
             </div>
+            <div className="p-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+              {availableUtilityTypes.map((item) => {
+                const cfg = getUtilityConfig(item.utilityType);
+                const isLoaded = loadedUtilityTypes.includes(item.utilityType);
+                const isLoading = loadingUtilityTypes.includes(item.utilityType);
+                const siteLabel = item.count === 1 ? "1 linked site" : `${item.count} linked sites`;
+                return (
+                  <button
+                    key={item.utilityType}
+                    type="button"
+                    onClick={() => void fetchUtilityTypeInvoices(item.utilityType)}
+                    disabled={isLoading || isLoaded}
+                    className="flex items-start gap-3 rounded-xl border-2 px-4 py-3 text-left transition-all disabled:cursor-default hover:shadow-sm"
+                    style={{
+                      borderColor: isLoaded ? cfg.color : isLoading ? cfg.color : "#E5E7EB",
+                      backgroundColor: isLoaded ? cfg.bg : isLoading ? cfg.bg : "#FFFFFF",
+                      opacity: isLoaded ? 0.92 : 1,
+                    }}
+                  >
+                    <span className="text-2xl flex-shrink-0">{cfg.icon}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-semibold text-gray-900">{cfg.label}</span>
+                      <span className="block text-xs text-gray-500 mt-0.5">{siteLabel}</span>
+                      <span className="block text-[11px] text-gray-400 mt-0.5">{item.identifierLabel}</span>
+                    </span>
+                    <span className="flex-shrink-0 self-center">
+                      {isLoading ? (
+                        <svg className="animate-spin h-4 w-4 text-gray-500" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                      ) : isLoaded ? (
+                        <span className="text-xs font-semibold" style={{ color: cfg.text }}>Loaded</span>
+                      ) : (
+                        <span className="text-xs font-semibold text-gray-600">Load</span>
+                      )}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {businessInfoFetchDone && availableUtilityTypes.length === 0 && (
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 mb-5">
+            <p className="text-sm text-gray-600">No linked utilities found for this business.</p>
+          </div>
+        )}
+
+        {!businessInfoFetchDone && businessName && (
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 mb-5 flex items-center gap-4">
+            <svg className="animate-spin h-5 w-5 text-blue-500 flex-shrink-0" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
             <div>
-              <div className="text-sm font-semibold text-gray-700">Loading linked utilities…</div>
-              <div className="text-xs text-gray-400 mt-0.5">Fetching invoice data from connected accounts</div>
+              <div className="text-sm font-semibold text-gray-700">Loading business information…</div>
+              <div className="text-xs text-gray-400 mt-0.5">Preparing available utility types</div>
             </div>
           </div>
         )}
 
         {/* Utility Comparison Cards */}
-        {utilityComparisons.map((comparison, idx) => {
+        {loadedUtilityTypes.map((utilityType) => {
+          const typeComparisons = utilityComparisons.filter((comparison) => comparison.utilityType === utilityType);
+          if (typeComparisons.length === 0) return null;
+          const sectionCfg = getUtilityConfig(utilityType);
+          return (
+            <div key={utilityType} className="mb-6">
+              <div className="flex items-center gap-2 mb-3 px-1">
+                <span className="text-lg">{sectionCfg.icon}</span>
+                <h3 className="text-sm font-semibold text-gray-800">{sectionCfg.label}</h3>
+                <span className="text-xs text-gray-400">{typeComparisons.length} site{typeComparisons.length === 1 ? "" : "s"}</span>
+              </div>
+              {typeComparisons.map((comparison) => {
           const savings = calculateSavings(comparison);
           const isElectricity = comparison.utilityType.includes('Electricity');
           const isGas = comparison.utilityType.includes('Gas');
@@ -2187,7 +2437,7 @@ export default function Base2Page() {
           const savingsPositive = hasSavings && savings.totalAnnualSavings > 0;
 
           return (
-            <div key={idx} className="bg-white rounded-xl border border-gray-200 shadow-sm mb-4 overflow-hidden">
+            <div key={`${comparison.utilityType}-${comparison.identifier}`} className="bg-white rounded-xl border border-gray-200 shadow-sm mb-4 overflow-hidden">
               {/* Card Header */}
               <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100" style={{ borderLeftWidth: 4, borderLeftColor: cfg.color, borderLeftStyle: 'solid' }}>
                 <div className="flex items-center gap-3 min-w-0">
@@ -2502,7 +2752,7 @@ export default function Base2Page() {
                     </div>
 
                     {/* Action Buttons */}
-                    {(comparison.utilityType === 'C&I Electricity' || comparison.utilityType === 'C&I Gas' || (comparison.utilityType === 'SME Gas' && (comparison.smeGasComparisonMode ?? 'invoice_blocks') === 'ci_offer')) && (
+                    {(comparison.utilityType === 'C&I Electricity' || comparison.utilityType === 'C&I Gas' || comparison.utilityType === 'Oil' || (comparison.utilityType === 'SME Gas' && (comparison.smeGasComparisonMode ?? 'invoice_blocks') === 'ci_offer')) && (
                       <div className="flex flex-wrap justify-end gap-2.5 pt-1">
                         {comparison.utilityType === 'C&I Electricity' && (
                           <button
@@ -2516,7 +2766,7 @@ export default function Base2Page() {
                             ) : (<>📊 Generate DMA Review</>)}
                           </button>
                         )}
-                        {(comparison.utilityType === 'C&I Electricity' || comparison.utilityType === 'C&I Gas' || (comparison.utilityType === 'SME Gas' && (comparison.smeGasComparisonMode ?? 'invoice_blocks') === 'ci_offer')) && (
+                        {(comparison.utilityType === 'C&I Electricity' || comparison.utilityType === 'C&I Gas' || comparison.utilityType === 'Oil' || (comparison.utilityType === 'SME Gas' && (comparison.smeGasComparisonMode ?? 'invoice_blocks') === 'ci_offer')) && (
                           <button
                             onClick={() => handleGenerateClick(comparison, 'comparison')}
                             disabled={sending !== null && sending.includes(`${comparison.utilityType}-${comparison.identifier}-comparison`)}
@@ -2533,6 +2783,9 @@ export default function Base2Page() {
                   </>
                 )}
               </div>
+            </div>
+          );
+              })}
             </div>
           );
         })}
@@ -2633,9 +2886,34 @@ export default function Base2Page() {
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold" style={{ backgroundColor: icfg.bg, color: icfg.text }}>{icfg.icon} {item.utilityType}</span>
                             <span className="text-xs font-mono text-gray-600 dark:text-gray-400">{item.identifier}</span>
                           </div>
+                          {(item.annualSavings != null || item.currentCost != null || item.newCost != null) && (
+                            <div className="mb-2.5 grid grid-cols-3 gap-2 text-center">
+                              {item.currentCost != null && (
+                                <div className="rounded-lg bg-gray-50 dark:bg-gray-800 px-2 py-1.5">
+                                  <div className="text-[10px] uppercase tracking-wide text-gray-400">Current</div>
+                                  <div className="text-xs font-semibold text-gray-800 dark:text-gray-100 tabular-nums">{formatAud(item.currentCost)}</div>
+                                </div>
+                              )}
+                              {item.newCost != null && (
+                                <div className="rounded-lg bg-gray-50 dark:bg-gray-800 px-2 py-1.5">
+                                  <div className="text-[10px] uppercase tracking-wide text-gray-400">New</div>
+                                  <div className="text-xs font-semibold text-gray-800 dark:text-gray-100 tabular-nums">{formatAud(item.newCost)}</div>
+                                </div>
+                              )}
+                              {item.annualSavings != null && (
+                                <div className="rounded-lg bg-emerald-50 dark:bg-emerald-900/20 px-2 py-1.5">
+                                  <div className="text-[10px] uppercase tracking-wide text-emerald-600">Savings/yr</div>
+                                  <div className="text-xs font-semibold text-emerald-700 dark:text-emerald-300 tabular-nums">{formatAud(item.annualSavings)}</div>
+                                </div>
+                              )}
+                            </div>
+                          )}
                           <div className="flex flex-wrap gap-2">
                             {item.pdfUrl && <a href={item.pdfUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-xs font-semibold hover:bg-red-100 transition-colors">📄 Open PDF</a>}
                             {item.spreadsheetUrl && <a href={item.spreadsheetUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 text-xs font-semibold hover:bg-emerald-100 transition-colors">📊 Open Spreadsheet</a>}
+                            {!item.pdfUrl && !item.spreadsheetUrl && (
+                              <span className="text-xs text-gray-500">Document links were not returned by the webhook.</span>
+                            )}
                           </div>
                         </li>
                       );
