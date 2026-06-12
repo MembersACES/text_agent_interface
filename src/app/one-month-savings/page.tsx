@@ -56,9 +56,29 @@ interface InvoiceLineItem {
   id: string;
   solution_type: string;
   solution_label: string;
+  /** 1st month savings amount excluding GST */
   savings_amount: number;
   gst: number;
   total: number;
+}
+
+/** Savings amounts are always ex-GST; GST is 10% on top. */
+function lineItemFromExGstSavings(
+  solutionType: string,
+  solutionLabel: string,
+  savingsExGst: number,
+  id?: string
+): InvoiceLineItem {
+  const gst = savingsExGst * 0.1;
+  const total = savingsExGst + gst;
+  return {
+    id: id || `line-${Date.now()}`,
+    solution_type: solutionType,
+    solution_label: solutionLabel,
+    savings_amount: savingsExGst,
+    gst,
+    total,
+  };
 }
 
 interface InvoiceRecord {
@@ -97,6 +117,155 @@ interface SendInvoiceRequest {
   line_items: InvoiceLineItem[];
 }
 
+type DriveUploadResult = {
+  fileId: string;
+  base64: string;
+  errorDetail: string;
+  uploadResultSuffix: string;
+};
+
+/** Metadata sent to n8n file-upload webhook for sheet row(s). */
+type InvoiceUploadMetadata = {
+  invoiceNumber: string;
+  businessName: string;
+  dueDate: string;
+  invoiceDate: string;
+  status?: string;
+  subtotal: number;
+  totalGst: number;
+  totalAmount: number;
+  lineItems: InvoiceLineItem[];
+};
+
+function buildInvoiceUploadBody(
+  pdfBase64: string,
+  filename: string,
+  metadata: InvoiceUploadMetadata
+): Record<string, string | number> {
+  const first = metadata.lineItems[0];
+  const solutionSummary = metadata.lineItems
+    .map((item) => item.solution_label)
+    .filter(Boolean)
+    .join(", ");
+
+  return {
+    pdf_base64: pdfBase64,
+    filename,
+    invoice_number: metadata.invoiceNumber,
+    business_name: metadata.businessName,
+    due_date: metadata.dueDate,
+    invoice_date: metadata.invoiceDate,
+    status: metadata.status ?? "Generated",
+    subtotal: metadata.subtotal,
+    total_gst: metadata.totalGst,
+    total_amount: metadata.totalAmount,
+    // First line item (single-line invoices) — n8n can map these directly
+    solution: first?.solution_label ?? solutionSummary,
+    savings_amount: first?.savings_amount ?? metadata.subtotal,
+    gst: first?.gst ?? metadata.totalGst,
+    total_invoice: first?.total ?? metadata.totalAmount,
+    // All line items for multi-row sheet updates in n8n
+    line_items: JSON.stringify(
+      metadata.lineItems.map((item) => ({
+        solution_label: item.solution_label,
+        savings_amount: item.savings_amount,
+        gst: item.gst,
+        total: item.total,
+      }))
+    ),
+  };
+}
+
+function pdfBytesToBase64(pdfBytes: Uint8Array): string {
+  const uint8Array = new Uint8Array(pdfBytes);
+  let binaryString = "";
+  const chunkSize = 8192;
+  for (let i = 0; i < uint8Array.length; i += chunkSize) {
+    const chunk = uint8Array.subarray(i, i + chunkSize);
+    binaryString += String.fromCharCode.apply(null, Array.from(chunk));
+  }
+  return btoa(binaryString);
+}
+
+function canSendInvoicePayload(payload: SendInvoiceRequest): boolean {
+  return !!payload.invoice_file_id?.trim() || !!payload.pdf_base64?.trim();
+}
+
+async function uploadInvoicePdfToDrive(params: {
+  pdfBytes: Uint8Array;
+  filename: string;
+  metadata: InvoiceUploadMetadata;
+}): Promise<DriveUploadResult> {
+  const { pdfBytes, filename, metadata } = params;
+  const base64Pdf = pdfBytesToBase64(pdfBytes);
+  const { invoiceNumber, businessName } = metadata;
+  let fileId = "";
+  let errorDetail = "";
+  let uploadResultSuffix = "";
+
+  try {
+    console.info(
+      `[OMS_UPLOAD] | invoice=${invoiceNumber} | stage=client_upload_start | business=${businessName}`
+    );
+    const uploadResponse = await fetch("/api/one-month-savings/upload-pdf", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(buildInvoiceUploadBody(base64Pdf, filename, metadata)),
+    });
+
+    if (uploadResponse.ok) {
+      const uploadData = await uploadResponse.json();
+      fileId = uploadData.file_id || uploadData.fileId || "";
+      const reqId = uploadData.request_id || "";
+      if (!fileId) {
+        console.warn(
+          `[OMS_UPLOAD] FAIL | request_id=${reqId} | invoice=${invoiceNumber} | ` +
+            `error_code=MISSING_FILE_ID | message=HTTP 200 but no file_id in response`
+        );
+        errorDetail =
+          "Drive upload returned OK but no file ID. Ensure the n8n file-upload workflow is active and returns file_id.";
+      } else {
+        console.info(
+          `[OMS_UPLOAD] | request_id=${reqId} | invoice=${invoiceNumber} | stage=client_upload_ok | file_id=${fileId}`
+        );
+        uploadResultSuffix = " and uploaded to Google Drive";
+      }
+    } else {
+      let errBody: {
+        error_code?: string;
+        message?: string;
+        remediation?: string;
+        request_id?: string;
+      } = {};
+      try {
+        errBody = await uploadResponse.json();
+      } catch {
+        errBody = { message: await uploadResponse.text() };
+      }
+      const errCode = errBody.error_code || "DRIVE_UPLOAD_FAILED";
+      const errMsg = errBody.message || `HTTP ${uploadResponse.status}`;
+      const remediation = errBody.remediation || "";
+      const reqId = errBody.request_id || "";
+      console.error(
+        `[OMS_UPLOAD] FAIL | request_id=${reqId} | invoice=${invoiceNumber} | ` +
+          `stage=client_upload | http=${uploadResponse.status} | error_code=${errCode} | message=${errMsg}`
+      );
+      errorDetail = remediation
+        ? `${errMsg} ${remediation}${reqId ? ` (ref: ${reqId})` : ""}`
+        : `${errMsg}${reqId ? ` (ref: ${reqId})` : ""}`;
+      uploadResultSuffix = ` (Drive upload failed: ${errMsg.substring(0, 120)})`;
+    }
+  } catch (uploadError: any) {
+    console.error(
+      `[OMS_UPLOAD] FAIL | invoice=${invoiceNumber} | stage=client_upload_exception | message=${uploadError?.message}`
+    );
+    errorDetail = uploadError?.message || "Drive upload error";
+    uploadResultSuffix = " (Drive upload error)";
+  }
+
+  return { fileId, base64: base64Pdf, errorDetail, uploadResultSuffix };
+}
+
 export default function OneMonthSavingsPage() {
   const { showToast } = useToast();
   const { data: session } = useSession();
@@ -129,9 +298,11 @@ export default function OneMonthSavingsPage() {
   const [sendSubject, setSendSubject] = useState("");
   const [sendHtmlBody, setSendHtmlBody] = useState("");
   const [sendRequestPayload, setSendRequestPayload] = useState<SendInvoiceRequest | null>(null);
+  const [uploadingToDrive, setUploadingToDrive] = useState(false);
 
   /** Latest generated PDF bytes for optional local download (not stored in React state). */
   const lastGeneratedPdfRef = useRef<{ bytes: Uint8Array; filename: string } | null>(null);
+  const lastUploadMetadataRef = useRef<InvoiceUploadMetadata | null>(null);
   /** Shown under “Generate Invoice” so users can open Drive or download without auto-download. */
   const [lastGeneratedBanner, setLastGeneratedBanner] = useState<{
     invoice_number: string;
@@ -144,6 +315,13 @@ export default function OneMonthSavingsPage() {
   const [testimonialCheckLoading, setTestimonialCheckLoading] = useState(false);
   const [testimonialWarningDismissed, setTestimonialWarningDismissed] = useState(false);
   const prefillFromUrlDone = useRef(false);
+  const [testimonialLinkContext, setTestimonialLinkContext] = useState<{
+    testimonialType?: string;
+    linkedInvoice?: string;
+    testimonialFileId?: string;
+    testimonialFileLink?: string;
+  } | null>(null);
+  const skipTestimonialWarningFromUrl = searchParams.get("skipTestimonialWarning") === "1";
 
   // Load business info from URL params
   useEffect(() => {
@@ -167,6 +345,23 @@ export default function OneMonthSavingsPage() {
     }
   }, [searchParams]);
 
+  // Linked testimonial context (CRM Testimonials tab → Generate 1st Month Saving Invoice)
+  useEffect(() => {
+    if (searchParams.get("fromTestimonial") !== "1") {
+      setTestimonialLinkContext(null);
+      return;
+    }
+    setTestimonialLinkContext({
+      testimonialType: searchParams.get("testimonialType") || undefined,
+      linkedInvoice: searchParams.get("linkedInvoice") || undefined,
+      testimonialFileId: searchParams.get("testimonialFileId") || undefined,
+      testimonialFileLink: searchParams.get("testimonialFileLink") || undefined,
+    });
+    if (skipTestimonialWarningFromUrl) {
+      setTestimonialWarningDismissed(true);
+    }
+  }, [searchParams, skipTestimonialWarningFromUrl]);
+
   // Prefill a single line from "Calculate 1 month savings" (CRM) URL params
   useEffect(() => {
     if (prefillFromUrlDone.current) return;
@@ -179,12 +374,9 @@ export default function OneMonthSavingsPage() {
     prefillFromUrlDone.current = true;
     const label = solutionLabel || solutionType || "Savings";
     const type = solutionType || "other";
-    const id = `prefill-${Date.now()}`;
-    const gst = (num * 0.1) / 1.1;
-    const total = num + gst;
     setLineItems((prev) => [
       ...prev,
-      { id, solution_type: type, solution_label: label, savings_amount: num, gst, total },
+      lineItemFromExGstSavings(type, label, num, `prefill-${Date.now()}`),
     ]);
   }, [searchParams]);
 
@@ -334,17 +526,12 @@ export default function OneMonthSavingsPage() {
       return;
     }
 
-    const gst = savings * 0.1;
-    const total = savings + gst;
-
-    const newItem: InvoiceLineItem = {
-      id: `${Date.now()}`,
-      solution_type: solutionType,
-      solution_label: solutionLabel,
-      savings_amount: savings,
-      gst: gst,
-      total: total,
-    };
+    const newItem = lineItemFromExGstSavings(
+      solutionType,
+      solutionLabel,
+      savings,
+      `${Date.now()}`
+    );
 
     setLineItems([...lineItems, newItem]);
     setSelectedSolution("");
@@ -465,11 +652,101 @@ export default function OneMonthSavingsPage() {
     ].join("");
   };
 
+  const persistInvoiceFileId = async (
+    invoiceNumber: string,
+    businessName: string,
+    fileId: string
+  ) => {
+    try {
+      const res = await fetch("/api/one-month-savings/file-id", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          business_name: businessName,
+          invoice_number: invoiceNumber,
+          file_id: fileId,
+        }),
+      });
+      if (res.ok) {
+        fetchInvoiceHistory();
+      }
+    } catch (err) {
+      console.warn("Failed to persist invoice file_id to sheet:", err);
+    }
+  };
+
+  const applyDriveFileId = (
+    invoiceNumber: string,
+    businessName: string,
+    fileId: string
+  ) => {
+    setSendRequestPayload((prev) =>
+      prev && prev.invoice_number === invoiceNumber
+        ? { ...prev, invoice_file_id: fileId }
+        : prev
+    );
+    setLastGeneratedBanner((prev) =>
+      prev && prev.invoice_number === invoiceNumber
+        ? { ...prev, drive_file_id: fileId }
+        : prev
+    );
+    void persistInvoiceFileId(invoiceNumber, businessName, fileId);
+  };
+
+  const handleRetryDriveUpload = async () => {
+    const ref = lastGeneratedPdfRef.current;
+    const banner = lastGeneratedBanner;
+    if (!ref?.bytes?.length || !banner || !businessInfo) {
+      setResult("No generated PDF in this session — generate the invoice again first.");
+      return;
+    }
+    setUploadingToDrive(true);
+    try {
+      const metadata =
+        lastUploadMetadataRef.current ??
+        (sendRequestPayload
+          ? {
+              invoiceNumber: sendRequestPayload.invoice_number,
+              businessName: sendRequestPayload.business_name,
+              dueDate: sendRequestPayload.due_date,
+              invoiceDate: sendRequestPayload.invoice_date,
+              status: "Generated",
+              subtotal: sendRequestPayload.subtotal,
+              totalGst: sendRequestPayload.total_gst,
+              totalAmount: sendRequestPayload.total_amount,
+              lineItems: sendRequestPayload.line_items,
+            }
+          : null);
+      if (!metadata) {
+        setResult("Invoice metadata missing — generate the invoice again first.");
+        return;
+      }
+      const upload = await uploadInvoicePdfToDrive({
+        pdfBytes: ref.bytes,
+        filename: ref.filename,
+        metadata,
+      });
+      if (upload.fileId) {
+        applyDriveFileId(banner.invoice_number, businessInfo.business_name, upload.fileId);
+        setResult(
+          `Invoice ${banner.invoice_number} uploaded to Google Drive. You can send to the client when ready.`
+        );
+        showToast("Drive upload succeeded", "success");
+      } else {
+        setResult(
+          `Drive upload still failed for ${banner.invoice_number}. ${upload.errorDetail || "Check n8n file-upload workflow and backend logs."} You can still send using the PDF attachment if the invoice was just generated.`
+        );
+      }
+    } finally {
+      setUploadingToDrive(false);
+    }
+  };
+
   const handleSendToClient = async () => {
     if (!sendRequestPayload) return;
-    if (!sendRequestPayload.invoice_file_id?.trim()) {
+    if (!canSendInvoicePayload(sendRequestPayload)) {
       setResult(
-        "Cannot send: Google Drive file ID is missing. Fix the Drive upload (see message after generate), then generate the invoice again."
+        "Cannot send: no Google Drive file ID and no PDF attachment. Generate the invoice again or retry Drive upload."
       );
       return;
     }
@@ -776,63 +1053,30 @@ export default function OneMonthSavingsPage() {
       const filename = `${businessInfo.business_name} - ${invoiceNumber}.pdf`;
       lastGeneratedPdfRef.current = { bytes: pdfBytes, filename };
 
-      let generatedPdfBase64 = "";
+      const dueDateStr = dueDate.toISOString().split("T")[0];
+      const invoiceDateStr = invoiceDate.toISOString().split("T")[0];
+      const uploadMetadata: InvoiceUploadMetadata = {
+        invoiceNumber,
+        businessName: businessInfo.business_name,
+        dueDate: dueDateStr,
+        invoiceDate: invoiceDateStr,
+        status: "Generated",
+        subtotal,
+        totalGst,
+        totalAmount,
+        lineItems,
+      };
+      lastUploadMetadataRef.current = uploadMetadata;
 
-      // Upload to Google Drive (uses fixed folder, no client folder URL needed)
-      let uploadResult = "";
-      let invoiceFileId = "";
-      try {
-        console.log("📤 Uploading PDF to Google Drive...");
-        // Convert PDF bytes to base64 (handle large files)
-        const uint8Array = new Uint8Array(pdfBytes);
-        let binaryString = "";
-        const chunkSize = 8192;
-        for (let i = 0; i < uint8Array.length; i += chunkSize) {
-          const chunk = uint8Array.subarray(i, i + chunkSize);
-          binaryString += String.fromCharCode.apply(null, Array.from(chunk));
-        }
-        const base64Pdf = btoa(binaryString);
-        generatedPdfBase64 = base64Pdf;
-
-        const uploadResponse = await fetch("/api/one-month-savings/upload-pdf", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            pdf_base64: base64Pdf,
-            filename: filename,
-            invoice_number: invoiceNumber,
-            business_name: businessInfo.business_name,
-          }),
-        });
-
-        console.log("📤 Upload response status:", uploadResponse.status);
-        
-        if (uploadResponse.ok) {
-          const uploadData = await uploadResponse.json();
-          console.log("✅ Upload response data:", JSON.stringify(uploadData, null, 2));
-          invoiceFileId = uploadData.file_id || uploadData.fileId || "";
-          console.log("✅ File ID extracted:", invoiceFileId);
-          console.log("✅ File ID type:", typeof invoiceFileId);
-          console.log("✅ File ID length:", invoiceFileId ? invoiceFileId.length : 0);
-          
-          if (!invoiceFileId) {
-            console.warn("⚠️ WARNING: Upload succeeded but file_id is missing from response!");
-            console.warn("⚠️ Response keys:", Object.keys(uploadData));
-          }
-          
-          uploadResult = ` and uploaded to Google Drive`;
-          console.log("✅ PDF uploaded to Drive:", uploadData);
-          console.log("✅ File ID captured:", invoiceFileId);
-        } else {
-          const errorText = await uploadResponse.text();
-          console.error("❌ Error uploading PDF:", errorText);
-          console.error("❌ Upload response status:", uploadResponse.status);
-          uploadResult = ` (Drive upload failed: ${errorText.substring(0, 100)})`;
-        }
-      } catch (uploadError: any) {
-        console.error("Error uploading PDF to Drive:", uploadError);
-        uploadResult = ` (Drive upload error)`;
-      }
+      const upload = await uploadInvoicePdfToDrive({
+        pdfBytes,
+        filename,
+        metadata: uploadMetadata,
+      });
+      const generatedPdfBase64 = upload.base64;
+      const invoiceFileId = upload.fileId;
+      const uploadErrorDetail = upload.errorDetail;
+      const uploadResult = upload.uploadResultSuffix;
 
       // Log to Google Sheets
       console.log("📝 Preparing invoice record for logging...");
@@ -882,8 +1126,6 @@ export default function OneMonthSavingsPage() {
         console.error("❌ Exception logging invoice:", logError);
       }
 
-      const invoiceDateStr = invoiceDate.toISOString().split("T")[0];
-      const dueDateStr = dueDate.toISOString().split("T")[0];
       const invoiceDateEmail = formatDateForEmail(invoiceDate);
       const dueDateEmail = formatDateForEmail(dueDate);
       const defaultClientName = businessInfo.contact_name || businessInfo.business_name;
@@ -934,7 +1176,10 @@ export default function OneMonthSavingsPage() {
       setResult(
         invoiceFileId.trim()
           ? `Invoice ${invoiceNumber} generated successfully.${uploadResult} Use “Open in Google Drive” below to confirm the file, then send to the client when ready.`
-          : `Invoice ${invoiceNumber} generated, but Google Drive did not return a file ID.${uploadResult} Fix Drive access and generate again before sending — client email is disabled until a file ID exists.`
+          : `Invoice ${invoiceNumber} generated, but Google Drive did not return a file ID.${uploadResult} ${
+              uploadErrorDetail ||
+              "Activate the n8n file-upload workflow (or deploy backend with N8N_FILE_UPLOAD_WEBHOOK)."
+            } Use “Retry Drive upload” below, or send now — the PDF is attached to the email even without a Drive file ID.`
       );
 
       // Refresh history
@@ -960,8 +1205,10 @@ export default function OneMonthSavingsPage() {
     setResult("");
     setTestimonialCheck(null);
     setTestimonialWarningDismissed(false);
+    setTestimonialLinkContext(null);
     setLastGeneratedBanner(null);
     lastGeneratedPdfRef.current = null;
+    lastUploadMetadataRef.current = null;
   };
 
   const handleDownloadLastGeneratedPdf = () => {
@@ -986,8 +1233,44 @@ export default function OneMonthSavingsPage() {
 
       <div className="max-w-6xl mx-auto">
 
+        {testimonialLinkContext && businessInfo && (
+          <div className="mb-6 p-4 rounded-xl border border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-900/20">
+            <p className="text-sm text-emerald-900 dark:text-emerald-100">
+              <strong>Linked to testimonial</strong>
+              {testimonialLinkContext.testimonialType
+                ? ` — ${testimonialLinkContext.testimonialType}`
+                : ""}
+              {testimonialLinkContext.linkedInvoice ? (
+                <>
+                  {" "}
+                  · Sheet linked invoice:{" "}
+                  <strong>{testimonialLinkContext.linkedInvoice}</strong>
+                  {" "}
+                  (generating a new invoice will not update the sheet automatically)
+                </>
+              ) : (
+                <> · Line items prefilled from testimonial savings and solution type.</>
+              )}
+            </p>
+            {testimonialLinkContext.testimonialFileLink ||
+            testimonialLinkContext.testimonialFileId ? (
+              <a
+                href={
+                  testimonialLinkContext.testimonialFileLink ||
+                  `https://drive.google.com/file/d/${testimonialLinkContext.testimonialFileId}/view`
+                }
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-block mt-2 text-xs font-medium text-emerald-700 dark:text-emerald-300 hover:underline"
+              >
+                Open source testimonial
+              </a>
+            ) : null}
+          </div>
+        )}
+
         {/* Soft guard: warn if no approved testimonial */}
-        {businessInfo && testimonialCheck && !testimonialCheckLoading && !testimonialCheck.has_approved && !testimonialWarningDismissed && (
+        {businessInfo && testimonialCheck && !testimonialCheckLoading && !testimonialCheck.has_approved && !testimonialWarningDismissed && !skipTestimonialWarningFromUrl && (
           <div className="mb-6 p-4 rounded-xl border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20 flex items-start justify-between gap-4">
             <p className="text-sm text-amber-800 dark:text-amber-200">
               <strong>No approved testimonial on file.</strong> Before any one-month savings invoice, prepare the testimonial showing the savings and get the member&apos;s approval (e.g. by receiving it back from them). You can add and approve testimonials in the member&apos;s <strong>Testimonials</strong> tab in CRM Members.
@@ -1118,7 +1401,7 @@ export default function OneMonthSavingsPage() {
                         type="number"
                         value={savingsAmount}
                         onChange={(e) => setSavingsAmount(e.target.value)}
-                        placeholder="Savings amount"
+                        placeholder="Savings amount (ex GST)"
                         min="0"
                         step="0.01"
                         className="w-40 pl-7 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500"
@@ -1241,10 +1524,19 @@ export default function OneMonthSavingsPage() {
                           Open in Google Drive
                         </a>
                       ) : (
-                        <span className="text-sm text-amber-800">
-                          No Drive file ID — check upload errors above and folder permissions before sending to the
-                          client.
-                        </span>
+                        <>
+                          <button
+                            type="button"
+                            onClick={handleRetryDriveUpload}
+                            disabled={uploadingToDrive}
+                            className="inline-flex items-center rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+                          >
+                            {uploadingToDrive ? "Uploading…" : "Retry Drive upload"}
+                          </button>
+                          <span className="text-sm text-amber-800">
+                            No Drive file ID yet — retry upload or send with PDF attachment only.
+                          </span>
+                        </>
                       )}
                     </div>
                   </div>
@@ -1361,7 +1653,7 @@ export default function OneMonthSavingsPage() {
                 <li>Invoice from: Environmental Global Benefits</li>
                 <li>ABN: {EGB_DETAILS.abn}</li>
                 <li>Payment terms: 14 days</li>
-                <li>GST: 10% applied automatically</li>
+                <li>Savings amounts are ex GST; 10% GST added on top</li>
               </ul>
             </div>
           </div>
@@ -1392,11 +1684,15 @@ export default function OneMonthSavingsPage() {
                   Confirm this opens the correct PDF. The Drive file ID is included in the webhook payload when you send.
                 </p>
               </div>
+            ) : sendRequestPayload.pdf_base64?.trim() ? (
+              <div className="mx-6 mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+                <strong>Google Drive file ID is missing.</strong> You can still send — the PDF is attached to the email.
+                Retry Drive upload from the generate panel if you need a Drive link in the tracking sheet.
+              </div>
             ) : (
               <div className="mx-6 mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-                <strong>Google Drive file ID is missing.</strong> Sending to the client is disabled until the PDF
-                uploads successfully. Regenerate the invoice after fixing Drive access (see the message under Generate
-                Invoice).
+                <strong>Google Drive file ID is missing.</strong> Generate the invoice again in this session so the PDF
+                can be attached, or fix Drive upload (n8n file-upload workflow) and retry.
               </div>
             )}
 
@@ -1448,10 +1744,10 @@ export default function OneMonthSavingsPage() {
                 type="button"
                 onClick={handleSendToClient}
                 className="px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={sendingToClient || !sendRequestPayload.invoice_file_id?.trim()}
+                disabled={sendingToClient || !canSendInvoicePayload(sendRequestPayload)}
                 title={
-                  !sendRequestPayload.invoice_file_id?.trim()
-                    ? "Fix Google Drive upload and regenerate the invoice to enable send"
+                  !canSendInvoicePayload(sendRequestPayload)
+                    ? "Generate the invoice in this session (PDF attachment) or fix Drive upload"
                     : undefined
                 }
               >

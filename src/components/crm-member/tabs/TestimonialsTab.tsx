@@ -16,17 +16,24 @@ import {
   SOLUTION_TYPE_LABELS,
   SOLAR_PANEL_CLEANING_SOLUTION_TYPE_ID,
 } from "@/lib/testimonial-solution-content";
+import {
+  canGenerateInvoiceFromTestimonial,
+  parseTestimonialSavingsAmount,
+  testimonialTypeToSolutionFields,
+} from "@/lib/testimonial-invoice-prefill";
 
 export interface TestimonialItem {
   id: number;
   business_name: string;
   file_name: string;
   file_id: string;
+  file_link?: string | null;
   invoice_number: string | null;
   status: string;
-   testimonial_type?: string | null;
-   testimonial_solution_type_id?: string | null;
-   testimonial_savings?: string | null;
+  testimonial_type?: string | null;
+  testimonial_solution_type_id?: string | null;
+  testimonial_savings?: string | null;
+  source?: "crm" | "sheet" | string | null;
   created_at: string;
   updated_at: string;
 }
@@ -83,6 +90,11 @@ const SHEET_CONFIG_KEYS = ["C&I Electricity", "SME Electricity", "C&I Gas", "SME
 const openBtn =
   "inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium " +
   "text-primary bg-primary/5 hover:bg-primary/10 border border-primary/20 " +
+  "transition-colors shrink-0";
+
+const generateInvoiceBtn =
+  "inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-medium " +
+  "text-emerald-700 dark:text-emerald-400 bg-emerald-500/5 hover:bg-emerald-500/10 border border-emerald-500/25 " +
   "transition-colors shrink-0";
 
 const deleteBtn =
@@ -345,7 +357,13 @@ export function TestimonialsTab({ businessInfo }: TestimonialsTabProps) {
     }
   };
 
-  const driveFileUrl = (fileId: string) => `https://drive.google.com/file/d/${fileId}/view`;
+  const testimonialOpenUrl = (t: TestimonialItem) => {
+    if (t.file_link?.trim()) return t.file_link.trim();
+    if (t.file_id.startsWith("http")) return t.file_id;
+    return `https://drive.google.com/file/d/${t.file_id}/view`;
+  };
+
+  const isSheetSourced = (t: TestimonialItem) => t.source === "sheet" || t.id < 0;
 
   const testimonialBusinessNameOptions = useMemo(() => {
     const options: { value: string; label: string; source: "business_name" | "trading_as" }[] = [];
@@ -366,11 +384,9 @@ export function TestimonialsTab({ businessInfo }: TestimonialsTabProps) {
     return options;
   }, [businessName, tradingName]);
 
-  const openOneMonthSavingsWithCalculatedLine = (result: CalculateResult, optionValue: string) => {
-    if (!businessName || !result?.success || result.savings_amount == null) return;
-    const opt = linkedUtilityOptions.find((o) => o.value === optionValue);
-    if (!opt) return;
+  const buildOneMonthSavingsBaseParams = () => {
     const params = new URLSearchParams();
+    if (!businessName) return params;
     params.set("businessName", businessName);
     if (biz.abn) params.set("abn", biz.abn);
     if (tradingName) params.set("tradingAs", tradingName);
@@ -381,6 +397,36 @@ export function TestimonialsTab({ businessInfo }: TestimonialsTabProps) {
     if (rep.contact_name) params.set("contactName", rep.contact_name);
     if (rep.position) params.set("position", rep.position);
     if (driveUrl) params.set("clientFolderUrl", driveUrl);
+    return params;
+  };
+
+  const openOneMonthSavingsFromTestimonial = (t: TestimonialItem) => {
+    if (!businessName) return;
+    const savings = parseTestimonialSavingsAmount(t.testimonial_savings);
+    const { solutionType, solutionLabel } = testimonialTypeToSolutionFields(t.testimonial_type);
+    if (!savings && !t.testimonial_type?.trim()) {
+      showToast("This testimonial has no savings amount or solution type to prefill.", "error");
+      return;
+    }
+    const params = buildOneMonthSavingsBaseParams();
+    params.set("fromTestimonial", "1");
+    params.set("skipTestimonialWarning", "1");
+    if (t.file_id) params.set("testimonialFileId", t.file_id);
+    if (t.file_link?.trim()) params.set("testimonialFileLink", t.file_link.trim());
+    if (t.testimonial_type?.trim()) params.set("testimonialType", t.testimonial_type.trim());
+    if (t.invoice_number?.trim()) params.set("linkedInvoice", t.invoice_number.trim());
+    if (t.source) params.set("testimonialSource", t.source);
+    if (savings != null) params.set("savingsAmount", String(savings));
+    params.set("solutionType", solutionType);
+    params.set("solutionLabel", solutionLabel);
+    window.open(`/one-month-savings?${params.toString()}`, "_blank");
+  };
+
+  const openOneMonthSavingsWithCalculatedLine = (result: CalculateResult, optionValue: string) => {
+    if (!businessName || !result?.success || result.savings_amount == null) return;
+    const opt = linkedUtilityOptions.find((o) => o.value === optionValue);
+    if (!opt) return;
+    const params = buildOneMonthSavingsBaseParams();
     params.set("savingsAmount", String(result.savings_amount));
     params.set("solutionType", UTILITY_TO_SOLUTION_TYPE[opt.utilityType] || opt.utilityType.replace(/\s+/g, "_").toLowerCase());
     params.set("solutionLabel", opt.utilityType + " Reviews");
@@ -601,9 +647,14 @@ export function TestimonialsTab({ businessInfo }: TestimonialsTabProps) {
                 title={t.file_name}
                 subtitle={
                   <>
-                    {t.created_at
+                    {isSheetSourced(t) ? (
+                      <span className="text-amber-600 dark:text-amber-400">Sheet register · </span>
+                    ) : null}
+                    {t.created_at && !isSheetSourced(t)
                       ? new Date(t.created_at).toLocaleDateString("en-AU", { dateStyle: "medium" })
-                      : ""}
+                      : isSheetSourced(t)
+                        ? "Google Sheet"
+                        : ""}
                     {t.invoice_number ? ` · Linked invoice: ${t.invoice_number}` : ""}
                     {t.testimonial_type ? ` · ${t.testimonial_type}` : ""}
                     {t.testimonial_savings ? ` · Savings: ${t.testimonial_savings}` : ""}
@@ -611,38 +662,67 @@ export function TestimonialsTab({ businessInfo }: TestimonialsTabProps) {
                 }
                 actions={
                   <>
-                    <select
-                      value={t.status}
-                      onChange={(e) => handleStatusChange(t.id, e.target.value)}
-                      className="text-[11px] border border-gray-300 dark:border-gray-600 rounded px-2 py-0.5 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200"
-                    >
-                      <option value="Draft">Draft</option>
-                      <option value="Sent for approval">Sent for approval</option>
-                      <option value="Approved">Approved</option>
-                    </select>
+                    {isSheetSourced(t) ? (
+                      <span
+                        className={`text-[11px] font-medium px-1 ${
+                          t.status === "Approved"
+                            ? "text-emerald-700 dark:text-emerald-400"
+                            : t.status === "Sent for approval"
+                              ? "text-amber-700 dark:text-amber-400"
+                              : "text-gray-600 dark:text-gray-400"
+                        }`}
+                        title="Status from Google Sheet (column F)"
+                      >
+                        {t.status}
+                      </span>
+                    ) : (
+                      <select
+                        value={t.status}
+                        onChange={(e) => handleStatusChange(t.id, e.target.value)}
+                        className="text-[11px] border border-gray-300 dark:border-gray-600 rounded px-2 py-0.5 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200"
+                      >
+                        <option value="Draft">Draft</option>
+                        <option value="Sent for approval">Sent for approval</option>
+                        <option value="Approved">Approved</option>
+                      </select>
+                    )}
                     <a
-                      href={driveFileUrl(t.file_id)}
+                      href={testimonialOpenUrl(t)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className={openBtn}
                     >
                       Open
                     </a>
-                    <button
-                      type="button"
-                      className={editBtn}
-                      onClick={() => openEditDocument(t)}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      className={deleteBtn}
-                      disabled={deletingId === t.id}
-                      onClick={() => handleDeleteTestimonial(t.id, t.file_name)}
-                    >
-                      {deletingId === t.id ? "Deleting…" : "Delete"}
-                    </button>
+                    {canGenerateInvoiceFromTestimonial(t) ? (
+                      <button
+                        type="button"
+                        className={generateInvoiceBtn}
+                        title="Open 1st month savings invoice with this testimonial prefilled"
+                        onClick={() => openOneMonthSavingsFromTestimonial(t)}
+                      >
+                        Generate 1st Month Saving Invoice
+                      </button>
+                    ) : null}
+                    {!isSheetSourced(t) ? (
+                      <>
+                        <button
+                          type="button"
+                          className={editBtn}
+                          onClick={() => openEditDocument(t)}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          className={deleteBtn}
+                          disabled={deletingId === t.id}
+                          onClick={() => handleDeleteTestimonial(t.id, t.file_name)}
+                        >
+                          {deletingId === t.id ? "Deleting…" : "Delete"}
+                        </button>
+                      </>
+                    ) : null}
                   </>
                 }
               />
