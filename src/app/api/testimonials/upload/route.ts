@@ -4,7 +4,8 @@ import { authOptions } from "@/lib/auth";
 import { getApiBaseUrl } from "@/lib/utils";
 
 /**
- * API Route: Upload testimonial document (multipart form: file, business_name, invoice_number?, status?, gdrive_folder_url?)
+ * Upload testimonial via backend → n8n file-upload webhook (upload_type=testimonial).
+ * See backend docs/FILE_UPLOAD_N8N.md.
  */
 
 export async function POST(req: NextRequest) {
