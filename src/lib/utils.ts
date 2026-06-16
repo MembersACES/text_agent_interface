@@ -72,6 +72,21 @@ export function getAutonomousRunnerApiBaseUrl(): string | null {
   return null;
 }
 
+/** CZA Videos orchestration service (Cloud Run). Backend proxies when set. */
+export function getCzaVideosApiBaseUrl(): string | null {
+  const trim = (u: string) => u.replace(/\/$/, "");
+  const serverOnly = process.env.CZA_VIDEOS_API_URL?.trim();
+  if (typeof window === "undefined") {
+    if (serverOnly) return trim(serverOnly);
+    const publicUrl = process.env.NEXT_PUBLIC_CZA_VIDEOS_API_URL?.trim();
+    if (publicUrl) return trim(publicUrl);
+    return null;
+  }
+  const publicUrl = process.env.NEXT_PUBLIC_CZA_VIDEOS_API_URL?.trim();
+  if (publicUrl) return trim(publicUrl);
+  return null;
+}
+
 export function getCanvaApiBaseUrl() {
   return process.env.NODE_ENV === "development"
     ? "http://localhost:3000"

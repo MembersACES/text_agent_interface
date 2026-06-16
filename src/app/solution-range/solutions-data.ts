@@ -32,6 +32,10 @@ export type SolutionCategory =
     agentCapabilities?: string[];
     customSheetUrl?: string;
     customSheetLabel?: string;
+    /** claude-videos slug for Watch video button */
+    videoSlug?: string;
+    /** CRM join key for published video lookup */
+    crmSolutionTypeId?: string;
     subSolutions?: Omit<SolutionOption, "presentationId" | "enabled" | "category">[];
   }
 
@@ -107,7 +111,8 @@ export const solutionOptions: SolutionOption[] = [
     presentationId: "1c0s191tvwa1ZenWPG5Ghdo5J4c0SPf3GbbjtDPO5lXE",
     enabled: true,
     category: "ai_bots",
-    imageUrl: "/solutions/scrubber-bot.png"
+    imageUrl: "/solutions/scrubber-bot.png",
+    videoSlug: "ai-cleaning-bots",
   },
   {
     id: "vacuum_mopping_ai_bot",
@@ -374,6 +379,7 @@ export const solutionOptions: SolutionOption[] = [
   imageUrl: "/solutions/docket-reader.png",
   customSheetUrl: "https://docs.google.com/spreadsheets/d/1m1-Gq08L841Rqm39yvz_4nkyyFOzvI83BCvBRVVoJ38/edit?gid=0#gid=0",
   customSheetLabel: "Delivery Docket API Output",
+  videoSlug: "trojan-oil-docket",
 },
 // === EXTRUSIONS PURCHASE ORDER READER ===
 {
@@ -555,7 +561,9 @@ export const solutionOptions: SolutionOption[] = [
     presentationId: "1im1Yl0AzuzJULk4_crwV1W7nOQV9XF7CvzRpkjRQV34",
     enabled: true,
     category: "profile_reset",
-    imageUrl: "/solutions/electricity-align.png"
+    imageUrl: "/solutions/electricity-align.png",
+    videoSlug: "find-the-money",
+    crmSolutionTypeId: "ci_electricity",
   },
   {
     id: "electricity_gas_discrepancy",
@@ -564,7 +572,8 @@ export const solutionOptions: SolutionOption[] = [
     presentationId: "1EC3SncEMHfaIoofzJTWKnPhEaa6w6q_1B1iIzp1SJdw",
     enabled: true,
     category: "profile_reset",
-    imageUrl: "/solutions/discrepancy-review.png"
+    imageUrl: "/solutions/discrepancy-review.png",
+    videoSlug: "overcharge-proof",
   },
   {
     id: "waste_review",
@@ -573,7 +582,9 @@ export const solutionOptions: SolutionOption[] = [
     presentationId: "1DOgFANIrqz7JuWMruM8LiHLx8OMqOrON0YchUozUpYQ",
     enabled: true,
     category: "profile_reset",
-    imageUrl: "/solutions/waste-review.png"
+    imageUrl: "/solutions/waste-review.png",
+    videoSlug: "resource-recovery",
+    crmSolutionTypeId: "waste",
   },
 
   {
@@ -785,7 +796,8 @@ export const solutionOptions: SolutionOption[] = [
     presentationId: "1c4LRa0OB6K8Dh0tCH5dr7JWWqUl4sG8LZSZPhEnjdo4",
     enabled: true,
     category: "ghg",
-    imageUrl: "/solutions/ghg-reporting.png"
+    imageUrl: "/solutions/ghg-reporting.png",
+    videoSlug: "ghg-reporting",
   },
 
   {

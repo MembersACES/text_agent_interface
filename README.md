@@ -314,6 +314,14 @@ The Base 1 Review is a lead-magnet quick win feature that allows users to upload
 
 ---
 
+## Video platform (local testing)
+
+CRM testimonial → render → publish uses **three repos**. UI work needs interface + backend only; MP4 renders run on the **claude-videos** machine when you're ready.
+
+**Checklist:** [docs/LOCAL_DEV.md](./docs/LOCAL_DEV.md) — Peninsula Villages-style flow, env vars, and CLI order (`understand_testimonial` → `render:only` → `postrender` → `publish:local`).
+
+---
+
 ## Marketing / film prep (Frankston RSL hero)
 
 For video shoots using the Frankston RSL demo member, see **[docs/frankston-rsl-film-pack.md](./docs/frankston-rsl-film-pack.md)** (routes, PDF links, crop guide, kanban Lead A).

@@ -436,6 +436,19 @@ export default function EnhancedSolutionCard({ solution }: { solution: SolutionL
                 )}
               </div>
             )}
+
+            {(solution as SolutionOption).videoSlug && (
+              <button
+                type="button"
+                onClick={() => {
+                  const slug = (solution as SolutionOption).videoSlug!;
+                  router.push(`/videos?slug=${encodeURIComponent(slug)}`);
+                }}
+                className="w-full px-4 py-2.5 bg-violet-50 text-violet-800 border border-violet-200 rounded-lg hover:bg-violet-100 transition-all text-sm font-medium flex items-center justify-center gap-2"
+              >
+                <span>Watch video</span>
+              </button>
+            )}
           </div>
         )}
       </div>

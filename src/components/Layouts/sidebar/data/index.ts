@@ -40,7 +40,7 @@ export interface NavLinkItem {
 export interface NavGroupItem {
   title: string;
   icon?: NavItemIcon;
-  items: { title: string; url: string }[];
+  items: NavLinkItem[];
 }
 
 export interface NavSection {
@@ -79,6 +79,7 @@ export const JOB_GROUPS: NavGroupItem[] = [
       { title: "Autonomous Agent", url: "/autonomous-agent" },
       { title: "Robot Dashboard", url: "/robot-dashboard" },
       { title: "Personal Assistant", url: "/personal-assistant" },
+      { title: "Videos", url: "/videos" },
     ],
   },
 ];

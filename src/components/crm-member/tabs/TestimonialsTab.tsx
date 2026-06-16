@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FileText } from "lucide-react";
+import Link from "next/link";
+import { FileText, Film } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { RecordRowSkeleton } from "@/components/ui/skeleton";
@@ -33,6 +34,8 @@ export interface TestimonialItem {
   testimonial_type?: string | null;
   testimonial_solution_type_id?: string | null;
   testimonial_savings?: string | null;
+  video_long_file_id?: string | null;
+  video_short_file_id?: string | null;
   source?: "crm" | "sheet" | string | null;
   created_at: string;
   updated_at: string;
@@ -48,6 +51,7 @@ export interface SavingsInvoiceSummary {
 
 export interface TestimonialsTabProps {
   businessInfo: Record<string, unknown> | null;
+  clientId?: number | null;
 }
 
 function IconPlus() {
@@ -112,7 +116,7 @@ const editBtn =
   "text-gray-700 dark:text-gray-200 bg-gray-500/5 hover:bg-gray-500/10 border border-gray-300 dark:border-gray-600 " +
   "transition-colors shrink-0";
 
-export function TestimonialsTab({ businessInfo }: TestimonialsTabProps) {
+export function TestimonialsTab({ businessInfo, clientId }: TestimonialsTabProps) {
   const biz = (businessInfo as any)?.business_details ?? {};
   const contact = (businessInfo as any)?.contact_information ?? {};
   const rep = (businessInfo as any)?.representative_details ?? {};
@@ -694,6 +698,41 @@ export function TestimonialsTab({ businessInfo }: TestimonialsTabProps) {
                     >
                       Open
                     </a>
+                    {t.video_long_file_id && (
+                      <a
+                        href={`https://drive.google.com/file/d/${t.video_long_file_id}/preview`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={openBtn}
+                        title="Long-cut video"
+                      >
+                        <Film className="h-3 w-3 inline mr-0.5" />
+                        Long video
+                      </a>
+                    )}
+                    {t.video_short_file_id && (
+                      <a
+                        href={`https://drive.google.com/file/d/${t.video_short_file_id}/preview`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={openBtn}
+                        title="30s cut"
+                      >
+                        30s video
+                      </a>
+                    )}
+                    {t.status === "Approved" && !t.video_long_file_id && !isSheetSourced(t) && (
+                      <Link
+                        href={
+                          clientId != null
+                            ? `/videos/create?testimonial_id=${t.id}&client_id=${clientId}`
+                            : `/videos/create?testimonial_id=${t.id}`
+                        }
+                        className={openBtn}
+                      >
+                        Generate video
+                      </Link>
+                    )}
                     {canGenerateInvoiceFromTestimonial(t) ? (
                       <button
                         type="button"

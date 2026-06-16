@@ -16,6 +16,8 @@ const ROUTE_TITLES: Record<string, string> = {
   "/personal-assistant": "Personal Assistant",
   "/robot-dashboard/consumables": "Consumables Tracking",
   "/resources": "Links & Passwords",
+  "/videos": "Videos",
+  "/videos/create": "Create video",
   "/resources/floating-agent": "Floating Agent",
   "/resources/dashboard-tips": "Dashboard Tips",
   "/resources/testimonial-content": "Testimonial content",
@@ -72,6 +74,7 @@ const ROUTE_PREFIX_TITLES: { prefix: string; title: string }[] = [
   { prefix: "/crm-groups/", title: "Group" },
   { prefix: "/clients/", title: "Member" },
   { prefix: "/offers/", title: "Offer" },
+  { prefix: "/videos/", title: "Video detail" },
   { prefix: "/autonomous-agent/", title: "Autonomous run" },
 ];
 
