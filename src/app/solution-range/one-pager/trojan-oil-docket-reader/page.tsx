@@ -1,4 +1,5 @@
 import Breadcrumb from "@/components/Breadcrumbs/Breadcrumb";
+import { SolutionVideoEmbed } from "@/app/solution-range/SolutionVideoEmbed";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -18,6 +19,8 @@ export default function TrojanOilDocketReaderOnePager() {
             A streamlined client automation that converts photographed oil dockets into clean, structured data
           </p>
         </div>
+
+        <SolutionVideoEmbed videoSlug="trojan-oil-docket" title="Trojan Oil Docket — marketing video" />
 
         {/* How It Works Section */}
         <div className="bg-white rounded-lg shadow-md p-8 border border-gray-200">

@@ -395,6 +395,7 @@ export default function ClientDetailPage() {
                     initialSubTab={(subTab as CommercialSubTab) ?? "offers"}
                     offers={offers}
                     businessInfo={businessInfo}
+                    clientId={clientId}
                     onCreateOfferClick={() => {
                       setCreateOfferOpen(true);
                       setError(null);
