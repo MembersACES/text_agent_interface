@@ -19,6 +19,7 @@ import {
 type Props = {
   result?: VideoPipelineResult | null;
   loading?: boolean;
+  loadingMessage?: string;
   videoLabel?: string | null;
   token?: string;
   onDismiss?: () => void;
@@ -43,6 +44,7 @@ function jobPollParams(result: VideoPipelineResult | null, renderJob: VideoRende
 export function VideoCreateResultSection({
   result,
   loading = false,
+  loadingMessage,
   videoLabel,
   token,
   onDismiss,
@@ -173,6 +175,7 @@ export function VideoCreateResultSection({
       <VideoCreationProgressPanel
         stage="starting"
         videoLabel={videoLabel}
+        statusMessage={loadingMessage}
         className={className}
       />
     );
