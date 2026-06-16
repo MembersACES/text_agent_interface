@@ -42,7 +42,7 @@ function jobPollParams(result: VideoPipelineResult | null, renderJob: VideoRende
 }
 
 export function VideoCreateResultSection({
-  result,
+  result = null,
   loading = false,
   loadingMessage,
   videoLabel,
