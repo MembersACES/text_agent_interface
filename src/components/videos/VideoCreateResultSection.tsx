@@ -17,7 +17,7 @@ import {
 } from "@/lib/video-review";
 
 type Props = {
-  result: VideoPipelineResult | null;
+  result?: VideoPipelineResult | null;
   loading?: boolean;
   videoLabel?: string | null;
   token?: string;
