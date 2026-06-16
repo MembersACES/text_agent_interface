@@ -71,7 +71,7 @@ export const STEP_HINTS: Record<string, string> = {
 };
 
 function normalizeStepId(id: string | null | undefined): string | undefined {
-  if (!id) return id;
+  if (!id) return undefined;
   return LEGACY_STEP_ALIASES[id] ?? id;
 }
 
