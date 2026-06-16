@@ -143,6 +143,22 @@ export function TestimonialsTab({ businessInfo, clientId }: TestimonialsTabProps
   }, [businessInfo]);
 
   const [calculateModalOpen, setCalculateModalOpen] = useState(false);
+  // Feature flag: hide "Generate video" when ENABLE_VIDEO is not enabled on the server.
+  const [videoEnabled, setVideoEnabled] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/video-access")
+      .then((r) => r.json())
+      .then((b) => {
+        if (!cancelled) setVideoEnabled(Boolean((b as { allowed?: boolean })?.allowed));
+      })
+      .catch(() => {
+        if (!cancelled) setVideoEnabled(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [list, setList] = useState<TestimonialItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -721,7 +737,7 @@ export function TestimonialsTab({ businessInfo, clientId }: TestimonialsTabProps
                         30s video
                       </a>
                     )}
-                    {t.status === "Approved" && !t.video_long_file_id && !isSheetSourced(t) && (
+                    {videoEnabled && t.status === "Approved" && !t.video_long_file_id && !isSheetSourced(t) && (
                       <Link
                         href={
                           clientId != null

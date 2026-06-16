@@ -67,6 +67,7 @@ export function Sidebar() {
   const [jumpQuery, setJumpQuery] = useState("");
   const [invoicingAllowed, setInvoicingAllowed] = useState<boolean | null>(null);
   const [personalAssistantAllowed, setPersonalAssistantAllowed] = useState<boolean | null>(null);
+  const [videoAllowed, setVideoAllowed] = useState<boolean | null>(null);
   const [pendingTaskCount, setPendingTaskCount] = useState(0);
 
   const [sectionOpen, setSectionOpen] = useState<Record<string, boolean>>(() => {
@@ -181,23 +182,27 @@ export function Sidebar() {
     let cancelled = false;
     (async () => {
       try {
-        const [invRes, paRes] = await Promise.all([
+        const [invRes, paRes, vidRes] = await Promise.all([
           fetch("/api/invoicing-access", { method: "GET" }),
           fetch("/api/personal-assistant-access", { method: "GET" }),
+          fetch("/api/video-access", { method: "GET" }),
         ]);
-        const [invBody, paBody] = await Promise.all([
+        const [invBody, paBody, vidBody] = await Promise.all([
           invRes.json().catch(() => ({})),
           paRes.json().catch(() => ({})),
+          vidRes.json().catch(() => ({})),
         ]);
         if (cancelled) return;
         setInvoicingAllowed(Boolean((invBody as { allowed?: boolean }).allowed));
         setPersonalAssistantAllowed(
           Boolean((paBody as { allowed?: boolean }).allowed),
         );
+        setVideoAllowed(Boolean((vidBody as { allowed?: boolean }).allowed));
       } catch {
         if (!cancelled) {
           setInvoicingAllowed(false);
           setPersonalAssistantAllowed(false);
+          setVideoAllowed(false);
         }
       }
     })();
@@ -238,10 +243,12 @@ export function Sidebar() {
 
   const hasInvoicingAccess = invoicingAllowed === true;
   const hasPersonalAssistantAccess = personalAssistantAllowed === true;
+  const hasVideoAccess = videoAllowed === true;
 
   function canSeeRestrictedNavUrl(url: string): boolean {
     if (url === "/invoicing") return hasInvoicingAccess;
     if (url === "/personal-assistant") return hasPersonalAssistantAccess;
+    if (url === "/videos") return hasVideoAccess;
     return true;
   }
 
@@ -277,7 +284,7 @@ export function Sidebar() {
           (section.label !== "Development" || process.env.NODE_ENV !== "production") &&
           section.items.length > 0,
       ),
-    [hasInvoicingAccess, hasPersonalAssistantAccess],
+    [hasInvoicingAccess, hasPersonalAssistantAccess, hasVideoAccess],
   );
 
   const filteredJobGroups = useMemo(
@@ -286,7 +293,7 @@ export function Sidebar() {
         ...group,
         items: group.items.filter((sub) => canSeeRestrictedNavUrl(sub.url)),
       })).filter((g) => g.items.length > 0),
-    [hasInvoicingAccess, hasPersonalAssistantAccess],
+    [hasInvoicingAccess, hasPersonalAssistantAccess, hasVideoAccess],
   );
 
   const renderLink = (item: NavLinkItem, badge?: number) => {

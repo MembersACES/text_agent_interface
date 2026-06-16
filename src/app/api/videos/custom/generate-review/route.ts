@@ -5,6 +5,9 @@ import { buildCustomVideoReviewHtml, parseSlidesJson } from "@/lib/video-custom-
 import { generateCustomVideoSlides } from "@/lib/video-custom-llm";
 
 export async function POST(req: NextRequest) {
+  if (process.env.ENABLE_VIDEO !== "true") {
+    return NextResponse.json({ error: "Video creation is disabled" }, { status: 403 });
+  }
   try {
     const session = await getServerSession(authOptions);
     if (!session) {

@@ -4,6 +4,9 @@ import { authOptions } from "@/lib/auth";
 import { getApiBaseUrl } from "@/lib/utils";
 
 export async function POST(req: NextRequest) {
+  if (process.env.ENABLE_VIDEO !== "true") {
+    return NextResponse.json({ error: "Video creation is disabled" }, { status: 403 });
+  }
   try {
     const session = await getServerSession(authOptions);
     if (!session) {
