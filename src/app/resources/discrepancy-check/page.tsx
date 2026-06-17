@@ -59,6 +59,33 @@ function cellValue(val: string | undefined): string {
   return v || "—";
 }
 
+// --- Take-or-Pay tracking (gas) ---
+type GasTopFields = {
+  agreement_year?: string; maq_gj?: string; cpq_gj?: string; invoices_counted?: string;
+  consumption_to_date_gj?: string; data_through?: string; days_elapsed?: string;
+  agreement_year_days?: string; pct_year_elapsed?: string; pct_maq_consumed?: string;
+  pace?: string; projected_annual_gj?: string; projected_vs_maq_gj?: string; risk_band?: string;
+};
+const gasTop = (row: DiscrepancyRow): GasTopFields => row as unknown as GasTopFields;
+
+function hasTakeOrPayTracking(row: DiscrepancyRow): boolean {
+  const t = gasTop(row);
+  return Boolean((t.risk_band && t.risk_band.trim()) || (t.maq_gj && t.maq_gj.trim()) || (t.pct_maq_consumed && t.pct_maq_consumed.trim()));
+}
+function riskBandIntent(riskBand: string | undefined): "danger" | "warning" | "success" | null {
+  const v = (riskBand ?? "").trim().toLowerCase();
+  if (!v) return null;
+  if (v.startsWith("at risk")) return "danger";
+  if (v.startsWith("tight")) return "warning";
+  if (v.startsWith("on track")) return "success";
+  return null;
+}
+function shortRiskBand(riskBand: string | undefined): string {
+  const v = (riskBand ?? "").trim();
+  if (!v) return "";
+  return v.split("—")[0].split("-")[0].trim() || v;
+}
+
 function DiscrepancyDetectedBadge({ value }: { value: string | undefined }) {
   const v = (value ?? "").trim();
   if (!v) return <span>—</span>;
@@ -95,7 +122,8 @@ function demandRowId(row: Record<string, string>, index: number): string {
 }
 
 function buildGasDetailSections(row: DiscrepancyRow): DetailSection[] {
-  return [
+  const t = gasTop(row);
+  const sections: DetailSection[] = [
     {
       title: "Rates",
       fields: [
@@ -113,6 +141,27 @@ function buildGasDetailSections(row: DiscrepancyRow): DetailSection[] {
       ],
     },
   ];
+
+  if (hasTakeOrPayTracking(row)) {
+    sections.push({
+      title: "Take-or-Pay — Year to Date",
+      fields: [
+        { label: "Agreement year", value: cellValue(t.agreement_year) },
+        { label: "Consumed to date (GJ)", value: cellValue(t.consumption_to_date_gj) },
+        { label: "Invoices counted", value: cellValue(t.invoices_counted) },
+        { label: "Data through", value: cellValue(t.data_through) },
+        { label: "MAQ floor (GJ)", value: cellValue(t.maq_gj) },
+        { label: "CPQ (GJ)", value: cellValue(t.cpq_gj) },
+        { label: "% MAQ consumed", value: cellValue(t.pct_maq_consumed) },
+        { label: "% year elapsed", value: cellValue(t.pct_year_elapsed) },
+        { label: "Pace", value: cellValue(t.pace) },
+        { label: "Projected annual (GJ)", value: cellValue(t.projected_annual_gj) },
+        { label: "Projected vs MAQ (GJ)", value: cellValue(t.projected_vs_maq_gj) },
+        { label: "Risk band", value: cellValue(t.risk_band) },
+      ],
+    });
+  }
+  return sections;
 }
 
 function buildDmaDetailSections(row: DmaRow): DetailSection[] {
@@ -273,7 +322,7 @@ function GasTable({
   expandedIds: Set<string>;
   onToggleExpand: (id: string) => void;
 }) {
-  const colCount = 7;
+  const colCount = 8;
   return (
     <Table>
       <TableHeader>
@@ -285,6 +334,7 @@ function GasTable({
           <TableHead className="text-xs">Rate diff.</TableHead>
           <TableHead className="text-xs">% diff.</TableHead>
           <TableHead className="text-xs">Annual overcharge ($)</TableHead>
+          <TableHead className="text-xs min-w-[110px]">ToP status</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -318,6 +368,17 @@ function GasTable({
                     value={cellValue(row.annual_potential_overcharge)}
                     highlight={overcharged}
                   />
+                </TableCell>
+                <TableCell className="align-top">
+                  {hasTakeOrPayTracking(row) ? (
+                    riskBandIntent(gasTop(row).risk_band) ? (
+                      <Badge intent={riskBandIntent(gasTop(row).risk_band)!}>{shortRiskBand(gasTop(row).risk_band)}</Badge>
+                    ) : (
+                      <span className="text-sm text-dark dark:text-white">{cellValue(gasTop(row).risk_band)}</span>
+                    )
+                  ) : (
+                    <span className="text-gray-400 dark:text-gray-500">—</span>
+                  )}
                 </TableCell>
               </TableRow>
               {expanded && (

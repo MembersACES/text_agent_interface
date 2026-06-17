@@ -465,6 +465,7 @@ function formatAud(value: number | undefined, empty = "—"): string {
 
 const AU_GST_DIVISOR = 1.1;
 const DEFAULT_CI_GAS_COMPARISON_RATE_PER_GJ = 17.8;
+const DEFAULT_CI_GAS_COMMISSION_AUD_PER_GJ = 3.00;
 const DEFAULT_OIL_COMPARISON_RATE_PER_L = 3;
 /** Keep in sync with backend `AIRTABLE_SME_GAS_NEAR_SCREEN_GJ` (default 850). */
 const SME_GAS_NEAR_BAND_LOW_GJ = 850;
@@ -1113,6 +1114,9 @@ export default function Base2Page() {
         rates.comparisonDemandCharge = (rates.currentDemandCharge && rates.currentDemandCharge > 0) ? parseFloat((rates.currentDemandCharge * 0.95).toFixed(2)) : 12.00;
       }
     } else if (utilityType.includes('Gas')) {
+      if (utilityType === "C&I Gas") {
+        rates.ciGasCommissionAudPerGj = DEFAULT_CI_GAS_COMMISSION_AUD_PER_GJ;
+      }
       if (invoiceData?.gas_sme_invoicedetails) {
         const smeDetails = invoiceData.gas_sme_invoicedetails;
         const usage = smeDetails.supply_charge || {};
@@ -1333,7 +1337,18 @@ export default function Base2Page() {
         if (comparison.utilityType !== utilityType) return comparison;
         const result = results.find((entry) => entry.identifier === comparison.identifier);
         if (!result) return comparison;
-        const merged = { ...comparison, ...result.update };
+        const merged: UtilityComparison = { ...comparison, ...result.update };
+
+        if (
+          merged.ciGasCommissionAudPerGj == null &&
+          (
+            merged.utilityType === "C&I Gas" ||
+            (merged.utilityType === "SME Gas" && (merged.smeGasComparisonMode ?? "invoice_blocks") === "ci_offer")
+          )
+        ) {
+          merged.ciGasCommissionAudPerGj = DEFAULT_CI_GAS_COMMISSION_AUD_PER_GJ;
+        }
+
         return merged.utilityType === "SME Gas" ? withSmeGasCiDerivedRates(merged) : merged;
       })
     );
@@ -1578,8 +1593,20 @@ export default function Base2Page() {
   const handleRecipientConfirmSubmit = () => {
     const { comparison, action, generateAll, contactName, contactEmail } = recipientConfirmModal;
     if (!comparison) return;
+  
+    const freshComparison =
+      utilityComparisonsRef.current.find(
+        (u) =>
+          u.utilityType === comparison.utilityType &&
+          u.identifier === comparison.identifier
+      ) ?? comparison;
+  
     setRecipientConfirmModal((prev) => ({ ...prev, open: false }));
-    generateComparison(comparison, action, generateAll, { contactName, contactEmail });
+  
+    generateComparison(freshComparison, action, generateAll, {
+      contactName,
+      contactEmail,
+    });
   };
 
   const generateComparison = async (comparison: UtilityComparison, action: 'comparison' | 'dma' = 'comparison', generateAll: boolean = false, webhookRecipient?: { contactName: string; contactEmail: string }) => {
@@ -2138,7 +2165,7 @@ export default function Base2Page() {
                   )
                 }
                 className={inputCls}
-                placeholder="Required"
+                placeholder="3.00"
               />
             </td>
             <td className={`${tdBase} text-center text-gray-300 text-xs`}>—</td>
