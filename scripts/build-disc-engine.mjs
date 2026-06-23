@@ -67,11 +67,32 @@ const SEED_FN =
   "function _acesSeedPortFromRoster(){try{if(typeof PORT==='undefined'||typeof _ENTITY_OF==='undefined')return;var want=(typeof ACES_ENTRY!=='undefined'&&ACES_ENTRY&&ACES_ENTRY.entity)?ACES_ENTRY.entity:null;if(!want)return;var name=want;try{var cl=(typeof getClients==='function')?(getClients((typeof _curPeriod==='function')?_curPeriod():null)||[]):[];for(var i=0;i<cl.length;i++){var c=cl[i];var s=c&&(c.reporting_entity||c.entity_id||c.entity);if(s===want){name=c.business_name||c.display_name||want;break;}}}catch(e){}PORT.length=0;for(var k in _ENTITY_OF){if(Object.prototype.hasOwnProperty.call(_ENTITY_OF,k))delete _ENTITY_OF[k];}_ENTITY_OF[want]=want;var z=function(){return{state:'none',exp_a:0,exp_y:0};};PORT.push({id:want,client:name,entity:want,sites:'',utils:{electricity:z(),gas:z(),waste:z()}});}catch(e){}}\n";
 sub("ACES:port-seed-fn", "var ACES_ENTRY={entity:null,period:null};", SEED_FN + "var ACES_ENTRY={entity:null,period:null};", { min: 1 });
 
-// ── ACES PERF: memoize getConfig + getManifest. The vendor calls getConfig ~8x/render (via
-//    _curPeriod/_today) and getManifest repeatedly, each a SYNCHRONOUS XHR that freezes the tab.
-//    Wrapping them to cache after first call turns ~12 blocking round-trips into ~2. ──
-const MEMO_FN = "(function(){try{if(typeof getConfig==='function'){var _c=null,_o=getConfig;getConfig=function(){if(_c)return _c;try{_c=_o.apply(this,arguments)||{};}catch(e){_c={};}return _c;};}if(typeof getManifest==='function'){var _m={},_om=getManifest;getManifest=function(e,p){var k=(e||'')+'|'+(p||'');if(_m[k])return _m[k];var r=null;try{r=_om.apply(this,arguments);}catch(e2){}if(r)_m[k]=r;return r;};}}catch(e3){}})();\n";
-sub("ACES:memoize-accessors", "var ACES_ENTRY={entity:null,period:null};", MEMO_FN + "var ACES_ENTRY={entity:null,period:null};", { min: 1 });
+// ── ACES PERF (THE freeze fix): make _apiGet ASYNC + cached. The vendor's _apiGet uses a
+//    SYNCHRONOUS XHR (xhr.open(...,false)), and render() re-reads getManifest/getSite live on every
+//    paint — so a slow backend call blocks (freezes) the whole browser tab for its full duration.
+//    We replace _apiGet with a non-blocking version: cache HIT -> return synchronously (render shows
+//    data); cache MISS -> fire an ASYNC XHR and return null NOW (render falls through to the empty
+//    mirror -> shows the loading shell, NOT a freeze). When the response lands we cache it and re-call
+//    render(), which re-reads getManifest/getSite (live, per lines 169/226/555/700/1170) and paints
+//    the real data. Faithful to the original: same _apiHost()/_apiHeaders()/_apiReauth(401). The main
+//    thread NEVER blocks. (Supersedes the synchronous URL cache.) ──
+const APIGET_ASYNC =
+  "(function(){try{if(typeof _apiGet!=='function')return;var _ac={},_pend={},_rt=null;" +
+  "function _rr(){if(_rt)return;_rt=setTimeout(function(){_rt=null;if(typeof render==='function'){try{render();}catch(e){}}},30);}" +
+  "function _go(path){if(_pend[path])return;" +
+  "if(typeof DATA_SOURCE!=='undefined'&&DATA_SOURCE!=='api'){_ac[path]=null;return;}" +
+  "var host=(typeof _apiHost==='function')?_apiHost():'';if(!host||host==='offline-mirror'){_ac[path]=null;return;}" +
+  "if(typeof XMLHttpRequest==='undefined'){_ac[path]=null;return;}_pend[path]=true;" +
+  "try{var xhr=new XMLHttpRequest();xhr.open('GET',host.replace(/\\/$/,'')+path,true);" +
+  "try{var H=(typeof _apiHeaders==='function')?_apiHeaders():{};for(var k in H){try{xhr.setRequestHeader(k,H[k]);}catch(e){}}}catch(e){}" +
+  "xhr.onreadystatechange=function(){if(xhr.readyState!==4)return;_pend[path]=false;try{" +
+  "if(xhr.status===401){var b=null;try{b=JSON.parse(xhr.responseText||'{}');}catch(e){}" +
+  "if((!b||b.error==='REAUTHENTICATION_REQUIRED')&&typeof _apiReauth==='function'){_apiReauth((b&&b.error)||'REAUTHENTICATION_REQUIRED');}_ac[path]=null;}" +
+  "else if(xhr.status>=200&&xhr.status<300){var r=null;try{r=JSON.parse(xhr.responseText||'null');}catch(e){r=null;}_ac[path]=r;}" +
+  "else{_ac[path]=null;}}catch(e){_ac[path]=null;}_rr();};xhr.send(null);}catch(e){_pend[path]=false;_ac[path]=null;}}" +
+  "_apiGet=function(path){if(Object.prototype.hasOwnProperty.call(_ac,path))return _ac[path];_go(path);return null;};" +
+  "}catch(e2){}})();\n";
+sub("ACES:apiget-async", "var ACES_ENTRY={entity:null,period:null};", APIGET_ASYNC + "var ACES_ENTRY={entity:null,period:null};", { min: 1 });
 
 // ── ACES UX: show "Loading..." (not the misleading "Client not found") while PORT is seeded post-auth ──
 const NF_FIND = `if(!p)return _clientNotFound(route.client);`;
