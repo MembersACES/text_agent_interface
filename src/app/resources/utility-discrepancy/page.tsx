@@ -207,6 +207,7 @@ function AccountView({
   const [showRaw, setShowRaw] = useState(false);
   const [contract, setContract] = useState<{ status?: string | null; link?: string | null } | null>(null);
   const [contractChecked, setContractChecked] = useState(false);
+  const [contractNote, setContractNote] = useState<string | null>(null);
 
   const fetchRows = useCallback(async () => {
     setLoading(true);
@@ -245,12 +246,16 @@ function AccountView({
           `${getApiBaseUrl()}/api/contracts/by-business?business_name=${encodeURIComponent(businessName)}`,
           { headers: { Authorization: `Bearer ${token}` } },
         );
-        if (!res.ok) { if (!cancelled) setContractChecked(true); return; }
-        const data = (await res.json()) as { contracts?: Record<string, { status?: string | null; link?: string | null }> };
+        if (!res.ok) { if (!cancelled) { setContractNote(`Contract lookup failed (${res.status}) — check backend/env`); setContractChecked(true); } return; }
+        const data = (await res.json()) as { matched?: boolean; contracts?: Record<string, { status?: string | null; link?: string | null }> };
         const c = data.contracts?.[utilityType] ?? data.contracts?.["Waste"] ?? null;
-        if (!cancelled) { setContract(c); setContractChecked(true); }
+        if (!cancelled) {
+          setContract(c);
+          if (!c) setContractNote(data.matched ? `No ${utilityType.toLowerCase()} contract recorded for this business` : "No contract record matched this business name in the sheet");
+          setContractChecked(true);
+        }
       } catch {
-        if (!cancelled) setContractChecked(true);
+        if (!cancelled) { setContractNote("Contract lookup unavailable (network/backend)"); setContractChecked(true); }
       }
     })();
     return () => { cancelled = true; };
@@ -309,7 +314,7 @@ function AccountView({
                     ✓ Signed {utilityType.toLowerCase()} contract on file{contract.status ? ` · ${contract.status}` : ""}
                   </a>
                 ) : (
-                  <span style={{ color: "#d97706" }}>No signed {utilityType.toLowerCase()} contract on file (matched by business name)</span>
+                  <span style={{ color: "#d97706" }}>{contractNote || `No signed ${utilityType.toLowerCase()} contract on file`}</span>
                 )}
               </p>
             )}

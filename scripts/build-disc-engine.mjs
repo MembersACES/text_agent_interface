@@ -67,6 +67,12 @@ const SEED_FN =
   "function _acesSeedPortFromRoster(){try{if(typeof PORT==='undefined'||typeof _ENTITY_OF==='undefined')return;var want=(typeof ACES_ENTRY!=='undefined'&&ACES_ENTRY&&ACES_ENTRY.entity)?ACES_ENTRY.entity:null;if(!want)return;var name=want;try{var cl=(typeof getClients==='function')?(getClients((typeof _curPeriod==='function')?_curPeriod():null)||[]):[];for(var i=0;i<cl.length;i++){var c=cl[i];var s=c&&(c.reporting_entity||c.entity_id||c.entity);if(s===want){name=c.business_name||c.display_name||want;break;}}}catch(e){}PORT.length=0;for(var k in _ENTITY_OF){if(Object.prototype.hasOwnProperty.call(_ENTITY_OF,k))delete _ENTITY_OF[k];}_ENTITY_OF[want]=want;var z=function(){return{state:'none',exp_a:0,exp_y:0};};PORT.push({id:want,client:name,entity:want,sites:'',utils:{electricity:z(),gas:z(),waste:z()}});}catch(e){}}\n";
 sub("ACES:port-seed-fn", "var ACES_ENTRY={entity:null,period:null};", SEED_FN + "var ACES_ENTRY={entity:null,period:null};", { min: 1 });
 
+// ── ACES PERF: memoize getConfig + getManifest. The vendor calls getConfig ~8x/render (via
+//    _curPeriod/_today) and getManifest repeatedly, each a SYNCHRONOUS XHR that freezes the tab.
+//    Wrapping them to cache after first call turns ~12 blocking round-trips into ~2. ──
+const MEMO_FN = "(function(){try{if(typeof getConfig==='function'){var _c=null,_o=getConfig;getConfig=function(){if(_c)return _c;try{_c=_o.apply(this,arguments)||{};}catch(e){_c={};}return _c;};}if(typeof getManifest==='function'){var _m={},_om=getManifest;getManifest=function(e,p){var k=(e||'')+'|'+(p||'');if(_m[k])return _m[k];var r=null;try{r=_om.apply(this,arguments);}catch(e2){}if(r)_m[k]=r;return r;};}}catch(e3){}})();\n";
+sub("ACES:memoize-accessors", "var ACES_ENTRY={entity:null,period:null};", MEMO_FN + "var ACES_ENTRY={entity:null,period:null};", { min: 1 });
+
 // ── ACES UX: show "Loading..." (not the misleading "Client not found") while PORT is seeded post-auth ──
 const NF_FIND = `if(!p)return _clientNotFound(route.client);`;
 const NF_TO = `if(!p)return (typeof PORT!=='undefined'&&PORT.length===0&&typeof ACES_ENTRY!=='undefined'&&ACES_ENTRY&&ACES_ENTRY.entity)?'<div class="note" style="padding:28px;text-align:center;color:#5f6f67">Loading '+((typeof _esc2==='function')?_esc2(String(ACES_ENTRY.entity)):String(ACES_ENTRY.entity))+'... <span style="opacity:.6">(fetching live data)</span></div>':_clientNotFound(route.client);`;
