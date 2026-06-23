@@ -238,3 +238,14 @@ unchanged; keep going with its P1/P3 fast-follow + terms endpoint. The `reportin
   selected entity fetches its manifest (`L2`). NB: the `/api/climate/config` 404 in console is expected
   and harmless — that route was never built (the embed falls back to its mirror); **no backend change is
   required**.
+
+- **2026-06-23 (h) — `/api/climate/config` now exists (perf fix).** Marcus's engine works on dev (PORT
+  seed renders live Page 2), but it was slow + console-spammy because `getConfig` 404-stormed the
+  missing config route ~8×/render (each a synchronous XHR). Added `GET /api/climate/config` →
+  `{aces_data_env, aces_api_host:'', period, today}` (first backend change in this effort). The env
+  banner now populates and the stalls/404s stop.
+- **2026-06-23 (i) — Contract surfacing (ACES side).** Added `GET /api/contracts/by-business?business_name=`
+  reusing `signed_contract_dry_run`'s parser of the FILE_IDS 'Data from Airtable' tab — returns signed-
+  contract file IDs + status per utility, matched by business name. The ACES Waste page now shows
+  "Signed waste contract on file: [link] · status". (This is the operational contract check; full
+  contract-vs-actuals term extraction is a later phase / your terms API.)

@@ -205,6 +205,8 @@ function AccountView({
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState<number | null>(null);
   const [showRaw, setShowRaw] = useState(false);
+  const [contract, setContract] = useState<{ status?: string | null; link?: string | null } | null>(null);
+  const [contractChecked, setContractChecked] = useState(false);
 
   const fetchRows = useCallback(async () => {
     setLoading(true);
@@ -232,6 +234,27 @@ function AccountView({
   useEffect(() => {
     fetchRows();
   }, [fetchRows]);
+
+  // Surface the signed contract for this business + utility (read-only, best-effort).
+  useEffect(() => {
+    if (!businessName) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(
+          `${getApiBaseUrl()}/api/contracts/by-business?business_name=${encodeURIComponent(businessName)}`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+        if (!res.ok) { if (!cancelled) setContractChecked(true); return; }
+        const data = (await res.json()) as { contracts?: Record<string, { status?: string | null; link?: string | null }> };
+        const c = data.contracts?.[utilityType] ?? data.contracts?.["Waste"] ?? null;
+        if (!cancelled) { setContract(c); setContractChecked(true); }
+      } catch {
+        if (!cancelled) setContractChecked(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [businessName, utilityType, token]);
 
   const sorted = useMemo(() => [...rows].sort((a, b) => parseDMY(b[F.date]) - parseDMY(a[F.date])), [rows]);
 
@@ -279,6 +302,17 @@ function AccountView({
               {businessName ? <span className="font-medium">{businessName}</span> : "Account"} · account{" "}
               <span className="font-mono">{identifier}</span>
             </p>
+            {contractChecked && (
+              <p className="mt-1 text-xs">
+                {contract?.link ? (
+                  <a href={contract.link} target="_blank" rel="noopener noreferrer" className="font-medium hover:underline" style={{ color: "#16a34a" }}>
+                    ✓ Signed {utilityType.toLowerCase()} contract on file{contract.status ? ` · ${contract.status}` : ""}
+                  </a>
+                ) : (
+                  <span style={{ color: "#d97706" }}>No signed {utilityType.toLowerCase()} contract on file (matched by business name)</span>
+                )}
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <button type="button" onClick={() => setShowRaw((s) => !s)} className="rounded-lg border border-stroke px-4 py-2 text-sm font-medium text-dark hover:bg-gray-2 dark:border-dark-3 dark:text-white dark:hover:bg-dark-2">
