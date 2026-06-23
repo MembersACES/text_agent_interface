@@ -326,6 +326,12 @@ function AccountView({
 
         {error && <div className="mb-4 rounded-lg border border-red-light-3 bg-red-light-6 p-3 text-sm text-red">{error}</div>}
 
+        {loading && rows.length === 0 && (
+          <div className="py-10 text-center text-sm text-dark-6 dark:text-dark-6">
+            Loading {utilityType.toLowerCase()} records…
+          </div>
+        )}
+
         {rows.length > 0 && (
           <>
             <div className="mb-4 rounded-lg p-4" style={{ background: "rgba(220,38,38,0.06)" }}>

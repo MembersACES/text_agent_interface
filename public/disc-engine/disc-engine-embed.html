@@ -755,7 +755,7 @@ function toggleQuarters(){ACES_MATRIX_Q=!ACES_MATRIX_Q;if(typeof render==='funct
 function setMatrixGrain(q){ACES_MATRIX_Q=!!q;if(typeof render==='function')render();}
 function L2(){
  var p=_portOf(route.client);
- if(!p)return _clientNotFound(route.client);
+ if(!p)return (typeof PORT!=='undefined'&&PORT.length===0&&typeof ACES_ENTRY!=='undefined'&&ACES_ENTRY&&ACES_ENTRY.entity)?'<div class="note" style="padding:28px;text-align:center;color:#5f6f67">Loading '+((typeof _esc2==='function')?_esc2(String(ACES_ENTRY.entity)):String(ACES_ENTRY.entity))+'... <span style="opacity:.6">(fetching live data)</span></div>':_clientNotFound(route.client);
  var man=_manOf();var today=_today();
  var h='<h1>'+_esc2(p.client)+' — Billing Accuracy</h1><div class="sub">'+_esc2(p.entity)+' · is each agreement covered, and where are the gaps?</div>';
  h+=_verdictBand(p,man);

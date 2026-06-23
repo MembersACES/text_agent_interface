@@ -249,3 +249,12 @@ unchanged; keep going with its P1/P3 fast-follow + terms endpoint. The `reportin
   contract file IDs + status per utility, matched by business name. The ACES Waste page now shows
   "Signed waste contract on file: [link] · status". (This is the operational contract check; full
   contract-vs-actuals term extraction is a later phase / your terms API.)
+
+- **2026-06-23 (j) — "Client not found" was misleading on load; we patched it to "Loading…".** On a
+  deep-linked `?entity=`, `L2()` renders `_clientNotFound` at parse time (before our PORT seed runs
+  post-auth), so users briefly saw "Client not found" even though live data was on its way. Our build
+  script now shows "Loading <entity>… (fetching live data)" while `PORT` is empty, and only shows the
+  real "Client not found" once seeded and still unresolved. **For you, Marcus:** worth a native fix —
+  ideally `L2()` distinguishes "still loading / unauthenticated" from "genuinely not in roster", and
+  `getConfig` should be cached (it's currently called ~8×/render; we added `/api/climate/config` so
+  it's at least a fast 200 now instead of a 404).
