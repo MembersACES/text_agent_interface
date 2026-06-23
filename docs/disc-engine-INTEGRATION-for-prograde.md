@@ -230,3 +230,11 @@ unchanged; keep going with its P1/P3 fast-follow + terms endpoint. The `reportin
   file is unchanged** — this is purely our build-time patch. **When you wire `PORT` natively** (your
   P1 fast-follow), tell us and we'll drop our injection so it doesn't double-seed. Transform name in
   the build report: `ACES:port-seed-fn`.
+
+- **2026-06-23 (g) — Correction to (f): seed ONLY the selected entity, not the whole roster.** The
+  first version seeded every roster client into `PORT`, which made the default client-book view (`L1`)
+  fire a synchronous `getManifest` per client and freeze the page on load. Now `_acesSeedPortFromRoster()`
+  seeds only `ACES_ENTRY.entity` (the one chosen in the picker), so `L1` stays empty/cheap and only the
+  selected entity fetches its manifest (`L2`). NB: the `/api/climate/config` 404 in console is expected
+  and harmless — that route was never built (the embed falls back to its mirror); **no backend change is
+  required**.

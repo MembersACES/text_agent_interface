@@ -61,9 +61,10 @@ const AUTH_TO =
 sub("D1:auth-handler", AUTH_FIND, AUTH_TO, { min: 1 });
 
 // ── ACES P1: populate PORT/_ENTITY_OF from the live roster (vendor leaves PORT=[]; never filled,
-//    so _portOf() always fails and every ?entity= hits "Client not found"). Ours, not Marcus's. ──
+//    so _portOf() always fails and every ?entity= hits "Client not found"). Seeds ONLY the
+//    selected ACES_ENTRY.entity (not the whole roster) to avoid L1's synchronous-manifest freeze. ──
 const SEED_FN =
-  "function _acesSeedPortFromRoster(){try{if(typeof getClients!=='function'||typeof PORT==='undefined'||typeof _ENTITY_OF==='undefined')return;var cl=getClients((typeof _curPeriod==='function')?_curPeriod():null)||[];if(!cl.length)return;PORT.length=0;for(var k in _ENTITY_OF){if(Object.prototype.hasOwnProperty.call(_ENTITY_OF,k))delete _ENTITY_OF[k];}cl.forEach(function(c){if(!c)return;var slug=c.reporting_entity||c.entity_id||c.entity;if(!slug)return;_ENTITY_OF[slug]=slug;var z=function(){return{state:'none',exp_a:0,exp_y:0};};PORT.push({id:slug,client:(c.business_name||c.display_name||slug),entity:slug,sites:(c.member_count!=null?c.member_count:(c.activity_record_count!=null?c.activity_record_count:'')),utils:{electricity:z(),gas:z(),waste:z()}});});}catch(e){}}\n";
+  "function _acesSeedPortFromRoster(){try{if(typeof PORT==='undefined'||typeof _ENTITY_OF==='undefined')return;var want=(typeof ACES_ENTRY!=='undefined'&&ACES_ENTRY&&ACES_ENTRY.entity)?ACES_ENTRY.entity:null;if(!want)return;var name=want;try{var cl=(typeof getClients==='function')?(getClients((typeof _curPeriod==='function')?_curPeriod():null)||[]):[];for(var i=0;i<cl.length;i++){var c=cl[i];var s=c&&(c.reporting_entity||c.entity_id||c.entity);if(s===want){name=c.business_name||c.display_name||want;break;}}}catch(e){}PORT.length=0;for(var k in _ENTITY_OF){if(Object.prototype.hasOwnProperty.call(_ENTITY_OF,k))delete _ENTITY_OF[k];}_ENTITY_OF[want]=want;var z=function(){return{state:'none',exp_a:0,exp_y:0};};PORT.push({id:want,client:name,entity:want,sites:'',utils:{electricity:z(),gas:z(),waste:z()}});}catch(e){}}\n";
 sub("ACES:port-seed-fn", "var ACES_ENTRY={entity:null,period:null};", SEED_FN + "var ACES_ENTRY={entity:null,period:null};", { min: 1 });
 
 
