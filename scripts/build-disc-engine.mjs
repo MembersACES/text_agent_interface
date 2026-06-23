@@ -57,8 +57,15 @@ const AUTH_FIND =
   `var d=ev&&ev.data; if(d&&d.type==='aces:auth'&&d.token){ ACES_AUTH.token=d.token; /* inert: stored for the future Authorization: Bearer header, not used yet */ }`;
 const AUTH_TO =
   `if(ev.origin!==window.location.origin) return; /* ACES D1: same-origin wrapper only */ ` +
-  `var d=ev&&ev.data; if(d&&d.type==='aces:auth'){ if(d.token){ACES_AUTH.token=d.token;} if(d.apiHost){window.ACES_API_HOST=d.apiHost;} if(typeof render==='function'){try{render();}catch(e){}} }`;
+  `var d=ev&&ev.data; if(d&&d.type==='aces:auth'){ if(d.token){ACES_AUTH.token=d.token;} if(d.apiHost){window.ACES_API_HOST=d.apiHost;} if(typeof _acesSeedPortFromRoster==='function'){try{_acesSeedPortFromRoster();}catch(e){}} if(typeof render==='function'){try{render();}catch(e){}} }`;
 sub("D1:auth-handler", AUTH_FIND, AUTH_TO, { min: 1 });
+
+// ── ACES P1: populate PORT/_ENTITY_OF from the live roster (vendor leaves PORT=[]; never filled,
+//    so _portOf() always fails and every ?entity= hits "Client not found"). Ours, not Marcus's. ──
+const SEED_FN =
+  "function _acesSeedPortFromRoster(){try{if(typeof getClients!=='function'||typeof PORT==='undefined'||typeof _ENTITY_OF==='undefined')return;var cl=getClients((typeof _curPeriod==='function')?_curPeriod():null)||[];if(!cl.length)return;PORT.length=0;for(var k in _ENTITY_OF){if(Object.prototype.hasOwnProperty.call(_ENTITY_OF,k))delete _ENTITY_OF[k];}cl.forEach(function(c){if(!c)return;var slug=c.reporting_entity||c.entity_id||c.entity;if(!slug)return;_ENTITY_OF[slug]=slug;var z=function(){return{state:'none',exp_a:0,exp_y:0};};PORT.push({id:slug,client:(c.business_name||c.display_name||slug),entity:slug,sites:(c.member_count!=null?c.member_count:(c.activity_record_count!=null?c.activity_record_count:'')),utils:{electricity:z(),gas:z(),waste:z()}});});}catch(e){}}\n";
+sub("ACES:port-seed-fn", "var ACES_ENTRY={entity:null,period:null};", SEED_FN + "var ACES_ENTRY={entity:null,period:null};", { min: 1 });
+
 
 // ── 3. D2 — outbound aces:reauth: pin target origin ──────────────────────────
 sub(

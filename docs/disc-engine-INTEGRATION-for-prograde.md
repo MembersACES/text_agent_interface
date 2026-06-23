@@ -204,3 +204,29 @@ unchanged; keep going with its P1/P3 fast-follow + terms endpoint. The `reportin
   labelled entries. Your page = **Reporting Entity Assurance — Marcus Engine** (`/resources/disc-engine`)
   with a reporting_entity roster picker so you can load any entity and validate. ACES operational view =
   **ACES Waste Discrepancy Review**. Both callable side-by-side on dev. Your embed file unchanged.
+
+- **2026-06-23 (e) — BLOCKER for your page (dev): `PORT` is never populated.** On dev, the
+  reporting_entity picker loads correctly and hands the embed `?entity=<slug>`, but every entity shows
+  **"Client not found — … isn't in the current roster."** Root cause: `L2()` gates on
+  `_portOf(route.client)` (embed line ~757), which searches `PORT` — and `PORT` is `const PORT=[]`
+  (line 137) that nothing ever fills. `getClients()` fetches `/api/climate/roster` live but the result
+  is never written into `PORT`/`_ENTITY_OF`, so `_portOf` always returns null and the page short-circuits
+  before any data fetch (hence no network activity / Reload does nothing). **Fix (yours):** populate
+  `PORT` + `_ENTITY_OF` from `getClients()` — and do it on the **post-auth render path**, not at parse
+  (the bearer token arrives via the `aces:auth` postMessage *after* the document parses; our wrapper
+  re-calls `render()` once it lands). This is the "P1 wiring" fast-follow in §6 — but it's a hard
+  dependency for the `?entity=` deep-link, not optional. Our side (token handshake + host + roster) is
+  verified working.
+
+- **2026-06-23 (f) — We wired `PORT` ourselves (in our hosted copy, not your vendor file).** Rather
+  than wait on the P1 fast-follow, `scripts/build-disc-engine.mjs` now injects a small function
+  `_acesSeedPortFromRoster()` and calls it from the `aces:auth` handler (right after the token/host
+  land, before `render()`). It calls your existing `getClients()` (live `/api/climate/roster`) and
+  fills `PORT` + `_ENTITY_OF` with one entry per `reporting_entity`
+  (`{id:slug, client:business_name, entity:slug, sites:member_count, utils:{electricity,gas,waste:{state:'none',exp_a:0,exp_y:0}}}`),
+  so `_portOf()` resolves and `L2()` renders the live manifest instead of "Client not found".
+  **Per-utility *states* are left as `'none'`** — your `_p1Util()` already derives "comparison-basis"
+  from the manifest, and real analysed/exposure figures remain yours to populate. **Your `vendor/`
+  file is unchanged** — this is purely our build-time patch. **When you wire `PORT` natively** (your
+  P1 fast-follow), tell us and we'll drop our injection so it doesn't double-seed. Transform name in
+  the build report: `ACES:port-seed-fn`.

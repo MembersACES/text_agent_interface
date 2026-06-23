@@ -40,6 +40,7 @@ export default function DiscEnginePage() {
   const [entity, setEntity] = useState(searchParams.get("entity") ?? "");
   const [roster, setRoster] = useState<EntityOption[]>([]);
   const [rosterMsg, setRosterMsg] = useState<string | null>(null);
+  const [frameLoaded, setFrameLoaded] = useState(false);
 
   useEffect(() => {
     tokenRef.current = token;
@@ -70,6 +71,11 @@ export default function DiscEnginePage() {
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
   }, [postAuth]);
+
+  // (Re)send auth once the frame is ready and a token exists — handles either ordering.
+  useEffect(() => {
+    if (frameLoaded && token) postAuth();
+  }, [frameLoaded, token, postAuth]);
 
   // Load the reporting_entity roster for the picker.
   useEffect(() => {
@@ -157,7 +163,7 @@ export default function DiscEnginePage() {
           ref={iframeRef}
           src={src}
           title="Reporting Entity Assurance — Marcus Engine"
-          onLoad={() => postAuth()}
+          onLoad={() => { setFrameLoaded(true); postAuth(); }}
           className="h-full w-full border-0"
         />
       </div>
