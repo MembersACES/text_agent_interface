@@ -1911,11 +1911,14 @@ export default function Base2Page() {
                 if (util.utilityType === 'C&I Electricity') {
                   const touBody: Record<string, number> = {};
                   const setRate = (k: string, v: unknown) => { const n = normalizeMoneyToNumber(v); if (n != null) touBody[k] = n; };
+                  // Only record shoulder when the site actually HAS a shoulder period; otherwise the
+                  // comparison fills new_shoulder with a junk default (= peak), which is misleading.
+                  const hasShoulder = util.currentShoulderRate != null && util.currentShoulderRate > 0;
                   setRate('current_peak_rate', util.currentPeakRate ?? (result as Record<string, unknown>).peak_rate_invoice);
-                  setRate('current_shoulder_rate', util.currentShoulderRate);
+                  if (hasShoulder) setRate('current_shoulder_rate', util.currentShoulderRate);
                   setRate('current_offpeak_rate', util.currentOffPeakRate ?? (result as Record<string, unknown>).off_peak_rate_invoice);
                   setRate('new_peak_rate', util.comparisonPeakRate ?? (result as Record<string, unknown>).offer1PeakRate);
-                  setRate('new_shoulder_rate', util.comparisonShoulderRate);
+                  if (hasShoulder) setRate('new_shoulder_rate', util.comparisonShoulderRate);
                   setRate('new_offpeak_rate', util.comparisonOffPeakRate ?? (result as Record<string, unknown>).offer1OffPeakRate);
                   if (Object.keys(touBody).length) {
                     try { await fetch(`${baseUrl}/api/offers/${offerIdToUse}`, { method: 'PATCH', headers, body: JSON.stringify(touBody) }); }

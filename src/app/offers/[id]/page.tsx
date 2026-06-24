@@ -927,11 +927,13 @@ export default function OfferDetailPage() {
                           Electricity rates (current → new, c/kWh)
                         </div>
                         {[
-                          { label: "Peak", cur: offer.current_peak_rate, nw: offer.new_peak_rate },
-                          { label: "Shoulder", cur: offer.current_shoulder_rate, nw: offer.new_shoulder_rate },
-                          { label: "Off-peak", cur: offer.current_offpeak_rate, nw: offer.new_offpeak_rate },
+                          { label: "Peak", cur: offer.current_peak_rate, nw: offer.new_peak_rate, onlyIfCur: false },
+                          { label: "Shoulder", cur: offer.current_shoulder_rate, nw: offer.new_shoulder_rate, onlyIfCur: true },
+                          { label: "Off-peak", cur: offer.current_offpeak_rate, nw: offer.new_offpeak_rate, onlyIfCur: false },
                         ].map((r) =>
-                          r.cur != null || r.nw != null ? (
+                          // Shoulder only shows when the site actually has a current shoulder rate —
+                          // no shoulder period => no shoulder row (even if a junk new-shoulder slipped in).
+                          (r.onlyIfCur ? r.cur != null : (r.cur != null || r.nw != null)) ? (
                             <div key={r.label} className="flex justify-between gap-4">
                               <dt className="text-gray-500 dark:text-gray-400">{r.label}</dt>
                               <dd className="text-gray-900 dark:text-gray-100 text-right">
