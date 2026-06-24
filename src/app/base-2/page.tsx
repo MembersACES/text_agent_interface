@@ -1632,6 +1632,18 @@ export default function Base2Page() {
     setRecipientConfirmModal({ open: true, comparison, action, generateAll, contactName, contactEmail });
   };
 
+  // RSL detection: company name or trading name contains 'rsl' (case-insensitive).
+  // Drives the RSL button prominence; the button works regardless of this flag.
+  const isRslMember = `${businessName} ${businessInfo?.name ?? ''} ${businessInfo?.trading_name ?? ''}`
+    .toLowerCase()
+    .includes('rsl');
+
+  // RSL path: run the C&I electricity comparison via the rsl.vic webhook and, on
+  // success, enrol the member in the RSL voice-agent follow-up (no autonomous popup).
+  const handleRslClick = (comparison: UtilityComparison) => {
+    generateComparison(comparison, 'comparison', false, undefined, true);
+  };
+
   const handleGenerateClick = (comparison: UtilityComparison, action: 'comparison' | 'dma' = 'comparison') => {
     if (comparison.utilityType === "SME Gas") {
       const mode = comparison.smeGasComparisonMode ?? "invoice_blocks";
@@ -1673,7 +1685,7 @@ export default function Base2Page() {
     });
   };
 
-  const generateComparison = async (comparison: UtilityComparison, action: 'comparison' | 'dma' = 'comparison', generateAll: boolean = false, webhookRecipient?: { contactName: string; contactEmail: string }) => {
+  const generateComparison = async (comparison: UtilityComparison, action: 'comparison' | 'dma' = 'comparison', generateAll: boolean = false, webhookRecipient?: { contactName: string; contactEmail: string }, isRsl: boolean = false) => {
     if (!token || !session) { alert('Please log in to generate comparisons'); return; }
     const utilitiesToProcess = generateAll ? utilityComparisons.filter((u) => { if (u.utilityType !== comparison.utilityType || u.loading || u.error) return false; if (comparison.utilityType === "SME Gas") { const m = comparison.smeGasComparisonMode ?? "invoice_blocks"; const um = u.smeGasComparisonMode ?? "invoice_blocks"; return m === um; } return true; }) : [comparison];
     if (utilitiesToProcess.length === 0) { alert('No utilities available to generate'); return; }
@@ -1722,7 +1734,9 @@ export default function Base2Page() {
           payload.commission_aud_per_mwh = util.ciElectricityCommissionAudPerMwh!.toFixed(4);
           payload.commission_unit_electricity = "$/MWh";
         } else if (util.utilityType === 'C&I Electricity') {
-          webhookUrl = 'https://membersaces.app.n8n.cloud/webhook/generate-electricity-ci-comparaison-b2';
+          webhookUrl = isRsl
+            ? 'https://membersaces.app.n8n.cloud/webhook/generate-electricity-ci-comparaison-b2-rsl'
+            : 'https://membersaces.app.n8n.cloud/webhook/generate-electricity-ci-comparaison-b2';
           const details = util.invoiceData?.electricity_ci_invoice_details || {}; const fullData = details?.full_invoice_data || {};
           payload.nmi = util.identifier; payload.invoice_id = fullData['Invoice ID'] || details?.invoice_id || ''; payload.site_address = fullData['Site Address'] || details?.site_address || businessInfo?.site_address || ''; payload.retailer = fullData['Retailer'] || details?.retailer || ''; payload.invoice_number = fullData['Invoice Number'] || details?.invoice_number || '';
           // Pass EXACT values to n8n — never round rates/usage (a comparison must use the real numbers).
@@ -1955,17 +1969,59 @@ export default function Base2Page() {
                   );
                   lanePayloads.push({ lane, laneSuccess });
                 }
-                setAutonomousSequenceConfirm({
-                  open: true,
-                  offerIdToUse,
-                  clientIdFromUrl,
-                  hasValidClientId,
-                  anchorIso,
-                  tz,
-                  activityIdByLane,
-                  ctxBase,
-                  lanePayloads,
-                });
+                if (isRsl) {
+                  // RSL path: enrol the member in the voice-agent follow-up sequence
+                  // instead of showing the autonomous popup. Token stays server-side
+                  // in the /api/rsl/base2-followup Next route.
+                  const elec = successResults.find(({ util }) => util.utilityType === 'C&I Electricity');
+                  if (elec) {
+                    const r = elec.result as Record<string, unknown>;
+                    const offer = {
+                      annual_savings: normalizeMoneyToNumber(r.annual_savings),
+                      current_cost: normalizeMoneyToNumber(r.current_cost),
+                      new_cost: normalizeMoneyToNumber(r.new_cost),
+                      current_peak_rate: elec.util.currentPeakRate ?? null,
+                      new_peak_rate: elec.util.comparisonPeakRate ?? null,
+                      current_offpeak_rate: elec.util.currentOffPeakRate ?? null,
+                      new_offpeak_rate: elec.util.comparisonOffPeakRate ?? null,
+                    };
+                    try {
+                      const rslRes = await fetch('/api/rsl/base2-followup', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                        body: JSON.stringify({
+                          company_name: businessName || businessInfo?.name || '',
+                          nmi: elec.util.identifier,
+                          contact_name: webhookRecipient?.contactName ?? businessInfo?.contact_name ?? null,
+                          email: webhookRecipient?.contactEmail ?? businessInfo?.email ?? null,
+                          phone: businessInfo?.telephone ?? null,
+                          sequence_type: 'ci_electricity',
+                          offer,
+                        }),
+                      });
+                      if (!rslRes.ok) {
+                        const t = await rslRes.text();
+                        console.warn('[Base2 RSL] follow-up intake failed', rslRes.status, t);
+                      } else {
+                        console.log('[Base2 RSL] follow-up enrolled', await rslRes.json());
+                      }
+                    } catch (rslErr) {
+                      console.warn('[Base2 RSL] follow-up intake error', rslErr);
+                    }
+                  }
+                } else {
+                  setAutonomousSequenceConfirm({
+                    open: true,
+                    offerIdToUse,
+                    clientIdFromUrl,
+                    hasValidClientId,
+                    anchorIso,
+                    tz,
+                    activityIdByLane,
+                    ctxBase,
+                    lanePayloads,
+                  });
+                }
               }
             }
           } catch (err) { console.warn('Failed to log offer activities:', err); }
@@ -2923,6 +2979,23 @@ export default function Base2Page() {
                             {sending !== null && sending.includes(`${comparison.utilityType}-${comparison.identifier}-comparison`) ? (
                               <><svg className="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>Generating…</>
                             ) : (<>⚡ {offerComparisonButtonLabel(comparison)}</>)}
+                          </button>
+                        )}
+                        {comparison.utilityType === 'C&I Electricity' && (
+                          <button
+                            onClick={() => handleRslClick(comparison)}
+                            disabled={sending !== null && sending.includes(`${comparison.utilityType}-${comparison.identifier}-comparison`)}
+                            title="Run the RSL comparison (emails from rsl.vic) and start the RSL voice-agent follow-up"
+                            className={isRslMember
+                              ? "inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                              : "inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium border transition-all disabled:opacity-50 disabled:cursor-not-allowed"}
+                            style={isRslMember
+                              ? { backgroundColor: '#B91C1C' }
+                              : { borderColor: '#D1D5DB', color: '#6B7280', backgroundColor: 'transparent' }}
+                          >
+                            {sending !== null && sending.includes(`${comparison.utilityType}-${comparison.identifier}-comparison`)
+                              ? (<>Generating…</>)
+                              : (<>🎖️ RSL</>)}
                           </button>
                         )}
                       </div>
