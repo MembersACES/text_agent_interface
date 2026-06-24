@@ -6,6 +6,13 @@ import { useSession } from "next-auth/react";
 import { getApiBaseUrl, getAutonomousApiBaseUrl } from "@/lib/utils";
 import { ToolPageLayout } from "@/components/Layouts/ToolPageLayout";
 import { Button } from "@/components/ui/button";
+import { Base2ComparisonDefaultsEditor } from "@/components/base2/Base2ComparisonDefaultsEditor";
+import {
+  Base2Defaults,
+  DEFAULT_BASE2_DEFAULTS,
+  mergeBase2Defaults,
+  ciGasBenchmarkForAnnualGJ,
+} from "@/lib/base2-defaults";
 
 /** SME Gas → C&I comparison: how current SME bill is interpreted in the UI */
 type SmeGasComparisonMode = "invoice_blocks" | "ci_offer" | "sme_benchmark_stub";
@@ -68,6 +75,7 @@ interface UtilityComparison {
   monthlyUsage?: number;
   peakUsage?: number;
   offPeakUsage?: number;
+  shoulderUsage?: number;
   gasUsage?: number;
   oilUsage?: number;
   wasteUsage?: number;
@@ -152,7 +160,7 @@ interface UtilityComparison {
  * Default SME→C&I gas energy share (energy ÷ invoice) when the API has no usable samples.
  * Keep aligned with backend `AIRTABLE_CI_GAS_REF_DEFAULT_ENERGY_SHARE` (airtable_client.py).
  */
-const DEFAULT_SME_CI_ENERGY_SHARE = 0.75;
+let DEFAULT_SME_CI_ENERGY_SHARE = 0.75;
 
 // ─── Visual helpers ────────────────────────────────────────────────────────────
 
@@ -292,6 +300,11 @@ function ciGasBillPeriodUsageFromAnnual(
 ): number | undefined {
   if (annualGJ == null || annualGJ <= 0 || invoiceDays == null || invoiceDays <= 0) return undefined;
   return (annualGJ / 365) * invoiceDays;
+}
+
+function oilAnnualMultiplier(freq: string | undefined): number {
+  // Annualise an oil billing period: weekly x52 (default), fortnightly x26, monthly x12.
+  return freq === 'monthly' ? 12 : freq === 'fortnightly' ? 26 : 52;
 }
 
 function getCiGasEffectiveUsageGJ(comparison: UtilityComparison): number {
@@ -464,9 +477,18 @@ function formatAud(value: number | undefined, empty = "—"): string {
 }
 
 const AU_GST_DIVISOR = 1.1;
-const DEFAULT_CI_GAS_COMPARISON_RATE_PER_GJ = 17.8;
-const DEFAULT_CI_GAS_COMMISSION_AUD_PER_GJ = 3.00;
-const DEFAULT_OIL_COMPARISON_RATE_PER_L = 3;
+let DEFAULT_CI_GAS_COMPARISON_RATE_PER_GJ = 17.8;
+let DEFAULT_CI_GAS_COMMISSION_AUD_PER_GJ = 3.00;
+let DEFAULT_OIL_COMPARISON_RATE_PER_L = 3;
+
+let activeBase2Defaults: Base2Defaults = DEFAULT_BASE2_DEFAULTS;
+function applyBase2Defaults(d: Base2Defaults) {
+  activeBase2Defaults = d;
+  DEFAULT_SME_CI_ENERGY_SHARE = d.gas.smeEnergyShare;
+  DEFAULT_CI_GAS_COMPARISON_RATE_PER_GJ = d.gas.ciComparisonPerGj;
+  DEFAULT_CI_GAS_COMMISSION_AUD_PER_GJ = d.gas.commissionPerGj;
+  DEFAULT_OIL_COMPARISON_RATE_PER_L = d.oil.comparisonPerL;
+}
 /** Keep in sync with backend `AIRTABLE_SME_GAS_NEAR_SCREEN_GJ` (default 850). */
 const SME_GAS_NEAR_BAND_LOW_GJ = 850;
 const SME_GAS_GAP_DAYS_BADGE_MIN = 30;
@@ -600,7 +622,8 @@ function buildComparisonSnapshot(
   }
   const peakU = util.peakUsage != null ? Number(util.peakUsage) : 0;
   const offU = util.offPeakUsage != null ? Number(util.offPeakUsage) : 0;
-  const periodKwh = peakU + offU;
+  const shoulderU = util.shoulderUsage != null ? Number(util.shoulderUsage) : 0;
+  const periodKwh = peakU + offU + shoulderU;
   return {
     lane,
     ...fin,
@@ -1064,6 +1087,19 @@ export default function Base2Page() {
     setLoadedUtilityTypes([]);
   }, [businessName, urlBusinessInfo]);
 
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/base2-comparison-defaults', { credentials: 'include' });
+        if (!res.ok) return;
+        const data = await res.json().catch(() => null);
+        if (!cancelled && data?.defaults) applyBase2Defaults(mergeBase2Defaults(data.defaults));
+      } catch { /* keep in-code defaults */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   const extractCurrentRates = (invoiceData: any, utilityType: string): Partial<UtilityComparison> => {
     const rates: Partial<UtilityComparison> = {};
 
@@ -1077,6 +1113,7 @@ export default function Base2Page() {
       rates.monthlyUsage = parseFloat(details?.monthly_usage || fullData['Monthly Consumption'] || '0');
       rates.peakUsage = parseFloat(fullData['Retail Quantity Peak (kWh)'] || details?.peak_usage || '0') || undefined;
       rates.offPeakUsage = parseFloat(fullData['Retail Quantity Off-Peak (kWh)'] || details?.offpeak_usage || '0') || undefined;
+      rates.shoulderUsage = parseFloat(fullData['Retail Quantity Shoulder (kWh)'] || details?.shoulder_usage || '0') || undefined;
       rates.demandQuantity = parseFloat(fullData['DUOS - Network Demand Charge Quantity (KVA)'] || details?.demand_quantity || '0') || undefined;
       const meterRate = parseFloat(fullData['Meter Rate'] || '0');
       const vasRate = parseFloat(fullData['Value Added Service rater in $/Meter/Day'] || '0');
@@ -1093,25 +1130,38 @@ export default function Base2Page() {
       rates.currentDemandCharge = parseFloat(String(demandRateStr)) || undefined;
       console.log('Demand charge extraction:', { utilityType, demandRateStr, parsed: rates.currentDemandCharge, fullDataKey: fullData['DUOS - Network Demand Charge Rate ($/KVA)'], demandQuantity: rates.demandQuantity });
       if (utilityType === 'C&I Electricity') {
-        rates.comparisonPeakRate = 0;
-        rates.comparisonOffPeakRate = 0;
-        rates.comparisonShoulderRate = 0;
-        rates.comparisonMeterAnnual = 600;
-        rates.comparisonVasAnnual = 300;
-        rates.comparisonMeteringAnnual = 900;
-        rates.comparisonMeteringDaily = parseFloat((900 / 365).toFixed(4));
-        rates.comparisonMeterDaily = parseFloat((600 / 365).toFixed(4));
-        rates.comparisonVasDaily = parseFloat((300 / 365).toFixed(4));
-        rates.comparisonDailySupply = 0;
-        rates.comparisonDemandCharge = 0;
+        const ci = activeBase2Defaults.electricity.ci;
+        const ciMeteringAnnual = ci.meterAnnual + ci.vasAnnual;
+        const stateRaw = String(fullData['State'] || details?.state || '').trim().toUpperCase();
+        const isNsw = stateRaw === 'NSW' || stateRaw === 'NEW SOUTH WALES';
+        rates.comparisonPeakRate = isNsw ? ci.nsw.peak : ci.other.peak;
+        rates.comparisonOffPeakRate = isNsw ? ci.nsw.offPeak : ci.other.offPeak;
+        if (isNsw) {
+          rates.comparisonShoulderRate = ci.nsw.shoulder;
+        } else {
+          const cs = rates.currentShoulderRate;
+          const co = rates.currentOffPeakRate;
+          const sameAsOffPeak = cs != null && co != null && Math.abs(cs - co) <= ci.other.shoulderSameAsOffPeakTolerance;
+          rates.comparisonShoulderRate = sameAsOffPeak ? ci.other.shoulderWhenSameAsOffPeak : ci.other.shoulderDefault;
+        }
+        rates.comparisonMeterAnnual = ci.meterAnnual;
+        rates.comparisonVasAnnual = ci.vasAnnual;
+        rates.comparisonMeteringAnnual = ciMeteringAnnual;
+        rates.comparisonMeteringDaily = parseFloat((ciMeteringAnnual / 365).toFixed(4));
+        rates.comparisonMeterDaily = parseFloat((ci.meterAnnual / 365).toFixed(4));
+        rates.comparisonVasDaily = parseFloat((ci.vasAnnual / 365).toFixed(4));
+        rates.comparisonDailySupply = ci.dailySupply;
+        rates.comparisonDemandCharge = ci.demandCharge;
       } else {
-        rates.comparisonPeakRate = (rates.currentPeakRate && rates.currentPeakRate > 0) ? parseFloat((rates.currentPeakRate * 0.95).toFixed(2)) : 24.50;
-        rates.comparisonOffPeakRate = (rates.currentOffPeakRate && rates.currentOffPeakRate > 0) ? parseFloat((rates.currentOffPeakRate * 0.95).toFixed(2)) : 18.00;
-        rates.comparisonShoulderRate = (rates.currentShoulderRate && rates.currentShoulderRate > 0) ? parseFloat((rates.currentShoulderRate * 0.95).toFixed(2)) : 20.00;
-        rates.comparisonMeteringAnnual = 700.00;
-        rates.comparisonMeteringDaily = parseFloat((700.00 / 365).toFixed(2));
-        rates.comparisonDailySupply = rates.currentDailySupply > 0 ? parseFloat((rates.currentDailySupply * 0.95).toFixed(2)) : 1.50;
-        rates.comparisonDemandCharge = (rates.currentDemandCharge && rates.currentDemandCharge > 0) ? parseFloat((rates.currentDemandCharge * 0.95).toFixed(2)) : 12.00;
+        const sme = activeBase2Defaults.electricity.sme;
+        const f = sme.discountFactor;
+        rates.comparisonPeakRate = (rates.currentPeakRate && rates.currentPeakRate > 0) ? parseFloat((rates.currentPeakRate * f).toFixed(2)) : sme.peakRateDefault;
+        rates.comparisonOffPeakRate = (rates.currentOffPeakRate && rates.currentOffPeakRate > 0) ? parseFloat((rates.currentOffPeakRate * f).toFixed(2)) : sme.offPeakRateDefault;
+        rates.comparisonShoulderRate = (rates.currentShoulderRate && rates.currentShoulderRate > 0) ? parseFloat((rates.currentShoulderRate * f).toFixed(2)) : sme.shoulderRateDefault;
+        rates.comparisonMeteringAnnual = sme.meteringAnnual;
+        rates.comparisonMeteringDaily = parseFloat((sme.meteringAnnual / 365).toFixed(2));
+        rates.comparisonDailySupply = rates.currentDailySupply > 0 ? parseFloat((rates.currentDailySupply * f).toFixed(2)) : sme.dailySupplyDefault;
+        rates.comparisonDemandCharge = (rates.currentDemandCharge && rates.currentDemandCharge > 0) ? parseFloat((rates.currentDemandCharge * f).toFixed(2)) : sme.demandChargeDefault;
       }
     } else if (utilityType.includes('Gas')) {
       if (utilityType === "C&I Gas") {
@@ -1157,8 +1207,8 @@ export default function Base2Page() {
         const siteAddr = typeof smeDetails.site_address === "string" ? smeDetails.site_address : "";
         const pc = extractAustralianPostcode(siteAddr);
         if (pc) rates.smeGasPostcode = pc;
-        rates.comparisonGasRate = rates.currentGasRate && rates.currentGasRate > 0 ? parseFloat((rates.currentGasRate * 0.95).toFixed(4)) : DEFAULT_CI_GAS_COMPARISON_RATE_PER_GJ;
-        rates.comparisonDailySupply = rates.currentDailySupply && rates.currentDailySupply > 0 ? parseFloat((rates.currentDailySupply * 0.95).toFixed(2)) : 1.20;
+        rates.comparisonGasRate = rates.currentGasRate && rates.currentGasRate > 0 ? parseFloat((rates.currentGasRate * activeBase2Defaults.gas.discountFactor).toFixed(4)) : DEFAULT_CI_GAS_COMPARISON_RATE_PER_GJ;
+        rates.comparisonDailySupply = rates.currentDailySupply && rates.currentDailySupply > 0 ? parseFloat((rates.currentDailySupply * activeBase2Defaults.gas.discountFactor).toFixed(2)) : activeBase2Defaults.gas.dailySupplyDefault;
         console.log('SME Gas extraction result:', { generalUsageMJ, gasQuantityGJ, avgRateCperMJ, gasRate, dailySupply, supplyRate, supplyDays, currentGasRate: rates.currentGasRate, currentDailySupply: rates.currentDailySupply });
       } else {
         console.log('Gas extraction - Full invoiceData keys:', Object.keys(invoiceData || {}));
@@ -1207,8 +1257,11 @@ export default function Base2Page() {
         rates.gasUsage = gasQuantity > 0 ? gasQuantity : undefined;
         const dailySupply = parseFloat(fullData['Daily Supply Charge'] || '0') || parseFloat(details?.daily_supply || '0') || 0;
         rates.currentDailySupply = dailySupply > 0 ? dailySupply : undefined;
-        rates.comparisonGasRate = DEFAULT_CI_GAS_COMPARISON_RATE_PER_GJ;
-        rates.comparisonDailySupply = rates.currentDailySupply && rates.currentDailySupply > 0 ? parseFloat((rates.currentDailySupply * 0.95).toFixed(2)) : 1.20;
+        const _ciGasDaysRaw = fullData["Invoice Review Number of Days"] ?? details.invoice_review_days ?? fullData["invoice_review_days"] ?? details.invoice_period_days;
+        const _ciGasDays = parseFloat(String(_ciGasDaysRaw ?? "").replace(/[^\d.]/g, "") || "");
+        const _ciGasAnnualGJ = (gasQuantity > 0 && Number.isFinite(_ciGasDays) && _ciGasDays > 0) ? (gasQuantity / _ciGasDays) * 365 : undefined;
+        rates.comparisonGasRate = ciGasBenchmarkForAnnualGJ(_ciGasAnnualGJ, activeBase2Defaults.gas.tiers);
+        rates.comparisonDailySupply = rates.currentDailySupply && rates.currentDailySupply > 0 ? parseFloat((rates.currentDailySupply * activeBase2Defaults.gas.discountFactor).toFixed(2)) : activeBase2Defaults.gas.dailySupplyDefault;
         const daysRaw = fullData["Invoice Review Number of Days"] ?? details.invoice_review_days ?? fullData["invoice_review_days"] ?? details.invoice_period_days;
         const ciInvoiceDays = parseFloat(String(daysRaw ?? "").replace(/[^\d.]/g, "") || "");
         if (Number.isFinite(ciInvoiceDays) && ciInvoiceDays > 0) rates.ciGasInvoiceReviewDays = ciInvoiceDays;
@@ -1237,6 +1290,7 @@ export default function Base2Page() {
       rates.oilUsage = totalQuantity > 0 ? parseFloat(totalQuantity.toFixed(2)) : undefined;
       rates.monthlyUsage = rates.oilUsage;
       rates.comparisonOilRate = DEFAULT_OIL_COMPARISON_RATE_PER_L;
+      rates.oilFrequency = rates.oilFrequency || 'weekly';
     } else if (utilityType === 'Waste') {
       const details = invoiceData?.waste_invoice_details || invoiceData || {};
       const fullData = details?.full_invoice_data || details || {};
@@ -1427,10 +1481,18 @@ export default function Base2Page() {
           const gj = parsedValue != null && parsedValue > 0 ? parsedValue : undefined;
           return withSmeGasCiDerivedRates({ ...u, gasUsage: gj, monthlyUsage: gj, smeGasInvoicePeriodGJ: gj });
         }
+        if (utilityType === "C&I Gas" && field === "ciGasAnnualConsumptionGJ") {
+          const annual = parsedValue != null && parsedValue > 0 ? parsedValue : undefined;
+          return { ...u, ciGasAnnualConsumptionGJ: annual, comparisonGasRate: ciGasBenchmarkForAnnualGJ(annual, activeBase2Defaults.gas.tiers) };
+        }
         return { ...u, [field]: parsedValue };
       }
       return u;
     }));
+  };
+
+  const setOilFrequencyFor = (identifier: string, freq: string) => {
+    setUtilityComparisons(prev => prev.map(u => (u.utilityType === 'Oil' && u.identifier === identifier) ? { ...u, oilFrequency: freq } : u));
   };
 
   const setSmeGasComparisonModeFor = (identifier: string, mode: SmeGasComparisonMode) => {
@@ -1483,7 +1545,9 @@ export default function Base2Page() {
       const peakUsage = comparison.peakUsage || (comparison.monthlyUsage ? comparison.monthlyUsage * 0.4 : 0);
       const offPeakUsage = comparison.offPeakUsage || (comparison.monthlyUsage ? comparison.monthlyUsage * 0.3 : 0);
       const totalUsage = peakUsage + offPeakUsage;
-      const shoulderUsage = comparison.monthlyUsage && totalUsage < comparison.monthlyUsage ? (comparison.monthlyUsage - totalUsage) : (comparison.monthlyUsage ? comparison.monthlyUsage * 0.3 : 0);
+      const shoulderUsage = (comparison.shoulderUsage && comparison.shoulderUsage > 0)
+        ? comparison.shoulderUsage
+        : (comparison.monthlyUsage && totalUsage < comparison.monthlyUsage ? (comparison.monthlyUsage - totalUsage) : (comparison.monthlyUsage ? comparison.monthlyUsage * 0.3 : 0));
       const currentPeak = comparison.currentPeakRate || 0; const currentOffPeak = comparison.currentOffPeakRate || 0; const currentShoulder = comparison.currentShoulderRate || 0;
       const compPeak = comparison.comparisonPeakRate || 0; const compOffPeak = comparison.comparisonOffPeakRate || 0; const compShoulder = comparison.comparisonShoulderRate || 0;
       if (currentPeak > 0 && compPeak > 0 && peakUsage > 0) { const c = (peakUsage * currentPeak / 100); const cp = (peakUsage * compPeak / 100); savings.peakSavings = c - cp; savings.peakSavingsPercent = c > 0 ? ((savings.peakSavings / c) * 100) : 0; savings.peakAnnualSavings = savings.peakSavings * 12; }
@@ -1552,7 +1616,7 @@ export default function Base2Page() {
       }
     } else if (comparison.utilityType === 'Oil') {
       const currentRate = comparison.currentOilRate || 0; const compRate = comparison.comparisonOilRate || 0; const usage = comparison.oilUsage || comparison.monthlyUsage || 0;
-      if (currentRate > 0 && compRate > 0 && usage > 0) { const c = usage * currentRate; const cp = usage * compRate; savings.usageSavings = c - cp; savings.usageSavingsPercent = c > 0 ? ((savings.usageSavings / c) * 100) : 0; savings.totalAnnualSavings = savings.usageSavings * 12; savings.totalAnnualSavingsPercent = savings.usageSavingsPercent; }
+      if (currentRate > 0 && compRate > 0 && usage > 0) { const c = usage * currentRate; const cp = usage * compRate; savings.usageSavings = c - cp; savings.usageSavingsPercent = c > 0 ? ((savings.usageSavings / c) * 100) : 0; savings.totalAnnualSavings = savings.usageSavings * oilAnnualMultiplier(comparison.oilFrequency); savings.totalAnnualSavingsPercent = savings.usageSavingsPercent; }
     } else if (comparison.utilityType === 'Waste') {
       const currentRate = comparison.currentWasteRate || 0; const compRate = comparison.comparisonWasteRate || 0; const frequency = comparison.wasteUsage || comparison.monthlyUsage || 0;
       if (currentRate > 0 && compRate > 0 && frequency > 0) { const c = frequency * currentRate; const cp = frequency * compRate; savings.usageSavings = c - cp; savings.usageSavingsPercent = c > 0 ? ((savings.usageSavings / c) * 100) : 0; savings.totalAnnualSavings = savings.usageSavings * 12; savings.totalAnnualSavingsPercent = savings.usageSavingsPercent; }
@@ -1662,7 +1726,7 @@ export default function Base2Page() {
           const details = util.invoiceData?.electricity_ci_invoice_details || {}; const fullData = details?.full_invoice_data || {};
           payload.nmi = util.identifier; payload.invoice_id = fullData['Invoice ID'] || details?.invoice_id || ''; payload.site_address = fullData['Site Address'] || details?.site_address || businessInfo?.site_address || ''; payload.retailer = fullData['Retailer'] || details?.retailer || ''; payload.invoice_number = fullData['Invoice Number'] || details?.invoice_number || '';
           payload.peak_rate_invoice = util.currentPeakRate?.toFixed(2) || '0'; payload.off_peak_rate_invoice = util.currentOffPeakRate?.toFixed(2) || '0'; payload.shoulder_rate_invoice = util.currentShoulderRate?.toFixed(2) || '0';
-          payload.peak_usage_invoice = util.peakUsage?.toFixed(0) || '0'; payload.off_peak_usage_invoice = util.offPeakUsage?.toFixed(0) || '0'; payload.shoulder_usage_invoice = '0'; payload.total_monthly_usage = util.monthlyUsage?.toFixed(0) || '0';
+          payload.peak_usage_invoice = util.peakUsage?.toFixed(0) || '0'; payload.off_peak_usage_invoice = util.offPeakUsage?.toFixed(0) || '0'; payload.shoulder_usage_invoice = util.shoulderUsage?.toFixed(0) || '0'; payload.total_monthly_usage = util.monthlyUsage?.toFixed(0) || '0';
           payload.offer1PeakRate = util.comparisonPeakRate?.toFixed(2) || '0'; payload.offer1OffPeakRate = util.comparisonOffPeakRate?.toFixed(2) || '0'; payload.offer1ShoulderRate = util.comparisonShoulderRate?.toFixed(2) || '0'; payload.offer1Retailer = 'Comparison Offer'; payload.offer1Validity = '12 months'; payload.offer1Type = 'smoothed'; payload.offer1PeriodYears = '1'; payload.offer1StartDate = new Date().toISOString().split('T')[0];
           payload.current_daily_supply = util.currentDailySupply?.toFixed(2) || '0'; payload.comparison_daily_supply = util.comparisonDailySupply?.toFixed(2) || '0'; payload.current_demand_charge = util.currentDemandCharge?.toFixed(2) || '0'; payload.comparison_demand_charge = util.comparisonDemandCharge?.toFixed(2) || '0'; payload.demand_quantity = util.demandQuantity?.toFixed(2) || '0';
           payload.commission_aud_per_mwh = util.ciElectricityCommissionAudPerMwh!.toFixed(4);
@@ -1737,6 +1801,8 @@ export default function Base2Page() {
           payload.oil_usage_invoice = oilUsageStr;
           payload.total_monthly_usage = oilUsageStr;
           payload.offer1OilRate = util.comparisonOilRate?.toFixed(4) || "0";
+          payload.billing_frequency = util.oilFrequency || "weekly";
+          payload.annual_multiplier = String(oilAnnualMultiplier(util.oilFrequency));
           payload.offer1Retailer = "Comparison Offer";
           payload.offer1Validity = "12 months";
           payload.offer1Type = "smoothed";
@@ -1991,7 +2057,7 @@ export default function Base2Page() {
           <tr key="shoulder" className="hover:bg-gray-50/50">
             <td className={labelTd}>Shoulder Rate <span className="text-gray-400">(c/kWh)</span></td>
             <td className={tdBase}><input type="number" step="0.01" value={comparison.currentShoulderRate || ''} onChange={(e) => updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentShoulderRate', e.target.value)} className={inputCls} /></td>
-            <td className={`${tdBase} text-center text-gray-300 text-xs`}>—</td>
+            <td className={tdBase}><input type="number" step="0.01" value={comparison.shoulderUsage || ''} onChange={(e) => updateUsage(comparison.utilityType, comparison.identifier, 'shoulderUsage', e.target.value)} className={inputCls} placeholder="kWh" /></td>
             <td className={tdBase}><input type="number" step="0.01" value={comparison.comparisonShoulderRate || ''} onChange={(e) => updateComparisonRate(comparison.utilityType, comparison.identifier, 'comparisonShoulderRate', e.target.value)} className={inputCls} placeholder="20.00" /></td>
             <td className={`${tdBase} text-center text-gray-300 text-xs`}>—</td>
             <td className={`${tdBase} text-center text-gray-300 text-xs`}>—</td>
@@ -2195,8 +2261,24 @@ export default function Base2Page() {
           <td className={tdBase}><input type="number" step="0.0001" value={comparison.currentOilRate || ''} onChange={(e) => updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentOilRate', e.target.value)} className={inputCls} placeholder="$/L" /></td>
           <td className={tdBase}><input type="number" step="0.01" value={comparison.oilUsage || ''} onChange={(e) => updateUsage(comparison.utilityType, comparison.identifier, 'oilUsage', e.target.value)} className={inputCls} placeholder="Litres" /></td>
           <td className={tdBase}><input type="number" step="0.01" value={comparison.comparisonOilRate || ''} onChange={(e) => updateComparisonRate(comparison.utilityType, comparison.identifier, 'comparisonOilRate', e.target.value)} className={inputCls} placeholder="$/L" /></td>
-          <td className={`${tdBase} text-right`}>{savingsPill(savings?.usageSavings != null ? savings.usageSavings * 12 : undefined)}{savings?.usageSavings != null && <div className="text-[10px] text-gray-400 text-right mt-0.5">/yr</div>}</td>
+          <td className={`${tdBase} text-right`}>{savingsPill(savings?.usageSavings != null ? savings.usageSavings * oilAnnualMultiplier(comparison.oilFrequency) : undefined)}{savings?.usageSavings != null && <div className="text-[10px] text-gray-400 text-right mt-0.5">/yr</div>}</td>
           <td className={`${tdBase} text-right`}>{savingsPct(savings?.usageSavingsPercent)}</td>
+        </tr>
+      );
+      rows.push(
+        <tr key="oil-frequency" className="hover:bg-gray-50/50">
+          <td className={`${labelTd} font-semibold`}>Billing Frequency</td>
+          <td className={tdBase}>
+            <select value={comparison.oilFrequency || 'weekly'} onChange={(e) => setOilFrequencyFor(comparison.identifier, e.target.value)} className={inputCls}>
+              <option value="weekly">Weekly</option>
+              <option value="fortnightly">Fortnightly</option>
+              <option value="monthly">Monthly</option>
+            </select>
+          </td>
+          <td className={`${tdBase} text-center text-gray-400 text-[10px]`}>annualised &times;{oilAnnualMultiplier(comparison.oilFrequency)}</td>
+          <td className={`${tdBase} text-center text-gray-300 text-xs`}>&mdash;</td>
+          <td className={`${tdBase} text-center text-gray-300 text-xs`}>&mdash;</td>
+          <td className={`${tdBase} text-center text-gray-300 text-xs`}>&mdash;</td>
         </tr>
       );
     }
@@ -2316,6 +2398,16 @@ export default function Base2Page() {
       title="Base 2 Review — quick rate comparison"
       width="2xl"
     >
+        {/* Editable comparison/offer rates - collapsed by default */}
+        <details className="mb-5 rounded-xl border border-gray-200 bg-white shadow-sm dark:border-dark-3 dark:bg-gray-dark">
+          <summary className="cursor-pointer select-none px-5 py-3 text-sm font-semibold text-gray-700 dark:text-gray-200">
+            Comparison rates - what every Base 2 review benchmarks against (click to view / edit)
+          </summary>
+          <div className="px-5 pb-5">
+            <Base2ComparisonDefaultsEditor onSaved={applyBase2Defaults} />
+          </div>
+        </details>
+
         {/* Business Information Card */}
         {businessInfo && (
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm mb-5 overflow-hidden">
