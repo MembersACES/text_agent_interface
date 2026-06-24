@@ -23,6 +23,8 @@ const ROUTE_TITLES: Record<string, string> = {
   "/resources/testimonial-content": "Testimonial content",
   "/resources/contract-ending": "Contract Ending / Expiring",
   "/resources/discrepancy-check": "Discrepancy Check",
+  "/resources/disc-engine": "Reporting Entity Assurance — Marcus Engine",
+  "/resources/utility-discrepancy": "ACES Waste Discrepancy Review",
   "/workflows": "Workflows",
   "/design-system": "Design System",
   "/crm": "CRM Dashboard",

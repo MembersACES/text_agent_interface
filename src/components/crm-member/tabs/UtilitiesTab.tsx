@@ -843,6 +843,26 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility }: U
                           >
                             Account Info
                           </Button>
+                          {row.config.key === "Waste" && (
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              radius="md"
+                              onClick={() =>
+                                window.open(
+                                  `/resources/utility-discrepancy?utility_type=${encodeURIComponent(
+                                    row.config.key,
+                                  )}&identifier=${encodeURIComponent(
+                                    identifier,
+                                  )}&business_name=${encodeURIComponent(businessName)}`,
+                                  "_blank",
+                                )
+                              }
+                            >
+                              Waste Discrepancy Review
+                            </Button>
+                          )}
                           {row.config.tool !== "robot" && row.config.tool !== "cleaning" && (
                             <Button
                               type="button"

@@ -82,6 +82,15 @@ export const JOB_GROUPS: NavGroupItem[] = [
       { title: "Videos", url: "/videos" },
     ],
   },
+  {
+    title: "Discrepancy",
+    icon: AlertTriangle,
+    items: [
+      { title: "Discrepancy Check", url: "/resources/discrepancy-check" },
+      { title: "ACES Waste Discrepancy Review", url: "/resources/utility-discrepancy" },
+      { title: "Reporting Entity Assurance — Marcus Engine", url: "/resources/disc-engine" },
+    ],
+  },
 ];
 
 export const NAV_DATA: NavSection[] = [
@@ -102,7 +111,6 @@ export const NAV_DATA: NavSection[] = [
       { title: "Dashboard Tips", url: "/resources/dashboard-tips", icon: Lightbulb },
       { title: "Testimonial content", url: "/resources/testimonial-content", icon: FileText },
       { title: "Contract Ending / Expiring", url: "/resources/contract-ending", icon: CalendarClock },
-      { title: "Discrepancy Check", url: "/resources/discrepancy-check", icon: AlertTriangle },
       { title: "Design System", url: "/design-system", icon: LayoutGrid },
     ],
   },

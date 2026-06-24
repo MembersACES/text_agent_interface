@@ -10,12 +10,15 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { GroupBadge } from "@/components/crm-groups/GroupBadge";
 import { GroupSummaryBar } from "@/components/crm-groups/GroupSummaryBar";
+import {
+  ClimateDisclosureChip,
+  ClimateDisclosureModal,
+} from "@/components/crm-groups/ClimateDisclosurePanel";
 import { GroupSiteDetail } from "@/components/crm-groups/GroupSiteDetail";
 import { useGroupBusinessInfoCache } from "@/components/crm-groups/useGroupBusinessInfoCache";
 import { StageBadge } from "@/components/crm-member/shared/StageBadge";
 import type { Client } from "@/components/crm-member/types";
 import {
-  progradeWorkspaceUrl,
   type EntityGroupListItem,
   type EntityGroupSummary,
 } from "@/lib/entity-groups";
@@ -24,7 +27,7 @@ import { useToast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { AddSiteToGroupModal } from "@/components/crm-groups/AddSiteToGroupModal";
-import { AlertTriangle, ExternalLink, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import type { EntityGroupDeleteResult } from "@/lib/entity-groups";
 import { getTradingName } from "@/lib/business-info-fields";
 
@@ -52,6 +55,7 @@ export default function CrmGroupHubPage() {
   const [addSiteOpen, setAddSiteOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [climateOpen, setClimateOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [allGroups, setAllGroups] = useState<EntityGroupListItem[]>([]);
   const [savingMembershipClientId, setSavingMembershipClientId] = useState<number | null>(null);
@@ -163,6 +167,8 @@ export default function CrmGroupHubPage() {
     summary && climateRollupSlug
       ? Math.max(0, summary.member_count - (summary.members_in_climate_rollup ?? 0))
       : 0;
+  const climateHasWarning =
+    !!summary && (!summary.reporting_entity.aligned || membersNotInRollup > 0);
 
   const saveGroupReportingEntity = useCallback(async () => {
     if (!token || !slug) return;
@@ -492,84 +498,16 @@ export default function CrmGroupHubPage() {
         totalOffers={summary.total_offers}
         signedCount={signedCount}
         stageCount={stageCount}
-      />
-
-      <div className="mb-4 rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-dark">
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
-          Climate disclosure (group)
-        </p>
-        <div className="flex flex-wrap items-end gap-3">
-          <Input
-            label="Reporting entity slug"
-            value={reportingEntityDraft}
-            onChange={(e) => setReportingEntityDraft(e.target.value)}
-            placeholder="e.g. frankston-rsl"
-            className="font-mono text-sm"
-            wrapperClassName="min-w-[14rem] flex-1"
+        trailing={
+          <ClimateDisclosureChip
+            slug={climateRollupSlug}
+            hasWarning={climateHasWarning}
+            membersInRollup={summary.members_in_climate_rollup}
+            memberCount={summary.member_count}
+            onOpen={() => setClimateOpen(true)}
           />
-          <Button
-            type="button"
-            size="sm"
-            loading={savingReportingEntity}
-            disabled={savingReportingEntity}
-            onClick={() => void saveGroupReportingEntity()}
-          >
-            Save slug
-          </Button>
-          {climateRollupSlug ? (
-            <>
-              <a
-                href={progradeWorkspaceUrl(climateRollupSlug)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-              >
-                <ExternalLink className="size-3.5" aria-hidden />
-                Open Prograde
-              </a>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                loading={syncAllLoading}
-                disabled={syncAllLoading}
-                onClick={() => void runGroupSyncAll()}
-              >
-                <RefreshCw className="size-3.5" aria-hidden />
-                {syncAllProgress ? `Syncing… ${syncAllProgress}` : "Sync all in rollup"}
-              </Button>
-            </>
-          ) : null}
-        </div>
-        {summary.members_in_climate_rollup != null ? (
-          <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-            Climate rollup: {summary.members_in_climate_rollup} of {summary.member_count} site(s)
-            {summary.staged_activity_total != null
-              ? ` · ${summary.staged_activity_total} staged activity record(s)`
-              : ""}
-          </p>
-        ) : null}
-      </div>
-
-      {!summary.reporting_entity.aligned ? (
-        <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-          <p>
-            Mixed member-level reporting slugs — some sites may use separate Prograde workspaces (
-            {summary.reporting_entity.distinct_values.join(", ")}).
-          </p>
-        </div>
-      ) : null}
-
-      {membersNotInRollup > 0 ? (
-        <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-          <p>
-            {membersNotInRollup} site(s) excluded from the group climate rollup — they have a different
-            member-level disclosure slug.
-          </p>
-        </div>
-      ) : null}
+        }
+      />
 
       <div className="grid gap-4 lg:grid-cols-[260px_1fr] lg:items-start">
         <aside className="lg:sticky lg:top-4 lg:max-h-[calc(100vh-8rem)] lg:overflow-y-auto">
@@ -688,6 +626,25 @@ export default function CrmGroupHubPage() {
           onAdded={() => void fetchData()}
         />
       ) : null}
+
+      <ClimateDisclosureModal
+        open={climateOpen}
+        onClose={() => setClimateOpen(false)}
+        draft={reportingEntityDraft}
+        onDraftChange={setReportingEntityDraft}
+        onSave={() => void saveGroupReportingEntity()}
+        saving={savingReportingEntity}
+        activeSlug={climateRollupSlug}
+        onSync={() => void runGroupSyncAll()}
+        syncing={syncAllLoading}
+        syncProgress={syncAllProgress}
+        membersInRollup={summary.members_in_climate_rollup}
+        memberCount={summary.member_count}
+        stagedActivityTotal={summary.staged_activity_total}
+        aligned={summary.reporting_entity.aligned}
+        distinctValues={summary.reporting_entity.distinct_values}
+        membersNotInRollup={membersNotInRollup}
+      />
 
       <Modal
         open={deleteOpen}
