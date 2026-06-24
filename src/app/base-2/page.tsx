@@ -1897,6 +1897,22 @@ export default function Base2Page() {
                 const activityRes = await fetch(`${baseUrl}/api/offers/${offerIdToUse}/activities`, { method: 'POST', headers, body: JSON.stringify(activityPayload) });
                 if (activityRes.ok) { try { const act = (await activityRes.json()) as { id?: number }; if (typeof act.id === 'number') { if (slug === 'gas') activityIdByLane.ci_gas = act.id; if (slug === 'electricity_ci') activityIdByLane.ci_electricity = act.id; } } catch { /* ignore */ } }
                 else { const errBody = await activityRes.text(); console.warn('[Base2 offer activity] Backend responded with error', activityRes.status, errBody); }
+                // ACES: persist C&I electricity time-of-use rates onto the offer row itself, so the
+                // current/new peak·shoulder·off-peak rates live in one SQL place (for the voice agent).
+                if (util.utilityType === 'C&I Electricity') {
+                  const touBody: Record<string, number> = {};
+                  const setRate = (k: string, v: unknown) => { const n = normalizeMoneyToNumber(v); if (n != null) touBody[k] = n; };
+                  setRate('current_peak_rate', util.currentPeakRate ?? (result as Record<string, unknown>).peak_rate_invoice);
+                  setRate('current_shoulder_rate', util.currentShoulderRate);
+                  setRate('current_offpeak_rate', util.currentOffPeakRate ?? (result as Record<string, unknown>).off_peak_rate_invoice);
+                  setRate('new_peak_rate', util.comparisonPeakRate ?? (result as Record<string, unknown>).offer1PeakRate);
+                  setRate('new_shoulder_rate', util.comparisonShoulderRate);
+                  setRate('new_offpeak_rate', util.comparisonOffPeakRate ?? (result as Record<string, unknown>).offer1OffPeakRate);
+                  if (Object.keys(touBody).length) {
+                    try { await fetch(`${baseUrl}/api/offers/${offerIdToUse}`, { method: 'PATCH', headers, body: JSON.stringify(touBody) }); }
+                    catch (e) { console.warn('[Base2] failed to patch electricity TOU rates onto offer', e); }
+                  }
+                }
               }
             }
             if (action === 'comparison') {
