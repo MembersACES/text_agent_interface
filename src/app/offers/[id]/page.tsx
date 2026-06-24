@@ -35,6 +35,12 @@ interface Offer {
   energy_charge_pct?: number | null;
   contracted_rate?: number | null;
   offer_rate?: number | null;
+  current_peak_rate?: number | null;
+  current_shoulder_rate?: number | null;
+  current_offpeak_rate?: number | null;
+  new_peak_rate?: number | null;
+  new_shoulder_rate?: number | null;
+  new_offpeak_rate?: number | null;
   document_link?: string | null;
   created_at: string;
   updated_at: string;
@@ -910,6 +916,31 @@ export default function OfferDetailPage() {
                               ${Number(offer.offer_rate).toLocaleString("en-AU", { minimumFractionDigits: 4, maximumFractionDigits: 4 })}
                             </dd>
                           </div>
+                        )}
+                      </>
+                    )}
+                    {(offer.current_peak_rate != null || offer.new_peak_rate != null ||
+                      offer.current_shoulder_rate != null || offer.new_shoulder_rate != null ||
+                      offer.current_offpeak_rate != null || offer.new_offpeak_rate != null) && (
+                      <>
+                        <div className="pt-1 text-xs font-semibold uppercase text-gray-400 dark:text-gray-500">
+                          Electricity rates (current → new, c/kWh)
+                        </div>
+                        {[
+                          { label: "Peak", cur: offer.current_peak_rate, nw: offer.new_peak_rate },
+                          { label: "Shoulder", cur: offer.current_shoulder_rate, nw: offer.new_shoulder_rate },
+                          { label: "Off-peak", cur: offer.current_offpeak_rate, nw: offer.new_offpeak_rate },
+                        ].map((r) =>
+                          r.cur != null || r.nw != null ? (
+                            <div key={r.label} className="flex justify-between gap-4">
+                              <dt className="text-gray-500 dark:text-gray-400">{r.label}</dt>
+                              <dd className="text-gray-900 dark:text-gray-100 text-right">
+                                {r.cur != null ? Number(r.cur).toLocaleString("en-AU", { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : "—"}
+                                {" → "}
+                                {r.nw != null ? Number(r.nw).toLocaleString("en-AU", { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : "—"}
+                              </dd>
+                            </div>
+                          ) : null,
                         )}
                       </>
                     )}
