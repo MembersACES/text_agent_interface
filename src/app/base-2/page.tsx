@@ -1868,10 +1868,17 @@ export default function Base2Page() {
         const offerIdFromUrl = offerIdRaw ? parseInt(offerIdRaw, 10) : null;
         const clientIdFromUrl = clientIdRaw ? parseInt(clientIdRaw, 10) : null;
         const hasValidOfferId = offerIdFromUrl != null && !isNaN(offerIdFromUrl); const hasValidClientId = clientIdFromUrl != null && !isNaN(clientIdFromUrl);
-        let offerIdToUse: number | null = hasValidOfferId ? offerIdFromUrl : null;
-        if (offerIdToUse == null && hasValidClientId && token && successResults.length > 0) {
+        // ALWAYS create a fresh offer per Base 2 run — never reuse an existing offer (it may belong to
+        // a different utility, e.g. solar cleaning). Link it to the client: prefer clientId from the URL,
+        // otherwise read the client from the offer the run was launched from.
+        let offerIdToUse: number | null = null;
+        if (token && successResults.length > 0) {
           const baseUrl = getApiBaseUrl(); const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
-          try { const createRes = await fetch(`${baseUrl}/api/offers`, { method: 'POST', headers, body: JSON.stringify({ client_id: clientIdFromUrl, status: 'requested', business_name: businessName || businessInfo?.name || undefined }) }); if (createRes.ok) { const created = await createRes.json(); offerIdToUse = created?.id ?? null; } } catch (createErr) { console.warn('Failed to create offer for client (Base 2 success):', createErr); }
+          let clientIdForOffer: number | null = hasValidClientId ? clientIdFromUrl : null;
+          if (clientIdForOffer == null && hasValidOfferId) {
+            try { const oRes = await fetch(`${baseUrl}/api/offers/${offerIdFromUrl}`, { headers }); if (oRes.ok) { const o = await oRes.json(); clientIdForOffer = (o?.client_id ?? null) as number | null; } } catch { /* ignore */ }
+          }
+          try { const createRes = await fetch(`${baseUrl}/api/offers`, { method: 'POST', headers, body: JSON.stringify({ client_id: clientIdForOffer ?? undefined, status: 'requested', business_name: businessName || businessInfo?.name || undefined }) }); if (createRes.ok) { const created = await createRes.json(); offerIdToUse = created?.id ?? null; } } catch (createErr) { console.warn('Failed to create offer for Base 2 run:', createErr); }
         }
         if (offerIdToUse != null && token && successResults.length > 0) {
           const baseUrl = getApiBaseUrl(); const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
