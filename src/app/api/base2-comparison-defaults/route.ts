@@ -1,22 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { getApiBaseUrl } from "@/lib/utils";
 
 /**
- * Backend base URL for the Base 2 comparison-defaults store (no trailing slash).
- * Defaults to the same Cloud Run host as the autonomous/CRM backend; override
- * with BASE2_DEFAULTS_API_URL if the store lives elsewhere.
+ * Proxy GET/PUT for the Base 2 comparison-defaults config.
+ * Forwards to the SAME backend the rest of the app uses (getApiBaseUrl, which
+ * resolves the dev frontend host -> text-agent-backend-dev). The backend
+ * endpoint lives in main.py. Auth: session required here; the backend also
+ * checks X-Base2-Admin-Key == BASE2_DEFAULTS_WRITE_SECRET.
  */
-function getBase2DefaultsApiUrl(): string {
-  return (
-    process.env.BASE2_DEFAULTS_API_URL ||
-    process.env.AUTONOMOUS_API_URL ||
-    process.env.NEXT_PUBLIC_API_BASE_URL ||
-    "http://localhost:8000"
-  ).replace(/\/+$/, "");
-}
-
-async function proxyToBackend(method: "GET" | "PUT", body?: unknown) {
+async function proxyToBackend(
+  request: NextRequest,
+  method: "GET" | "PUT",
+  body?: unknown,
+) {
   const session = await getServerSession(authOptions);
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -26,11 +24,12 @@ async function proxyToBackend(method: "GET" | "PUT", body?: unknown) {
   if (!adminKey) {
     return NextResponse.json(
       { error: "BASE2_DEFAULTS_WRITE_SECRET not configured" },
-      { status: 503 }
+      { status: 503 },
     );
   }
 
-  const url = `${getBase2DefaultsApiUrl()}/api/base2-comparison-defaults`;
+  const requestHost = request.headers.get("host") ?? undefined;
+  const url = `${getApiBaseUrl(requestHost)}/api/base2-comparison-defaults`;
   const res = await fetch(url, {
     method,
     headers: {
@@ -48,13 +47,12 @@ async function proxyToBackend(method: "GET" | "PUT", body?: unknown) {
   } catch {
     data = { error: text };
   }
-
   return NextResponse.json(data, { status: res.status });
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    return proxyToBackend("GET");
+    return await proxyToBackend(request, "GET");
   } catch (err: unknown) {
     console.error("[base2-comparison-defaults] GET", err);
     return NextResponse.json({ error: "Proxy failed" }, { status: 500 });
@@ -66,7 +64,7 @@ export async function PUT(request: NextRequest) {
     const body = await request.json();
     const session = await getServerSession(authOptions);
     const updatedBy = session?.user?.email ?? undefined;
-    return proxyToBackend("PUT", { ...body, updatedBy });
+    return await proxyToBackend(request, "PUT", { ...body, updatedBy });
   } catch (err: unknown) {
     console.error("[base2-comparison-defaults] PUT", err);
     return NextResponse.json({ error: "Proxy failed" }, { status: 500 });
