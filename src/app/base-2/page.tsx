@@ -1725,10 +1725,12 @@ export default function Base2Page() {
           webhookUrl = 'https://membersaces.app.n8n.cloud/webhook/generate-electricity-ci-comparaison-b2';
           const details = util.invoiceData?.electricity_ci_invoice_details || {}; const fullData = details?.full_invoice_data || {};
           payload.nmi = util.identifier; payload.invoice_id = fullData['Invoice ID'] || details?.invoice_id || ''; payload.site_address = fullData['Site Address'] || details?.site_address || businessInfo?.site_address || ''; payload.retailer = fullData['Retailer'] || details?.retailer || ''; payload.invoice_number = fullData['Invoice Number'] || details?.invoice_number || '';
-          payload.peak_rate_invoice = util.currentPeakRate?.toFixed(2) || '0'; payload.off_peak_rate_invoice = util.currentOffPeakRate?.toFixed(2) || '0'; payload.shoulder_rate_invoice = util.currentShoulderRate?.toFixed(2) || '0';
-          payload.peak_usage_invoice = util.peakUsage?.toFixed(0) || '0'; payload.off_peak_usage_invoice = util.offPeakUsage?.toFixed(0) || '0'; payload.shoulder_usage_invoice = util.shoulderUsage?.toFixed(0) || '0'; payload.total_monthly_usage = util.monthlyUsage?.toFixed(0) || '0';
-          payload.offer1PeakRate = util.comparisonPeakRate?.toFixed(2) || '0'; payload.offer1OffPeakRate = util.comparisonOffPeakRate?.toFixed(2) || '0'; payload.offer1ShoulderRate = util.comparisonShoulderRate?.toFixed(2) || '0'; payload.offer1Retailer = 'Comparison Offer'; payload.offer1Validity = '12 months'; payload.offer1Type = 'smoothed'; payload.offer1PeriodYears = '1'; payload.offer1StartDate = new Date().toISOString().split('T')[0];
-          payload.current_daily_supply = util.currentDailySupply?.toFixed(2) || '0'; payload.comparison_daily_supply = util.comparisonDailySupply?.toFixed(2) || '0'; payload.current_demand_charge = util.currentDemandCharge?.toFixed(2) || '0'; payload.comparison_demand_charge = util.comparisonDemandCharge?.toFixed(2) || '0'; payload.demand_quantity = util.demandQuantity?.toFixed(2) || '0';
+          // Pass EXACT values to n8n — never round rates/usage (a comparison must use the real numbers).
+          const _raw = (v?: number | null) => (v != null ? String(v) : '0');
+          payload.peak_rate_invoice = _raw(util.currentPeakRate); payload.off_peak_rate_invoice = _raw(util.currentOffPeakRate); payload.shoulder_rate_invoice = _raw(util.currentShoulderRate);
+          payload.peak_usage_invoice = _raw(util.peakUsage); payload.off_peak_usage_invoice = _raw(util.offPeakUsage); payload.shoulder_usage_invoice = _raw(util.shoulderUsage); payload.total_monthly_usage = _raw(util.monthlyUsage);
+          payload.offer1PeakRate = _raw(util.comparisonPeakRate); payload.offer1OffPeakRate = _raw(util.comparisonOffPeakRate); payload.offer1ShoulderRate = _raw(util.comparisonShoulderRate); payload.offer1Retailer = 'Comparison Offer'; payload.offer1Validity = '12 months'; payload.offer1Type = 'smoothed'; payload.offer1PeriodYears = '1'; payload.offer1StartDate = new Date().toISOString().split('T')[0];
+          payload.current_daily_supply = _raw(util.currentDailySupply); payload.comparison_daily_supply = _raw(util.comparisonDailySupply); payload.current_demand_charge = _raw(util.currentDemandCharge); payload.comparison_demand_charge = _raw(util.comparisonDemandCharge); payload.demand_quantity = _raw(util.demandQuantity);
           payload.commission_aud_per_mwh = util.ciElectricityCommissionAudPerMwh!.toFixed(4);
           payload.commission_unit_electricity = "$/MWh";
         } else if (util.utilityType === 'C&I Gas') {
@@ -1866,10 +1868,17 @@ export default function Base2Page() {
         const offerIdFromUrl = offerIdRaw ? parseInt(offerIdRaw, 10) : null;
         const clientIdFromUrl = clientIdRaw ? parseInt(clientIdRaw, 10) : null;
         const hasValidOfferId = offerIdFromUrl != null && !isNaN(offerIdFromUrl); const hasValidClientId = clientIdFromUrl != null && !isNaN(clientIdFromUrl);
-        let offerIdToUse: number | null = hasValidOfferId ? offerIdFromUrl : null;
-        if (offerIdToUse == null && hasValidClientId && token && successResults.length > 0) {
+        // ALWAYS create a fresh offer per Base 2 run — never reuse an existing offer (it may belong to
+        // a different utility, e.g. solar cleaning). Link it to the client: prefer clientId from the URL,
+        // otherwise read the client from the offer the run was launched from.
+        let offerIdToUse: number | null = null;
+        if (token && successResults.length > 0) {
           const baseUrl = getApiBaseUrl(); const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
-          try { const createRes = await fetch(`${baseUrl}/api/offers`, { method: 'POST', headers, body: JSON.stringify({ client_id: clientIdFromUrl, status: 'requested', business_name: businessName || businessInfo?.name || undefined }) }); if (createRes.ok) { const created = await createRes.json(); offerIdToUse = created?.id ?? null; } } catch (createErr) { console.warn('Failed to create offer for client (Base 2 success):', createErr); }
+          let clientIdForOffer: number | null = hasValidClientId ? clientIdFromUrl : null;
+          if (clientIdForOffer == null && hasValidOfferId) {
+            try { const oRes = await fetch(`${baseUrl}/api/offers/${offerIdFromUrl}`, { headers }); if (oRes.ok) { const o = await oRes.json(); clientIdForOffer = (o?.client_id ?? null) as number | null; } } catch { /* ignore */ }
+          }
+          try { const createRes = await fetch(`${baseUrl}/api/offers`, { method: 'POST', headers, body: JSON.stringify({ client_id: clientIdForOffer ?? undefined, status: 'requested', business_name: businessName || businessInfo?.name || undefined }) }); if (createRes.ok) { const created = await createRes.json(); offerIdToUse = created?.id ?? null; } } catch (createErr) { console.warn('Failed to create offer for Base 2 run:', createErr); }
         }
         if (offerIdToUse != null && token && successResults.length > 0) {
           const baseUrl = getApiBaseUrl(); const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
@@ -1897,6 +1906,25 @@ export default function Base2Page() {
                 const activityRes = await fetch(`${baseUrl}/api/offers/${offerIdToUse}/activities`, { method: 'POST', headers, body: JSON.stringify(activityPayload) });
                 if (activityRes.ok) { try { const act = (await activityRes.json()) as { id?: number }; if (typeof act.id === 'number') { if (slug === 'gas') activityIdByLane.ci_gas = act.id; if (slug === 'electricity_ci') activityIdByLane.ci_electricity = act.id; } } catch { /* ignore */ } }
                 else { const errBody = await activityRes.text(); console.warn('[Base2 offer activity] Backend responded with error', activityRes.status, errBody); }
+                // ACES: persist C&I electricity time-of-use rates onto the offer row itself, so the
+                // current/new peak·shoulder·off-peak rates live in one SQL place (for the voice agent).
+                if (util.utilityType === 'C&I Electricity') {
+                  const touBody: Record<string, number> = {};
+                  const setRate = (k: string, v: unknown) => { const n = normalizeMoneyToNumber(v); if (n != null) touBody[k] = n; };
+                  // Only record shoulder when the site actually HAS a shoulder period; otherwise the
+                  // comparison fills new_shoulder with a junk default (= peak), which is misleading.
+                  const hasShoulder = util.currentShoulderRate != null && util.currentShoulderRate > 0;
+                  setRate('current_peak_rate', util.currentPeakRate ?? (result as Record<string, unknown>).peak_rate_invoice);
+                  if (hasShoulder) setRate('current_shoulder_rate', util.currentShoulderRate);
+                  setRate('current_offpeak_rate', util.currentOffPeakRate ?? (result as Record<string, unknown>).off_peak_rate_invoice);
+                  setRate('new_peak_rate', util.comparisonPeakRate ?? (result as Record<string, unknown>).offer1PeakRate);
+                  if (hasShoulder) setRate('new_shoulder_rate', util.comparisonShoulderRate);
+                  setRate('new_offpeak_rate', util.comparisonOffPeakRate ?? (result as Record<string, unknown>).offer1OffPeakRate);
+                  if (Object.keys(touBody).length) {
+                    try { await fetch(`${baseUrl}/api/offers/${offerIdToUse}`, { method: 'PATCH', headers, body: JSON.stringify(touBody) }); }
+                    catch (e) { console.warn('[Base2] failed to patch electricity TOU rates onto offer', e); }
+                  }
+                }
               }
             }
             if (action === 'comparison') {
