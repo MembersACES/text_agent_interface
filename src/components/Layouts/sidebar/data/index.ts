@@ -79,6 +79,7 @@ export const JOB_GROUPS: NavGroupItem[] = [
       { title: "Autonomous Agent", url: "/autonomous-agent" },
       { title: "Robot Dashboard", url: "/robot-dashboard" },
       { title: "Personal Assistant", url: "/personal-assistant" },
+      { title: "RSL Agent", url: "/rsl-agent" },
       { title: "Videos", url: "/videos" },
     ],
   },
