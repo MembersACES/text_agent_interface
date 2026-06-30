@@ -671,6 +671,8 @@ interface RecipientConfirmModalState {
   generateAll: boolean;
   contactName: string;
   contactEmail: string;
+  contactPhone: string;
+  isRsl: boolean;
 }
 
 interface AutonomousSequenceConfirmState {
@@ -761,6 +763,8 @@ export default function Base2Page() {
     generateAll: false,
     contactName: "",
     contactEmail: "",
+    contactPhone: "",
+    isRsl: false,
   });
   const [autonomousSequenceConfirm, setAutonomousSequenceConfirm] = useState<AutonomousSequenceConfirmState | null>(null);
   const [autonomousSequenceStarting, setAutonomousSequenceStarting] = useState(false);
@@ -1627,9 +1631,25 @@ export default function Base2Page() {
     return savings;
   };
 
-  const openRecipientConfirmModal = (comparison: UtilityComparison, action: "comparison" | "dma", generateAll: boolean) => {
+  const openRecipientConfirmModal = (comparison: UtilityComparison, action: "comparison" | "dma", generateAll: boolean, isRsl: boolean = false) => {
     const { contactName, contactEmail } = defaultWebhookRecipient(businessInfo, businessInfoData);
-    setRecipientConfirmModal({ open: true, comparison, action, generateAll, contactName, contactEmail });
+    const contactPhone = businessInfo?.telephone ?? "";
+    setRecipientConfirmModal({ open: true, comparison, action, generateAll, contactName, contactEmail, contactPhone, isRsl });
+  };
+
+  // RSL detection: company name or trading name contains 'rsl' (case-insensitive).
+  // Drives the RSL button prominence; the button works regardless of this flag.
+  const isRslMember = `${businessName} ${businessInfo?.name ?? ''} ${businessInfo?.trading_name ?? ''}`
+    .toLowerCase()
+    .includes('rsl');
+
+  // RSL path: run the C&I electricity comparison via the rsl.vic webhook and, on
+  // success, enrol the member in the RSL voice-agent follow-up (no autonomous popup).
+  const handleRslClick = (comparison: UtilityComparison) => {
+    // Always confirm the contact (name/email/phone) before enrolling — this is who
+    // the Day 0 call, Day 3 email and Day 7 call go to. Prevents enrolling a live
+    // member on their real details by accident; lets the operator enter test details.
+    openRecipientConfirmModal(comparison, 'comparison', false, true);
   };
 
   const handleGenerateClick = (comparison: UtilityComparison, action: 'comparison' | 'dma' = 'comparison') => {
@@ -1655,8 +1675,9 @@ export default function Base2Page() {
   };
 
   const handleRecipientConfirmSubmit = () => {
-    const { comparison, action, generateAll, contactName, contactEmail } = recipientConfirmModal;
+    const { comparison, action, generateAll, contactName, contactEmail, contactPhone, isRsl } = recipientConfirmModal;
     if (!comparison) return;
+    if (isRsl && !contactPhone.trim()) { alert('Enter a phone number — this is the number the RSL voice agent will call.'); return; }
   
     const freshComparison =
       utilityComparisonsRef.current.find(
@@ -1670,10 +1691,11 @@ export default function Base2Page() {
     generateComparison(freshComparison, action, generateAll, {
       contactName,
       contactEmail,
-    });
+      contactPhone,
+    }, isRsl);
   };
 
-  const generateComparison = async (comparison: UtilityComparison, action: 'comparison' | 'dma' = 'comparison', generateAll: boolean = false, webhookRecipient?: { contactName: string; contactEmail: string }) => {
+  const generateComparison = async (comparison: UtilityComparison, action: 'comparison' | 'dma' = 'comparison', generateAll: boolean = false, webhookRecipient?: { contactName: string; contactEmail: string; contactPhone?: string }, isRsl: boolean = false) => {
     if (!token || !session) { alert('Please log in to generate comparisons'); return; }
     const utilitiesToProcess = generateAll ? utilityComparisons.filter((u) => { if (u.utilityType !== comparison.utilityType || u.loading || u.error) return false; if (comparison.utilityType === "SME Gas") { const m = comparison.smeGasComparisonMode ?? "invoice_blocks"; const um = u.smeGasComparisonMode ?? "invoice_blocks"; return m === um; } return true; }) : [comparison];
     if (utilitiesToProcess.length === 0) { alert('No utilities available to generate'); return; }
@@ -1722,7 +1744,9 @@ export default function Base2Page() {
           payload.commission_aud_per_mwh = util.ciElectricityCommissionAudPerMwh!.toFixed(4);
           payload.commission_unit_electricity = "$/MWh";
         } else if (util.utilityType === 'C&I Electricity') {
-          webhookUrl = 'https://membersaces.app.n8n.cloud/webhook/generate-electricity-ci-comparaison-b2';
+          webhookUrl = isRsl
+            ? 'https://membersaces.app.n8n.cloud/webhook/generate-electricity-ci-comparaison-b2-rsl'
+            : 'https://membersaces.app.n8n.cloud/webhook/generate-electricity-ci-comparaison-b2';
           const details = util.invoiceData?.electricity_ci_invoice_details || {}; const fullData = details?.full_invoice_data || {};
           payload.nmi = util.identifier; payload.invoice_id = fullData['Invoice ID'] || details?.invoice_id || ''; payload.site_address = fullData['Site Address'] || details?.site_address || businessInfo?.site_address || ''; payload.retailer = fullData['Retailer'] || details?.retailer || ''; payload.invoice_number = fullData['Invoice Number'] || details?.invoice_number || '';
           // Pass EXACT values to n8n — never round rates/usage (a comparison must use the real numbers).
@@ -1955,17 +1979,59 @@ export default function Base2Page() {
                   );
                   lanePayloads.push({ lane, laneSuccess });
                 }
-                setAutonomousSequenceConfirm({
-                  open: true,
-                  offerIdToUse,
-                  clientIdFromUrl,
-                  hasValidClientId,
-                  anchorIso,
-                  tz,
-                  activityIdByLane,
-                  ctxBase,
-                  lanePayloads,
-                });
+                if (isRsl) {
+                  // RSL path: enrol the member in the voice-agent follow-up sequence
+                  // instead of showing the autonomous popup. Token stays server-side
+                  // in the /api/rsl/base2-followup Next route.
+                  const elec = successResults.find(({ util }) => util.utilityType === 'C&I Electricity');
+                  if (elec) {
+                    const r = elec.result as Record<string, unknown>;
+                    const offer = {
+                      annual_savings: normalizeMoneyToNumber(r.annual_savings),
+                      current_cost: normalizeMoneyToNumber(r.current_cost),
+                      new_cost: normalizeMoneyToNumber(r.new_cost),
+                      current_peak_rate: elec.util.currentPeakRate ?? null,
+                      new_peak_rate: elec.util.comparisonPeakRate ?? null,
+                      current_offpeak_rate: elec.util.currentOffPeakRate ?? null,
+                      new_offpeak_rate: elec.util.comparisonOffPeakRate ?? null,
+                    };
+                    try {
+                      const rslRes = await fetch('/api/rsl/base2-followup', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                        body: JSON.stringify({
+                          company_name: businessName || businessInfo?.name || '',
+                          nmi: elec.util.identifier,
+                          contact_name: webhookRecipient?.contactName ?? businessInfo?.contact_name ?? null,
+                          email: webhookRecipient?.contactEmail ?? businessInfo?.email ?? null,
+                          phone: webhookRecipient?.contactPhone ?? businessInfo?.telephone ?? null,
+                          sequence_type: 'ci_electricity',
+                          offer,
+                        }),
+                      });
+                      if (!rslRes.ok) {
+                        const t = await rslRes.text();
+                        console.warn('[Base2 RSL] follow-up intake failed', rslRes.status, t);
+                      } else {
+                        console.log('[Base2 RSL] follow-up enrolled', await rslRes.json());
+                      }
+                    } catch (rslErr) {
+                      console.warn('[Base2 RSL] follow-up intake error', rslErr);
+                    }
+                  }
+                } else {
+                  setAutonomousSequenceConfirm({
+                    open: true,
+                    offerIdToUse,
+                    clientIdFromUrl,
+                    hasValidClientId,
+                    anchorIso,
+                    tz,
+                    activityIdByLane,
+                    ctxBase,
+                    lanePayloads,
+                  });
+                }
               }
             }
           } catch (err) { console.warn('Failed to log offer activities:', err); }
@@ -2925,6 +2991,23 @@ export default function Base2Page() {
                             ) : (<>⚡ {offerComparisonButtonLabel(comparison)}</>)}
                           </button>
                         )}
+                        {comparison.utilityType === 'C&I Electricity' && (
+                          <button
+                            onClick={() => handleRslClick(comparison)}
+                            disabled={sending !== null && sending.includes(`${comparison.utilityType}-${comparison.identifier}-comparison`)}
+                            title="Run the RSL comparison (emails from rsl.vic) and start the RSL voice-agent follow-up"
+                            className={isRslMember
+                              ? "inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                              : "inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium border transition-all disabled:opacity-50 disabled:cursor-not-allowed"}
+                            style={isRslMember
+                              ? { backgroundColor: '#B91C1C' }
+                              : { borderColor: '#D1D5DB', color: '#6B7280', backgroundColor: 'transparent' }}
+                          >
+                            {sending !== null && sending.includes(`${comparison.utilityType}-${comparison.identifier}-comparison`)
+                              ? (<>Generating…</>)
+                              : (<>🎖️ RSL</>)}
+                          </button>
+                        )}
                       </div>
                     )}
                   </>
@@ -2985,10 +3068,12 @@ export default function Base2Page() {
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" aria-modal="true" role="dialog">
           <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl max-w-md w-full p-6 border border-gray-200 dark:border-gray-700">
             <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-1">
-              {recipientConfirmModal.action === "dma" ? "DMA Review" : "Comparison"} recipient
+              {recipientConfirmModal.isRsl ? "RSL follow-up contact" : `${recipientConfirmModal.action === "dma" ? "DMA Review" : "Comparison"} recipient`}
             </h3>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-              Confirm or edit the client contact before sending.
+              {recipientConfirmModal.isRsl
+                ? "These details receive the Day 0 call, Day 3 email and Day 7 call. For testing, enter your own phone and email so nothing goes live to the client."
+                : "Confirm or edit the client contact before sending."}
             </p>
             <div className="space-y-3 mb-5">
               <div>
@@ -2999,11 +3084,17 @@ export default function Base2Page() {
                 <label htmlFor="b2-recipient-email" className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Email</label>
                 <input id="b2-recipient-email" type="email" value={recipientConfirmModal.contactEmail} onChange={(e) => setRecipientConfirmModal((prev) => ({ ...prev, contactEmail: e.target.value }))} className="w-full px-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-400" placeholder="name@example.com" autoComplete="email" />
               </div>
+              {recipientConfirmModal.isRsl && (
+                <div>
+                  <label htmlFor="b2-recipient-phone" className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Phone — the voice agent calls this number</label>
+                  <input id="b2-recipient-phone" type="tel" value={recipientConfirmModal.contactPhone} onChange={(e) => setRecipientConfirmModal((prev) => ({ ...prev, contactPhone: e.target.value }))} className="w-full px-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-400" placeholder="+61 4XX XXX XXX" autoComplete="tel" />
+                </div>
+              )}
             </div>
             <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
               <button type="button" onClick={() => setRecipientConfirmModal((prev) => ({ ...prev, open: false }))} className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors order-2 sm:order-1">Cancel</button>
               <button type="button" onClick={handleRecipientConfirmSubmit} className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-colors order-1 sm:order-2" style={{ backgroundColor: '#1696CF' }}>
-                {recipientConfirmModal.action === "dma" ? "Send DMA Review" : "Send Comparison"}
+                {recipientConfirmModal.isRsl ? "Confirm & enrol in RSL follow-up" : recipientConfirmModal.action === "dma" ? "Send DMA Review" : "Send Comparison"}
               </button>
             </div>
           </div>
