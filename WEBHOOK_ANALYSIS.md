@@ -37,15 +37,15 @@ When a user clicks "Get Member Profile" on the business-info page, multiple n8n 
 
 **Backend makes 1 webhook call + 1 direct API call:**
 
-#### a) `search-business-info` (n8n webhook)
-- **URL:** `https://membersaces.app.n8n.cloud/webhook/search-business-info`
-- **Location:** `tools/business_info.py` line 45
+#### a) `search-business-info-test` (Airtable direct when configured) ✅ NEW
+- **Method:** Airtable API via `build_business_info_from_loa` + `get_linked_utility_records` when `USE_AIRTABLE_DIRECT=true`
+- **Location:** `tools/business_info.py` — `_search_business_info_from_airtable()`
+- **Fallback:** n8n webhook when Airtable unavailable or `USE_N8N_BUSINESS_INFO_FALLBACK=true` (default)
 - **Purpose:** Gets basic business information (name, ABN, addresses, contact info, linked utilities)
-- **Payload:** `{ "business_name": "..." }`
 
-#### b) File IDs (Direct Google Sheets API) ✅ NEW
-- **Method:** Direct Google Sheets API (no n8n webhook)
-- **Location:** `tools/business_info.py` - `get_file_ids()` function
+#### b) File IDs (Direct Google Sheets API) ✅ IMPLEMENTED
+- **Method:** Direct Google Sheets API with n8n fallback
+- **Location:** `tools/business_info.py` — `get_file_ids_from_sheets()` / `get_file_ids()`
 - **Sheet:** `1l_ShkAcpS1HBqX8EdXLEVmn3pkliVGwsskkkI0GlLho` / "Data from Airtable"
 - **Purpose:** Gets file IDs for contracts, documents, invoices directly from Google Sheets
 - **Returns:** File IDs for:
