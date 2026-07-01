@@ -37,15 +37,15 @@ When a user clicks "Get Member Profile" on the business-info page, multiple n8n 
 
 **Backend makes 1 webhook call + 1 direct API call:**
 
-#### a) `search-business-info` (n8n webhook)
-- **URL:** `https://membersaces.app.n8n.cloud/webhook/search-business-info`
-- **Location:** `tools/business_info.py` line 45
+#### a) `search-business-info-test` (Airtable direct when configured) ✅ NEW
+- **Method:** Airtable API via `build_business_info_from_loa` + `get_linked_utility_records` when `USE_AIRTABLE_DIRECT=true`
+- **Location:** `tools/business_info.py` — `_search_business_info_from_airtable()`
+- **Fallback:** n8n webhook when Airtable unavailable or `USE_N8N_BUSINESS_INFO_FALLBACK=true` (default)
 - **Purpose:** Gets basic business information (name, ABN, addresses, contact info, linked utilities)
-- **Payload:** `{ "business_name": "..." }`
 
-#### b) File IDs (Direct Google Sheets API) ✅ NEW
-- **Method:** Direct Google Sheets API (no n8n webhook)
-- **Location:** `tools/business_info.py` - `get_file_ids()` function
+#### b) File IDs (Direct Google Sheets API) ✅ IMPLEMENTED
+- **Method:** Direct Google Sheets API with n8n fallback
+- **Location:** `tools/business_info.py` — `get_file_ids_from_sheets()` / `get_file_ids()`
 - **Sheet:** `1l_ShkAcpS1HBqX8EdXLEVmn3pkliVGwsskkkI0GlLho` / "Data from Airtable"
 - **Purpose:** Gets file IDs for contracts, documents, invoices directly from Google Sheets
 - **Returns:** File IDs for:
@@ -67,33 +67,13 @@ When a user clicks "Get Member Profile" on the business-info page, multiple n8n 
 
 After the backend returns data, the frontend (`BusinessInfoDisplay.tsx`) makes **2 separate webhook calls**:
 
-#### a) `return_EOIIDs`
-- **URL:** `https://membersaces.app.n8n.cloud/webhook/return_EOIIDs`
-- **Location:** `BusinessInfoDisplay.tsx` line 599
-- **Trigger:** `useEffect` on line 683 (runs when `business.name` changes)
-- **Purpose:** Gets EOI (Expression of Interest) file IDs
-- **Payload:** `{ "business_name": "..." }`
-- **Returns:** Array of EOI files with:
-  - EOI Type
-  - EOI File ID
+#### a) `return_EOIIDs` ✅ IMPLEMENTED
+- **Method:** Backend `POST /api/member-eoi-ids` → `Signed EOIs` tab on FILE_IDS sheet (n8n fallback)
+- **Location:** `tools/member_documents.py`; frontend via `src/lib/member-documents-api.ts`
 
-#### b) `pull_wip_both` ✅ NEW UNIFIED WEBHOOK
-- **URL:** `https://membersaces.app.n8n.cloud/webhook-test/pull_wip_both`
-- **Location:** `BusinessInfoDisplay.tsx` - `fetchWIPData()` function
-- **Trigger:** `useEffect` (runs when `business.name` changes)
-- **Purpose:** Gets both additional documents AND engagement forms in one call
-- **Payload:** `{ "business_name": "..." }` (supports nested payload structure)
-- **Returns:** Unified response with:
-  - `additional_documents` (array) - Additional documents from WIP sheet
-  - `signedEF_row` (object or null) - Signed engagement form row
-  - `engagement_forms` (array) - Google Drive file matches for engagement forms
-  - `file_count` (number) - Total file count
-  - `has_files` (boolean) - Whether files exist
-  - `ok` (boolean) - Success status
-  - `business_name` (string) - Business name
-- **Replaces:** 
-  - ❌ `pull_additional_documents_WIP` (removed)
-  - ❌ `pull_signedEOI_WIP` (removed)
+#### b) `pull_wip_both` ✅ IMPLEMENTED
+- **Method:** Backend `POST /api/member-wip` → member WIP spreadsheet + central `Signed EFs` tab (n8n fallback)
+- **Location:** `tools/member_documents.py`; frontend via `src/lib/member-documents-api.ts`
 
 ---
 

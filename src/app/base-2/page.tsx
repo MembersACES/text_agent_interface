@@ -3005,7 +3005,7 @@ export default function Base2Page() {
                           >
                             {sending !== null && sending.includes(`${comparison.utilityType}-${comparison.identifier}-comparison`)
                               ? (<>Generating…</>)
-                              : (<>🎖️ RSL</>)}
+                              : (<>🎖️ RSL Agent</>)}
                           </button>
                         )}
                       </div>

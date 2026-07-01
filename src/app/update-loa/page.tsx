@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { ToolPageLayout } from "@/components/Layouts/ToolPageLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { fetchReturnUtilityInfo } from "@/lib/utility-info-api";
 
 export default function UpdateLOAPage() {
   const searchParams = useSearchParams();
@@ -51,19 +52,13 @@ export default function UpdateLOAPage() {
     setLoading(true);
 
     try {
-      const res = await fetch('https://membersaces.app.n8n.cloud/webhook/return_utility_info', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          utility_type: "LOA",
-          business_name: businessName,
-        }),
-      });
-
-      if (res.status === 401) {
+      const data = await fetchReturnUtilityInfo(
+        { utility_type: "LOA", business_name: businessName },
+        token,
+      );
+      setLoaData(Array.isArray(data) && data.length > 0 ? data[0] : data);
+    } catch (err: any) {
+      if (err.message === 'REAUTHENTICATION_REQUIRED') {
         const apiErrorEvent = new CustomEvent('api-error', {
           detail: { error: 'REAUTHENTICATION_REQUIRED', status: 401, message: 'Authentication expired' },
         });
@@ -71,16 +66,7 @@ export default function UpdateLOAPage() {
         setError("Session expired. Please wait while we refresh your authentication...");
         return;
       }
-
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.detail || err.message || "Unknown error fetching LOA data");
-      }
-
-      const data = await res.json();
-      setLoaData(Array.isArray(data) && data.length > 0 ? data[0] : data);
-    } catch (err: any) {
-      if (err.message !== 'REAUTHENTICATION_REQUIRED') setError(err.message);
+      setError(err.message);
     } finally {
       setLoading(false);
     }

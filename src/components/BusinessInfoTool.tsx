@@ -17,6 +17,10 @@ import {
   RecentMembersRow,
 } from "@/components/member-profile";
 import { isCrmLinkMatched, type CrmLink } from "@/lib/crm-link";
+import {
+  getBusinessInfoErrorMessage,
+  isValidBusinessInfoResponse,
+} from "@/lib/business-info-fields";
 import { AlertCircle, Search } from "lucide-react";
 
 interface BusinessInfoToolProps {
@@ -99,6 +103,12 @@ export default function BusinessInfoTool({
         }
 
         const data = await res.json();
+        if (!isValidBusinessInfoResponse(data)) {
+          setBusinessInfo(null);
+          setError(getBusinessInfoErrorMessage(data));
+          return;
+        }
+
         setBusinessInfo(data);
 
         const resolvedName =

@@ -1,6 +1,13 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { getApiBaseUrl, formatDateAustralian, formatDateDDMMYYYY, parseDateDDMMYYYYToISO } from "@/lib/utils";
 import { formatBackendErrorBody } from "@/lib/api-errors";
+import {
+  fetchMemberEoiIds,
+  fetchMemberWip,
+  mapEoiRowsToFileIds,
+  parseAdditionalDocuments,
+  parseEngagementForms,
+} from "@/lib/member-documents-api";
 import { displayDocName, getContractsFromProcessed } from "@/components/crm-member/tabs/documentHelpers";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
@@ -844,41 +851,18 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
   }
 
   const fetchEOIData = async () => {
-    if (!(business.name && typeof setInfo === "function")) return;
+    if (!(business.name && typeof setInfo === "function" && token)) return;
     try {
-      const res = await fetch('https://membersaces.app.n8n.cloud/webhook/return_EOIIDs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ business_name: business.name })
-      });
-      const data = await res.json();
-      if (data && Array.isArray(data) && data.length > 0) {
-        const mappedFileIds: any = {};
-        // Process each row in the data array
-        data.forEach((row: any) => {
-          const eoiType = row['EOI Type'];
-          const eoiFileId = row['EOI File ID'];
-          // Only process if EOI Type and File ID exist
-          if (eoiType && typeof eoiType === 'string' && eoiFileId && typeof eoiFileId === 'string') {
-            // Only process if the file ID looks like a Google Drive file ID
-            const googleDriveIdPattern = /^[a-zA-Z0-9_-]{10,}$/;
-            if (googleDriveIdPattern.test(eoiFileId)) {
-              // Use the EOI Type as the key name
-              const cleanKey = eoiType.trim().replace(/\s+/g, '_');
-              const mappedKey = `eoi_${cleanKey}`;
-              // Create Google Drive URL
-              mappedFileIds[mappedKey] = `https://drive.google.com/file/d/${eoiFileId}/view?usp=drivesdk`;
-            }
-          }
-        });
-        // Only update if we actually found valid EOI files
+      const data = await fetchMemberEoiIds(business.name, token);
+      if (data.length > 0) {
+        const mappedFileIds = mapEoiRowsToFileIds(data);
         if (Object.keys(mappedFileIds).length > 0) {
           setInfo((prevInfo: any) => ({
             ...prevInfo,
             _processed_file_ids: {
               ...prevInfo._processed_file_ids,
-              ...mappedFileIds
-            }
+              ...mappedFileIds,
+            },
           }));
         }
       }
@@ -951,11 +935,11 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
       
       return () => clearTimeout(timeoutId);
     }
-  }, [business.name]); // Removed setInfo from dependencies to prevent multiple calls
+  }, [business.name, token]); // Removed setInfo from dependencies to prevent multiple calls
 
-  // Fetch both additional documents and engagement forms from unified n8n webhook
+  // Fetch additional documents and engagement forms via backend (Sheets direct + n8n fallback)
   const fetchWIPData = React.useCallback(async () => {
-    if (!business.name) return;
+    if (!business.name || !token) return;
     
     // Prevent concurrent calls
     if (wipDataFetchingRef.current) {
@@ -965,131 +949,22 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
     
     wipDataFetchingRef.current = true;
     try {
-      // Support both flat and nested payload structures
-      const payload = { business_name: business.name };
-      
-      const res = await fetch('https://membersaces.app.n8n.cloud/webhook/pull_wip_both', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      
-      // Check if response is ok
-      if (!res.ok) {
-        // If 404 or empty response, it's likely no files exist yet - not an error
-        if (res.status === 404) {
-          console.log('No WIP files found (404) - this is normal if no files uploaded yet');
-          setAdditionalDocs([]);
-          setEngagementForms([]);
-          return;
-        }
-        console.error('WIP data webhook error:', res.status, res.statusText);
+      const data = await fetchMemberWip(business.name, token);
+      if (!data) {
         setAdditionalDocs([]);
         setEngagementForms([]);
         return;
       }
-      
-      // Check if response has content before parsing JSON
-      const text = await res.text();
-      if (!text || text.trim() === '') {
-        console.log('Empty response from WIP data webhook - no files found');
-        setAdditionalDocs([]);
-        setEngagementForms([]);
-        return;
-      }
-      
-      let data;
-      try {
-        data = JSON.parse(text);
-      } catch (parseError) {
-        console.error('Error parsing WIP data JSON:', parseError);
-        setAdditionalDocs([]);
-        setEngagementForms([]);
-        return;
-      }
-      
-      // Handle nested payload structure (if payload is nested)
-      if (data && typeof data === 'object' && data.body && typeof data.body === 'object') {
-        data = data.body;
-      }
-      
-      // Response is an array with one object: [{ ok, business_name, additional_documents, signedEF_row, engagement_forms, ... }]
-      // Extract the first element if it's an array
-      if (Array.isArray(data) && data.length > 0) {
-        data = data[0];
-      }
-      
-      // Process unified response structure
-      // Expected structure:
-      // {
-      //   additional_documents: array (may contain empty objects {}),
-      //   signedEF_row: object (may be empty {}),
-      //   engagement_forms: array,
-      //   file_count: number,
-      //   has_files: boolean,
-      //   ok: boolean,
-      //   business_name: string
-      // }
-      
-      // Process additional documents
-      // Filter out empty objects and map to { fileName, id }
-      if (data?.additional_documents && Array.isArray(data.additional_documents)) {
-        const docs = data.additional_documents
-          .filter((item: any) => {
-            // Filter out empty objects {} - check if object has any meaningful keys
-            if (!item || typeof item !== 'object') return false;
-            const keys = Object.keys(item);
-            // If only has row_number or no keys, it's likely empty
-            if (keys.length === 0 || (keys.length === 1 && keys[0] === 'row_number')) return false;
-            // Must have either File Name or File ID
-            return !!(item['File Name'] || item['File ID'] || item['file_name'] || item['file_id']);
-          })
-          .map((item: any) => {
-            // Extract file name and id from the response
-            const fileName = item['File Name'] || item['file_name'] || item['fileName'] || 'Unknown';
-            const fileId = item['File ID'] || item['file_id'] || item['id'] || item['FileID'] || item['fileID'] || '';
-            return { fileName, id: fileId };
-          })
-          .filter((doc: any) => doc.id); // Filter out docs without file IDs
-        setAdditionalDocs(docs);
-      } else {
-        setAdditionalDocs([]);
-      }
-      
-      // Process engagement forms
-      // engagement_forms array contains objects with fileId and name directly
-      if (data?.engagement_forms && Array.isArray(data.engagement_forms) && data.engagement_forms.length > 0) {
-        const forms = data.engagement_forms
-          .map((form: any) => {
-            // Use fileId and name directly from the response
-            const fileName = form?.name || 
-                            form?.fileName || 
-                            'Unknown';
-            const fileId = form?.fileId || 
-                          form?.file_id || 
-                          form?.id || 
-                          '';
-            return { fileName, id: fileId };
-          })
-          .filter((form: any) => form.id); // Filter out forms without IDs
-        setEngagementForms(forms);
-      } else {
-        // Check signedEF_row as fallback (but it doesn't have fileId, so we can't use it directly)
-        // signedEF_row only has metadata like File Name, but not the actual file ID
-        // The engagement_forms array should have the actual fileId
-        setEngagementForms([]);
-      }
-      
+      setAdditionalDocs(parseAdditionalDocuments(data));
+      setEngagementForms(parseEngagementForms(data));
     } catch (err) {
-      // Network errors or other fetch failures - log but don't show error to user
-      // This is expected if webhook is unavailable or no files exist
       console.log('Error loading WIP data (may be normal if no files uploaded):', err);
       setAdditionalDocs([]);
       setEngagementForms([]);
     } finally {
       wipDataFetchingRef.current = false;
     }
-  }, [business.name]);
+  }, [business.name, token]);
 
   // Load both additional documents and engagement forms on mount (unified call)
   React.useEffect(() => {
@@ -1474,48 +1349,18 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
       
       if (res.ok) {
         // Refresh EOI data dynamically
-        if (business.name && typeof setInfo === "function") {
+        if (business.name && typeof setInfo === "function" && token) {
           try {
-            const response = await fetch('https://membersaces.app.n8n.cloud/webhook/return_EOIIDs', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ business_name: business.name })
-            });
-            const data = await response.json();
-            
-             if (data && Array.isArray(data) && data.length > 0) {
-               const mappedFileIds: any = {};
-               
-               // Process each row in the data array
-               data.forEach((row) => {
-                 const eoiType = row['EOI Type'];
-                 const eoiFileId = row['EOI File ID'];
-                 
-                 // Only process if EOI Type and File ID exist
-                 if (eoiType && typeof eoiType === 'string' && eoiFileId && typeof eoiFileId === 'string') {
-                   // Only process if the file ID looks like a Google Drive file ID
-                   const googleDriveIdPattern = /^[a-zA-Z0-9_-]{10,}$/;
-                   if (googleDriveIdPattern.test(eoiFileId)) {
-                     // Use the EOI Type as the key name
-                     const cleanKey = eoiType.trim().replace(/\s+/g, '_');
-                     const mappedKey = `eoi_${cleanKey}`;
-                     
-                     // Create Google Drive URL
-                     mappedFileIds[mappedKey] = `https://drive.google.com/file/d/${eoiFileId}/view?usp=drivesdk`;
-                   }
-                 }
-               });
-              
-              // Only update if we found valid EOI files
-              if (Object.keys(mappedFileIds).length > 0) {
-                setInfo((prevInfo: any) => ({
-                  ...prevInfo,
-                  _processed_file_ids: { 
-                    ...prevInfo._processed_file_ids, 
-                    ...mappedFileIds 
-                  }
-                }));
-              }
+            const rows = await fetchMemberEoiIds(business.name, token);
+            const mappedFileIds = mapEoiRowsToFileIds(rows);
+            if (Object.keys(mappedFileIds).length > 0) {
+              setInfo((prevInfo: any) => ({
+                ...prevInfo,
+                _processed_file_ids: {
+                  ...prevInfo._processed_file_ids,
+                  ...mappedFileIds,
+                },
+              }));
             }
           } catch (err) {
             console.error('Error refreshing EOI data:', err);
