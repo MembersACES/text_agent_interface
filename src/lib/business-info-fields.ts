@@ -61,6 +61,28 @@ export function getRecordId(info: Record<string, unknown> | null | undefined): s
   return typeof id === "string" && id.trim() ? id.trim() : null;
 }
 
+/** True when get-business-info returned a real LOA/member payload (not an error-only body). */
+export function isValidBusinessInfoResponse(
+  info: Record<string, unknown> | null | undefined,
+): boolean {
+  if (!info || typeof info !== "object") return false;
+  const biz = info.business_details as Record<string, unknown> | undefined;
+  const name = biz?.name ?? biz?.["Business Name"];
+  if (typeof name === "string" && name.trim()) return true;
+  return Boolean(getRecordId(info));
+}
+
+/** Extract user-facing message from a failed get-business-info response. */
+export function getBusinessInfoErrorMessage(
+  info: Record<string, unknown> | null | undefined,
+): string {
+  const formatted = info?._formatted_output;
+  if (typeof formatted === "string" && formatted.trim()) {
+    return formatted.trim();
+  }
+  return "Could not find that business name.";
+}
+
 /** True only when returned LOA record matches the CRM member's linked rec…. */
 export function isBusinessInfoVerified(
   info: Record<string, unknown> | null | undefined,
