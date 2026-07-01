@@ -67,33 +67,13 @@ When a user clicks "Get Member Profile" on the business-info page, multiple n8n 
 
 After the backend returns data, the frontend (`BusinessInfoDisplay.tsx`) makes **2 separate webhook calls**:
 
-#### a) `return_EOIIDs`
-- **URL:** `https://membersaces.app.n8n.cloud/webhook/return_EOIIDs`
-- **Location:** `BusinessInfoDisplay.tsx` line 599
-- **Trigger:** `useEffect` on line 683 (runs when `business.name` changes)
-- **Purpose:** Gets EOI (Expression of Interest) file IDs
-- **Payload:** `{ "business_name": "..." }`
-- **Returns:** Array of EOI files with:
-  - EOI Type
-  - EOI File ID
+#### a) `return_EOIIDs` ✅ IMPLEMENTED
+- **Method:** Backend `POST /api/member-eoi-ids` → `Signed EOIs` tab on FILE_IDS sheet (n8n fallback)
+- **Location:** `tools/member_documents.py`; frontend via `src/lib/member-documents-api.ts`
 
-#### b) `pull_wip_both` ✅ NEW UNIFIED WEBHOOK
-- **URL:** `https://membersaces.app.n8n.cloud/webhook-test/pull_wip_both`
-- **Location:** `BusinessInfoDisplay.tsx` - `fetchWIPData()` function
-- **Trigger:** `useEffect` (runs when `business.name` changes)
-- **Purpose:** Gets both additional documents AND engagement forms in one call
-- **Payload:** `{ "business_name": "..." }` (supports nested payload structure)
-- **Returns:** Unified response with:
-  - `additional_documents` (array) - Additional documents from WIP sheet
-  - `signedEF_row` (object or null) - Signed engagement form row
-  - `engagement_forms` (array) - Google Drive file matches for engagement forms
-  - `file_count` (number) - Total file count
-  - `has_files` (boolean) - Whether files exist
-  - `ok` (boolean) - Success status
-  - `business_name` (string) - Business name
-- **Replaces:** 
-  - ❌ `pull_additional_documents_WIP` (removed)
-  - ❌ `pull_signedEOI_WIP` (removed)
+#### b) `pull_wip_both` ✅ IMPLEMENTED
+- **Method:** Backend `POST /api/member-wip` → member WIP spreadsheet + central `Signed EFs` tab (n8n fallback)
+- **Location:** `tools/member_documents.py`; frontend via `src/lib/member-documents-api.ts`
 
 ---
 

@@ -18,6 +18,13 @@ import { RecordRow, RecordRowOpenAction } from "../shared/RecordRow";
 import { getRecordRowIcon } from "../shared/recordRowIcons";
 import { combineFilesIntoPdf } from "@/lib/combineFiles";
 import {
+  fetchMemberEoiIds,
+  fetchMemberWip,
+  mapEoiRowsToFileIds,
+  parseAdditionalDocuments,
+  parseEngagementForms,
+} from "@/lib/member-documents-api";
+import {
   getBusinessDocumentFileUrl,
   getBusinessDocumentsForOverview,
   getContractsFromProcessed,
@@ -397,62 +404,38 @@ export function DocumentsTab({
   // ── Data fetching ──────────────────────────────────────────────────────────
 
   const fetchEOI = useCallback(async () => {
-    if (!business?.name) return;
+    if (!business?.name || !token) return;
     setEoiRefreshing(true);
     try {
-      const res = await fetch("https://membersaces.app.n8n.cloud/webhook/return_EOIIDs", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ business_name: business.name }),
-      });
-      const data = await res.json();
-      if (Array.isArray(data) && data.length) {
-        const mapped: Record<string, string> = {};
-        data.forEach((row: any) => {
-          const t = row["EOI Type"]; const id = row["EOI File ID"];
-          if (t && id && /^[a-zA-Z0-9_-]{10,}$/.test(id))
-            mapped[`eoi_${t.trim().replace(/\s+/g, "_")}`] = driveFileUrl(id);
-        });
-        if (Object.keys(mapped).length)
-          setBusinessInfo((prev: any) => ({ ...prev, _processed_file_ids: { ...(prev?._processed_file_ids ?? {}), ...mapped } }));
+      const data = await fetchMemberEoiIds(business.name, token);
+      const mapped = mapEoiRowsToFileIds(data);
+      if (Object.keys(mapped).length) {
+        setBusinessInfo((prev: any) => ({
+          ...prev,
+          _processed_file_ids: { ...(prev?._processed_file_ids ?? {}), ...mapped },
+        }));
       }
-    } catch {} finally { setEoiRefreshing(false); }
-  }, [business?.name, setBusinessInfo]);
+    } catch {
+      /* ignore */
+    } finally {
+      setEoiRefreshing(false);
+    }
+  }, [business?.name, setBusinessInfo, token]);
 
   const fetchWIP = useCallback(async () => {
-    if (!business?.name) return;
+    if (!business?.name || !token) return;
     setWipLoading(true);
     try {
-      const res = await fetch("https://membersaces.app.n8n.cloud/webhook/pull_wip_both", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ business_name: business.name }),
-      });
-      if (!res.ok) { setAdditionalDocs([]); setEngagementForms([]); return; }
-      const text = await res.text();
-      if (!text?.trim()) { setAdditionalDocs([]); setEngagementForms([]); return; }
-      let data: any;
-      try { data = JSON.parse(text); } catch { setAdditionalDocs([]); setEngagementForms([]); return; }
-      if (data?.body) data = data.body;
-      if (Array.isArray(data) && data.length) data = data[0];
-      if (Array.isArray(data?.additional_documents)) {
-        setAdditionalDocs(
-          data.additional_documents
-            .filter((i: any) => i?.["File Name"] || i?.["file_name"])
-            .map((i: any) => ({
-              fileName: i["File Name"] || i["file_name"] || "Unknown",
-              id: i["File ID"] || i["file_id"] || i.id || "",
-            }))
-            .filter((d: SimpleDoc) => d.id)
-        );
-      } else setAdditionalDocs([]);
-      if (Array.isArray(data?.engagement_forms) && data.engagement_forms.length) {
-        setEngagementForms(
-          data.engagement_forms
-            .map((f: any) => ({ fileName: f?.name || f?.fileName || "Unknown", id: f?.fileId || f?.file_id || f?.id || "" }))
-            .filter((f: SimpleDoc) => f.id)
-        );
-      } else setEngagementForms([]);
-    } catch { setAdditionalDocs([]); setEngagementForms([]); } finally { setWipLoading(false); }
-  }, [business?.name]);
+      const data = await fetchMemberWip(business.name, token);
+      setAdditionalDocs(parseAdditionalDocuments(data));
+      setEngagementForms(parseEngagementForms(data));
+    } catch {
+      setAdditionalDocs([]);
+      setEngagementForms([]);
+    } finally {
+      setWipLoading(false);
+    }
+  }, [business?.name, token]);
 
   useEffect(() => {
     if (business?.name && token) { fetchEOI(); fetchWIP(); }

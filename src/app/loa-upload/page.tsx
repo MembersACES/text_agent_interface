@@ -1,10 +1,14 @@
 'use client';
 import React, { useState } from 'react';
+import { useSession } from 'next-auth/react';
 import BusinessDetailsDisplay from '../../components/BusinessDetailsDisplay';
 import IndustrySubfolderSelector from '../../components/IndustrySubfolderSelector';
 import { PageHeader } from '@/components/Layouts/PageHeader';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { getApiBaseUrl } from '@/lib/utils';
+import { fetchReturnUtilityInfo } from '@/lib/utility-info-api';
+import { getUtilityKeyFields } from '@/lib/utility-key-fields';
 import { notifyUtilityLinkedPostProcess } from '@/lib/utility-linked-notify';
 import {
   LOA_UPLOAD_UTILITY_API_ENDPOINTS,
@@ -60,6 +64,11 @@ function LoaStepShell({
 }
 
 export default function LoaUploadPage() {
+  const { data: session } = useSession();
+  const token = (session as { id_token?: string; accessToken?: string } | null)?.id_token
+    ?? (session as { accessToken?: string } | null)?.accessToken
+    ?? '';
+
   const [step, setStep] = useState(1);
   const [file, setFile] = useState<File | null>(null);
   const [utilityType, setUtilityType] = useState('LOA');
@@ -146,19 +155,40 @@ export default function LoaUploadPage() {
     }
   };
 
+  const fetchLoaBusinessDetails = async () => {
+    if (!token) {
+      setAuthError(true);
+      setUploadResult('Authentication required. Please sign in again.');
+      return null;
+    }
+    const res = await fetch(`${getApiBaseUrl()}/api/loa-business-details`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({}),
+    });
+    const data = await res.json();
+    if (data?.message && /invalid token|token expired|expired token/i.test(String(data.message))) {
+      setAuthError(true);
+      setUploadResult(null);
+      return null;
+    }
+    if (!res.ok) {
+      throw new Error(typeof data?.detail === 'string' ? data.detail : 'Failed to fetch business details');
+    }
+    return Array.isArray(data) ? data[0] : data;
+  };
+
   // Step 3: Fetch business details
   const fetchBusinessDetails = async () => {
     setLoading(true);
     setAuthError(false);
     try {
-      const res = await fetch('https://membersaces.app.n8n.cloud/webhook/return_business_details', { method: 'POST' });
-      const data = await res.json();
-      if (data.message && /invalid token|token expired|expired token/i.test(data.message)) {
-        setAuthError(true);
-        setUploadResult(null);
-        return;
-      }
-      setBusinessDetails(Array.isArray(data) ? data[0] : data);
+      const details = await fetchLoaBusinessDetails();
+      if (!details) return;
+      setBusinessDetails(details);
       setStep(3);
     } catch (err) {
       setUploadResult('Error fetching business details.');
@@ -180,14 +210,9 @@ export default function LoaUploadPage() {
   const fetchBusinessDetailsRefresh = async () => {
     setAuthError(false);
     try {
-      const res = await fetch('https://membersaces.app.n8n.cloud/webhook/return_business_details', { method: 'POST' });
-      const data = await res.json();
-      if (data.message && /invalid token|token expired|expired token/i.test(data.message)) {
-        setAuthError(true);
-        setUploadResult(null);
-        return;
-      }
-      setBusinessDetails(Array.isArray(data) ? data[0] : data);
+      const details = await fetchLoaBusinessDetails();
+      if (!details) return;
+      setBusinessDetails(details);
     } catch (err) {
       setUploadResult('Error fetching business details.');
     } finally {
@@ -334,21 +359,17 @@ export default function LoaUploadPage() {
     setUtilityError(null);
     
     try {
-      const res = await fetch('https://membersaces.app.n8n.cloud/webhook/return_utility_info', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          utility_type: selectedUtility,
-          business_name: businessDetails?.['Business Name'] || ''
-        }),
-      });
-
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.detail || err.message || "Unknown error");
+      if (!token) {
+        setUtilityError('Authentication required. Please sign in again.');
+        return;
       }
-
-      const data = await res.json();
+      const data = await fetchReturnUtilityInfo(
+        {
+          utility_type: selectedUtility,
+          business_name: businessDetails?.['Business Name'] || '',
+        },
+        token,
+      );
       setUtilityData(data);
     } catch (err: any) {
       setUtilityError(err.message);
@@ -357,52 +378,8 @@ export default function LoaUploadPage() {
     }
   };
 
-  const getKeyFields = (utilityType: string, record: any) => {
-    switch (utilityType) {
-      case 'ELECTRICITY_CI':
-      case 'ELECTRICITY_SME':
-        return {
-          identifier: record.NMI,
-          identifierLabel: 'NMI',
-          address: record['Site Address'] || record['Supply Address'],
-          retailer: record.Retailer,
-          clientName: record['Client Name']
-        };
-      case 'GAS_CI':
-      case 'GAS_SME':
-        return {
-          identifier: record.MRIN,
-          identifierLabel: 'MRIN',
-          address: record['Site Address:'] || record['Site Address'] || record['Supply Address'],
-          retailer: record.Retailer,
-          clientName: record['Client Name']
-        };
-      case 'WASTE':
-        return {
-          identifier: record['Account Number or Customer Number'],
-          identifierLabel: 'Account Number',
-          address: record['Supply Address'],
-          retailer: record.Provider,
-          clientName: record['Client Name']
-        };
-      case 'COOKING_OIL':
-        return {
-          identifier: record['Account Number / Customer Code'],
-          identifierLabel: 'Account Number / Customer Code',
-          address: record['Site Address'],
-          retailer: record.Retailer,
-          clientName: record['Client Name']
-        };
-      default:
-        return {
-          identifier: 'N/A',
-          identifierLabel: 'ID',
-          address: 'N/A',
-          retailer: 'N/A',
-          clientName: 'N/A'
-        };
-    }
-  };
+  const getKeyFields = (utilityType: string, record: any) =>
+    getUtilityKeyFields(utilityType, record);
 
   const toggleExpanded = (index: number) => {
     const newExpanded = new Set(expandedRecords);

@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { fetchReturnUtilityInfo } from "@/lib/utility-info-api";
 
 const UTILITY_OPTIONS = {
   WASTE: "WASTE",
@@ -31,23 +32,16 @@ export default function UtilityLinkingTool({ token, businessName, onBack }: Util
     setLoading(true);
 
     try {
-      const res = await fetch('https://membersaces.app.n8n.cloud/webhook/return_utility_info', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({ 
-          utility_type: utilityType,
-          business_name: businessName 
-        }),
-      });
-
-      // Check for 401 Unauthorized status
-      if (res.status === 401) {
+      const data = await fetchReturnUtilityInfo(
+        { utility_type: utilityType, business_name: businessName },
+        token,
+      );
+      setUtilityData(data);
+    } catch (err: any) {
+      console.log("🔍 Error caught:", err);
+      
+      if (err.message === 'REAUTHENTICATION_REQUIRED') {
         console.log("🔍 401 Unauthorized - dispatching reauthentication event");
-        
-        // Dispatch custom event to trigger automatic reauthentication
         const apiErrorEvent = new CustomEvent('api-error', {
           detail: { 
             error: 'REAUTHENTICATION_REQUIRED',
@@ -61,19 +55,7 @@ export default function UtilityLinkingTool({ token, businessName, onBack }: Util
         return;
       }
 
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.detail || err.message || "Unknown error");
-      }
-
-      const data = await res.json();
-      setUtilityData(data);
-    } catch (err: any) {
-      console.log("🔍 Error caught:", err);
-      
-      if (err.message !== 'REAUTHENTICATION_REQUIRED') {
-        setError(err.message);
-      }
+      setError(err.message);
     } finally {
       setLoading(false);
     }

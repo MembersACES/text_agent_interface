@@ -3,6 +3,8 @@
 import React, { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { notifyUtilityLinkedPostProcess } from "@/lib/utility-linked-notify";
+import { fetchReturnUtilityInfo } from "@/lib/utility-info-api";
+import { getUtilityKeyFields } from "@/lib/utility-key-fields";
 import { ToolPageLayout } from "@/components/Layouts/ToolPageLayout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -42,60 +44,8 @@ export default function UtilityLinkingPage() {
     setExpandedRecords(newExpanded);
   };
 
-  const getKeyFields = (utilityType: string, record: any) => {
-    switch (utilityType) {
-      case 'ELECTRICITY_CI':
-      case 'ELECTRICITY_SME':
-        return {
-          identifier: record.NMI,
-          identifierLabel: 'NMI',
-          address: record['Site Address'] || record['Supply Address'],
-          retailer: record.Retailer,
-          clientName: record['Client Name']
-        };
-      case 'GAS_CI':
-      case 'GAS_SME':
-        return {
-          identifier: record.MRIN,
-          identifierLabel: 'MRIN',
-          address: record['Site Address:'] || record['Site Address'] || record['Supply Address'],
-          retailer: record.Retailer,
-          clientName: record['Client Name']
-        };
-      case 'WASTE':
-        return {
-          identifier: record['Account Number or Customer Number'],
-          identifierLabel: 'Account Number',
-          address: record['Supply Address'],
-          retailer: record.Provider,
-          clientName: record['Client Name']
-        };
-      case 'COOKING_OIL':
-        return {
-          identifier: record['Account Number / Customer Code'],
-          identifierLabel: 'Account Number / Customer Code',
-          address: record['Site Address'],
-          retailer: record.Retailer,
-          clientName: record['Client Name']
-        };
-      case 'CLEANING':
-        return {
-          identifier: record.invoice_number || record['Invoice Number'],
-          identifierLabel: 'Invoice Number',
-          address: record.client_address || record['Client Address'],
-          retailer: record.supplier_name || record['Supplier Name'],
-          clientName: record.client_name || record['Client Name']
-        };
-      default:
-        return {
-          identifier: 'N/A',
-          identifierLabel: 'ID',
-          address: 'N/A',
-          retailer: 'N/A',
-          clientName: 'N/A'
-        };
-    }
-  };
+  const getKeyFields = (utilityType: string, record: any) =>
+    getUtilityKeyFields(utilityType, record);
 
   const handleUtilitySelect = async (utilityType: string) => {
     setSelectedUtility(utilityType);
@@ -105,23 +55,16 @@ export default function UtilityLinkingPage() {
     setSuccessMessage(null); // Clear any previous success message
 
     try {
-      const res = await fetch('https://membersaces.app.n8n.cloud/webhook/return_utility_info', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({ 
-          utility_type: utilityType,
-          business_name: businessName 
-        }),
-      });
-
-      // Check for 401 Unauthorized status
-      if (res.status === 401) {
+      const data = await fetchReturnUtilityInfo(
+        { utility_type: utilityType, business_name: businessName },
+        token,
+      );
+      setUtilityData(data);
+    } catch (err: any) {
+      console.log("🔍 Error caught:", err);
+      
+      if (err.message === 'REAUTHENTICATION_REQUIRED') {
         console.log("🔍 401 Unauthorized - dispatching reauthentication event");
-        
-        // Dispatch custom event to trigger automatic reauthentication
         const apiErrorEvent = new CustomEvent('api-error', {
           detail: { 
             error: 'REAUTHENTICATION_REQUIRED',
@@ -130,24 +73,11 @@ export default function UtilityLinkingPage() {
           }
         });
         window.dispatchEvent(apiErrorEvent);
-        
         setError("Session expired. Please wait while we refresh your authentication...");
         return;
       }
 
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.detail || err.message || "Unknown error");
-      }
-
-      const data = await res.json();
-      setUtilityData(data);
-    } catch (err: any) {
-      console.log("🔍 Error caught:", err);
-      
-      if (err.message !== 'REAUTHENTICATION_REQUIRED') {
-        setError(err.message);
-      }
+      setError(err.message);
     } finally {
       setLoading(false);
     }
@@ -256,19 +186,13 @@ export default function UtilityLinkingPage() {
       setSuccessMessage(null); // Clear any previous success message
       
       try {
-        const res = await fetch('https://membersaces.app.n8n.cloud/webhook/return_utility_info', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
-          body: JSON.stringify({ 
-            utility_type: selectedUtility,
-            business_name: businessName 
-          }),
-        });
-  
-        if (res.status === 401) {
+        const data = await fetchReturnUtilityInfo(
+          { utility_type: selectedUtility, business_name: businessName },
+          token,
+        );
+        setUtilityData(data);
+      } catch (err: any) {
+        if (err.message === 'REAUTHENTICATION_REQUIRED') {
           const apiErrorEvent = new CustomEvent('api-error', {
             detail: { 
               error: 'REAUTHENTICATION_REQUIRED',
@@ -281,18 +205,8 @@ export default function UtilityLinkingPage() {
           setError("Session expired. Please wait while we refresh your authentication...");
           return;
         }
-  
-        if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.detail || err.message || "Unknown error");
-        }
-  
-        const data = await res.json();
-        setUtilityData(data);
-      } catch (err: any) {
-        if (err.message !== 'REAUTHENTICATION_REQUIRED') {
-          setError(err.message);
-        }
+
+        setError(err.message);
       } finally {
         setRefreshing(false);
       }
