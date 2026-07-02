@@ -2006,6 +2006,7 @@ export default function Base2Page() {
                           email: webhookRecipient?.contactEmail ?? businessInfo?.email ?? null,
                           phone: webhookRecipient?.contactPhone ?? businessInfo?.telephone ?? null,
                           sequence_type: 'ci_electricity',
+                          email_id: (r.email_ID ?? r.email_id) as string | undefined,
                           offer,
                         }),
                       });
