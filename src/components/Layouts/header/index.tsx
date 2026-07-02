@@ -35,7 +35,7 @@ export function Header() {
       : "Collapse sidebar";
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center justify-between border-b border-stroke bg-white/95 px-4 shadow-1 backdrop-blur-sm dark:border-stroke-dark dark:bg-gray-dark/95 md:px-5 2xl:px-8">
+    <header className="flex h-16 shrink-0 items-center justify-between border-b border-stroke bg-white/95 px-4 shadow-1 backdrop-blur-sm dark:border-stroke-dark dark:bg-gray-dark/95 md:px-5 2xl:px-8">
       <div className="flex min-w-0 flex-1 items-center gap-3">
         <button
           type="button"

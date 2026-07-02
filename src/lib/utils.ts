@@ -5,6 +5,27 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+export type DeploymentEnvironment = "local" | "dev" | "prod";
+
+/** Resolve UI environment from hostname (localhost → local, dev Cloud Run → dev, else prod). */
+export function getDeploymentEnvironment(hostname?: string): DeploymentEnvironment {
+  const host =
+    hostname ?? (typeof window !== "undefined" ? window.location.hostname : "");
+
+  if (
+    !host ||
+    host === "localhost" ||
+    host === "127.0.0.1" ||
+    host.endsWith(".localhost")
+  ) {
+    return "local";
+  }
+  if (host.includes("acesagentinterfacedev")) {
+    return "dev";
+  }
+  return "prod";
+}
+
 export function getApiBaseUrl(requestHost?: string): string {
   // Server-side (Next.js API routes): use request host so dev frontend → dev backend
   if (typeof window === 'undefined') {
