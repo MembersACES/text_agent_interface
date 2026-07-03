@@ -7,6 +7,10 @@ import { useEffect } from "react";
 import { ToastProvider } from "@/components/ui/toast";
 import { CommandPaletteProvider } from "@/components/CommandPaletteContext";
 import { AppCopyright } from "@/components/Layouts/AppCopyright";
+import {
+  formatAllowedDomainsLabel,
+  isAllowedEmailDomain,
+} from "@/lib/allowed-email-domains";
 import { BRAND } from "@/lib/brand";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -32,11 +36,9 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     }
   }, [session]);
 
-  // Check domain validation
-  const allowedDomain = "acesolutions.com.au";
+  const allowedDomainsLabel = formatAllowedDomainsLabel();
   const userEmail = session?.user?.email || "";
-  const userDomain = userEmail.split("@")[1];
-  const isDomainValid = session && userDomain === allowedDomain;
+  const isDomainValid = session && isAllowedEmailDomain(userEmail);
 
   if (status === "loading") {
     return (
@@ -59,7 +61,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
             {BRAND.name}
           </p>
           <p className="mb-6 text-sm text-gray-600 dark:text-gray-400">
-            Sign in with your @{allowedDomain} account to continue.
+            Sign in with your {allowedDomainsLabel} account to continue.
           </p>
           <Button
             onClick={() => {
@@ -84,7 +86,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
             Access denied
           </p>
           <p className="mb-6 text-sm text-gray-600 dark:text-gray-400">
-            You must be signed in with an @{allowedDomain} email address to
+            You must be signed in with a {allowedDomainsLabel} email address to
             access this application.
           </p>
           <Button
