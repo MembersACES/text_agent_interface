@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { notifyUtilityLinkedPostProcess } from "@/lib/utility-linked-notify";
 import { fetchReturnUtilityInfo } from "@/lib/utility-info-api";
 import { getUtilityKeyFields } from "@/lib/utility-key-fields";
+import { useAuthToken } from "@/lib/use-auth-token";
 import { ToolPageLayout } from "@/components/Layouts/ToolPageLayout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -23,8 +24,8 @@ const UTILITY_OPTIONS = {
 
 export default function UtilityLinkingPage() {
   const searchParams = useSearchParams();
+  const { token, isSessionLoading } = useAuthToken();
   const businessName = searchParams.get('businessName') || '';
-  const token = searchParams.get('token') || '';
 
   const [selectedUtility, setSelectedUtility] = useState<string>("");
   const [utilityData, setUtilityData] = useState<any>(null);
@@ -48,11 +49,19 @@ export default function UtilityLinkingPage() {
     getUtilityKeyFields(utilityType, record);
 
   const handleUtilitySelect = async (utilityType: string) => {
+    if (isSessionLoading) return;
+
     setSelectedUtility(utilityType);
     setError(null);
     setUtilityData(null);
     setLoading(true);
     setSuccessMessage(null); // Clear any previous success message
+
+    if (!token) {
+      setError("Authentication required. Please sign in again.");
+      setLoading(false);
+      return;
+    }
 
     try {
       const data = await fetchReturnUtilityInfo(
@@ -84,11 +93,19 @@ export default function UtilityLinkingPage() {
   };
 
   const handleConfirmUtility = async (confirm: boolean) => {
+    if (isSessionLoading) return;
+
     if (confirm) {
       // Handle confirmation logic - send utility data to webhook
       setLoading(true);
       setError(null);
       setSuccessMessage(null); // Clear any previous success message
+
+      if (!token) {
+        setError("Authentication required. Please sign in again.");
+        setLoading(false);
+        return;
+      }
       
       try {
         // Prepare the data to send
@@ -184,6 +201,12 @@ export default function UtilityLinkingPage() {
       setRefreshing(true);
       setError(null);
       setSuccessMessage(null); // Clear any previous success message
+
+      if (!token) {
+        setError("Authentication required. Please sign in again.");
+        setRefreshing(false);
+        return;
+      }
       
       try {
         const data = await fetchReturnUtilityInfo(

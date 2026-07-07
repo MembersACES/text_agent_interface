@@ -1,18 +1,19 @@
 'use client';
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { ToolPageLayout } from "@/components/Layouts/ToolPageLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { fetchReturnUtilityInfo } from "@/lib/utility-info-api";
+import { useAuthToken } from "@/lib/use-auth-token";
 
 export default function UpdateLOAPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { token, isSessionLoading } = useAuthToken();
 
   const businessName = searchParams.get('businessName') || '';
-  const token = searchParams.get('token') || '';
   const businessInfoEncoded = searchParams.get('businessInfo');
 
   const [businessInfo, setBusinessInfo] = useState<any>(null);
@@ -47,7 +48,12 @@ export default function UpdateLOAPage() {
   }, [businessInfoEncoded]);
 
   // 🔄 Fetch LOA Data
-  const fetchLoaData = async () => {
+  const fetchLoaData = useCallback(async () => {
+    if (!token) {
+      setError("Authentication required. Please sign in again.");
+      return;
+    }
+
     setError(null);
     setLoading(true);
 
@@ -70,12 +76,13 @@ export default function UpdateLOAPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [businessName, token]);
 
-  // Fetch LOA data on mount
+  // Fetch LOA data once session (and token) is ready
   useEffect(() => {
+    if (isSessionLoading) return;
     fetchLoaData();
-  }, []);
+  }, [isSessionLoading, fetchLoaData]);
 
   // ➡️ Proceed to confirm page
   const handleProceed = () => {
