@@ -60,6 +60,7 @@ export const MAIN_NAV: NavLinkItem[] = [
   { title: "Dashboard", url: "/crm", icon: LayoutDashboard },
   { title: "Solution Range", url: "/solution-range", icon: LayoutGrid },
   { title: "Base 1 Hub", url: "/base-1", icon: BarChart3 },
+  { title: "Plus ES DMA", url: "/plus-es-dma", icon: FileText },
 ];
 
 /** Collapsible job-to-be-done groups (closed by default) */

@@ -296,6 +296,62 @@ export function Sidebar() {
     [hasInvoicingAccess, hasPersonalAssistantAccess, hasVideoAccess],
   );
 
+  const renderCollapsibleGroup = (group: NavGroupItem) => {
+    const groupVisible =
+      itemVisible(group.title) ||
+      group.items.some((sub) => itemVisible(sub.title, sub.url));
+    if (!groupVisible) return null;
+
+    const open = isJobGroupOpen(group.title) || filtering;
+    const hasActive = group.items.some((sub) => sub.url === pathname);
+
+    return (
+      <div key={group.title} className="mb-1">
+        <MenuItem
+          as="button"
+          onClick={() => setJobGroupExpanded(group.title, !open)}
+          isActive={hasActive}
+          isHighlighted={itemHighlight(group.title)}
+          label={group.title}
+          className={cn("flex w-full items-center gap-2.5", isCollapsed && "justify-center")}
+        >
+          <NavIcon icon={group.icon} label={group.title} collapsed={isCollapsed} />
+          {!isCollapsed && (
+            <>
+              <span className="min-w-0 flex-1 truncate text-left">{group.title}</span>
+              <ChevronDown
+                className={cn(
+                  "size-3.5 shrink-0 text-gray-400 transition-transform",
+                  !open && "-rotate-90",
+                )}
+                aria-hidden
+              />
+            </>
+          )}
+        </MenuItem>
+        {open && !isCollapsed && (
+          <ul className="ml-7 space-y-0.5 pb-1 pt-0.5">
+            {group.items
+              .filter((sub) => itemVisible(sub.title, sub.url))
+              .map((sub) => (
+                <li key={sub.url}>
+                  <MenuItem
+                    as="link"
+                    href={sub.url}
+                    isActive={pathname === sub.url}
+                    isHighlighted={itemHighlight(sub.title)}
+                    label={sub.title}
+                  >
+                    <span className="truncate">{sub.title}</span>
+                  </MenuItem>
+                </li>
+              ))}
+          </ul>
+        )}
+      </div>
+    );
+  };
+
   const renderLink = (item: NavLinkItem, badge?: number) => {
     if (!itemVisible(item.title, item.url)) return null;
     const href = item.url || "/";
@@ -544,61 +600,7 @@ export function Sidebar() {
             </ul>
 
             {/* Job groups */}
-            {filteredJobGroups.map((group) => {
-              const groupVisible =
-                itemVisible(group.title) ||
-                group.items.some((sub) => itemVisible(sub.title, sub.url));
-              if (!groupVisible) return null;
-
-              const open = isJobGroupOpen(group.title) || filtering;
-              const hasActive = group.items.some((sub) => sub.url === pathname);
-
-              return (
-                <div key={group.title} className="mb-1">
-                  <MenuItem
-                    as="button"
-                    onClick={() => setJobGroupExpanded(group.title, !open)}
-                    isActive={hasActive}
-                    isHighlighted={itemHighlight(group.title)}
-                    label={group.title}
-                    className={cn("flex w-full items-center gap-2.5", isCollapsed && "justify-center")}
-                  >
-                    <NavIcon icon={group.icon} label={group.title} collapsed={isCollapsed} />
-                    {!isCollapsed && (
-                      <>
-                        <span className="min-w-0 flex-1 truncate text-left">{group.title}</span>
-                        <ChevronDown
-                          className={cn(
-                            "size-3.5 shrink-0 text-gray-400 transition-transform",
-                            !open && "-rotate-90",
-                          )}
-                          aria-hidden
-                        />
-                      </>
-                    )}
-                  </MenuItem>
-                  {open && !isCollapsed && (
-                    <ul className="ml-7 space-y-0.5 pb-1 pt-0.5">
-                      {group.items
-                        .filter((sub) => itemVisible(sub.title, sub.url))
-                        .map((sub) => (
-                          <li key={sub.url}>
-                            <MenuItem
-                              as="link"
-                              href={sub.url}
-                              isActive={pathname === sub.url}
-                              isHighlighted={itemHighlight(sub.title)}
-                              label={sub.title}
-                            >
-                              <span className="truncate">{sub.title}</span>
-                            </MenuItem>
-                          </li>
-                        ))}
-                    </ul>
-                  )}
-                </div>
-              );
-            })}
+            {filteredJobGroups.map((group) => renderCollapsibleGroup(group))}
 
             {sections.map(renderSection)}
           </div>
