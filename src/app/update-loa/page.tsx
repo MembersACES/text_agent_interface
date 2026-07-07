@@ -1,24 +1,28 @@
 'use client';
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { ToolPageLayout } from "@/components/Layouts/ToolPageLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { fetchReturnUtilityInfo } from "@/lib/utility-info-api";
+import { useAuthToken } from "@/lib/use-auth-token";
+import { MemberAcesSheetPreview } from "@/components/MemberAcesSheetPreview";
 
 export default function UpdateLOAPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { token, isSessionLoading } = useAuthToken();
 
   const businessName = searchParams.get('businessName') || '';
-  const token = searchParams.get('token') || '';
   const businessInfoEncoded = searchParams.get('businessInfo');
 
   const [businessInfo, setBusinessInfo] = useState<any>(null);
   const [loaData, setLoaData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [sheetPreviewRefreshKey, setSheetPreviewRefreshKey] = useState(0);
+  const [watchSheet, setWatchSheet] = useState(true);
 
   // 🧠 Decode and display business info
   useEffect(() => {
@@ -47,7 +51,12 @@ export default function UpdateLOAPage() {
   }, [businessInfoEncoded]);
 
   // 🔄 Fetch LOA Data
-  const fetchLoaData = async () => {
+  const fetchLoaData = useCallback(async () => {
+    if (!token) {
+      setError("Authentication required. Please sign in again.");
+      return;
+    }
+
     setError(null);
     setLoading(true);
 
@@ -57,6 +66,7 @@ export default function UpdateLOAPage() {
         token,
       );
       setLoaData(Array.isArray(data) && data.length > 0 ? data[0] : data);
+      setWatchSheet(false);
     } catch (err: any) {
       if (err.message === 'REAUTHENTICATION_REQUIRED') {
         const apiErrorEvent = new CustomEvent('api-error', {
@@ -70,12 +80,13 @@ export default function UpdateLOAPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [businessName, token]);
 
-  // Fetch LOA data on mount
+  // Fetch LOA data once session (and token) is ready
   useEffect(() => {
+    if (isSessionLoading) return;
     fetchLoaData();
-  }, []);
+  }, [isSessionLoading, fetchLoaData]);
 
   // ➡️ Proceed to confirm page
   const handleProceed = () => {
@@ -113,6 +124,20 @@ export default function UpdateLOAPage() {
               </CardContent>
             </Card>
           )}
+
+          {!isSessionLoading && token ? (
+            <MemberAcesSheetPreview
+              className="mb-6"
+              utilityType="LOA"
+              token={token}
+              expectedBusinessName={businessInfo?.["Business Name"] || businessName}
+              autoPoll={watchSheet && !loaData}
+              refreshKey={sheetPreviewRefreshKey}
+              onLatestRowReady={() => {
+                void fetchLoaData();
+              }}
+            />
+          ) : null}
 
           {/* --- STATUS + ERRORS --- */}
           {loading && (
@@ -159,7 +184,16 @@ export default function UpdateLOAPage() {
             <Button variant="secondary" onClick={() => router.back()}>
               Back
             </Button>
-            <Button className="flex-1" onClick={fetchLoaData} disabled={loading} loading={loading}>
+            <Button
+              className="flex-1"
+              onClick={() => {
+                setWatchSheet(true);
+                setSheetPreviewRefreshKey((k) => k + 1);
+                void fetchLoaData();
+              }}
+              disabled={loading}
+              loading={loading}
+            >
               Refresh LOA data
             </Button>
             <Button className="flex-1" variant="secondary" onClick={handleProceed} disabled={!businessInfo || !loaData}>

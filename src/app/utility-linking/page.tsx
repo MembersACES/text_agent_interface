@@ -1,10 +1,17 @@
 'use client';
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { notifyUtilityLinkedPostProcess } from "@/lib/utility-linked-notify";
-import { fetchReturnUtilityInfo } from "@/lib/utility-info-api";
 import { getUtilityKeyFields } from "@/lib/utility-key-fields";
+import { useAuthToken } from "@/lib/use-auth-token";
+import { MemberAcesSheetPreview } from "@/components/MemberAcesSheetPreview";
+import { UtilityDetailsDisplay } from "@/components/UtilityDetailsDisplay";
+import { UtilityInvoiceUploadBar } from "@/components/UtilityInvoiceUploadBar";
+import {
+  sheetPreviewRowToUtilityRecord,
+  type SheetPreviewRow,
+} from "@/lib/sheet-preview-api";
 import { ToolPageLayout } from "@/components/Layouts/ToolPageLayout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -23,72 +30,60 @@ const UTILITY_OPTIONS = {
 
 export default function UtilityLinkingPage() {
   const searchParams = useSearchParams();
+  const { token, isSessionLoading } = useAuthToken();
   const businessName = searchParams.get('businessName') || '';
-  const token = searchParams.get('token') || '';
 
   const [selectedUtility, setSelectedUtility] = useState<string>("");
-  const [utilityData, setUtilityData] = useState<any>(null);
+  const [utilityData, setUtilityData] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [expandedRecords, setExpandedRecords] = useState<Set<number>>(new Set());
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [selectedUtilitySheetRow, setSelectedUtilitySheetRow] = useState<number | null>(null);
+  const [utilitySheetPreviewRefreshKey, setUtilitySheetPreviewRefreshKey] = useState(0);
+  const [watchSheetAfterUpload, setWatchSheetAfterUpload] = useState(false);
 
-  const toggleExpanded = (index: number) => {
-    const newExpanded = new Set(expandedRecords);
-    if (newExpanded.has(index)) {
-      newExpanded.delete(index);
-    } else {
-      newExpanded.add(index);
-    }
-    setExpandedRecords(newExpanded);
-  };
-
-  const getKeyFields = (utilityType: string, record: any) =>
+  const getKeyFields = (utilityType: string, record: Record<string, unknown> | null | undefined) =>
     getUtilityKeyFields(utilityType, record);
 
-  const handleUtilitySelect = async (utilityType: string) => {
+  const handleUtilitySheetRowSelect = (row: SheetPreviewRow) => {
+    setSelectedUtilitySheetRow(row.row_number);
+    setUtilityData(sheetPreviewRowToUtilityRecord(row));
+  };
+
+  const handleUtilitySelect = (utilityType: string) => {
+    if (isSessionLoading) return;
+
     setSelectedUtility(utilityType);
     setError(null);
     setUtilityData(null);
-    setLoading(true);
-    setSuccessMessage(null); // Clear any previous success message
+    setSelectedUtilitySheetRow(null);
+    setSuccessMessage(null);
+    setWatchSheetAfterUpload(false);
+  };
 
-    try {
-      const data = await fetchReturnUtilityInfo(
-        { utility_type: utilityType, business_name: businessName },
-        token,
-      );
-      setUtilityData(data);
-    } catch (err: any) {
-      console.log("🔍 Error caught:", err);
-      
-      if (err.message === 'REAUTHENTICATION_REQUIRED') {
-        console.log("🔍 401 Unauthorized - dispatching reauthentication event");
-        const apiErrorEvent = new CustomEvent('api-error', {
-          detail: { 
-            error: 'REAUTHENTICATION_REQUIRED',
-            status: 401,
-            message: 'Authentication expired'
-          }
-        });
-        window.dispatchEvent(apiErrorEvent);
-        setError("Session expired. Please wait while we refresh your authentication...");
-        return;
-      }
-
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
+  const handleInvoiceUploadSuccess = () => {
+    setWatchSheetAfterUpload(true);
+    setSelectedUtilitySheetRow(null);
+    setUtilityData(null);
+    setUtilitySheetPreviewRefreshKey((k) => k + 1);
+    setError(null);
   };
 
   const handleConfirmUtility = async (confirm: boolean) => {
+    if (isSessionLoading) return;
+
     if (confirm) {
       // Handle confirmation logic - send utility data to webhook
       setLoading(true);
       setError(null);
       setSuccessMessage(null); // Clear any previous success message
+
+      if (!token) {
+        setError("Authentication required. Please sign in again.");
+        setLoading(false);
+        return;
+      }
       
       try {
         // Prepare the data to send
@@ -180,36 +175,12 @@ export default function UtilityLinkingPage() {
         setLoading(false);
       }
     } else {
-      // Refresh the data
       setRefreshing(true);
       setError(null);
-      setSuccessMessage(null); // Clear any previous success message
-      
-      try {
-        const data = await fetchReturnUtilityInfo(
-          { utility_type: selectedUtility, business_name: businessName },
-          token,
-        );
-        setUtilityData(data);
-      } catch (err: any) {
-        if (err.message === 'REAUTHENTICATION_REQUIRED') {
-          const apiErrorEvent = new CustomEvent('api-error', {
-            detail: { 
-              error: 'REAUTHENTICATION_REQUIRED',
-              status: 401,
-              message: 'Authentication expired'
-            }
-          });
-          window.dispatchEvent(apiErrorEvent);
-          
-          setError("Session expired. Please wait while we refresh your authentication...");
-          return;
-        }
-
-        setError(err.message);
-      } finally {
-        setRefreshing(false);
-      }
+      setSuccessMessage(null);
+      setSelectedUtilitySheetRow(2);
+      setUtilitySheetPreviewRefreshKey((k) => k + 1);
+      setRefreshing(false);
     }
   };
 
@@ -270,168 +241,58 @@ export default function UtilityLinkingPage() {
             </div>
           )}
 
-          {utilityData && (
-            <div className="bg-gray-50 rounded-lg p-6">
-              <h3 className="text-lg font-semibold text-gray-800 mb-4">
-                Confirm {UTILITY_OPTIONS[selectedUtility as keyof typeof UTILITY_OPTIONS]} Utility Information
-              </h3>
-              <div className="space-y-4">
-                {Array.isArray(utilityData) && utilityData.length > 0 ? (
-                  utilityData.map((record: any, index: number) => {
-                    const keyFields = getKeyFields(selectedUtility, record);
-                    const isExpanded = expandedRecords.has(index);
-                    
-                    return (
-                      <div key={index} className="bg-white rounded-lg border border-gray-200 p-4">
-                        {/* Key Information Display */}
-                        <div className="space-y-2 mb-3">
-                          <div className="flex">
-                            <span className="font-semibold text-gray-700 w-32 text-sm">{keyFields.identifierLabel}:</span>
-                            <span className="text-gray-900 text-sm">{keyFields.identifier || 'N/A'}</span>
-                          </div>
-                          <div className="flex">
-                            <span className="font-semibold text-gray-700 w-32 text-sm">Client Name:</span>
-                            <span className="text-gray-900 text-sm">{keyFields.clientName || 'N/A'}</span>
-                          </div>
-                          <div className="flex">
-                            <span className="font-semibold text-gray-700 w-32 text-sm">Retailer:</span>
-                            <span className="text-gray-900 text-sm">{keyFields.retailer || 'N/A'}</span>
-                          </div>
-                          <div className="flex">
-                            <span className="font-semibold text-gray-700 w-32 text-sm">Site Address:</span>
-                            <span className="text-gray-900 text-sm">{keyFields.address || 'N/A'}</span>
-                          </div>
-                        </div>
+          {selectedUtility && token ? (
+            <div className="space-y-6">
+              <MemberAcesSheetPreview
+                utilityType={selectedUtility}
+                token={token}
+                refreshKey={utilitySheetPreviewRefreshKey}
+                autoPoll={watchSheetAfterUpload}
+                selectable
+                selectedRowNumber={selectedUtilitySheetRow}
+                onRowSelect={handleUtilitySheetRowSelect}
+                toolbarExtra={
+                  <UtilityInvoiceUploadBar
+                    utilityType={selectedUtility}
+                    disabled={loading || refreshing}
+                    onUploadSuccess={handleInvoiceUploadSuccess}
+                  />
+                }
+              />
 
-                        {/* Expand/Collapse Button */}
-                        <button
-                          onClick={() => toggleExpanded(index)}
-                          className="flex items-center text-blue-600 hover:text-blue-800 text-sm font-medium focus:outline-none"
-                        >
-                          <span>{isExpanded ? 'Hide' : 'Show'} Full Details</span>
-                          <svg 
-                            className={`ml-1 h-4 w-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-                            fill="none" 
-                            viewBox="0 0 24 24" 
-                            stroke="currentColor"
-                          >
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                          </svg>
-                        </button>
-
-                        {/* Expanded Details */}
-                        {isExpanded && (
-                          <div className="mt-4 pt-4 border-t border-gray-200">
-                            <h4 className="font-medium text-gray-800 mb-3">Complete Information:</h4>
-                            <div className="space-y-2">
-                              {Object.entries(record).map(([key, value]) => {
-                                // Skip row_number and empty values
-                                if (key === 'row_number' || value === '' || value === null || value === undefined) {
-                                  return null;
-                                }
-                                
-                                return (
-                                  <div key={key} className="flex flex-col sm:flex-row">
-                                    <div className="font-medium text-gray-600 sm:w-1/3 mb-1 sm:mb-0 text-xs">
-                                      {key}:
-                                    </div>
-                                    <div className="sm:w-2/3 text-gray-800 text-xs">
-                                      {String(value)}
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })
-                ) : typeof utilityData === 'object' && utilityData !== null ? (
-                  <div className="bg-white rounded-lg border border-gray-200 p-4">
-                    <div className="space-y-3">
-                      {Object.entries(utilityData).map(([key, value]) => {
-                        if (key === 'row_number' || value === '' || value === null || value === undefined) {
-                          return null;
-                        }
-                        
-                        return (
-                          <div key={key} className="flex flex-col sm:flex-row sm:items-start">
-                            <div className="font-semibold text-gray-700 sm:w-1/3 mb-1 sm:mb-0 text-sm">
-                              {key}:
-                            </div>
-                            <div className="sm:w-2/3 text-gray-900 text-sm">
-                              {String(value)}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ) : (
-                  <pre className="bg-gray-50 p-4 rounded text-sm overflow-x-auto">
-                    {JSON.stringify(utilityData, null, 2)}
-                  </pre>
-                )}
-              </div>
-              
-              {/* Disclaimer */}
-              <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                <p className="text-sm text-yellow-800">
-                  <strong>Note:</strong> If you cannot see the correct utility after refreshing, please{' '}
-                  <button
-                    onClick={() => window.open('/document-lodgement', '_blank', 'noopener,noreferrer')}
-                    className="text-blue-600 hover:text-blue-800 underline font-medium bg-transparent border-none cursor-pointer p-0"
-                  >
-                    re-upload the invoice
-                  </button>
-                  {' '}so it's the top row.
-                </p>
+              <div>
+                <h3 className="text-sm font-semibold text-dark dark:text-white mb-2">
+                  Selected utility details
+                  {selectedUtilitySheetRow != null ? (
+                    <span className="ml-2 font-normal text-gray-500">(row {selectedUtilitySheetRow})</span>
+                  ) : null}
+                </h3>
+                <UtilityDetailsDisplay
+                  utilityType={selectedUtility}
+                  record={utilityData}
+                  rowNumber={selectedUtilitySheetRow}
+                />
               </div>
 
-              {/* Confirmation Buttons */}
-              <div className="flex gap-4 mt-4">
-                <button 
-                  className="bg-green-600 text-white px-6 py-2 rounded font-semibold hover:bg-green-700 focus:outline-none disabled:opacity-50" 
+              <div className="flex flex-wrap gap-3">
+                <Button
                   onClick={() => handleConfirmUtility(true)}
-                  disabled={refreshing}
+                  disabled={refreshing || loading || !utilityData}
                 >
                   Confirm
-                </button>
-                <button 
-                  className="bg-gray-400 text-white px-6 py-2 rounded font-semibold hover:bg-gray-500 focus:outline-none disabled:opacity-50 flex items-center gap-2" 
+                </Button>
+                <Button
+                  variant="secondary"
                   onClick={() => handleConfirmUtility(false)}
-                  disabled={refreshing}
+                  disabled={refreshing || loading}
+                  loading={refreshing}
                 >
-                  {refreshing ? (
-                    <>
-                      <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                        <circle
-                          className="opacity-25"
-                          cx="12"
-                          cy="12"
-                          r="10"
-                          stroke="currentColor"
-                          strokeWidth="4"
-                          fill="none"
-                        />
-                        <path
-                          className="opacity-75"
-                          fill="currentColor"
-                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                        />
-                      </svg>
-                      Refreshing...
-                    </>
-                  ) : (
-                    'Refresh'
-                  )}
-                </button>
+                  Refresh
+                </Button>
               </div>
 
-              {/* Success Message */}
               {successMessage && (
-                <div className="mt-4 bg-green-50 border border-green-200 rounded-lg p-4">
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                   <div className="flex">
                     <div className="flex-shrink-0">
                       <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
@@ -446,7 +307,7 @@ export default function UtilityLinkingPage() {
                 </div>
               )}
             </div>
-          )}
+          ) : null}
 
           {!selectedUtility && !loading && (
             <div className="text-center py-12">

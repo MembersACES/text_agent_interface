@@ -7,6 +7,37 @@ export function cn(...inputs: ClassValue[]) {
 
 export type DeploymentEnvironment = "local" | "dev" | "prod";
 
+const ACES_DEV_FRONTEND = "acesagentinterfacedev";
+const CZA_DEV_FRONTEND = "czagentinterfacedev";
+const ACES_BACKEND_DEV =
+  "https://text-agent-backend-dev-672026052958.australia-southeast2.run.app";
+const ACES_BACKEND_PROD =
+  "https://text-agent-backend-672026052958.australia-southeast2.run.app";
+
+function trimTrailingSlash(url: string): string {
+  return url.replace(/\/$/, "");
+}
+
+/** Build-time or runtime public backend URL (skipped when localhost). */
+function resolveConfiguredApiBaseUrl(): string | null {
+  const raw = (
+    process.env.BACKEND_API_URL || process.env.NEXT_PUBLIC_API_BASE_URL
+  )?.trim();
+  if (!raw || raw.includes("localhost:3000") || raw.includes("localhost:3001")) {
+    return null;
+  }
+  return trimTrailingSlash(raw);
+}
+
+function isDevFrontendHost(host: string): boolean {
+  return host.includes(ACES_DEV_FRONTEND) || host.includes(CZA_DEV_FRONTEND);
+}
+
+function legacyAcesBackendForHost(host: string): string {
+  if (host.includes(ACES_DEV_FRONTEND)) return ACES_BACKEND_DEV;
+  return ACES_BACKEND_PROD;
+}
+
 /** Resolve UI environment from hostname (localhost → local, dev Cloud Run → dev, else prod). */
 export function getDeploymentEnvironment(hostname?: string): DeploymentEnvironment {
   const host =
@@ -20,40 +51,44 @@ export function getDeploymentEnvironment(hostname?: string): DeploymentEnvironme
   ) {
     return "local";
   }
-  if (host.includes("acesagentinterfacedev")) {
+  if (isDevFrontendHost(host)) {
     return "dev";
   }
   return "prod";
 }
 
 export function getApiBaseUrl(requestHost?: string): string {
-  // Server-side (Next.js API routes): use request host so dev frontend → dev backend
-  if (typeof window === 'undefined') {
-    const host = requestHost ?? process.env.VERCEL_URL ?? '';
-    if (host && host.includes('acesagentinterfacedev')) {
-      return 'https://text-agent-backend-dev-672026052958.australia-southeast2.run.app';
+  const configured = resolveConfiguredApiBaseUrl();
+
+  // Server-side (Next.js API routes): prefer runtime/build env, then host heuristics
+  if (typeof window === "undefined") {
+    if (configured) return configured;
+
+    const host = requestHost ?? process.env.VERCEL_URL ?? "";
+    if (host && isDevFrontendHost(host)) {
+      return legacyAcesBackendForHost(host);
     }
-    // Env vars (BACKEND_API_URL or NEXT_PUBLIC_API_BASE_URL) override for server
-    const envUrl = (process.env.BACKEND_API_URL || process.env.NEXT_PUBLIC_API_BASE_URL)?.trim();
-    if (envUrl && envUrl.length > 0 && !envUrl.includes('localhost:3000') && !envUrl.includes('localhost:3001')) {
-      return envUrl;
-    }
-    if (process.env.VERCEL_ENV === 'preview') {
-      return 'https://text-agent-backend-dev-672026052958.australia-southeast2.run.app';
+    if (process.env.VERCEL_ENV === "preview") {
+      return ACES_BACKEND_DEV;
     }
     if (process.env.NODE_ENV === "production") {
-      return "https://text-agent-backend-672026052958.australia-southeast2.run.app";
+      return ACES_BACKEND_PROD;
     }
     return "http://localhost:8000";
   }
 
-  // Client-side: dev frontend → dev backend
-  if (window.location.hostname.includes('acesagentinterfacedev')) {
-    return 'https://text-agent-backend-dev-672026052958.australia-southeast2.run.app';
+  // Client-side: hostname dev routing for ACES (build often bakes prod URL); CZA uses baked URL
+  const host = window.location.hostname;
+  if (host.includes(ACES_DEV_FRONTEND)) {
+    return ACES_BACKEND_DEV;
+  }
+  if (configured) return configured;
+  if (host.includes(CZA_DEV_FRONTEND)) {
+    return ACES_BACKEND_DEV;
   }
   return process.env.NODE_ENV === "development"
     ? "http://localhost:8000"
-    : "https://text-agent-backend-672026052958.australia-southeast2.run.app";
+    : ACES_BACKEND_PROD;
 }
 
 /**

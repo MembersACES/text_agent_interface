@@ -1,0 +1,55 @@
+# Carbon Zero (czeroanz-ai) — interface Cloud Run deploy.
+# Uses Artifact Registry (same as crm-frontend / mcp-server in this project).
+# Triggers: dev → _CLOUD_RUN_SERVICE=czagentinterfacedev, _BACKEND_SERVICE=text-agent-backend-dev
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+substitutions:
+  _REGION: australia-southeast2
+  _CLOUD_RUN_SERVICE: czagentinterface
+  _BACKEND_SERVICE: text-agent-backend
+  _SUSTAINABILITY_PLATFORM_URL: https://prograde-sustainability-63gwbzzcdq-km.a.run.app
+  _AR_REPOSITORY: cloud-run-source-deploy
+  _AR_PACKAGE: text_agent_interface
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        BACKEND_URL="https://${_BACKEND_SERVICE}-$PROJECT_NUMBER.${_REGION}.run.app"
+        IMAGE="${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPOSITORY}/${_AR_PACKAGE}/${_CLOUD_RUN_SERVICE}:$COMMIT_SHA"
+        echo "Building with NEXT_PUBLIC_API_BASE_URL=$${BACKEND_URL}"
+        docker build \
+          --build-arg "NEXT_PUBLIC_API_BASE_URL=$${BACKEND_URL}" \
+          --build-arg "NEXT_PUBLIC_AUTONOMOUS_API_BASE_URL=$${BACKEND_URL}" \
+          --build-arg "NEXT_PUBLIC_SUSTAINABILITY_PLATFORM_URL=${_SUSTAINABILITY_PLATFORM_URL}" \
+          -t "$${IMAGE}" \
+          .
+
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPOSITORY}/${_AR_PACKAGE}/${_CLOUD_RUN_SERVICE}:$COMMIT_SHA
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_CLOUD_RUN_SERVICE}
+      - --image
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPOSITORY}/${_AR_PACKAGE}/${_CLOUD_RUN_SERVICE}:$COMMIT_SHA
+      - --region
+      - ${_REGION}
+      - --platform
+      - managed
+      - --allow-unauthenticated
+      - --project
+      - $PROJECT_ID
+
+images:
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPOSITORY}/${_AR_PACKAGE}/${_CLOUD_RUN_SERVICE}:$COMMIT_SHA

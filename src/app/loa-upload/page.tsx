@@ -1,5 +1,5 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import BusinessDetailsDisplay from '../../components/BusinessDetailsDisplay';
 import IndustrySubfolderSelector from '../../components/IndustrySubfolderSelector';
@@ -7,14 +7,20 @@ import { PageHeader } from '@/components/Layouts/PageHeader';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { getApiBaseUrl } from '@/lib/utils';
-import { fetchReturnUtilityInfo } from '@/lib/utility-info-api';
 import { getUtilityKeyFields } from '@/lib/utility-key-fields';
 import { notifyUtilityLinkedPostProcess } from '@/lib/utility-linked-notify';
 import {
-  LOA_UPLOAD_UTILITY_API_ENDPOINTS,
-  type LoaUploadUtilityKey,
+  type UtilityInvoiceUploadKey,
   postLoaDocument,
 } from '@/lib/invoice-api-endpoints';
+import { MemberAcesSheetPreview } from '@/components/MemberAcesSheetPreview';
+import { UtilityInvoiceUploadBar } from '@/components/UtilityInvoiceUploadBar';
+import {
+  sheetPreviewRowToLoaDetails,
+  sheetPreviewRowToUtilityRecord,
+  type SheetPreviewRow,
+} from '@/lib/sheet-preview-api';
+import { UtilityDetailsDisplay } from '@/components/UtilityDetailsDisplay';
 
 const LOA_OPTIONS = [
   "LOA"
@@ -30,8 +36,6 @@ const UTILITY_OPTIONS = {
   GREASE_TRAP: "GREASE TRAP",
   WATER: "WATER",
 };
-
-const UTILITY_API_ENDPOINTS = LOA_UPLOAD_UTILITY_API_ENDPOINTS;
 
 const INDUSTRY_OPTIONS = [
   '003-Clubs',
@@ -84,16 +88,21 @@ export default function LoaUploadPage() {
   
   // New states for utility linking
   const [showUtilityPrompt, setShowUtilityPrompt] = useState(false);
-  const [selectedUtility, setSelectedUtility] = useState<LoaUploadUtilityKey | "">("");
-  const [utilityFile, setUtilityFile] = useState<File | null>(null);
-  const [utilityUploadResult, setUtilityUploadResult] = useState<string | null>(null);
+  const [selectedUtility, setSelectedUtility] = useState<UtilityInvoiceUploadKey | "">("");
   const [utilityData, setUtilityData] = useState<any>(null);
-  const [expandedRecords, setExpandedRecords] = useState<Set<number>>(new Set());
   const [utilityLoading, setUtilityLoading] = useState(false);
   const [utilityRefreshing, setUtilityRefreshing] = useState(false);
   const [utilityError, setUtilityError] = useState<string | null>(null);
   const [utilitySuccessMessage, setUtilitySuccessMessage] = useState<string | null>(null);
   const [linkedUtilities, setLinkedUtilities] = useState<string[]>([]); // Track linked utilities
+  const [watchSheetAfterUpload, setWatchSheetAfterUpload] = useState(false);
+  const [sheetPreviewRefreshKey, setSheetPreviewRefreshKey] = useState(0);
+  const [selectedSheetRowNumber, setSelectedSheetRowNumber] = useState<number | null>(null);
+  const selectedSheetRowRef = useRef<number | null>(null);
+  const [watchSheetForUtility, setWatchSheetForUtility] = useState(false);
+  const [selectedUtilitySheetRow, setSelectedUtilitySheetRow] = useState<number | null>(null);
+  const selectedUtilitySheetRef = useRef<number | null>(null);
+  const [utilitySheetPreviewRefreshKey, setUtilitySheetPreviewRefreshKey] = useState(0);
 
   // Step 1: Upload LOA document
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -149,8 +158,10 @@ export default function LoaUploadPage() {
   const handleFolderPrompt = (yes: boolean) => {
     setShowFolderPrompt(false);
     if (yes) {
+      setWatchSheetAfterUpload(true);
       fetchBusinessDetails();
     } else {
+      setWatchSheetAfterUpload(false);
       setStep(99); // End flow if folder creation is skipped
     }
   };
@@ -202,13 +213,22 @@ export default function LoaUploadPage() {
     if (confirm) {
       setStep(4);
     } else {
-      setRefreshing(true);
-      fetchBusinessDetailsRefresh();
+      void fetchBusinessDetailsRefresh();
     }
+  };
+
+  const handleSheetRowSelect = (row: SheetPreviewRow) => {
+    selectedSheetRowRef.current = row.row_number;
+    setSelectedSheetRowNumber(row.row_number);
+    setBusinessDetails(sheetPreviewRowToLoaDetails(row));
   };
 
   const fetchBusinessDetailsRefresh = async () => {
     setAuthError(false);
+    setSheetPreviewRefreshKey((k) => k + 1);
+    setRefreshing(true);
+    selectedSheetRowRef.current = 2;
+    setSelectedSheetRowNumber(2);
     try {
       const details = await fetchLoaBusinessDetails();
       if (!details) return;
@@ -217,6 +237,15 @@ export default function LoaUploadPage() {
       setUploadResult('Error fetching business details.');
     } finally {
       setRefreshing(false);
+    }
+  };
+
+  const syncBusinessDetailsFromSheet = async () => {
+    try {
+      const details = await fetchLoaBusinessDetails();
+      if (details) setBusinessDetails(details);
+    } catch {
+      // non-fatal — preview still shows sheet rows
     }
   };
 
@@ -287,109 +316,43 @@ export default function LoaUploadPage() {
   };
 
   const handleLinkAnotherUtility = () => {
-    // Reset utility-related states
     setSelectedUtility("");
-    setUtilityFile(null);
-    setUtilityUploadResult(null);
     setUtilityData(null);
     setUtilityError(null);
     setUtilitySuccessMessage(null);
-    setExpandedRecords(new Set());
-    
-    // Go back to utility upload step
+    setWatchSheetForUtility(false);
+    setSelectedUtilitySheetRow(null);
+    selectedUtilitySheetRef.current = null;
     setStep(7);
   };
 
-  const handleUtilityFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setUtilityFile(e.target.files[0]);
-    }
-  };
-
-  const handleUtilityUpload = async () => {
-    if (!utilityFile || !selectedUtility) {
-      setUtilityUploadResult("Please select a utility type and file.");
-      return;
-    }
-
-    if (!/\.pdf$/i.test(utilityFile.name)) {
-      setUtilityUploadResult("Please upload a PDF file for utility invoices.");
-      return;
-    }
-
-    setUtilityLoading(true);
-    setUtilityUploadResult(null);
-
-    const formData = new FormData();
-    formData.append("file", utilityFile);
-
-    const endpoint = UTILITY_API_ENDPOINTS[selectedUtility];
-
-    try {
-      const res = await fetch(endpoint, {
-        method: "POST",
-        body: formData,
-      });
-
-      let data: any;
-      try {
-        data = await res.json();
-      } catch {
-        const text = await res.text();
-        setUtilityUploadResult(`❌ Error parsing JSON: ${res.status} ${res.statusText}\n${text}`);
-        return;
-      }
-
-      if (res.ok) {
-        setUtilityUploadResult(`✅ Utility invoice uploaded successfully: ${data.message || "No message returned."}`);
-        setStep(8); // Move to utility data retrieval
-        fetchUtilityData();
-      } else {
-        setUtilityUploadResult(`❌ Upload failed: ${data.message || res.statusText}`);
-      }
-    } catch (error: any) {
-      setUtilityUploadResult(`❌ Error: ${error.message}`);
-    } finally {
-      setUtilityLoading(false);
-    }
-  };
-
-  const fetchUtilityData = async () => {
-    setUtilityLoading(true);
+  const handleUtilityTypeContinue = () => {
+    if (!selectedUtility) return;
+    setWatchSheetForUtility(false);
+    setSelectedUtilitySheetRow(null);
+    selectedUtilitySheetRef.current = null;
+    setUtilityData(null);
     setUtilityError(null);
-    
-    try {
-      if (!token) {
-        setUtilityError('Authentication required. Please sign in again.');
-        return;
-      }
-      const data = await fetchReturnUtilityInfo(
-        {
-          utility_type: selectedUtility,
-          business_name: businessDetails?.['Business Name'] || '',
-        },
-        token,
-      );
-      setUtilityData(data);
-    } catch (err: any) {
-      setUtilityError(err.message);
-    } finally {
-      setUtilityLoading(false);
-    }
+    setStep(8);
+  };
+
+  const handleUtilityInvoiceUploadSuccess = () => {
+    setWatchSheetForUtility(true);
+    setSelectedUtilitySheetRow(null);
+    selectedUtilitySheetRef.current = null;
+    setUtilityData(null);
+    setUtilityError(null);
+    setUtilitySheetPreviewRefreshKey((k) => k + 1);
+  };
+
+  const handleUtilitySheetRowSelect = (row: SheetPreviewRow) => {
+    selectedUtilitySheetRef.current = row.row_number;
+    setSelectedUtilitySheetRow(row.row_number);
+    setUtilityData(sheetPreviewRowToUtilityRecord(row));
   };
 
   const getKeyFields = (utilityType: string, record: any) =>
     getUtilityKeyFields(utilityType, record);
-
-  const toggleExpanded = (index: number) => {
-    const newExpanded = new Set(expandedRecords);
-    if (newExpanded.has(index)) {
-      newExpanded.delete(index);
-    } else {
-      newExpanded.add(index);
-    }
-    setExpandedRecords(newExpanded);
-  };
 
   const handleConfirmUtility = async (confirm: boolean) => {
     if (confirm) {
@@ -464,11 +427,12 @@ export default function LoaUploadPage() {
         setUtilityLoading(false);
       }
     } else {
-      // Refresh utility data
       setUtilityRefreshing(true);
       setUtilityError(null);
       setUtilitySuccessMessage(null);
-      fetchUtilityData();
+      selectedUtilitySheetRef.current = 2;
+      setSelectedUtilitySheetRow(2);
+      setUtilitySheetPreviewRefreshKey((k) => k + 1);
       setUtilityRefreshing(false);
     }
   };
@@ -539,7 +503,32 @@ export default function LoaUploadPage() {
 
   if (step === 3 && businessDetails) {
     return (
-      <LoaStepShell title="Confirm business details">
+      <LoaStepShell title="Confirm business details" wide>
+        {token ? (
+          <MemberAcesSheetPreview
+            className="mb-6"
+            utilityType="LOA"
+            token={token}
+            expectedBusinessName={String(businessDetails['Business Name'] ?? '')}
+            autoPoll={watchSheetAfterUpload}
+            refreshKey={sheetPreviewRefreshKey}
+            selectable
+            selectedRowNumber={selectedSheetRowNumber}
+            onRowSelect={handleSheetRowSelect}
+            onLatestRowReady={() => {
+              const selected = selectedSheetRowRef.current;
+              if (selected === null || selected === 2) {
+                void syncBusinessDetailsFromSheet();
+              }
+            }}
+          />
+        ) : null}
+        <h3 className="text-sm font-semibold text-dark dark:text-white mb-2">
+          Selected business details
+          {selectedSheetRowNumber != null ? (
+            <span className="ml-2 font-normal text-gray-500">(row {selectedSheetRowNumber})</span>
+          ) : null}
+        </h3>
         <BusinessDetailsDisplay details={businessDetails} />
         <div className="flex flex-wrap gap-3 mt-4">
           <Button onClick={() => handleConfirmBusiness(true)} disabled={refreshing}>
@@ -602,8 +591,8 @@ export default function LoaUploadPage() {
   if (step === 7) {
     return (
       <LoaStepShell
-        title="Upload utility invoice"
-        description={`Upload a utility invoice to link it to ${businessDetails?.['Business Name']}.`}
+        title="Link a utility"
+        description={`Choose a utility type to link to ${businessDetails?.['Business Name']}. You can upload the invoice on the next step.`}
       >
         <div className="space-y-4">
           <div>
@@ -614,7 +603,7 @@ export default function LoaUploadPage() {
                 setSelectedUtility(
                   e.target.value === ""
                     ? ""
-                    : (e.target.value as LoaUploadUtilityKey),
+                    : (e.target.value as UtilityInvoiceUploadKey),
                 )
               }
               className="w-full px-3 py-2 border border-stroke rounded-xl dark:border-dark-3 dark:bg-dark-2"
@@ -627,193 +616,106 @@ export default function LoaUploadPage() {
               ))}
             </select>
           </div>
-          
-          <div>
-            <label className="block font-medium mb-1">Utility Invoice (PDF)</label>
-            <input 
-              type="file" 
-              accept="application/pdf"
-              onChange={handleUtilityFileChange} 
-              className="w-full" 
-            />
-            <p className="text-xs text-gray-500 mt-1">Accepted: .pdf</p>
-          </div>
-          
+
           <Button
-            onClick={handleUtilityUpload}
-            disabled={utilityLoading || !utilityFile || !selectedUtility}
-            loading={utilityLoading}
+            onClick={handleUtilityTypeContinue}
+            disabled={!selectedUtility}
           >
-            Upload utility invoice
+            Continue
           </Button>
         </div>
-        
-        {utilityUploadResult && (
-          <div className="mt-4 whitespace-pre-wrap text-sm">{utilityUploadResult}</div>
-        )}
       </LoaStepShell>
     );
   }
 
-  if (step === 8 && utilityData) {
+  if (step === 8 && selectedUtility) {
+    const utilityLabel = UTILITY_OPTIONS[selectedUtility as keyof typeof UTILITY_OPTIONS];
     return (
       <LoaStepShell
         wide
         title="Confirm utility information"
-        description="Review the utility information below and confirm if it's correct."
+        description={`Upload an invoice if needed, pick the correct ${utilityLabel} row from the sheet, then confirm.`}
       >
-        <div className="bg-gray/50 rounded-xl p-6 dark:bg-dark-2">
-          <h3 className="text-lg font-semibold text-gray-800 mb-4">
-            {UTILITY_OPTIONS[selectedUtility as keyof typeof UTILITY_OPTIONS]} Utility Information
-          </h3>
-          
-          <div className="space-y-4">
-            {Array.isArray(utilityData) && utilityData.length > 0 ? (
-              utilityData.map((record: any, index: number) => {
-                const keyFields = getKeyFields(selectedUtility, record);
-                const isExpanded = expandedRecords.has(index);
-                
-                return (
-                  <div key={index} className="bg-white rounded-lg border border-gray-200 p-4">
-                    <div className="space-y-2 mb-3">
-                      <div className="flex">
-                        <span className="font-semibold text-gray-700 w-32 text-sm">{keyFields.identifierLabel}:</span>
-                        <span className="text-gray-900 text-sm">{keyFields.identifier || 'N/A'}</span>
-                      </div>
-                      <div className="flex">
-                        <span className="font-semibold text-gray-700 w-32 text-sm">Client Name:</span>
-                        <span className="text-gray-900 text-sm">{keyFields.clientName || 'N/A'}</span>
-                      </div>
-                      <div className="flex">
-                        <span className="font-semibold text-gray-700 w-32 text-sm">Retailer:</span>
-                        <span className="text-gray-900 text-sm">{keyFields.retailer || 'N/A'}</span>
-                      </div>
-                      <div className="flex">
-                        <span className="font-semibold text-gray-700 w-32 text-sm">Site Address:</span>
-                        <span className="text-gray-900 text-sm">{keyFields.address || 'N/A'}</span>
-                      </div>
-                    </div>
+        {token ? (
+          <MemberAcesSheetPreview
+            className="mb-6"
+            utilityType={selectedUtility}
+            token={token}
+            autoPoll={watchSheetForUtility}
+            refreshKey={utilitySheetPreviewRefreshKey}
+            selectable
+            selectedRowNumber={selectedUtilitySheetRow}
+            onRowSelect={handleUtilitySheetRowSelect}
+            toolbarExtra={
+              <UtilityInvoiceUploadBar
+                utilityType={selectedUtility}
+                disabled={utilityRefreshing || utilityLoading}
+                onUploadSuccess={handleUtilityInvoiceUploadSuccess}
+              />
+            }
+          />
+        ) : null}
 
-                    <button
-                      onClick={() => toggleExpanded(index)}
-                      className="flex items-center text-blue-600 hover:text-blue-800 text-sm font-medium focus:outline-none"
-                    >
-                      <span>{isExpanded ? 'Hide' : 'Show'} Full Details</span>
-                      <svg className={`ml-1 h-4 w-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </button>
+        <h3 className="text-sm font-semibold text-dark dark:text-white mb-2">
+          Selected utility details
+          {selectedUtilitySheetRow != null ? (
+            <span className="ml-2 font-normal text-gray-500">(row {selectedUtilitySheetRow})</span>
+          ) : null}
+        </h3>
+        <UtilityDetailsDisplay
+          utilityType={selectedUtility}
+          record={utilityData}
+          rowNumber={selectedUtilitySheetRow}
+        />
 
-                    {isExpanded && (
-                      <div className="mt-4 pt-4 border-t border-gray-200">
-                        <h4 className="font-medium text-gray-800 mb-3">Complete Information:</h4>
-                        <div className="space-y-2">
-                          {Object.entries(record).map(([key, value]) => {
-                            if (key === 'row_number' || value === '' || value === null || value === undefined) {
-                              return null;
-                            }
-                            
-                            return (
-                              <div key={key} className="flex flex-col sm:flex-row">
-                                <div className="font-medium text-gray-600 sm:w-1/3 mb-1 sm:mb-0 text-xs">
-                                  {key}:
-                                </div>
-                                <div className="sm:w-2/3 text-gray-800 text-xs">
-                                  {String(value)}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })
-            ) : typeof utilityData === 'object' && utilityData !== null ? (
-              <div className="bg-white rounded-lg border border-gray-200 p-4">
-                <div className="space-y-3">
-                  {Object.entries(utilityData).map(([key, value]) => {
-                    if (key === 'row_number' || value === '' || value === null || value === undefined) {
-                      return null;
-                    }
-                    
-                    return (
-                      <div key={key} className="flex flex-col sm:flex-row sm:items-start">
-                        <div className="font-semibold text-gray-700 sm:w-1/3 mb-1 sm:mb-0 text-sm">
-                          {key}:
-                        </div>
-                        <div className="sm:w-2/3 text-gray-900 text-sm">
-                          {String(value)}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : (
-              <pre className="bg-gray-50 p-4 rounded text-sm overflow-x-auto">
-                {JSON.stringify(utilityData, null, 2)}
-              </pre>
-            )}
-          </div>
-          
-          <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-            <p className="text-sm text-yellow-800">
-              <strong>Note:</strong> If you cannot see the correct utility after refreshing, please{' '}
-              <a 
-                href="/document-lodgement" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="text-blue-600 hover:text-blue-800 underline font-medium"
-              >
-                re-upload the invoice
-              </a>
-              {' '}so it's the top row.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap gap-3 mt-4">
-            <Button onClick={() => handleConfirmUtility(true)} disabled={utilityRefreshing || utilityLoading}>
-              Confirm
-            </Button>
-            <Button variant="secondary" onClick={() => handleConfirmUtility(false)} disabled={utilityRefreshing || utilityLoading} loading={utilityRefreshing}>
-              Refresh
-            </Button>
-          </div>
-
-          {utilitySuccessMessage && (
-            <div className="mt-4 bg-green-50 border border-green-200 rounded-lg p-4">
-              <div className="flex">
-                <div className="flex-shrink-0">
-                  <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                  </svg>
-                </div>
-                <div className="ml-3">
-                  <h3 className="text-sm font-medium text-green-800">Success!</h3>
-                  <div className="mt-2 text-sm text-green-700">{utilitySuccessMessage}</div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {utilityError && (
-            <div className="mt-4 bg-red-50 border border-red-200 rounded-lg p-4">
-              <div className="flex">
-                <div className="flex-shrink-0">
-                  <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                  </svg>
-                </div>
-                <div className="ml-3">
-                  <h3 className="text-sm font-medium text-red-800">Error</h3>
-                  <div className="mt-2 text-sm text-red-700">{utilityError}</div>
-                </div>
-              </div>
-            </div>
-          )}
+        <div className="flex flex-wrap gap-3 mt-6">
+          <Button
+            onClick={() => handleConfirmUtility(true)}
+            disabled={utilityRefreshing || utilityLoading || !utilityData}
+          >
+            Confirm
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => handleConfirmUtility(false)}
+            disabled={utilityRefreshing || utilityLoading}
+            loading={utilityRefreshing}
+          >
+            Refresh
+          </Button>
         </div>
+
+        {utilitySuccessMessage && (
+          <div className="mt-4 bg-green-50 border border-green-200 rounded-lg p-4">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-green-800">Success!</h3>
+                <div className="mt-2 text-sm text-green-700">{utilitySuccessMessage}</div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {utilityError && (
+          <div className="mt-4 bg-red-50 border border-red-200 rounded-lg p-4">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-red-800">Error</h3>
+                <div className="mt-2 text-sm text-red-700">{utilityError}</div>
+              </div>
+            </div>
+          </div>
+        )}
       </LoaStepShell>
     );
   }
