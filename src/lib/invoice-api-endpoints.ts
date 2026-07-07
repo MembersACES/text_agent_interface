@@ -42,6 +42,26 @@ export const LOA_UPLOAD_UTILITY_API_ENDPOINTS = {
 
 export type LoaUploadUtilityKey = keyof typeof LOA_UPLOAD_UTILITY_API_ENDPOINTS;
 
+/** Utility types supported on utility-linking + inline invoice upload (includes Cleaning). */
+export const UTILITY_INVOICE_UPLOAD_ENDPOINTS = {
+  WASTE: DOCUMENT_LODGEMENT_API_ENDPOINTS.WASTE,
+  COOKING_OIL: DOCUMENT_LODGEMENT_API_ENDPOINTS.COOKING_OIL,
+  ELECTRICITY_CI: DOCUMENT_LODGEMENT_API_ENDPOINTS.ELECTRICITY_CI,
+  ELECTRICITY_SME: DOCUMENT_LODGEMENT_API_ENDPOINTS.ELECTRICITY_SME,
+  GAS_CI: DOCUMENT_LODGEMENT_API_ENDPOINTS.GAS_CI,
+  GAS_SME: DOCUMENT_LODGEMENT_API_ENDPOINTS.GAS_SME,
+  GREASE_TRAP: DOCUMENT_LODGEMENT_API_ENDPOINTS.GREASE_TRAP,
+  WATER: DOCUMENT_LODGEMENT_API_ENDPOINTS.WATER,
+  CLEANING: DOCUMENT_LODGEMENT_API_ENDPOINTS.CLEANING,
+} as const;
+
+export type UtilityInvoiceUploadKey = keyof typeof UTILITY_INVOICE_UPLOAD_ENDPOINTS;
+
+export function getUtilityInvoiceUploadEndpoint(utilityType: string): string | null {
+  const key = (utilityType || "").trim().toUpperCase() as UtilityInvoiceUploadKey;
+  return UTILITY_INVOICE_UPLOAD_ENDPOINTS[key] ?? null;
+}
+
 export const LOA_PROCESS_ENDPOINTS = [
   invoiceApi("loa/process-document"),
   `${ACES_LEGACY_API_BASE}/v1/loa/process-document`,

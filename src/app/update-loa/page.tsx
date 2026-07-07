@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { fetchReturnUtilityInfo } from "@/lib/utility-info-api";
 import { useAuthToken } from "@/lib/use-auth-token";
+import { MemberAcesSheetPreview } from "@/components/MemberAcesSheetPreview";
 
 export default function UpdateLOAPage() {
   const searchParams = useSearchParams();
@@ -20,6 +21,8 @@ export default function UpdateLOAPage() {
   const [loaData, setLoaData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [sheetPreviewRefreshKey, setSheetPreviewRefreshKey] = useState(0);
+  const [watchSheet, setWatchSheet] = useState(true);
 
   // 🧠 Decode and display business info
   useEffect(() => {
@@ -63,6 +66,7 @@ export default function UpdateLOAPage() {
         token,
       );
       setLoaData(Array.isArray(data) && data.length > 0 ? data[0] : data);
+      setWatchSheet(false);
     } catch (err: any) {
       if (err.message === 'REAUTHENTICATION_REQUIRED') {
         const apiErrorEvent = new CustomEvent('api-error', {
@@ -121,6 +125,20 @@ export default function UpdateLOAPage() {
             </Card>
           )}
 
+          {!isSessionLoading && token ? (
+            <MemberAcesSheetPreview
+              className="mb-6"
+              utilityType="LOA"
+              token={token}
+              expectedBusinessName={businessInfo?.["Business Name"] || businessName}
+              autoPoll={watchSheet && !loaData}
+              refreshKey={sheetPreviewRefreshKey}
+              onLatestRowReady={() => {
+                void fetchLoaData();
+              }}
+            />
+          ) : null}
+
           {/* --- STATUS + ERRORS --- */}
           {loading && (
             <div className="flex items-center gap-3 text-gray-600 mb-6">
@@ -166,7 +184,16 @@ export default function UpdateLOAPage() {
             <Button variant="secondary" onClick={() => router.back()}>
               Back
             </Button>
-            <Button className="flex-1" onClick={fetchLoaData} disabled={loading} loading={loading}>
+            <Button
+              className="flex-1"
+              onClick={() => {
+                setWatchSheet(true);
+                setSheetPreviewRefreshKey((k) => k + 1);
+                void fetchLoaData();
+              }}
+              disabled={loading}
+              loading={loading}
+            >
               Refresh LOA data
             </Button>
             <Button className="flex-1" variant="secondary" onClick={handleProceed} disabled={!businessInfo || !loaData}>

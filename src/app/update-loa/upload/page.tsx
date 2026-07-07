@@ -4,10 +4,13 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { postLoaDocument } from '@/lib/invoice-api-endpoints';
 import { ToolPageLayout } from '@/components/Layouts/ToolPageLayout';
 import { Button } from '@/components/ui/button';
+import { MemberAcesSheetPreview } from '@/components/MemberAcesSheetPreview';
+import { useAuthToken } from '@/lib/use-auth-token';
 
 export default function UploadLOAPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { token, isSessionLoading } = useAuthToken();
   const businessName = searchParams.get('businessName') || '';
   const businessInfo = searchParams.get('businessInfo') || ''; // 🧠 preserve this!
 
@@ -15,6 +18,7 @@ export default function UploadLOAPage() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [uploadComplete, setUploadComplete] = useState(false);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -54,6 +58,7 @@ export default function UploadLOAPage() {
       }
 
       setResult(`✅ ${String(data.message || 'LOA document uploaded successfully!')}`);
+      setUploadComplete(true);
 
       // ✅ Redirect with full business info
       setTimeout(() => {
@@ -98,6 +103,15 @@ export default function UploadLOAPage() {
           {result}
         </div>
       )}
+      {!isSessionLoading && token && uploadComplete ? (
+        <MemberAcesSheetPreview
+          className="mt-6"
+          utilityType="LOA"
+          token={token}
+          expectedBusinessName={businessName}
+          autoPoll
+        />
+      ) : null}
       {error && (
         <div className="mt-4 text-red-700 font-medium whitespace-pre-wrap">
           {error}
