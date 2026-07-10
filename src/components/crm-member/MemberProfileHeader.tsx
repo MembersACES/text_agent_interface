@@ -23,6 +23,10 @@ import {
   getKeyDocumentsFromBusinessInfo,
   getSfaFilesFromBusinessInfo,
 } from "./tabs/documentHelpers";
+import {
+  buildLoaBusinessInfoFromCrm,
+  encodeLoaBusinessInfoParam,
+} from "@/lib/loa-business-info";
 import type { Client } from "./types";
 
 export interface MemberProfileHeaderProps {
@@ -274,9 +278,23 @@ export function MemberProfileHeader({
     window.open(url, "_blank");
   };
 
-  const handleUpdateLoa = () => {
+  const handleUpdateLoa = async () => {
     const params = new URLSearchParams();
-    if (client.business_name) params.set("businessName", client.business_name);
+    let info = businessInfo && typeof businessInfo === "object" ? businessInfo : null;
+    if (!info && fetchBusinessInfo && client.business_name) {
+      info = await fetchBusinessInfo();
+    }
+
+    const fallbackName = client.business_name || "";
+    const loaInfo =
+      info && typeof info === "object"
+        ? buildLoaBusinessInfoFromCrm(info, fallbackName)
+        : buildLoaBusinessInfoFromCrm({}, fallbackName);
+
+    if (loaInfo["Business Name"]) params.set("businessName", loaInfo["Business Name"]);
+    else if (fallbackName) params.set("businessName", fallbackName);
+
+    params.set("businessInfo", encodeLoaBusinessInfoParam(loaInfo));
     window.open(`/update-loa/upload?${params.toString()}`, "_blank", "noopener,noreferrer");
   };
 

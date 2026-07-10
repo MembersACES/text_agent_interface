@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { ToolPageLayout } from '@/components/Layouts/ToolPageLayout';
 import { Button } from '@/components/ui/button';
+import { parseLoaBusinessInfoParam } from '@/lib/loa-business-info';
 
 export default function ConfirmLOAPage() {
   const searchParams = useSearchParams();
@@ -23,7 +24,7 @@ export default function ConfirmLOAPage() {
   useEffect(() => {
     try {
       if (businessInfoEncoded) {
-        setBusinessInfo(JSON.parse(decodeURIComponent(businessInfoEncoded)));
+        setBusinessInfo(parseLoaBusinessInfoParam(businessInfoEncoded));
       }
       if (loaDataEncoded) {
         const decoded = JSON.parse(decodeURIComponent(loaDataEncoded));
