@@ -124,6 +124,16 @@ interface UtilityComparison {
   ciElectricityCommissionAudPerMwh?: number;
   /** Required for C&I gas and SME → C&I gas (`ci_offer`) comparison ($/GJ). */
   ciGasCommissionAudPerGj?: number;
+  /** C&I Electricity offer term — set on the comparison card, used by Generate + RSL. */
+  ciOfferPeriodYears?: "1" | "2" | "3";
+  ciOfferPricingType?: "smoothed" | "stepped";
+  /** Optional contract start (YYYY-MM-DD). */
+  ciOfferStartDate?: string;
+  /**
+   * Stepped year rates for years 2+. Year 1 uses comparisonPeak/OffPeak/Shoulder.
+   * Index 0 = Year 2, index 1 = Year 3.
+   */
+  ciOfferSteppedRates?: { peak?: number; offPeak?: number; shoulder?: number }[];
   oilFrequency?: string;
   wasteFrequency?: string;
   cleaningFrequency?: string;
@@ -1156,6 +1166,10 @@ export default function Base2Page() {
         rates.comparisonVasDaily = parseFloat((ci.vasAnnual / 365).toFixed(4));
         rates.comparisonDailySupply = ci.dailySupply;
         rates.comparisonDemandCharge = ci.demandCharge;
+        rates.ciOfferPeriodYears = "1";
+        rates.ciOfferPricingType = "smoothed";
+        rates.ciOfferStartDate = "";
+        rates.ciOfferSteppedRates = [];
       } else {
         const sme = activeBase2Defaults.electricity.sme;
         const f = sme.discountFactor;
@@ -1473,6 +1487,66 @@ export default function Base2Page() {
     );
   };
 
+  const seedCiSteppedRates = (
+    u: UtilityComparison,
+    years: number,
+  ): { peak?: number; offPeak?: number; shoulder?: number }[] => {
+    const needed = Math.max(0, years - 1);
+    const existing = u.ciOfferSteppedRates ?? [];
+    return Array.from({ length: needed }, (_, i) => ({
+      peak: existing[i]?.peak ?? u.comparisonPeakRate,
+      offPeak: existing[i]?.offPeak ?? u.comparisonOffPeakRate,
+      shoulder: existing[i]?.shoulder ?? u.comparisonShoulderRate,
+    }));
+  };
+
+  const updateCiOfferTerm = (
+    utilityType: string,
+    identifier: string,
+    patch: Partial<Pick<UtilityComparison, "ciOfferPeriodYears" | "ciOfferPricingType" | "ciOfferStartDate">>,
+  ) => {
+    setUtilityComparisons((prev) =>
+      prev.map((u) => {
+        if (u.utilityType !== utilityType || u.identifier !== identifier) return u;
+        const next: UtilityComparison = { ...u, ...patch };
+        const years = Number(next.ciOfferPeriodYears ?? "1");
+        const pricing = next.ciOfferPricingType ?? "smoothed";
+        if (pricing === "stepped" && years > 1) {
+          next.ciOfferSteppedRates = seedCiSteppedRates(next, years);
+        } else if (pricing === "smoothed") {
+          next.ciOfferSteppedRates = [];
+        } else {
+          next.ciOfferSteppedRates = seedCiSteppedRates(next, years);
+        }
+        return next;
+      }),
+    );
+  };
+
+  const updateCiSteppedRate = (
+    utilityType: string,
+    identifier: string,
+    yearIndex: number,
+    field: "peak" | "offPeak" | "shoulder",
+    value: string,
+  ) => {
+    setUtilityComparisons((prev) =>
+      prev.map((u) => {
+        if (u.utilityType !== utilityType || u.identifier !== identifier) return u;
+        const years = Number(u.ciOfferPeriodYears ?? "1");
+        const rates = seedCiSteppedRates(u, years);
+        const idx = yearIndex - 2; // year 2 → index 0
+        if (idx < 0 || idx >= rates.length) return u;
+        const parsed = value === "" ? undefined : parseFloat(value);
+        rates[idx] = {
+          ...rates[idx],
+          [field]: parsed != null && Number.isFinite(parsed) ? parsed : undefined,
+        };
+        return { ...u, ciOfferSteppedRates: rates };
+      }),
+    );
+  };
+
   const updateUsage = (utilityType: string, identifier: string, field: keyof UtilityComparison, value: string) => {
     setUtilityComparisons(prev => prev.map(u => {
       if (u.utilityType === utilityType && u.identifier === identifier) {
@@ -1695,7 +1769,13 @@ export default function Base2Page() {
     }, isRsl);
   };
 
-  const generateComparison = async (comparison: UtilityComparison, action: 'comparison' | 'dma' = 'comparison', generateAll: boolean = false, webhookRecipient?: { contactName: string; contactEmail: string; contactPhone?: string }, isRsl: boolean = false) => {
+  const generateComparison = async (
+    comparison: UtilityComparison,
+    action: 'comparison' | 'dma' = 'comparison',
+    generateAll: boolean = false,
+    webhookRecipient?: { contactName: string; contactEmail: string; contactPhone?: string },
+    isRsl: boolean = false,
+  ) => {
     if (!token || !session) { alert('Please log in to generate comparisons'); return; }
     const utilitiesToProcess = generateAll ? utilityComparisons.filter((u) => { if (u.utilityType !== comparison.utilityType || u.loading || u.error) return false; if (comparison.utilityType === "SME Gas") { const m = comparison.smeGasComparisonMode ?? "invoice_blocks"; const um = u.smeGasComparisonMode ?? "invoice_blocks"; return m === um; } return true; }) : [comparison];
     if (utilitiesToProcess.length === 0) { alert('No utilities available to generate'); return; }
@@ -1753,7 +1833,32 @@ export default function Base2Page() {
           const _raw = (v?: number | null) => (v != null ? String(v) : '0');
           payload.peak_rate_invoice = _raw(util.currentPeakRate); payload.off_peak_rate_invoice = _raw(util.currentOffPeakRate); payload.shoulder_rate_invoice = _raw(util.currentShoulderRate);
           payload.peak_usage_invoice = _raw(util.peakUsage); payload.off_peak_usage_invoice = _raw(util.offPeakUsage); payload.shoulder_usage_invoice = _raw(util.shoulderUsage); payload.total_monthly_usage = _raw(util.monthlyUsage);
-          payload.offer1PeakRate = _raw(util.comparisonPeakRate); payload.offer1OffPeakRate = _raw(util.comparisonOffPeakRate); payload.offer1ShoulderRate = _raw(util.comparisonShoulderRate); payload.offer1Retailer = 'Comparison Offer'; payload.offer1Validity = '12 months'; payload.offer1Type = 'smoothed'; payload.offer1PeriodYears = '1'; payload.offer1StartDate = new Date().toISOString().split('T')[0];
+          payload.offer1PeakRate = _raw(util.comparisonPeakRate); payload.offer1OffPeakRate = _raw(util.comparisonOffPeakRate); payload.offer1ShoulderRate = _raw(util.comparisonShoulderRate); payload.offer1Retailer = 'Comparison Offer';
+          // Contract term from the C&I Electricity card (same for Generate Comparison + RSL Agent).
+          {
+            const years = util.ciOfferPeriodYears ?? "1";
+            const yearsNum = Number(years);
+            const pricingType = util.ciOfferPricingType ?? "smoothed";
+            const startDate = (util.ciOfferStartDate ?? "").trim();
+            payload.offer1Type = pricingType;
+            payload.offer1PeriodYears = years;
+            payload.offer1Validity = `${yearsNum * 12} months`;
+            payload.offer1StartDate = startDate || (isRsl ? "" : new Date().toISOString().split("T")[0]);
+            if (pricingType === "stepped" || yearsNum > 1) {
+              for (let p = 1; p <= yearsNum; p++) {
+                if (p === 1) {
+                  payload[`offer1Period${p}PeakRate`] = _raw(util.comparisonPeakRate);
+                  payload[`offer1Period${p}OffPeakRate`] = _raw(util.comparisonOffPeakRate);
+                  payload[`offer1Period${p}ShoulderRate`] = _raw(util.comparisonShoulderRate);
+                } else {
+                  const stepped = util.ciOfferSteppedRates?.[p - 2];
+                  payload[`offer1Period${p}PeakRate`] = _raw(stepped?.peak ?? util.comparisonPeakRate);
+                  payload[`offer1Period${p}OffPeakRate`] = _raw(stepped?.offPeak ?? util.comparisonOffPeakRate);
+                  payload[`offer1Period${p}ShoulderRate`] = _raw(stepped?.shoulder ?? util.comparisonShoulderRate);
+                }
+              }
+            }
+          }
           payload.current_daily_supply = _raw(util.currentDailySupply); payload.comparison_daily_supply = _raw(util.comparisonDailySupply); payload.current_demand_charge = _raw(util.currentDemandCharge); payload.comparison_demand_charge = _raw(util.comparisonDemandCharge); payload.demand_quantity = _raw(util.demandQuantity);
           payload.commission_aud_per_mwh = util.ciElectricityCommissionAudPerMwh!.toFixed(4);
           payload.commission_unit_electricity = "$/MWh";
@@ -2127,12 +2232,25 @@ export default function Base2Page() {
     }
 
     if (isElectricity) {
+      const isCiElec = comparison.utilityType === "C&I Electricity";
+      const ciPricing = comparison.ciOfferPricingType ?? "smoothed";
+      const ciYears = Number(comparison.ciOfferPeriodYears ?? "1");
+      const offerRateLabel =
+        isCiElec && ciPricing === "stepped"
+          ? "Y1 Offer"
+          : isCiElec && ciYears > 1
+            ? "Offer (all yrs)"
+            : undefined;
+
       rows.push(
         <tr key="peak" className="hover:bg-gray-50/50">
           <td className={labelTd}>Peak Rate <span className="text-gray-400">(c/kWh)</span></td>
           <td className={tdBase}><input type="number" step="0.01" value={comparison.currentPeakRate || ''} onChange={(e) => updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentPeakRate', e.target.value)} className={inputCls} placeholder="c/kWh" /></td>
           <td className={tdBase}><input type="number" step="0.01" value={comparison.peakUsage || ''} onChange={(e) => updateUsage(comparison.utilityType, comparison.identifier, 'peakUsage', e.target.value)} className={inputCls} placeholder="kWh" /></td>
-          <td className={tdBase}><input type="number" step="0.01" value={comparison.comparisonPeakRate || ''} onChange={(e) => updateComparisonRate(comparison.utilityType, comparison.identifier, 'comparisonPeakRate', e.target.value)} className={inputCls} placeholder="24.50" /></td>
+          <td className={tdBase}>
+            <input type="number" step="0.01" value={comparison.comparisonPeakRate || ''} onChange={(e) => updateComparisonRate(comparison.utilityType, comparison.identifier, 'comparisonPeakRate', e.target.value)} className={inputCls} placeholder="24.50" />
+            {offerRateLabel && <div className="text-[10px] text-gray-400 text-right mt-0.5">{offerRateLabel}</div>}
+          </td>
           <td className={`${tdBase} text-right`}>{savingsPill(savings?.peakAnnualSavings)}{savings?.peakAnnualSavings != null && <div className="text-[10px] text-gray-400 text-right mt-0.5">/yr</div>}</td>
           <td className={`${tdBase} text-right`}>{savingsPct(savings?.peakSavingsPercent)}</td>
         </tr>
@@ -2142,7 +2260,10 @@ export default function Base2Page() {
           <td className={labelTd}>Off-Peak Rate <span className="text-gray-400">(c/kWh)</span></td>
           <td className={tdBase}><input type="number" step="0.01" value={comparison.currentOffPeakRate || ''} onChange={(e) => updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentOffPeakRate', e.target.value)} className={inputCls} placeholder="c/kWh" /></td>
           <td className={tdBase}><input type="number" step="0.01" value={comparison.offPeakUsage || ''} onChange={(e) => updateUsage(comparison.utilityType, comparison.identifier, 'offPeakUsage', e.target.value)} className={inputCls} placeholder="kWh" /></td>
-          <td className={tdBase}><input type="number" step="0.01" value={comparison.comparisonOffPeakRate || ''} onChange={(e) => updateComparisonRate(comparison.utilityType, comparison.identifier, 'comparisonOffPeakRate', e.target.value)} className={inputCls} placeholder="18.00" /></td>
+          <td className={tdBase}>
+            <input type="number" step="0.01" value={comparison.comparisonOffPeakRate || ''} onChange={(e) => updateComparisonRate(comparison.utilityType, comparison.identifier, 'comparisonOffPeakRate', e.target.value)} className={inputCls} placeholder="18.00" />
+            {offerRateLabel && <div className="text-[10px] text-gray-400 text-right mt-0.5">{offerRateLabel}</div>}
+          </td>
           <td className={`${tdBase} text-right`}>{savingsPill(savings?.offPeakAnnualSavings)}{savings?.offPeakAnnualSavings != null && <div className="text-[10px] text-gray-400 text-right mt-0.5">/yr</div>}</td>
           <td className={`${tdBase} text-right`}>{savingsPct(savings?.offPeakSavingsPercent)}</td>
         </tr>
@@ -2153,11 +2274,58 @@ export default function Base2Page() {
             <td className={labelTd}>Shoulder Rate <span className="text-gray-400">(c/kWh)</span></td>
             <td className={tdBase}><input type="number" step="0.01" value={comparison.currentShoulderRate || ''} onChange={(e) => updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentShoulderRate', e.target.value)} className={inputCls} /></td>
             <td className={tdBase}><input type="number" step="0.01" value={comparison.shoulderUsage || ''} onChange={(e) => updateUsage(comparison.utilityType, comparison.identifier, 'shoulderUsage', e.target.value)} className={inputCls} placeholder="kWh" /></td>
-            <td className={tdBase}><input type="number" step="0.01" value={comparison.comparisonShoulderRate || ''} onChange={(e) => updateComparisonRate(comparison.utilityType, comparison.identifier, 'comparisonShoulderRate', e.target.value)} className={inputCls} placeholder="20.00" /></td>
+            <td className={tdBase}>
+              <input type="number" step="0.01" value={comparison.comparisonShoulderRate || ''} onChange={(e) => updateComparisonRate(comparison.utilityType, comparison.identifier, 'comparisonShoulderRate', e.target.value)} className={inputCls} placeholder="20.00" />
+              {offerRateLabel && <div className="text-[10px] text-gray-400 text-right mt-0.5">{offerRateLabel}</div>}
+            </td>
             <td className={`${tdBase} text-center text-gray-300 text-xs`}>—</td>
             <td className={`${tdBase} text-center text-gray-300 text-xs`}>—</td>
           </tr>
         );
+      }
+      // Stepped years 2–3: extra offer rate rows on the same card (no re-entry in the modal).
+      if (isCiElec && ciPricing === "stepped" && ciYears > 1) {
+        for (let year = 2; year <= ciYears; year++) {
+          const stepped = comparison.ciOfferSteppedRates?.[year - 2];
+          for (const band of [
+            { key: "peak", label: "Peak", field: "peak" as const, value: stepped?.peak, placeholder: "24.50" },
+            { key: "offPeak", label: "Off-Peak", field: "offPeak" as const, value: stepped?.offPeak, placeholder: "18.00" },
+            { key: "shoulder", label: "Shoulder", field: "shoulder" as const, value: stepped?.shoulder, placeholder: "20.00" },
+          ]) {
+            if (band.key === "shoulder" && !(comparison.currentShoulderRate && comparison.currentShoulderRate > 0)) {
+              continue;
+            }
+            rows.push(
+              <tr key={`stepped-y${year}-${band.key}`} className="hover:bg-amber-50/40 bg-amber-50/20">
+                <td className={labelTd}>
+                  Y{year} {band.label} <span className="text-gray-400">(c/kWh)</span>
+                </td>
+                <td className={`${tdBase} text-center text-gray-300 text-xs`}>—</td>
+                <td className={`${tdBase} text-center text-gray-300 text-xs`}>—</td>
+                <td className={tdBase}>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={band.value != null && Number.isFinite(band.value) ? band.value : ""}
+                    onChange={(e) =>
+                      updateCiSteppedRate(
+                        comparison.utilityType,
+                        comparison.identifier,
+                        year,
+                        band.field,
+                        e.target.value,
+                      )
+                    }
+                    className={inputCls}
+                    placeholder={band.placeholder}
+                  />
+                </td>
+                <td className={`${tdBase} text-center text-gray-300 text-xs`}>—</td>
+                <td className={`${tdBase} text-center text-gray-300 text-xs`}>—</td>
+              </tr>,
+            );
+          }
+        }
       }
       if (comparison.utilityType !== 'C&I Electricity') {
         rows.push(
@@ -2942,6 +3110,69 @@ export default function Base2Page() {
                               );
                             })()}
                           </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* C&I Electricity contract term — lives with rates so Generate + RSL stay consistent */}
+                    {comparison.utilityType === "C&I Electricity" && (
+                      <div className="mb-3 rounded-xl border border-gray-200 bg-gray-50/80 px-3.5 py-3">
+                        <div className="mb-2 text-xs font-semibold text-gray-700">C&amp;I Electricity contract term</div>
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                          <div>
+                            <label htmlFor={`b2-ci-years-${comparison.identifier}`} className="mb-1 block text-[11px] font-medium text-gray-500">Years</label>
+                            <select
+                              id={`b2-ci-years-${comparison.identifier}`}
+                              value={comparison.ciOfferPeriodYears ?? "1"}
+                              onChange={(e) =>
+                                updateCiOfferTerm(comparison.utilityType, comparison.identifier, {
+                                  ciOfferPeriodYears: e.target.value as "1" | "2" | "3",
+                                })
+                              }
+                              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                            >
+                              <option value="1">1 year</option>
+                              <option value="2">2 years</option>
+                              <option value="3">3 years</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label htmlFor={`b2-ci-type-${comparison.identifier}`} className="mb-1 block text-[11px] font-medium text-gray-500">Pricing</label>
+                            <select
+                              id={`b2-ci-type-${comparison.identifier}`}
+                              value={comparison.ciOfferPricingType ?? "smoothed"}
+                              onChange={(e) =>
+                                updateCiOfferTerm(comparison.utilityType, comparison.identifier, {
+                                  ciOfferPricingType: e.target.value as "smoothed" | "stepped",
+                                })
+                              }
+                              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                            >
+                              <option value="smoothed">Smoothed (same rates all years)</option>
+                              <option value="stepped">Stepped (different rate each year)</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label htmlFor={`b2-ci-start-${comparison.identifier}`} className="mb-1 block text-[11px] font-medium text-gray-500">
+                              Start date <span className="font-normal text-gray-400">(optional)</span>
+                            </label>
+                            <input
+                              id={`b2-ci-start-${comparison.identifier}`}
+                              type="date"
+                              value={comparison.ciOfferStartDate ?? ""}
+                              onChange={(e) =>
+                                updateCiOfferTerm(comparison.utilityType, comparison.identifier, {
+                                  ciOfferStartDate: e.target.value,
+                                })
+                              }
+                              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                            />
+                          </div>
+                        </div>
+                        {(comparison.ciOfferPricingType ?? "smoothed") === "stepped" && Number(comparison.ciOfferPeriodYears ?? "1") > 1 && (
+                          <p className="mt-2 text-[11px] text-gray-500">
+                            Offer Rate column is Year 1. Extra rows below for Year 2{Number(comparison.ciOfferPeriodYears) === 3 ? " and Year 3" : ""}.
+                          </p>
                         )}
                       </div>
                     )}
