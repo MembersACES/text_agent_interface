@@ -13,6 +13,7 @@ import {
   mergeBase2Defaults,
   ciGasBenchmarkForAnnualGJ,
 } from "@/lib/base2-defaults";
+import { applyRslTenderOfferIfMatched, lookupRslTenderOffer } from "@/lib/rsl-tender-rates";
 
 /** SME Gas → C&I comparison: how current SME bill is interpreted in the UI */
 type SmeGasComparisonMode = "invoice_blocks" | "ci_offer" | "sme_benchmark_stub";
@@ -134,6 +135,11 @@ interface UtilityComparison {
    * Index 0 = Year 2, index 1 = Year 3.
    */
   ciOfferSteppedRates?: { peak?: number; offPeak?: number; shoulder?: number }[];
+  /** Set when RSL tender sheet rates were applied for this NMI. */
+  ciOfferTenderMatched?: boolean;
+  ciOfferTenderGroupId?: string;
+  ciOfferTenderGroupLabel?: string;
+  ciOfferTenderGroupNmiCount?: number;
   oilFrequency?: string;
   wasteFrequency?: string;
   cleaningFrequency?: string;
@@ -1114,7 +1120,7 @@ export default function Base2Page() {
     return () => { cancelled = true; };
   }, []);
 
-  const extractCurrentRates = (invoiceData: any, utilityType: string): Partial<UtilityComparison> => {
+  const extractCurrentRates = (invoiceData: any, utilityType: string, identifier?: string): Partial<UtilityComparison> => {
     const rates: Partial<UtilityComparison> = {};
 
     if (utilityType.includes('Electricity')) {
@@ -1170,6 +1176,10 @@ export default function Base2Page() {
         rates.ciOfferPricingType = "smoothed";
         rates.ciOfferStartDate = "";
         rates.ciOfferSteppedRates = [];
+        // RSL tender overlay: when NMI is on the tender sheet, replace offer rates with stepped group pricing.
+        if (identifier) {
+          Object.assign(rates, applyRslTenderOfferIfMatched(rates, identifier));
+        }
       } else {
         const sme = activeBase2Defaults.electricity.sme;
         const f = sme.discountFactor;
@@ -1393,7 +1403,7 @@ export default function Base2Page() {
           });
           if (response.ok) {
             const data = await response.json();
-            const extractedRates = extractCurrentRates(data, comparison.utilityType);
+            const extractedRates = extractCurrentRates(data, comparison.utilityType, comparison.identifier);
             return { identifier: comparison.identifier, update: { ...extractedRates, invoiceData: data, loading: false, error: null } };
           }
           throw new Error("Failed to fetch invoice data");
@@ -1433,7 +1443,7 @@ export default function Base2Page() {
     setUtilityComparisons(prev => prev.map(u => {
       if (u.utilityType !== utilityType || u.identifier !== identifier) return u;
       const num = parseFloat(value) || 0;
-      const next = { ...u, [field]: num };
+      const next: UtilityComparison = { ...u, [field]: num };
       if (field === 'comparisonMeterAnnual' || field === 'comparisonVasAnnual') {
         const meterAnnual = field === 'comparisonMeterAnnual' ? num : (u.comparisonMeterAnnual ?? 600);
         const vasAnnual = field === 'comparisonVasAnnual' ? num : (u.comparisonVasAnnual ?? 300);
@@ -1442,6 +1452,13 @@ export default function Base2Page() {
         next.comparisonMeteringDaily = parseFloat(((meterAnnual + vasAnnual) / 365).toFixed(4));
         next.comparisonMeterDaily = parseFloat((meterAnnual / 365).toFixed(4));
         next.comparisonVasDaily = parseFloat((vasAnnual / 365).toFixed(4));
+      }
+      if (
+        field === "comparisonPeakRate" ||
+        field === "comparisonOffPeakRate" ||
+        field === "comparisonShoulderRate"
+      ) {
+        next.ciOfferTenderMatched = false;
       }
       return next;
     }));
@@ -1542,8 +1559,19 @@ export default function Base2Page() {
           ...rates[idx],
           [field]: parsed != null && Number.isFinite(parsed) ? parsed : undefined,
         };
-        return { ...u, ciOfferSteppedRates: rates };
+        return { ...u, ciOfferSteppedRates: rates, ciOfferTenderMatched: false };
       }),
+    );
+  };
+
+  const reapplyRslTenderRates = (utilityType: string, identifier: string) => {
+    const patch = lookupRslTenderOffer(identifier);
+    if (!patch) {
+      alert(`No RSL tender rates found for NMI ${identifier}.`);
+      return;
+    }
+    setUtilityComparisons((prev) =>
+      prev.map((u) => (u.utilityType === utilityType && u.identifier === identifier ? { ...u, ...patch } : u)),
     );
   };
 
@@ -3116,7 +3144,46 @@ export default function Base2Page() {
 
                     {/* C&I Electricity contract term — lives with rates so Generate + RSL stay consistent */}
                     {comparison.utilityType === "C&I Electricity" && (
-                      <div className="mb-3 rounded-xl border border-gray-200 bg-gray-50/80 px-3.5 py-3">
+                      <div className="mb-3 space-y-2">
+                        {comparison.ciOfferTenderMatched ? (
+                          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2.5">
+                            <div className="min-w-0">
+                              <div className="text-xs font-semibold text-emerald-800">RSL tender rates applied</div>
+                              <div className="text-[11px] text-emerald-700/90">
+                                {comparison.ciOfferTenderGroupLabel}
+                                {comparison.ciOfferTenderGroupNmiCount != null
+                                  ? ` · ${comparison.ciOfferTenderGroupNmiCount} NMI${comparison.ciOfferTenderGroupNmiCount === 1 ? "" : "s"} in group`
+                                  : ""}
+                                {comparison.ciElectricityCommissionAudPerMwh != null
+                                  ? ` · commission $${comparison.ciElectricityCommissionAudPerMwh.toFixed(2)}/MWh`
+                                  : ""}
+                                {" · $/MWh sheet → c/kWh on card"}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => reapplyRslTenderRates(comparison.utilityType, comparison.identifier)}
+                              className="shrink-0 rounded-lg border border-emerald-300 bg-white px-2.5 py-1.5 text-xs font-medium text-emerald-800 transition-colors hover:bg-emerald-100"
+                              title="Reset offer rates, term and commission from the RSL tender sheet"
+                            >
+                              Re-apply tender
+                            </button>
+                          </div>
+                        ) : lookupRslTenderOffer(comparison.identifier) ? (
+                          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5">
+                            <div className="text-xs text-amber-900">
+                              This NMI is on the RSL tender sheet but card rates were changed. Re-apply to restore sheet pricing.
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => reapplyRslTenderRates(comparison.utilityType, comparison.identifier)}
+                              className="shrink-0 rounded-lg border border-amber-300 bg-white px-2.5 py-1.5 text-xs font-medium text-amber-900 transition-colors hover:bg-amber-100"
+                            >
+                              Apply tender rates
+                            </button>
+                          </div>
+                        ) : null}
+                        <div className="rounded-xl border border-gray-200 bg-gray-50/80 px-3.5 py-3">
                         <div className="mb-2 text-xs font-semibold text-gray-700">C&amp;I Electricity contract term</div>
                         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                           <div>
@@ -3174,6 +3241,7 @@ export default function Base2Page() {
                             Offer Rate column is Year 1. Extra rows below for Year 2{Number(comparison.ciOfferPeriodYears) === 3 ? " and Year 3" : ""}.
                           </p>
                         )}
+                        </div>
                       </div>
                     )}
 
