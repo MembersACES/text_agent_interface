@@ -1154,6 +1154,35 @@ function CIElectricityOfferModal({
     try {
       const headers = { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
       const baseUrl = getAutonomousApiBaseUrl();
+
+      // Preflight: make sure the template key exists before we try to start (avoids opaque 400s).
+      try {
+        const tplRes = await fetch(`${baseUrl}/api/autonomous/sequences/templates`, { headers });
+        if (tplRes.ok) {
+          const tpls = (await tplRes.json()) as Array<{ sequence_type?: string; is_active?: boolean; display_name?: string }>;
+          const match = Array.isArray(tpls)
+            ? tpls.find((t) => (t.sequence_type || "").trim() === AUTONOMOUS_SEQUENCE_CI_ELECTRICITY)
+            : undefined;
+          if (!match) {
+            const keys = Array.isArray(tpls)
+              ? tpls.map((t) => t.sequence_type).filter(Boolean).join(", ")
+              : "(none)";
+            alert(
+              `${a.successMessage}\n\nComparison saved, but cannot start autonomous sequence.\n\nTemplate key "${AUTONOMOUS_SEQUENCE_CI_ELECTRICITY}" was not found on the API.\nAvailable keys: ${keys}\n\nCheck the grey mono text under the template name on Autonomous Agent → Sequence templates.`
+            );
+            return;
+          }
+          if (match.is_active === false) {
+            alert(
+              `${a.successMessage}\n\nComparison saved, but template "${AUTONOMOUS_SEQUENCE_CI_ELECTRICITY}" is inactive. Enable Active and Save template, then try again.`
+            );
+            return;
+          }
+        }
+      } catch (preErr) {
+        console.warn("[C&I Electricity autonomous] template preflight failed", preErr);
+      }
+
       const nmi = formData.nmi?.trim() || undefined;
       const sequenceContext: Record<string, unknown> = {
         ...a.ctxBase,
@@ -1184,8 +1213,16 @@ function CIElectricityOfferModal({
       if (!startRes.ok) {
         const errTxt = await startRes.text();
         console.warn("[C&I Electricity autonomous] start failed", startRes.status, errTxt);
+        let detail = errTxt;
+        try {
+          const parsed = JSON.parse(errTxt) as { detail?: unknown };
+          if (typeof parsed.detail === "string") detail = parsed.detail;
+          else if (parsed.detail != null) detail = JSON.stringify(parsed.detail);
+        } catch {
+          /* keep raw text */
+        }
         alert(
-          `${a.successMessage}\n\nComparison saved, but autonomous sequence failed to start (${startRes.status}). Check Autonomous Agent / backend logs.`
+          `${a.successMessage}\n\nComparison saved, but autonomous sequence failed to start (${startRes.status}).\n\n${detail}\n\nTried sequence_type: ${AUTONOMOUS_SEQUENCE_CI_ELECTRICITY}`
         );
       } else {
         const started = await startRes.json().catch(() => ({}));
