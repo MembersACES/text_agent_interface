@@ -1009,7 +1009,9 @@ function CIElectricityOfferModal({
         const emailId = typeof emailIdRaw === "string" && emailIdRaw.trim() ? emailIdRaw.trim() : undefined;
 
         const offerType = String(formData.offer1Type || "");
-        const periodYears = parseInt(formData.offer1PeriodYears) || 0;
+        const periodYears =
+          parseInt(String(formData.offer1PeriodYears || ""), 10) ||
+          (offerType === "stepped" ? 2 : 1);
         let offerPeak = String(formData.offer1PeakRate || "").trim();
         let offerOffPeak = String(formData.offer1OffPeakRate || "").trim();
         let offerShoulder = String(formData.offer1ShoulderRate || "").trim();
@@ -1025,9 +1027,6 @@ function CIElectricityOfferModal({
         const yearlyEst = normalizeMoneyToNumber(
           invoiceData?.electricity_ci_invoice_details?.full_invoice_data?.["Yearly Consumption Est"]
         );
-        const periodYears =
-          parseInt(String(formData.offer1PeriodYears || ""), 10) ||
-          (String(formData.offer1Type || "") === "stepped" ? 2 : 1);
         const contractSavingsFromWebhook =
           normalizeMoneyToNumber((result as any)?.contract_savings) ??
           normalizeMoneyToNumber((result as any)?.total_savings) ??
