@@ -1006,7 +1006,9 @@ function CIElectricityOfferModal({
 
         const pdfLink = result?.pdf_document_link;
         const spreadsheetLink = result?.spreadsheet_document_link;
-        const annualSavings = normalizeMoneyToNumber((result as any)?.annual_savings);
+        // generate-electricity-ci-comparaison-interface: `annual_savings` is the hero /
+        // full-term offer saving (not year-1 only). Do NOT multiply by period_years.
+        const heroOfferSavings = normalizeMoneyToNumber((result as any)?.annual_savings);
         const currentCost = normalizeMoneyToNumber((result as any)?.current_cost);
         const newCost = normalizeMoneyToNumber((result as any)?.new_cost);
         // Additional Base 2 / comparison offer metrics (persisted to CRM offer)
@@ -1041,12 +1043,21 @@ function CIElectricityOfferModal({
           normalizeMoneyToNumber((result as any)?.total_savings) ??
           normalizeMoneyToNumber((result as any)?.estimated_contract_saving) ??
           normalizeMoneyToNumber((result as any)?.term_savings) ??
+          normalizeMoneyToNumber((result as any)?.hero_value) ??
           null;
-        const contractSavings =
-          contractSavingsFromWebhook ??
-          (annualSavings != null && periodYears > 1
-            ? Math.round(annualSavings * periodYears * 100) / 100
-            : annualSavings ?? null);
+        // Full-term / hero saving across the whole offer (authoritative for this webhook).
+        const contractSavings = contractSavingsFromWebhook ?? heroOfferSavings ?? null;
+        // Optional year-1-only if webhook still sends it separately; otherwise approximate.
+        const period1AnnualSavings =
+          normalizeMoneyToNumber((result as any)?.period1_annual_savings) ??
+          normalizeMoneyToNumber((result as any)?.savings_period_1) ??
+          normalizeMoneyToNumber((result as any)?.savingsPeriod1) ??
+          null;
+        const annualSavings =
+          period1AnnualSavings ??
+          (contractSavings != null && periodYears > 1
+            ? Math.round((contractSavings / periodYears) * 100) / 100
+            : contractSavings);
 
         let successMessage = "C&I Electricity Offer Comparison sent successfully!";
         if (pdfLink) successMessage += `\nPDF: ${pdfLink}`;
@@ -1063,7 +1074,9 @@ function CIElectricityOfferModal({
             clientId,
             userEmail: session.user.email,
             hasDoc: !!(pdfLink || spreadsheetLink),
-            annualSavings,
+            heroOfferSavings,
+            contractSavings,
+            annualSavingsApprox: annualSavings,
             currentCost,
             newCost,
             emailId,
@@ -1113,6 +1126,8 @@ function CIElectricityOfferModal({
               if (annualSavings != null) metadata.annual_savings = annualSavings;
               if (contractSavings != null) metadata.contract_savings = contractSavings;
               if (contractSavings != null) metadata.total_savings = contractSavings;
+              if (contractSavings != null) metadata.offer_term_savings = contractSavings;
+              metadata.savings_scope = "full_term";
               if (periodYears) metadata.period_years = periodYears;
               if (currentCost != null) metadata.current_cost = currentCost;
               if (newCost != null) metadata.new_cost = newCost;
@@ -1205,9 +1220,13 @@ function CIElectricityOfferModal({
 
           const comparisonSnapshot: Record<string, unknown> = {
             lane: "ci_electricity",
+            // annual_savings = approx yearly (term / years) for voice "per year" talk only.
             annual_savings: annualSavings ?? null,
+            // contract/total/offer_term = hero full-term saving from webhook (authoritative).
             contract_savings: contractSavings,
             total_savings: contractSavings,
+            offer_term_savings: contractSavings,
+            savings_scope: "full_term",
             period_years: periodYears,
             current_cost: currentCost ?? null,
             new_cost: newCost ?? null,
@@ -1243,9 +1262,13 @@ function CIElectricityOfferModal({
             signature_html: ACES_ELECTRICITY_FOLLOWUP_SIGNATURE_HTML,
             use_html_signature: true,
             // Flatten key metrics so email/voice agents see them without digging into snapshot.
+            // contract_savings / total_savings / offer_term_savings = full-term hero figure.
+            // annual_savings = approx yearly only (do not multiply contract by period_years).
             annual_savings: annualSavings ?? null,
             contract_savings: contractSavings,
             total_savings: contractSavings,
+            offer_term_savings: contractSavings,
+            savings_scope: "full_term",
             period_years: periodYears,
             current_cost: currentCost ?? null,
             new_cost: newCost ?? null,
@@ -2169,19 +2192,19 @@ function CIElectricityOfferModal({
             <ul style={{ margin: '0 0 16px', paddingLeft: 18, fontSize: 12, color: '#6b7280' }}>
               {autonomousConfirm.comparisonSnapshot.contract_savings != null && (
                 <li>
-                  Contract / term savings:{' '}
+                  Offer / term savings (hero):{' '}
                   {Number(autonomousConfirm.comparisonSnapshot.contract_savings).toLocaleString('en-AU', {
                     style: 'currency',
                     currency: 'AUD',
                   })}
                   {autonomousConfirm.comparisonSnapshot.period_years != null
-                    ? ` (${autonomousConfirm.comparisonSnapshot.period_years} yr)`
+                    ? ` across ${autonomousConfirm.comparisonSnapshot.period_years} yr`
                     : ''}
                 </li>
               )}
               {autonomousConfirm.comparisonSnapshot.annual_savings != null && (
                 <li>
-                  Annual savings:{' '}
+                  Approx. annual (term ÷ years):{' '}
                   {Number(autonomousConfirm.comparisonSnapshot.annual_savings).toLocaleString('en-AU', {
                     style: 'currency',
                     currency: 'AUD',
