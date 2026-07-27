@@ -89,8 +89,7 @@ interface CIElectricityOfferData {
   contactPosition: string;
   loaSignDate: string;
   
-  // New structure for offers
-  offer1Retailer: string;
+  // New structure for offers (labelled Retailer 1/2/3 in UI — no free-text retailer name)
   offer1Validity: string;
   offer1Type: 'smoothed' | 'stepped';
   offer1PeriodYears: string;
@@ -99,7 +98,6 @@ interface CIElectricityOfferData {
   offer1OffPeakRate: string;
   offer1ShoulderRate: string;
   
-  offer2Retailer: string;
   offer2Validity: string;
   offer2Type: 'smoothed' | 'stepped';
   offer2PeriodYears: string;
@@ -108,7 +106,6 @@ interface CIElectricityOfferData {
   offer2OffPeakRate: string;
   offer2ShoulderRate: string;
   
-  offer3Retailer: string;
   offer3Validity: string;
   offer3Type: 'smoothed' | 'stepped';
   offer3PeriodYears: string;
@@ -145,22 +142,19 @@ interface CIGasOfferData {
   contactPosition: string;
   loaSignDate: string;
   
-  // New structure for offers
-  offer1Retailer: string;
+  // New structure for offers (labelled Retailer 1/2/3 in UI — no free-text retailer name)
   offer1Validity: string;
   offer1Type: 'smoothed' | 'stepped';
   offer1PeriodYears: string;
   offer1StartDate: string;
   offer1GasRate: string;
   
-  offer2Retailer: string;
   offer2Validity: string;
   offer2Type: 'smoothed' | 'stepped';
   offer2PeriodYears: string;
   offer2StartDate: string;
   offer2GasRate: string;
   
-  offer3Retailer: string;
   offer3Validity: string;
   offer3Type: 'smoothed' | 'stepped';
   offer3PeriodYears: string;
@@ -288,7 +282,6 @@ function CIElectricityOfferModal({
     contactPosition: '',
     loaSignDate: '',
     
-    offer1Retailer: '',
     offer1Validity: '',
     offer1Type: 'smoothed',
     offer1PeriodYears: '3',
@@ -297,7 +290,6 @@ function CIElectricityOfferModal({
     offer1OffPeakRate: '',
     offer1ShoulderRate: '',
     
-    offer2Retailer: '',
     offer2Validity: '',
     offer2Type: 'smoothed',
     offer2PeriodYears: '3',
@@ -306,7 +298,6 @@ function CIElectricityOfferModal({
     offer2OffPeakRate: '',
     offer2ShoulderRate: '',
     
-    offer3Retailer: '',
     offer3Validity: '',
     offer3Type: 'smoothed',
     offer3PeriodYears: '3',
@@ -462,7 +453,6 @@ function CIElectricityOfferModal({
     const offers = [];
     
     for (let i = 1; i <= numOffers; i++) {
-      const retailer = formData[`offer${i}Retailer` as keyof CIElectricityOfferData] || '';
       const validity = formData[`offer${i}Validity` as keyof CIElectricityOfferData] || '';
       const type = formData[`offer${i}Type` as keyof CIElectricityOfferData] || '';
       const periodYears = parseInt(formData[`offer${i}PeriodYears` as keyof CIElectricityOfferData]) || 0;
@@ -470,9 +460,25 @@ function CIElectricityOfferModal({
       const peakRate = formData[`offer${i}PeakRate` as keyof CIElectricityOfferData] || '';
       const offPeakRate = formData[`offer${i}OffPeakRate` as keyof CIElectricityOfferData] || '';
       const shoulderRate = formData[`offer${i}ShoulderRate` as keyof CIElectricityOfferData] || '';
-      
-      if (retailer || peakRate || offPeakRate || shoulderRate) {
-        let offerText = `Offer ${i} - ${retailer}:
+
+      let hasPeriodRates = false;
+      for (let period = 1; period <= periodYears; period++) {
+        if (
+          formData[`offer${i}Period${period}PeakRate`] ||
+          formData[`offer${i}Period${period}OffPeakRate`] ||
+          formData[`offer${i}Period${period}ShoulderRate`]
+        ) {
+          hasPeriodRates = true;
+          break;
+        }
+      }
+
+      // Always include selected offer slots (Retailer 1/2/3); rates may be smoothed or stepped.
+      if (!(peakRate || offPeakRate || shoulderRate || hasPeriodRates || type || periodYears || startDate)) {
+        continue;
+      }
+
+      let offerText = `Offer ${i} - Retailer ${i}:
       Validity: ${validity}
       Type: ${type}
       Period: ${periodYears} years
@@ -514,7 +520,6 @@ function CIElectricityOfferModal({
         }
         
         offers.push(offerText);
-      }
     }
     
     const notesLine = formData.notes.trim() ? `\nNotes: ${formData.notes}` : '';
@@ -541,16 +546,16 @@ function CIElectricityOfferModal({
     try {
       const tableHTML = generateOfferTableHTML();
       
-      // Helper function to check if an offer has data (retailer is not empty)
-      const hasOfferData = (offerNum: number) => {
-        return formData[`offer${offerNum}Retailer` as keyof CIElectricityOfferData]?.trim() !== '';
-      };
-      
-      // Helper function to get offer data only if it exists
+      // Include every selected offer slot (1..numOffers). Retailer name is no longer collected —
+      // slots are labelled Retailer 1/2/3. Previously requiring retailer wiped all rates.
+      const hasOfferData = (offerNum: number) => offerNum >= 1 && offerNum <= numOffers;
+
+      const getOfferPeriodRate = (offerNum: number, period: number, kind: 'Peak' | 'OffPeak' | 'Shoulder') =>
+        String(formData[`offer${offerNum}Period${period}${kind}Rate`] || '').trim();
+
       const getOfferData = (offerNum: number) => {
         if (!hasOfferData(offerNum)) {
           return {
-            [`offer_${offerNum}_retailer`]: '',
             [`offer_${offerNum}_validity`]: '',
             [`offer_${offerNum}_type`]: '',
             [`offer_${offerNum}_period_years`]: '',
@@ -560,16 +565,29 @@ function CIElectricityOfferModal({
             [`offer_${offerNum}_shoulder_rate`]: ''
           };
         }
+
+        const offerType = formData[`offer${offerNum}Type` as keyof CIElectricityOfferData] || '';
+        const periodYears = parseInt(formData[`offer${offerNum}PeriodYears` as keyof CIElectricityOfferData]) || 0;
+        let peakRate = String(formData[`offer${offerNum}PeakRate` as keyof CIElectricityOfferData] || '');
+        let offPeakRate = String(formData[`offer${offerNum}OffPeakRate` as keyof CIElectricityOfferData] || '');
+        let shoulderRate = String(formData[`offer${offerNum}ShoulderRate` as keyof CIElectricityOfferData] || '');
+
+        // Stepped offers only fill period rates in the UI — mirror period 1 onto the top-level
+        // rate fields so n8n still gets a primary peak/off-peak/shoulder value.
+        if (offerType === 'stepped' && periodYears >= 1) {
+          if (!peakRate.trim()) peakRate = getOfferPeriodRate(offerNum, 1, 'Peak');
+          if (!offPeakRate.trim()) offPeakRate = getOfferPeriodRate(offerNum, 1, 'OffPeak');
+          if (!shoulderRate.trim()) shoulderRate = getOfferPeriodRate(offerNum, 1, 'Shoulder');
+        }
         
         return {
-          [`offer_${offerNum}_retailer`]: formData[`offer${offerNum}Retailer` as keyof CIElectricityOfferData],
           [`offer_${offerNum}_validity`]: formData[`offer${offerNum}Validity` as keyof CIElectricityOfferData],
-          [`offer_${offerNum}_type`]: formData[`offer${offerNum}Type` as keyof CIElectricityOfferData],
+          [`offer_${offerNum}_type`]: offerType,
           [`offer_${offerNum}_period_years`]: formData[`offer${offerNum}PeriodYears` as keyof CIElectricityOfferData],
           [`offer_${offerNum}_start_date`]: formData[`offer${offerNum}StartDate` as keyof CIElectricityOfferData],
-          [`offer_${offerNum}_peak_rate`]: formData[`offer${offerNum}PeakRate` as keyof CIElectricityOfferData],
-          [`offer_${offerNum}_off_peak_rate`]: formData[`offer${offerNum}OffPeakRate` as keyof CIElectricityOfferData],
-          [`offer_${offerNum}_shoulder_rate`]: formData[`offer${offerNum}ShoulderRate` as keyof CIElectricityOfferData]
+          [`offer_${offerNum}_peak_rate`]: peakRate,
+          [`offer_${offerNum}_off_peak_rate`]: offPeakRate,
+          [`offer_${offerNum}_shoulder_rate`]: shoulderRate
         };
       };
       
@@ -587,7 +605,15 @@ function CIElectricityOfferModal({
             const mainOffPeakRate = formData[`offer${offerNum}OffPeakRate` as keyof CIElectricityOfferData] || '';
             const mainShoulderRate = formData[`offer${offerNum}ShoulderRate` as keyof CIElectricityOfferData] || '';
             
-            for (let period = 1; period <= periodYears; period++) {
+            for (let period = 1; period <= Math.max(periodYears, 3); period++) {
+              if (period > periodYears) {
+                periodData[`offer_${offerNum}_period_${period}_start_date`] = '';
+                periodData[`offer_${offerNum}_period_${period}_end_date`] = '';
+                periodData[`offer_${offerNum}_period_${period}_peak_rate`] = '';
+                periodData[`offer_${offerNum}_period_${period}_off_peak_rate`] = '';
+                periodData[`offer_${offerNum}_period_${period}_shoulder_rate`] = '';
+                continue;
+              }
               periodData[`offer_${offerNum}_period_${period}_start_date`] = formData[`offer${offerNum}Period${period}StartDate`] || '';
               periodData[`offer_${offerNum}_period_${period}_end_date`] = formData[`offer${offerNum}Period${period}EndDate`] || '';
               
@@ -660,7 +686,7 @@ function CIElectricityOfferModal({
         timestamp: new Date().toISOString()
       };
       
-      const response = await fetch('https://membersaces.app.n8n.cloud/webhook/generate-electricity-ci-comparaison-interface', {
+      const response = await fetch('https://membersaces.app.n8n.cloud/webhook-test/generate-electricity-ci-comparaison-interface', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1022,16 +1048,7 @@ function CIElectricityOfferModal({
                   <React.Fragment key={offerNum}>
                     <tr style={{ backgroundColor: bgColor }}>
                       <td colSpan={3} style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600, textAlign: 'center' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                          <span>Offer {offerNum} - Retailer:</span>
-                          <input
-                            type="text"
-                            value={formData[`offer${offerNum}Retailer` as keyof CIElectricityOfferData]}
-                            onChange={(e) => handleInputChange(`offer${offerNum}Retailer` as keyof CIElectricityOfferData, e.target.value)}
-                            style={{ padding: 4, border: '1px solid #ccc', borderRadius: 4, minWidth: 200 }}
-                            placeholder="Retailer name"
-                          />
-                        </div>
+                        Offer {offerNum} — Retailer {offerNum}
                       </td>
                       </tr>
                     <tr>
@@ -2393,21 +2410,18 @@ function CIGasOfferModal({
     contactPosition: '',
     loaSignDate: '',
     
-    offer1Retailer: '',
     offer1Validity: '',
     offer1Type: 'smoothed',
     offer1PeriodYears: '3',
     offer1StartDate: new Date().toISOString().split('T')[0],
     offer1GasRate: '',
     
-    offer2Retailer: '',
     offer2Validity: '',
     offer2Type: 'smoothed',
     offer2PeriodYears: '3',
     offer2StartDate: new Date().toISOString().split('T')[0],
     offer2GasRate: '',
     
-    offer3Retailer: '',
     offer3Validity: '',
     offer3Type: 'smoothed',
     offer3PeriodYears: '3',
@@ -2555,16 +2569,24 @@ function CIGasOfferModal({
     const offers = [];
     
     for (let i = 1; i <= numOffers; i++) {
-      const retailer = formData[`offer${i}Retailer` as keyof CIGasOfferData];
-      if (!retailer?.trim()) continue;
-      
       const validity = formData[`offer${i}Validity` as keyof CIGasOfferData];
       const type = formData[`offer${i}Type` as keyof CIGasOfferData];
       const periodYears = formData[`offer${i}PeriodYears` as keyof CIGasOfferData];
       const startDate = formData[`offer${i}StartDate` as keyof CIGasOfferData];
       const gasRate = formData[`offer${i}GasRate` as keyof CIGasOfferData];
+      const yearsNum = parseInt(String(periodYears)) || 0;
+
+      let hasPeriodRates = false;
+      for (let period = 1; period <= yearsNum; period++) {
+        if (formData[`offer${i}Period${period}GasRate`]) {
+          hasPeriodRates = true;
+          break;
+        }
+      }
+
+      if (!(gasRate || hasPeriodRates || type || yearsNum || startDate)) continue;
       
-      let offerText = `Offer ${i} - ${retailer}:
+      let offerText = `Offer ${i} - Retailer ${i}:
       Validity: ${validity}
       Type: ${type}
       Period: ${periodYears} years
@@ -2578,7 +2600,7 @@ function CIGasOfferModal({
         offerText += `
       Overall Gas Rate: ${gasRate} $/GJ`;
         
-        for (let period = 1; period <= parseInt(periodYears); period++) {
+        for (let period = 1; period <= yearsNum; period++) {
           const periodStartDate = formData[`offer${i}Period${period}StartDate`] || '';
           const periodEndDate = formData[`offer${i}Period${period}EndDate`] || '';
           const periodGasRate = formData[`offer${i}Period${period}GasRate`] || '';
@@ -2623,16 +2645,12 @@ ${offers.join('\n\n  ')}${notesLine}`;
     try {
       const tableHTML = generateOfferTableHTML();
       
-      // Helper function to check if an offer has data (retailer is not empty)
-      const hasOfferData = (offerNum: number) => {
-        return formData[`offer${offerNum}Retailer` as keyof CIGasOfferData]?.trim() !== '';
-      };
+      // Include every selected offer slot (1..numOffers). Retailer name is no longer collected.
+      const hasOfferData = (offerNum: number) => offerNum >= 1 && offerNum <= numOffers;
       
-      // Helper function to get offer data only if it exists
       const getOfferData = (offerNum: number) => {
         if (!hasOfferData(offerNum)) {
           return {
-            [`offer_${offerNum}_retailer`]: '',
             [`offer_${offerNum}_validity`]: '',
             [`offer_${offerNum}_type`]: '',
             [`offer_${offerNum}_period_years`]: '',
@@ -2640,14 +2658,20 @@ ${offers.join('\n\n  ')}${notesLine}`;
             [`offer_${offerNum}_gas_rate`]: ''
           };
         }
+
+        const offerType = formData[`offer${offerNum}Type` as keyof CIGasOfferData] || '';
+        const periodYears = parseInt(formData[`offer${offerNum}PeriodYears` as keyof CIGasOfferData]) || 0;
+        let gasRate = String(formData[`offer${offerNum}GasRate` as keyof CIGasOfferData] || '');
+        if (offerType === 'stepped' && periodYears >= 1 && !gasRate.trim()) {
+          gasRate = String(formData[`offer${offerNum}Period1GasRate`] || '');
+        }
         
         return {
-          [`offer_${offerNum}_retailer`]: formData[`offer${offerNum}Retailer` as keyof CIGasOfferData],
           [`offer_${offerNum}_validity`]: formData[`offer${offerNum}Validity` as keyof CIGasOfferData],
-          [`offer_${offerNum}_type`]: formData[`offer${offerNum}Type` as keyof CIGasOfferData],
+          [`offer_${offerNum}_type`]: offerType,
           [`offer_${offerNum}_period_years`]: formData[`offer${offerNum}PeriodYears` as keyof CIGasOfferData],
           [`offer_${offerNum}_start_date`]: formData[`offer${offerNum}StartDate` as keyof CIGasOfferData],
-          [`offer_${offerNum}_gas_rate`]: formData[`offer${offerNum}GasRate` as keyof CIGasOfferData]
+          [`offer_${offerNum}_gas_rate`]: gasRate
         };
       };
       
@@ -2663,7 +2687,13 @@ ${offers.join('\n\n  ')}${notesLine}`;
             // Get the main offer rate for smoothed offers
             const mainGasRate = formData[`offer${offerNum}GasRate` as keyof CIGasOfferData] || '';
             
-            for (let period = 1; period <= periodYears; period++) {
+            for (let period = 1; period <= Math.max(periodYears, 3); period++) {
+              if (period > periodYears) {
+                periodData[`offer_${offerNum}_period_${period}_start_date`] = '';
+                periodData[`offer_${offerNum}_period_${period}_end_date`] = '';
+                periodData[`offer_${offerNum}_period_${period}_gas_rate`] = '';
+                continue;
+              }
               periodData[`offer_${offerNum}_period_${period}_start_date`] = formData[`offer${offerNum}Period${period}StartDate`] || '';
               periodData[`offer_${offerNum}_period_${period}_end_date`] = formData[`offer${offerNum}Period${period}EndDate`] || '';
               
@@ -2928,14 +2958,7 @@ ${offers.join('\n\n  ')}${notesLine}`;
                         </select>
                       </>
                     )}
-                    <span>Offer {offerNum} - Retailer:</span>
-                    <input
-                      type="text"
-                      value={formData[`offer${offerNum}Retailer` as keyof CIGasOfferData]}
-                      onChange={(e) => handleInputChange(`offer${offerNum}Retailer` as keyof CIGasOfferData, e.target.value)}
-                      style={{ padding: 4, border: '1px solid #ccc', borderRadius: 4, minWidth: 200 }}
-                      placeholder="Retailer name"
-                    />
+                    <span>Offer {offerNum} — Retailer {offerNum}</span>
                   </div>
                 </td>
               </tr>
