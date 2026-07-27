@@ -10,9 +10,11 @@ export default function CIElectricityInvoiceInfoPage() {
   const businessName = searchParams.get("business_name") || "";
   const autoSubmit = searchParams.get("autoSubmit") === "1";
   const autoOpenDMA = searchParams.get("autoOpenDMA") === "1";
-  const offerIdParam = searchParams.get("offerId");
+  const offerIdParam =
+    searchParams.get("offerId") || searchParams.get("offer_id") || searchParams.get("offerid");
   const offerId = offerIdParam ? parseInt(offerIdParam, 10) : NaN;
-  const clientIdParam = searchParams.get("clientId");
+  const clientIdParam =
+    searchParams.get("clientId") || searchParams.get("client_id") || searchParams.get("clientid");
   const clientId = clientIdParam ? parseInt(clientIdParam, 10) : NaN;
   const formRef = useRef<any>(null);
 

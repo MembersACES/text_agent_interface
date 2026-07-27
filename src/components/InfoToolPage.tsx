@@ -928,7 +928,10 @@ function CIElectricityOfferModal({
                 }
               }
             } else {
-              console.warn("[C&I Electricity offer] Skipping activity log: no offerIdToUse available.");
+              console.warn(
+                "[C&I Electricity offer] Skipping activity log: no offerIdToUse available.",
+                "Open this page with ?clientId=<crm id> or ?offerId=<id> (CRM Account Info / Business Info links now include clientId)."
+              );
             }
           } catch (logErr) {
             console.warn("Failed to log C&I Electricity offer comparison activity:", logErr);
@@ -974,7 +977,9 @@ function CIElectricityOfferModal({
             successMessage,
           });
         } else {
-          alert(successMessage);
+          alert(
+            `${successMessage}\n\nNote: CRM activity / autonomous follow-up was skipped because this page was opened without clientId or offerId in the URL.\n\nRe-open from the CRM member Utilities tab (Account Info) or add &clientId=<id> to the URL.`
+          );
           onClose();
         }
       } else {
