@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useSession } from "next-auth/react";
 import ReactMarkdown from 'react-markdown';
-import { getApiBaseUrl } from "@/lib/utils";
+import { getApiBaseUrl, getAutonomousApiBaseUrl } from "@/lib/utils";
 import { formatBackendErrorBody } from "@/lib/api-errors";
 import { ToolPageLayout } from "@/components/Layouts/ToolPageLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -89,8 +89,7 @@ interface CIElectricityOfferData {
   contactPosition: string;
   loaSignDate: string;
   
-  // New structure for offers
-  offer1Retailer: string;
+  // New structure for offers (labelled Retailer 1/2/3 in UI — no free-text retailer name)
   offer1Validity: string;
   offer1Type: 'smoothed' | 'stepped';
   offer1PeriodYears: string;
@@ -99,7 +98,6 @@ interface CIElectricityOfferData {
   offer1OffPeakRate: string;
   offer1ShoulderRate: string;
   
-  offer2Retailer: string;
   offer2Validity: string;
   offer2Type: 'smoothed' | 'stepped';
   offer2PeriodYears: string;
@@ -108,7 +106,6 @@ interface CIElectricityOfferData {
   offer2OffPeakRate: string;
   offer2ShoulderRate: string;
   
-  offer3Retailer: string;
   offer3Validity: string;
   offer3Type: 'smoothed' | 'stepped';
   offer3PeriodYears: string;
@@ -145,22 +142,19 @@ interface CIGasOfferData {
   contactPosition: string;
   loaSignDate: string;
   
-  // New structure for offers
-  offer1Retailer: string;
+  // New structure for offers (labelled Retailer 1/2/3 in UI — no free-text retailer name)
   offer1Validity: string;
   offer1Type: 'smoothed' | 'stepped';
   offer1PeriodYears: string;
   offer1StartDate: string;
   offer1GasRate: string;
   
-  offer2Retailer: string;
   offer2Validity: string;
   offer2Type: 'smoothed' | 'stepped';
   offer2PeriodYears: string;
   offer2StartDate: string;
   offer2GasRate: string;
   
-  offer3Retailer: string;
   offer3Validity: string;
   offer3Type: 'smoothed' | 'stepped';
   offer3PeriodYears: string;
@@ -243,6 +237,26 @@ interface ElectricityInvoiceData {
 }
 
 
+const AUTONOMOUS_SEQUENCE_CI_ELECTRICITY = "ci_electricity_base2_followup_v1";
+
+interface AutonomousElectricityConfirmState {
+  open: boolean;
+  offerIdToUse: number;
+  clientId: number | null;
+  activityId?: number;
+  anchorIso: string;
+  tz: string;
+  emailId?: string;
+  comparisonSnapshot: Record<string, unknown>;
+  ctxBase: Record<string, unknown>;
+  successMessage: string;
+  /** Editable outreach fields — saved into sequence context on start */
+  contactName: string;
+  contactEmail: string;
+  contactPhone: string;
+  businessName: string;
+}
+
 function CIElectricityOfferModal({ 
   isOpen, 
   onClose, 
@@ -251,7 +265,8 @@ function CIElectricityOfferModal({
   token,
   businessInfo,
   offerId,
-  clientId
+  clientId,
+  contactDefaults,
 }: { 
   isOpen: boolean; 
   onClose: () => void; 
@@ -261,6 +276,17 @@ function CIElectricityOfferModal({
   businessInfo?: any;
   offerId?: number;
   clientId?: number;
+  /** Prefer URL / CRM contact fields over invoice payload (avoids ACES login email). */
+  contactDefaults?: {
+    businessName?: string;
+    contactName?: string;
+    contactEmail?: string;
+    contactPhone?: string;
+    contactPosition?: string;
+    businessAbn?: string;
+    businessTradingName?: string;
+    postalAddress?: string;
+  };
 }) {
   const [formData, setFormData] = useState<CIElectricityOfferData>({
     invoiceId: '',
@@ -288,7 +314,6 @@ function CIElectricityOfferModal({
     contactPosition: '',
     loaSignDate: '',
     
-    offer1Retailer: '',
     offer1Validity: '',
     offer1Type: 'smoothed',
     offer1PeriodYears: '3',
@@ -297,7 +322,6 @@ function CIElectricityOfferModal({
     offer1OffPeakRate: '',
     offer1ShoulderRate: '',
     
-    offer2Retailer: '',
     offer2Validity: '',
     offer2Type: 'smoothed',
     offer2PeriodYears: '3',
@@ -306,7 +330,6 @@ function CIElectricityOfferModal({
     offer2OffPeakRate: '',
     offer2ShoulderRate: '',
     
-    offer3Retailer: '',
     offer3Validity: '',
     offer3Type: 'smoothed',
     offer3PeriodYears: '3',
@@ -320,6 +343,15 @@ function CIElectricityOfferModal({
 
   const [sending, setSending] = useState(false);
   const [numOffers, setNumOffers] = useState(1);
+  const [autonomousConfirm, setAutonomousConfirm] = useState<AutonomousElectricityConfirmState | null>(null);
+  const [autonomousStarting, setAutonomousStarting] = useState(false);
+  const [recipientConfirm, setRecipientConfirm] = useState<{
+    open: boolean;
+    businessName: string;
+    contactName: string;
+    contactEmail: string;
+    contactPhone: string;
+  } | null>(null);
   
   const calculateEndDate = (startDate: string): string => {
     if (!startDate) return '';
@@ -386,21 +418,69 @@ function CIElectricityOfferModal({
         shoulderUsageInvoice: invoiceDetails?.full_invoice_data?.['Retail Quantity Shoulder (kWh)']?.toString() || '',
         totalMonthlyUsage: invoiceDetails?.monthly_usage || invoiceDetails?.full_invoice_data?.['Monthly Consumption']?.toString() || '',
         
-        // Business Information - try multiple possible locations including URL parameters and businessInfo
-        businessName: businessDetails?.name || invoiceData?.business_name || invoiceDetails?.business_name || businessInfo?.business_name || '',
-        businessAbn: businessDetails?.abn || invoiceData?.business_abn || invoiceDetails?.business_abn || businessInfo?.business_abn || '',
-        businessTradingName: businessDetails?.trading_name || invoiceData?.business_trading_name || invoiceDetails?.business_trading_name || businessInfo?.business_trading_name || '',
+        // Business Information — URL/CRM defaults win over invoice payload (prevents ACES login email)
+        businessName:
+          contactDefaults?.businessName ||
+          businessDetails?.name ||
+          invoiceData?.business_name ||
+          invoiceDetails?.business_name ||
+          businessInfo?.business_name ||
+          '',
+        businessAbn:
+          contactDefaults?.businessAbn ||
+          businessDetails?.abn ||
+          invoiceData?.business_abn ||
+          invoiceDetails?.business_abn ||
+          businessInfo?.business_abn ||
+          '',
+        businessTradingName:
+          contactDefaults?.businessTradingName ||
+          businessDetails?.trading_name ||
+          invoiceData?.business_trading_name ||
+          invoiceDetails?.business_trading_name ||
+          businessInfo?.business_trading_name ||
+          '',
         businessIndustry: businessDetails?.industry || invoiceData?.business_industry || invoiceDetails?.business_industry || businessInfo?.business_industry || '',
         businessWebsite: businessDetails?.website || invoiceData?.business_website || invoiceDetails?.business_website || businessInfo?.business_website || '',
-        postalAddress: contactInfo?.postal_address || invoiceData?.postal_address || invoiceDetails?.postal_address || businessInfo?.postal_address || '',
-        contactPhone: contactInfo?.telephone || invoiceData?.contact_phone || invoiceDetails?.contact_phone || businessInfo?.contact_phone || '',
-        contactEmail: contactInfo?.email || invoiceData?.contact_email || invoiceDetails?.contact_email || businessInfo?.contact_email || '',
-        contactName: repDetails?.contact_name || invoiceData?.contact_name || invoiceDetails?.contact_name || businessInfo?.contact_name || '',
-        contactPosition: repDetails?.position || invoiceData?.contact_position || invoiceDetails?.contact_position || businessInfo?.contact_position || '',
+        postalAddress:
+          contactDefaults?.postalAddress ||
+          contactInfo?.postal_address ||
+          invoiceData?.postal_address ||
+          invoiceDetails?.postal_address ||
+          businessInfo?.postal_address ||
+          '',
+        contactPhone:
+          contactDefaults?.contactPhone ||
+          contactInfo?.telephone ||
+          invoiceData?.contact_phone ||
+          invoiceDetails?.contact_phone ||
+          businessInfo?.contact_phone ||
+          '',
+        contactEmail:
+          contactDefaults?.contactEmail ||
+          contactInfo?.email ||
+          invoiceData?.contact_email ||
+          invoiceDetails?.contact_email ||
+          businessInfo?.contact_email ||
+          '',
+        contactName:
+          contactDefaults?.contactName ||
+          repDetails?.contact_name ||
+          invoiceData?.contact_name ||
+          invoiceDetails?.contact_name ||
+          businessInfo?.contact_name ||
+          '',
+        contactPosition:
+          contactDefaults?.contactPosition ||
+          repDetails?.position ||
+          invoiceData?.contact_position ||
+          invoiceDetails?.contact_position ||
+          businessInfo?.contact_position ||
+          '',
         loaSignDate: repDetails?.loa_sign_date || invoiceData?.loa_sign_date || invoiceDetails?.loa_sign_date || businessInfo?.loa_sign_date || '',
       }));
     }
-  }, [isOpen, invoiceData]);
+  }, [isOpen, invoiceData, contactDefaults]);
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -462,7 +542,6 @@ function CIElectricityOfferModal({
     const offers = [];
     
     for (let i = 1; i <= numOffers; i++) {
-      const retailer = formData[`offer${i}Retailer` as keyof CIElectricityOfferData] || '';
       const validity = formData[`offer${i}Validity` as keyof CIElectricityOfferData] || '';
       const type = formData[`offer${i}Type` as keyof CIElectricityOfferData] || '';
       const periodYears = parseInt(formData[`offer${i}PeriodYears` as keyof CIElectricityOfferData]) || 0;
@@ -470,9 +549,25 @@ function CIElectricityOfferModal({
       const peakRate = formData[`offer${i}PeakRate` as keyof CIElectricityOfferData] || '';
       const offPeakRate = formData[`offer${i}OffPeakRate` as keyof CIElectricityOfferData] || '';
       const shoulderRate = formData[`offer${i}ShoulderRate` as keyof CIElectricityOfferData] || '';
-      
-      if (retailer || peakRate || offPeakRate || shoulderRate) {
-        let offerText = `Offer ${i} - ${retailer}:
+
+      let hasPeriodRates = false;
+      for (let period = 1; period <= periodYears; period++) {
+        if (
+          formData[`offer${i}Period${period}PeakRate`] ||
+          formData[`offer${i}Period${period}OffPeakRate`] ||
+          formData[`offer${i}Period${period}ShoulderRate`]
+        ) {
+          hasPeriodRates = true;
+          break;
+        }
+      }
+
+      // Always include selected offer slots (Retailer 1/2/3); rates may be smoothed or stepped.
+      if (!(peakRate || offPeakRate || shoulderRate || hasPeriodRates || type || periodYears || startDate)) {
+        continue;
+      }
+
+      let offerText = `Offer ${i} - Retailer ${i}:
       Validity: ${validity}
       Type: ${type}
       Period: ${periodYears} years
@@ -514,7 +609,6 @@ function CIElectricityOfferModal({
         }
         
         offers.push(offerText);
-      }
     }
     
     const notesLine = formData.notes.trim() ? `\nNotes: ${formData.notes}` : '';
@@ -536,21 +630,82 @@ function CIElectricityOfferModal({
     });
   };
 
-  const sendCIElectricityOffer = async () => {
+  const openRecipientConfirm = () => {
+    setRecipientConfirm({
+      open: true,
+      businessName:
+        formData.businessName ||
+        contactDefaults?.businessName ||
+        businessInfo?.business_name ||
+        "",
+      contactName:
+        formData.contactName ||
+        contactDefaults?.contactName ||
+        businessInfo?.contact_name ||
+        "",
+      // Never fall back to businessInfo.email / user_email — that can be the ACES login.
+      contactEmail:
+        formData.contactEmail ||
+        contactDefaults?.contactEmail ||
+        businessInfo?.contact_email ||
+        "",
+      contactPhone:
+        formData.contactPhone ||
+        contactDefaults?.contactPhone ||
+        businessInfo?.contact_phone ||
+        "",
+    });
+  };
+
+  const handleRecipientConfirmSubmit = () => {
+    if (!recipientConfirm) return;
+    const contactName = recipientConfirm.contactName.trim();
+    const contactEmail = recipientConfirm.contactEmail.trim();
+    const contactPhone = recipientConfirm.contactPhone.trim();
+    if (!contactEmail || !contactEmail.includes("@")) {
+      alert("Enter a valid member email address before sending.");
+      return;
+    }
+    setFormData((prev) => ({
+      ...prev,
+      contactName: contactName || prev.contactName,
+      contactEmail,
+      contactPhone: contactPhone || prev.contactPhone,
+      businessName: recipientConfirm.businessName.trim() || prev.businessName,
+    }));
+    setRecipientConfirm(null);
+    void sendCIElectricityOffer({
+      contactName: contactName || formData.contactName,
+      contactEmail,
+      contactPhone: contactPhone || formData.contactPhone,
+      businessName: recipientConfirm.businessName.trim() || formData.businessName,
+    });
+  };
+
+  const sendCIElectricityOffer = async (recipient?: {
+    contactName: string;
+    contactEmail: string;
+    contactPhone: string;
+    businessName: string;
+  }) => {
     setSending(true);
     try {
+      const contactName = recipient?.contactName ?? formData.contactName;
+      const contactEmail = recipient?.contactEmail ?? formData.contactEmail;
+      const contactPhone = recipient?.contactPhone ?? formData.contactPhone;
+      const businessName = recipient?.businessName ?? formData.businessName;
       const tableHTML = generateOfferTableHTML();
       
-      // Helper function to check if an offer has data (retailer is not empty)
-      const hasOfferData = (offerNum: number) => {
-        return formData[`offer${offerNum}Retailer` as keyof CIElectricityOfferData]?.trim() !== '';
-      };
-      
-      // Helper function to get offer data only if it exists
+      // Include every selected offer slot (1..numOffers). Retailer name is no longer collected —
+      // slots are labelled Retailer 1/2/3. Previously requiring retailer wiped all rates.
+      const hasOfferData = (offerNum: number) => offerNum >= 1 && offerNum <= numOffers;
+
+      const getOfferPeriodRate = (offerNum: number, period: number, kind: 'Peak' | 'OffPeak' | 'Shoulder') =>
+        String(formData[`offer${offerNum}Period${period}${kind}Rate`] || '').trim();
+
       const getOfferData = (offerNum: number) => {
         if (!hasOfferData(offerNum)) {
           return {
-            [`offer_${offerNum}_retailer`]: '',
             [`offer_${offerNum}_validity`]: '',
             [`offer_${offerNum}_type`]: '',
             [`offer_${offerNum}_period_years`]: '',
@@ -560,16 +715,29 @@ function CIElectricityOfferModal({
             [`offer_${offerNum}_shoulder_rate`]: ''
           };
         }
+
+        const offerType = formData[`offer${offerNum}Type` as keyof CIElectricityOfferData] || '';
+        const periodYears = parseInt(formData[`offer${offerNum}PeriodYears` as keyof CIElectricityOfferData]) || 0;
+        let peakRate = String(formData[`offer${offerNum}PeakRate` as keyof CIElectricityOfferData] || '');
+        let offPeakRate = String(formData[`offer${offerNum}OffPeakRate` as keyof CIElectricityOfferData] || '');
+        let shoulderRate = String(formData[`offer${offerNum}ShoulderRate` as keyof CIElectricityOfferData] || '');
+
+        // Stepped offers only fill period rates in the UI — mirror period 1 onto the top-level
+        // rate fields so n8n still gets a primary peak/off-peak/shoulder value.
+        if (offerType === 'stepped' && periodYears >= 1) {
+          if (!peakRate.trim()) peakRate = getOfferPeriodRate(offerNum, 1, 'Peak');
+          if (!offPeakRate.trim()) offPeakRate = getOfferPeriodRate(offerNum, 1, 'OffPeak');
+          if (!shoulderRate.trim()) shoulderRate = getOfferPeriodRate(offerNum, 1, 'Shoulder');
+        }
         
         return {
-          [`offer_${offerNum}_retailer`]: formData[`offer${offerNum}Retailer` as keyof CIElectricityOfferData],
           [`offer_${offerNum}_validity`]: formData[`offer${offerNum}Validity` as keyof CIElectricityOfferData],
-          [`offer_${offerNum}_type`]: formData[`offer${offerNum}Type` as keyof CIElectricityOfferData],
+          [`offer_${offerNum}_type`]: offerType,
           [`offer_${offerNum}_period_years`]: formData[`offer${offerNum}PeriodYears` as keyof CIElectricityOfferData],
           [`offer_${offerNum}_start_date`]: formData[`offer${offerNum}StartDate` as keyof CIElectricityOfferData],
-          [`offer_${offerNum}_peak_rate`]: formData[`offer${offerNum}PeakRate` as keyof CIElectricityOfferData],
-          [`offer_${offerNum}_off_peak_rate`]: formData[`offer${offerNum}OffPeakRate` as keyof CIElectricityOfferData],
-          [`offer_${offerNum}_shoulder_rate`]: formData[`offer${offerNum}ShoulderRate` as keyof CIElectricityOfferData]
+          [`offer_${offerNum}_peak_rate`]: peakRate,
+          [`offer_${offerNum}_off_peak_rate`]: offPeakRate,
+          [`offer_${offerNum}_shoulder_rate`]: shoulderRate
         };
       };
       
@@ -587,7 +755,15 @@ function CIElectricityOfferModal({
             const mainOffPeakRate = formData[`offer${offerNum}OffPeakRate` as keyof CIElectricityOfferData] || '';
             const mainShoulderRate = formData[`offer${offerNum}ShoulderRate` as keyof CIElectricityOfferData] || '';
             
-            for (let period = 1; period <= periodYears; period++) {
+            for (let period = 1; period <= Math.max(periodYears, 3); period++) {
+              if (period > periodYears) {
+                periodData[`offer_${offerNum}_period_${period}_start_date`] = '';
+                periodData[`offer_${offerNum}_period_${period}_end_date`] = '';
+                periodData[`offer_${offerNum}_period_${period}_peak_rate`] = '';
+                periodData[`offer_${offerNum}_period_${period}_off_peak_rate`] = '';
+                periodData[`offer_${offerNum}_period_${period}_shoulder_rate`] = '';
+                continue;
+              }
               periodData[`offer_${offerNum}_period_${period}_start_date`] = formData[`offer${offerNum}Period${period}StartDate`] || '';
               periodData[`offer_${offerNum}_period_${period}_end_date`] = formData[`offer${offerNum}Period${period}EndDate`] || '';
               
@@ -636,18 +812,21 @@ function CIElectricityOfferModal({
         shoulder_usage_invoice: formData.shoulderUsageInvoice,
         total_monthly_usage: formData.totalMonthlyUsage,
         
-        // Business Information
-        business_name: formData.businessName,
+        // Business Information — member recipient (confirmed before send)
+        business_name: businessName,
         business_abn: formData.businessAbn,
         business_trading_name: formData.businessTradingName,
         business_industry: formData.businessIndustry,
         business_website: formData.businessWebsite,
         postal_address: formData.postalAddress,
-        contact_phone: formData.contactPhone,
-        contact_email: formData.contactEmail,
-        contact_name: formData.contactName,
+        contact_phone: contactPhone,
+        contact_email: contactEmail,
+        contact_name: contactName,
         contact_position: formData.contactPosition,
         loa_sign_date: formData.loaSignDate,
+        // Explicit aliases for n8n (Gmail should send to contact_email / send_to_email, NOT user_email)
+        client_email: contactEmail,
+        send_to_email: contactEmail,
         
         ...getOfferData(1),
         ...getOfferData(2),
@@ -683,8 +862,36 @@ function CIElectricityOfferModal({
         const energyChargePct = normalizeMoneyToNumber((result as any)?.energy_charge_pct);
         const contractedRate = normalizeMoneyToNumber((result as any)?.contracted_rate);
         const offerRate = normalizeMoneyToNumber((result as any)?.offer_rate);
+        const emailIdRaw = (result as any)?.email_ID ?? (result as any)?.email_id;
+        const emailId = typeof emailIdRaw === "string" && emailIdRaw.trim() ? emailIdRaw.trim() : undefined;
+
+        const offerType = String(formData.offer1Type || "");
+        const periodYears = parseInt(formData.offer1PeriodYears) || 0;
+        let offerPeak = String(formData.offer1PeakRate || "").trim();
+        let offerOffPeak = String(formData.offer1OffPeakRate || "").trim();
+        let offerShoulder = String(formData.offer1ShoulderRate || "").trim();
+        if (offerType === "stepped" && periodYears >= 1) {
+          if (!offerPeak) offerPeak = String(formData.offer1Period1PeakRate || "").trim();
+          if (!offerOffPeak) offerOffPeak = String(formData.offer1Period1OffPeakRate || "").trim();
+          if (!offerShoulder) offerShoulder = String(formData.offer1Period1ShoulderRate || "").trim();
+        }
+        const peakU = normalizeMoneyToNumber(formData.peakUsageInvoice) ?? 0;
+        const offU = normalizeMoneyToNumber(formData.offPeakUsageInvoice) ?? 0;
+        const shoulderU = normalizeMoneyToNumber(formData.shoulderUsageInvoice) ?? 0;
+        const periodKwh = peakU + offU + shoulderU;
+        const yearlyEst = normalizeMoneyToNumber(
+          invoiceData?.electricity_ci_invoice_details?.full_invoice_data?.["Yearly Consumption Est"]
+        );
+
+        let successMessage = "C&I Electricity Offer Comparison sent successfully!";
+        if (pdfLink) successMessage += `\nPDF: ${pdfLink}`;
+        if (spreadsheetLink) successMessage += `\nSpreadsheet: ${spreadsheetLink}`;
 
         // Log into the offer activity report (same pattern as Base 2)
+        let offerIdToUse: number | null = typeof offerId === "number" ? offerId : null;
+        let activityId: number | undefined;
+        const hasValidClientId = typeof clientId === "number" && !isNaN(clientId);
+
         if (session?.user?.email && token) {
           console.log("[C&I Electricity offer] Logging comparison activity:", {
             offerId,
@@ -694,25 +901,25 @@ function CIElectricityOfferModal({
             annualSavings,
             currentCost,
             newCost,
+            emailId,
           });
 
           try {
             const baseUrl = getApiBaseUrl();
-
-            let offerIdToUse: number | null = typeof offerId === "number" ? offerId : null;
+            const headers = {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            };
 
             // If no offerId was provided, create a minimal offer like Base 2 does (when we have clientId).
-            if (offerIdToUse == null && typeof clientId === "number" && !isNaN(clientId)) {
+            if (offerIdToUse == null && hasValidClientId) {
               const createRes = await fetch(`${baseUrl}/api/offers`, {
                 method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  "Authorization": `Bearer ${token}`,
-                },
+                headers,
                 body: JSON.stringify({
                   client_id: clientId,
                   status: "requested",
-                  business_name: formData.businessName || businessInfo?.name || undefined,
+                  business_name: businessName || businessInfo?.name || undefined,
                 }),
               });
 
@@ -746,7 +953,7 @@ function CIElectricityOfferModal({
               if (contractedRate != null) metadata.contracted_rate = contractedRate;
               if (offerRate != null) metadata.offer_rate = offerRate;
 
-              const payload = {
+              const activityPayload = {
                 activity_type: "comparison",
                 document_link: normalizeDocumentLink(documentLink) ?? undefined,
                 metadata,
@@ -755,18 +962,15 @@ function CIElectricityOfferModal({
 
               console.log("[C&I Electricity offer] POST /api/offers/:id/activities payload:", {
                 offerIdToUse,
-                activity_type: payload.activity_type,
-                document_link: payload.document_link,
+                activity_type: activityPayload.activity_type,
+                document_link: activityPayload.document_link,
                 metadata,
               });
 
               const activityRes = await fetch(`${baseUrl}/api/offers/${offerIdToUse}/activities`, {
                 method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  "Authorization": `Bearer ${token}`,
-                },
-                body: JSON.stringify(payload),
+                headers,
+                body: JSON.stringify(activityPayload),
               });
 
               console.log("[C&I Electricity offer] activity POST response:", {
@@ -774,24 +978,103 @@ function CIElectricityOfferModal({
                 status: activityRes.status,
               });
 
-              if (!activityRes.ok) {
+              if (activityRes.ok) {
+                try {
+                  const act = (await activityRes.json()) as { id?: number };
+                  if (typeof act.id === "number") activityId = act.id;
+                } catch {
+                  /* ignore */
+                }
+              } else {
                 const errBody = await activityRes.text().catch(() => "");
                 console.warn("[C&I Electricity offer] Failed to log activity:", errBody);
               }
+
+              // Persist TOU rates on the offer (same as Base 2) for voice/email follow-up.
+              const touBody: Record<string, number> = {};
+              const setRate = (k: string, v: unknown) => {
+                const n = normalizeMoneyToNumber(v);
+                if (n != null) touBody[k] = n;
+              };
+              const hasShoulder =
+                (normalizeMoneyToNumber(formData.shoulderRateInvoice) ?? 0) > 0 ||
+                (normalizeMoneyToNumber(offerShoulder) ?? 0) > 0;
+              setRate("current_peak_rate", formData.peakRateInvoice);
+              if (hasShoulder) setRate("current_shoulder_rate", formData.shoulderRateInvoice);
+              setRate("current_offpeak_rate", formData.offPeakRateInvoice);
+              setRate("new_peak_rate", offerPeak);
+              if (hasShoulder) setRate("new_shoulder_rate", offerShoulder);
+              setRate("new_offpeak_rate", offerOffPeak);
+              if (Object.keys(touBody).length) {
+                try {
+                  await fetch(`${baseUrl}/api/offers/${offerIdToUse}`, {
+                    method: "PATCH",
+                    headers,
+                    body: JSON.stringify(touBody),
+                  });
+                } catch (e) {
+                  console.warn("[C&I Electricity offer] failed to patch TOU rates onto offer", e);
+                }
+              }
             } else {
-              console.warn("[C&I Electricity offer] Skipping activity log: no offerIdToUse available.");
+              console.warn(
+                "[C&I Electricity offer] Skipping activity log: no offerIdToUse available.",
+                "Open this page with ?clientId=<crm id> or ?offerId=<id> (CRM Account Info / Business Info links now include clientId)."
+              );
             }
           } catch (logErr) {
             console.warn("Failed to log C&I Electricity offer comparison activity:", logErr);
           }
         }
-        
-        let message = 'C&I Electricity Offer Comparison sent successfully!';
-        if (pdfLink) message += `\nPDF: ${pdfLink}`;
-        if (spreadsheetLink) message += `\nSpreadsheet: ${spreadsheetLink}`;
-        
-        alert(message);
-        onClose();
+
+        if (offerIdToUse != null && token) {
+          const comparisonSnapshot: Record<string, unknown> = {
+            lane: "ci_electricity",
+            annual_savings: annualSavings ?? null,
+            current_cost: currentCost ?? null,
+            new_cost: newCost ?? null,
+            annual_usage_kwh:
+              normalizeMoneyToNumber((result as any)?.annual_usage_kwh) ??
+              normalizeMoneyToNumber((result as any)?.annual_kwh) ??
+              yearlyEst ??
+              null,
+            bill_period_usage_kwh: periodKwh > 0 ? Math.round(periodKwh * 100) / 100 : null,
+            current_peak_cpkwh: normalizeMoneyToNumber(formData.peakRateInvoice) ?? null,
+            current_offpeak_cpkwh: normalizeMoneyToNumber(formData.offPeakRateInvoice) ?? null,
+            offer_peak_cpkwh: normalizeMoneyToNumber(offerPeak) ?? null,
+            offer_offpeak_cpkwh: normalizeMoneyToNumber(offerOffPeak) ?? null,
+          };
+          setAutonomousConfirm({
+            open: true,
+            offerIdToUse,
+            clientId: hasValidClientId ? clientId! : null,
+            activityId,
+            anchorIso: new Date().toISOString(),
+            tz:
+              typeof Intl !== "undefined"
+                ? Intl.DateTimeFormat().resolvedOptions().timeZone || "Australia/Melbourne"
+                : "Australia/Melbourne",
+            emailId,
+            comparisonSnapshot,
+            ctxBase: {
+              utility_invoice_info_trigger: "comparison_success",
+              business_name: businessName,
+              contact_email: contactEmail,
+              contact_phone: contactPhone,
+              contact_name: contactName,
+            },
+            successMessage,
+            contactName,
+            contactEmail,
+            contactPhone,
+            businessName,
+          });
+        } else {
+          alert(
+            `${successMessage}\n\nNote: CRM activity / autonomous follow-up was skipped because this page was opened without clientId or offerId in the URL.\n\nRe-open from the CRM member Utilities tab (Account Info) or add &clientId=<id> to the URL.`
+          );
+          onClose();
+        }
       } else {
         throw new Error('Failed to send C&I Electricity offer comparison');
       }
@@ -800,6 +1083,80 @@ function CIElectricityOfferModal({
       alert('Failed to send offer comparison. Please try again.');
     } finally {
       setSending(false);
+    }
+  };
+
+  const cancelAutonomousConfirm = () => {
+    const msg = autonomousConfirm?.successMessage;
+    setAutonomousConfirm(null);
+    if (msg) alert(msg);
+    onClose();
+  };
+
+  const confirmAutonomousStart = async () => {
+    if (!token || !autonomousConfirm?.open) return;
+    const a = autonomousConfirm;
+    const contactName = a.contactName.trim();
+    const contactEmail = a.contactEmail.trim();
+    const contactPhone = a.contactPhone.trim();
+    const businessName = a.businessName.trim();
+    if (!contactEmail || !contactEmail.includes("@")) {
+      alert("Enter a valid member email before starting the sequence.");
+      return;
+    }
+    setAutonomousStarting(true);
+    try {
+      const headers = { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
+      const baseUrl = getAutonomousApiBaseUrl();
+      const nmi = formData.nmi?.trim() || undefined;
+      const sequenceContext: Record<string, unknown> = {
+        ...a.ctxBase,
+        business_name: businessName || a.ctxBase.business_name,
+        contact_name: contactName,
+        contact_email: contactEmail,
+        contact_phone: contactPhone,
+        utility_lane: "ci_electricity",
+        site_identifiers: nmi ? [nmi] : [],
+        comparison_snapshot: a.comparisonSnapshot,
+      };
+      if (a.emailId) sequenceContext.email_ID = a.emailId;
+      if (nmi && a.emailId) sequenceContext.email_ids_by_site = { [nmi]: a.emailId };
+
+      const startRes = await fetch(`${baseUrl}/api/autonomous/sequences/start`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          sequence_type: AUTONOMOUS_SEQUENCE_CI_ELECTRICITY,
+          offer_id: a.offerIdToUse,
+          client_id: a.clientId ?? undefined,
+          crm_activity_id: a.activityId,
+          anchor_at: a.anchorIso,
+          timezone: a.tz,
+          context: sequenceContext,
+        }),
+      });
+      if (!startRes.ok) {
+        const errTxt = await startRes.text();
+        console.warn("[C&I Electricity autonomous] start failed", startRes.status, errTxt);
+        alert(
+          `${a.successMessage}\n\nComparison saved, but autonomous sequence failed to start (${startRes.status}). Check Autonomous Agent / backend logs.`
+        );
+      } else {
+        const started = await startRes.json().catch(() => ({}));
+        console.log("[C&I Electricity autonomous] sequence start", started);
+        alert(
+          `${a.successMessage}\n\n✅ Autonomous sequence started: ${AUTONOMOUS_SEQUENCE_CI_ELECTRICITY} — see Autonomous Agent.`
+        );
+      }
+    } catch (autoErr) {
+      console.warn("[C&I Electricity autonomous] start error", autoErr);
+      alert(
+        `${a.successMessage}\n\nComparison saved, but autonomous sequence failed to start. Check console / backend.`
+      );
+    } finally {
+      setAutonomousStarting(false);
+      setAutonomousConfirm(null);
+      onClose();
     }
   };
 
@@ -1022,16 +1379,7 @@ function CIElectricityOfferModal({
                   <React.Fragment key={offerNum}>
                     <tr style={{ backgroundColor: bgColor }}>
                       <td colSpan={3} style={{ padding: 8, border: '1px solid #ddd', fontWeight: 600, textAlign: 'center' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                          <span>Offer {offerNum} - Retailer:</span>
-                          <input
-                            type="text"
-                            value={formData[`offer${offerNum}Retailer` as keyof CIElectricityOfferData]}
-                            onChange={(e) => handleInputChange(`offer${offerNum}Retailer` as keyof CIElectricityOfferData, e.target.value)}
-                            style={{ padding: 4, border: '1px solid #ccc', borderRadius: 4, minWidth: 200 }}
-                            placeholder="Retailer name"
-                          />
-                        </div>
+                        Offer {offerNum} — Retailer {offerNum}
                       </td>
                       </tr>
                     <tr>
@@ -1264,7 +1612,7 @@ function CIElectricityOfferModal({
             Copy for Gmail
           </button>
           <button
-            onClick={sendCIElectricityOffer}
+            onClick={openRecipientConfirm}
             disabled={sending}
             style={{
               padding: '8px 16px',
@@ -1280,6 +1628,298 @@ function CIElectricityOfferModal({
           </button>
         </div>
       </div>
+
+      {recipientConfirm?.open && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 10000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: 'rgba(0,0,0,0.45)',
+            padding: 16,
+          }}
+          aria-modal="true"
+          role="dialog"
+        >
+          <div
+            style={{
+              backgroundColor: 'white',
+              borderRadius: 16,
+              boxShadow: '0 25px 50px rgba(0,0,0,0.25)',
+              maxWidth: 440,
+              width: '100%',
+              padding: 24,
+              border: '1px solid #e5e7eb',
+            }}
+          >
+            <h3 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 600 }}>Comparison recipient</h3>
+            <p style={{ margin: '0 0 16px', fontSize: 14, color: '#6b7280' }}>
+              Confirm who this comparison email should go to. This must be the member contact — not your ACES login.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
+              <label style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
+                Business
+                <input
+                  type="text"
+                  value={recipientConfirm.businessName}
+                  onChange={(e) =>
+                    setRecipientConfirm((prev) => (prev ? { ...prev, businessName: e.target.value } : prev))
+                  }
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    marginTop: 4,
+                    padding: '10px 12px',
+                    borderRadius: 8,
+                    border: '1px solid #d1d5db',
+                    fontSize: 14,
+                  }}
+                  placeholder="Business name"
+                />
+              </label>
+              <label style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
+                Contact name
+                <input
+                  type="text"
+                  value={recipientConfirm.contactName}
+                  onChange={(e) =>
+                    setRecipientConfirm((prev) => (prev ? { ...prev, contactName: e.target.value } : prev))
+                  }
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    marginTop: 4,
+                    padding: '10px 12px',
+                    borderRadius: 8,
+                    border: '1px solid #d1d5db',
+                    fontSize: 14,
+                  }}
+                  placeholder="Contact name"
+                  autoComplete="name"
+                />
+              </label>
+              <label style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
+                Email
+                <input
+                  type="email"
+                  value={recipientConfirm.contactEmail}
+                  onChange={(e) =>
+                    setRecipientConfirm((prev) => (prev ? { ...prev, contactEmail: e.target.value } : prev))
+                  }
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    marginTop: 4,
+                    padding: '10px 12px',
+                    borderRadius: 8,
+                    border: '1px solid #d1d5db',
+                    fontSize: 14,
+                  }}
+                  placeholder="name@example.com"
+                  autoComplete="email"
+                />
+              </label>
+              <label style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
+                Phone
+                <input
+                  type="tel"
+                  value={recipientConfirm.contactPhone}
+                  onChange={(e) =>
+                    setRecipientConfirm((prev) => (prev ? { ...prev, contactPhone: e.target.value } : prev))
+                  }
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    marginTop: 4,
+                    padding: '10px 12px',
+                    borderRadius: 8,
+                    border: '1px solid #d1d5db',
+                    fontSize: 14,
+                  }}
+                  placeholder="(03) 8348 9300"
+                  autoComplete="tel"
+                />
+              </label>
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setRecipientConfirm(null)}
+                disabled={sending}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={handleRecipientConfirmSubmit}
+                disabled={sending}
+                loading={sending}
+              >
+                Send Comparison
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {autonomousConfirm?.open && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 10000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: 'rgba(0,0,0,0.45)',
+            padding: 16,
+          }}
+          aria-modal="true"
+          role="dialog"
+        >
+          <div
+            style={{
+              backgroundColor: 'white',
+              borderRadius: 16,
+              boxShadow: '0 25px 50px rgba(0,0,0,0.25)',
+              maxWidth: 420,
+              width: '100%',
+              padding: 24,
+              border: '1px solid #e5e7eb',
+            }}
+          >
+            <h3 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 600 }}>Start autonomous follow-up?</h3>
+            <p style={{ margin: '0 0 16px', fontSize: 14, color: '#6b7280' }}>
+              Offer #{autonomousConfirm.offerIdToUse} will be enrolled in scheduled email, SMS, and voice steps for C&I electricity
+              ({AUTONOMOUS_SEQUENCE_CI_ELECTRICITY}). Confirm / edit the member contact below before starting.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
+              <label style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
+                Business
+                <input
+                  type="text"
+                  value={autonomousConfirm.businessName}
+                  onChange={(e) =>
+                    setAutonomousConfirm((prev) => (prev ? { ...prev, businessName: e.target.value } : prev))
+                  }
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    marginTop: 4,
+                    padding: '10px 12px',
+                    borderRadius: 8,
+                    border: '1px solid #d1d5db',
+                    fontSize: 14,
+                  }}
+                  placeholder="Business name"
+                />
+              </label>
+              <label style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
+                Contact name
+                <input
+                  type="text"
+                  value={autonomousConfirm.contactName}
+                  onChange={(e) =>
+                    setAutonomousConfirm((prev) => (prev ? { ...prev, contactName: e.target.value } : prev))
+                  }
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    marginTop: 4,
+                    padding: '10px 12px',
+                    borderRadius: 8,
+                    border: '1px solid #d1d5db',
+                    fontSize: 14,
+                  }}
+                  placeholder="Contact name"
+                  autoComplete="name"
+                />
+              </label>
+              <label style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
+                Email
+                <input
+                  type="email"
+                  value={autonomousConfirm.contactEmail}
+                  onChange={(e) =>
+                    setAutonomousConfirm((prev) => (prev ? { ...prev, contactEmail: e.target.value } : prev))
+                  }
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    marginTop: 4,
+                    padding: '10px 12px',
+                    borderRadius: 8,
+                    border: '1px solid #d1d5db',
+                    fontSize: 14,
+                  }}
+                  placeholder="name@example.com"
+                  autoComplete="email"
+                />
+              </label>
+              <label style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
+                Phone
+                <input
+                  type="tel"
+                  value={autonomousConfirm.contactPhone}
+                  onChange={(e) =>
+                    setAutonomousConfirm((prev) => (prev ? { ...prev, contactPhone: e.target.value } : prev))
+                  }
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    marginTop: 4,
+                    padding: '10px 12px',
+                    borderRadius: 8,
+                    border: '1px solid #d1d5db',
+                    fontSize: 14,
+                  }}
+                  placeholder="(03) 8348 9300"
+                  autoComplete="tel"
+                />
+              </label>
+            </div>
+            <ul style={{ margin: '0 0 16px', paddingLeft: 18, fontSize: 12, color: '#6b7280' }}>
+              {autonomousConfirm.comparisonSnapshot.annual_savings != null && (
+                <li>
+                  Annual savings:{' '}
+                  {Number(autonomousConfirm.comparisonSnapshot.annual_savings).toLocaleString('en-AU', {
+                    style: 'currency',
+                    currency: 'AUD',
+                  })}
+                </li>
+              )}
+              {autonomousConfirm.emailId && (
+                <li>
+                  Thread email ID: <code>{autonomousConfirm.emailId}</code>
+                </li>
+              )}
+              {formData.nmi && <li>NMI: {formData.nmi}</li>}
+            </ul>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={cancelAutonomousConfirm}
+                disabled={autonomousStarting}
+              >
+                Not now
+              </Button>
+              <Button
+                type="button"
+                onClick={() => void confirmAutonomousStart()}
+                disabled={autonomousStarting}
+                loading={autonomousStarting}
+              >
+                Start sequence
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -2393,21 +3033,18 @@ function CIGasOfferModal({
     contactPosition: '',
     loaSignDate: '',
     
-    offer1Retailer: '',
     offer1Validity: '',
     offer1Type: 'smoothed',
     offer1PeriodYears: '3',
     offer1StartDate: new Date().toISOString().split('T')[0],
     offer1GasRate: '',
     
-    offer2Retailer: '',
     offer2Validity: '',
     offer2Type: 'smoothed',
     offer2PeriodYears: '3',
     offer2StartDate: new Date().toISOString().split('T')[0],
     offer2GasRate: '',
     
-    offer3Retailer: '',
     offer3Validity: '',
     offer3Type: 'smoothed',
     offer3PeriodYears: '3',
@@ -2555,16 +3192,24 @@ function CIGasOfferModal({
     const offers = [];
     
     for (let i = 1; i <= numOffers; i++) {
-      const retailer = formData[`offer${i}Retailer` as keyof CIGasOfferData];
-      if (!retailer?.trim()) continue;
-      
       const validity = formData[`offer${i}Validity` as keyof CIGasOfferData];
       const type = formData[`offer${i}Type` as keyof CIGasOfferData];
       const periodYears = formData[`offer${i}PeriodYears` as keyof CIGasOfferData];
       const startDate = formData[`offer${i}StartDate` as keyof CIGasOfferData];
       const gasRate = formData[`offer${i}GasRate` as keyof CIGasOfferData];
+      const yearsNum = parseInt(String(periodYears)) || 0;
+
+      let hasPeriodRates = false;
+      for (let period = 1; period <= yearsNum; period++) {
+        if (formData[`offer${i}Period${period}GasRate`]) {
+          hasPeriodRates = true;
+          break;
+        }
+      }
+
+      if (!(gasRate || hasPeriodRates || type || yearsNum || startDate)) continue;
       
-      let offerText = `Offer ${i} - ${retailer}:
+      let offerText = `Offer ${i} - Retailer ${i}:
       Validity: ${validity}
       Type: ${type}
       Period: ${periodYears} years
@@ -2578,7 +3223,7 @@ function CIGasOfferModal({
         offerText += `
       Overall Gas Rate: ${gasRate} $/GJ`;
         
-        for (let period = 1; period <= parseInt(periodYears); period++) {
+        for (let period = 1; period <= yearsNum; period++) {
           const periodStartDate = formData[`offer${i}Period${period}StartDate`] || '';
           const periodEndDate = formData[`offer${i}Period${period}EndDate`] || '';
           const periodGasRate = formData[`offer${i}Period${period}GasRate`] || '';
@@ -2623,16 +3268,12 @@ ${offers.join('\n\n  ')}${notesLine}`;
     try {
       const tableHTML = generateOfferTableHTML();
       
-      // Helper function to check if an offer has data (retailer is not empty)
-      const hasOfferData = (offerNum: number) => {
-        return formData[`offer${offerNum}Retailer` as keyof CIGasOfferData]?.trim() !== '';
-      };
+      // Include every selected offer slot (1..numOffers). Retailer name is no longer collected.
+      const hasOfferData = (offerNum: number) => offerNum >= 1 && offerNum <= numOffers;
       
-      // Helper function to get offer data only if it exists
       const getOfferData = (offerNum: number) => {
         if (!hasOfferData(offerNum)) {
           return {
-            [`offer_${offerNum}_retailer`]: '',
             [`offer_${offerNum}_validity`]: '',
             [`offer_${offerNum}_type`]: '',
             [`offer_${offerNum}_period_years`]: '',
@@ -2640,14 +3281,20 @@ ${offers.join('\n\n  ')}${notesLine}`;
             [`offer_${offerNum}_gas_rate`]: ''
           };
         }
+
+        const offerType = formData[`offer${offerNum}Type` as keyof CIGasOfferData] || '';
+        const periodYears = parseInt(formData[`offer${offerNum}PeriodYears` as keyof CIGasOfferData]) || 0;
+        let gasRate = String(formData[`offer${offerNum}GasRate` as keyof CIGasOfferData] || '');
+        if (offerType === 'stepped' && periodYears >= 1 && !gasRate.trim()) {
+          gasRate = String(formData[`offer${offerNum}Period1GasRate`] || '');
+        }
         
         return {
-          [`offer_${offerNum}_retailer`]: formData[`offer${offerNum}Retailer` as keyof CIGasOfferData],
           [`offer_${offerNum}_validity`]: formData[`offer${offerNum}Validity` as keyof CIGasOfferData],
-          [`offer_${offerNum}_type`]: formData[`offer${offerNum}Type` as keyof CIGasOfferData],
+          [`offer_${offerNum}_type`]: offerType,
           [`offer_${offerNum}_period_years`]: formData[`offer${offerNum}PeriodYears` as keyof CIGasOfferData],
           [`offer_${offerNum}_start_date`]: formData[`offer${offerNum}StartDate` as keyof CIGasOfferData],
-          [`offer_${offerNum}_gas_rate`]: formData[`offer${offerNum}GasRate` as keyof CIGasOfferData]
+          [`offer_${offerNum}_gas_rate`]: gasRate
         };
       };
       
@@ -2663,7 +3310,13 @@ ${offers.join('\n\n  ')}${notesLine}`;
             // Get the main offer rate for smoothed offers
             const mainGasRate = formData[`offer${offerNum}GasRate` as keyof CIGasOfferData] || '';
             
-            for (let period = 1; period <= periodYears; period++) {
+            for (let period = 1; period <= Math.max(periodYears, 3); period++) {
+              if (period > periodYears) {
+                periodData[`offer_${offerNum}_period_${period}_start_date`] = '';
+                periodData[`offer_${offerNum}_period_${period}_end_date`] = '';
+                periodData[`offer_${offerNum}_period_${period}_gas_rate`] = '';
+                continue;
+              }
               periodData[`offer_${offerNum}_period_${period}_start_date`] = formData[`offer${offerNum}Period${period}StartDate`] || '';
               periodData[`offer_${offerNum}_period_${period}_end_date`] = formData[`offer${offerNum}Period${period}EndDate`] || '';
               
@@ -2928,14 +3581,7 @@ ${offers.join('\n\n  ')}${notesLine}`;
                         </select>
                       </>
                     )}
-                    <span>Offer {offerNum} - Retailer:</span>
-                    <input
-                      type="text"
-                      value={formData[`offer${offerNum}Retailer` as keyof CIGasOfferData]}
-                      onChange={(e) => handleInputChange(`offer${offerNum}Retailer` as keyof CIGasOfferData, e.target.value)}
-                      style={{ padding: 4, border: '1px solid #ccc', borderRadius: 4, minWidth: 200 }}
-                      placeholder="Retailer name"
-                    />
+                    <span>Offer {offerNum} — Retailer {offerNum}</span>
                   </div>
                 </td>
               </tr>
@@ -5819,7 +6465,16 @@ const EnhancedSMEGasInvoiceDetails = ({ smeGasData }: { smeGasData: any }) => {
   );
 };
 
-function InvoiceResult({ result, session, token, autoOpenDMA = false, autoExpandDetails = false, offerId, clientId }: { result: any; session: any; token: string; autoOpenDMA?: boolean; autoExpandDetails?: boolean; offerId?: number; clientId?: number }) {
+function InvoiceResult({ result, session, token, autoOpenDMA = false, autoExpandDetails = false, offerId, clientId, contactDefaults }: { result: any; session: any; token: string; autoOpenDMA?: boolean; autoExpandDetails?: boolean; offerId?: number; clientId?: number; contactDefaults?: {
+  businessName?: string;
+  contactName?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  contactPosition?: string;
+  businessAbn?: string;
+  businessTradingName?: string;
+  postalAddress?: string;
+} }) {
   const [showDMAModal, setShowDMAModal] = useState(false);
   const [showCIOfferModal, setShowCIOfferModal] = useState(false);
   const [showCIGasOfferModal, setShowCIGasOfferModal] = useState(false);
@@ -6116,6 +6771,7 @@ function InvoiceResult({ result, session, token, autoOpenDMA = false, autoExpand
             businessInfo={result}
             offerId={offerId}
             clientId={clientId}
+            contactDefaults={contactDefaults}
           />
           <DMAModal
             isOpen={showDMAModal}
@@ -7117,6 +7773,16 @@ export default function InfoToolPage({ title, description, endpoint, extraFields
                 autoExpandDetails={autoSubmit}
                 offerId={offerId}
                 clientId={clientId}
+                contactDefaults={{
+                  businessName: initialBusinessName || businessName || undefined,
+                  contactName: fields.contact_name || undefined,
+                  contactEmail: fields.contact_email || undefined,
+                  contactPhone: fields.contact_phone || undefined,
+                  contactPosition: fields.contact_position || undefined,
+                  businessAbn: fields.business_abn || undefined,
+                  businessTradingName: fields.business_trading_name || undefined,
+                  postalAddress: fields.postal_address || undefined,
+                }}
               />
             )}
           </CardContent>

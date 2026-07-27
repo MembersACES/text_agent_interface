@@ -90,8 +90,19 @@ function FileLink({ label, url }: { label: string; url?: string }) {
 export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: BusinessInfoDisplayProps) {
   if (!info) return null;
   const business = info.business_details || {};
-  const clientIdFromInfo: number | undefined =
-    typeof (info as any).client_id === "number" ? (info as any).client_id : undefined;
+  const clientIdFromInfo: number | undefined = (() => {
+    const direct = (info as any).client_id;
+    if (typeof direct === "number" && Number.isFinite(direct)) return direct;
+    if (typeof direct === "string" && direct.trim() && !Number.isNaN(Number(direct))) {
+      return Number(direct);
+    }
+    const fromLink = (info as any).crm_link?.client_id;
+    if (typeof fromLink === "number" && Number.isFinite(fromLink)) return fromLink;
+    if (typeof fromLink === "string" && fromLink.trim() && !Number.isNaN(Number(fromLink))) {
+      return Number(fromLink);
+    }
+    return undefined;
+  })();
   const businessType =
   business.name?.toLowerCase().includes("trust")
     ? "Trust"

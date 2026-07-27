@@ -37,6 +37,8 @@ export interface UtilitiesTabProps {
   businessInfo: Record<string, unknown> | null;
   setBusinessInfo: (info: Record<string, unknown> | null) => void;
   onLinkUtility?: () => void;
+  /** CRM member id — required so Account Info / DMA links can create offers & start autonomous sequences */
+  clientId?: number | null;
 }
 
 type UtilityConfigItem = {
@@ -233,7 +235,7 @@ type DmaDiscrepancyRow = Record<string, string> & {
   status?: string;
 };
 
-export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility }: UtilitiesTabProps) {
+export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility, clientId = null }: UtilitiesTabProps) {
   const { data: session } = useSession();
   const { showToast } = useToast();
   const token = (session as { id_token?: string; accessToken?: string })?.id_token
@@ -512,6 +514,9 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility }: U
     }
     if (param === "client_name") {
       url += `&client_name=${encodeURIComponent(identifier)}`;
+    }
+    if (clientId != null && Number.isFinite(clientId)) {
+      url += `&clientId=${encodeURIComponent(String(clientId))}`;
     }
     if (businessName) url += `&business_abn=${encodeURIComponent(String(business.abn ?? ""))}`;
     if (business.trading_name) url += `&business_trading_name=${encodeURIComponent(String(business.trading_name))}`;

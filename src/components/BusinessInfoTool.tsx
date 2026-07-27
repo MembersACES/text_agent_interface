@@ -109,13 +109,17 @@ export default function BusinessInfoTool({
           return;
         }
 
-        setBusinessInfo(data);
+        const crmLink = data?.crm_link as CrmLink | undefined;
+        const linkedClientId = isCrmLinkMatched(crmLink) ? crmLink.client_id : null;
+        const enriched =
+          linkedClientId != null
+            ? { ...data, client_id: linkedClientId }
+            : data;
+        setBusinessInfo(enriched);
 
         const resolvedName =
-          data?.business_details?.name || data?.business_details?.["Business Name"] || queryName;
-        const crmLink = data?.crm_link as CrmLink | undefined;
-        const clientId = isCrmLinkMatched(crmLink) ? crmLink.client_id : null;
-        recordMemberProfileView({ businessName: resolvedName, clientId });
+          enriched?.business_details?.name || enriched?.business_details?.["Business Name"] || queryName;
+        recordMemberProfileView({ businessName: resolvedName, clientId: linkedClientId });
         setRecentMembers(getRecentMemberViews());
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "Could not load profile";

@@ -385,6 +385,7 @@ export default function ClientDetailPage() {
                     businessInfo={businessInfo}
                     setBusinessInfo={setBusinessInfo}
                     onLinkUtility={handleLinkUtility}
+                    clientId={clientId}
                   />
                   </div>
                 )}
