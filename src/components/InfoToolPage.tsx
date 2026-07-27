@@ -36,6 +36,46 @@ function normalizeMoneyToNumber(value: unknown): number | undefined {
   return undefined;
 }
 
+/**
+ * AU mobile for Retell/SMS: user enters 04XXXXXXXX; we store +614XXXXXXXX.
+ * Also accepts already-formatted +614 / 614 / 4XXXXXXXX.
+ */
+function formatAuMobileToE164(raw: string): { ok: true; e164: string } | { ok: false; message: string } {
+  const trimmed = (raw || "").trim();
+  if (!trimmed) {
+    return {
+      ok: false,
+      message: "Enter a mobile number in 04 format (e.g. 0401941385) for voice/SMS steps.",
+    };
+  }
+
+  const digitsOnly = trimmed.replace(/\D/g, "");
+
+  let e164: string | null = null;
+  if (/^04\d{8}$/.test(digitsOnly)) {
+    e164 = `+61${digitsOnly.slice(1)}`;
+  } else if (/^4\d{8}$/.test(digitsOnly)) {
+    e164 = `+61${digitsOnly}`;
+  } else if (/^614\d{8}$/.test(digitsOnly)) {
+    e164 = `+${digitsOnly}`;
+  }
+
+  if (!e164) {
+    return {
+      ok: false,
+      message:
+        "Use an Australian mobile starting with 04 (e.g. 0401941385). We'll convert it to +61401941385 for the autonomous agent.",
+    };
+  }
+  return { ok: true, e164 };
+}
+
+/** Live preview helper while typing 04… in the autonomous modal. */
+function previewAuMobileE164(raw: string): string | null {
+  const result = formatAuMobileToE164(raw);
+  return result.ok ? result.e164 : null;
+}
+
 interface ExtraField {
   name: string;
   label: string;
@@ -237,7 +277,8 @@ interface ElectricityInvoiceData {
 }
 
 
-const AUTONOMOUS_SEQUENCE_CI_ELECTRICITY = "ci_electricity_base2_followup_v1";
+/** Utility Invoice Info → C&I Electricity Offer template (not Base 2). */
+const AUTONOMOUS_SEQUENCE_CI_ELECTRICITY = "ci_electricity_offer";
 
 interface AutonomousElectricityConfirmState {
   open: boolean;
@@ -1098,12 +1139,17 @@ function CIElectricityOfferModal({
     const a = autonomousConfirm;
     const contactName = a.contactName.trim();
     const contactEmail = a.contactEmail.trim();
-    const contactPhone = a.contactPhone.trim();
     const businessName = a.businessName.trim();
     if (!contactEmail || !contactEmail.includes("@")) {
       alert("Enter a valid member email before starting the sequence.");
       return;
     }
+    const phoneResult = formatAuMobileToE164(a.contactPhone);
+    if (!phoneResult.ok) {
+      alert(phoneResult.message);
+      return;
+    }
+    const contactPhone = phoneResult.e164;
     setAutonomousStarting(true);
     try {
       const headers = { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
@@ -1145,7 +1191,7 @@ function CIElectricityOfferModal({
         const started = await startRes.json().catch(() => ({}));
         console.log("[C&I Electricity autonomous] sequence start", started);
         alert(
-          `${a.successMessage}\n\n✅ Autonomous sequence started: ${AUTONOMOUS_SEQUENCE_CI_ELECTRICITY} — see Autonomous Agent.`
+          `${a.successMessage}\n\n✅ Autonomous sequence started: ${AUTONOMOUS_SEQUENCE_CI_ELECTRICITY}\nMobile saved as ${contactPhone} — see Autonomous Agent.`
         );
       }
     } catch (autoErr) {
@@ -1861,7 +1907,7 @@ function CIElectricityOfferModal({
                 />
               </label>
               <label style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
-                Phone
+                Mobile (04…)
                 <input
                   type="tel"
                   value={autonomousConfirm.contactPhone}
@@ -1877,9 +1923,13 @@ function CIElectricityOfferModal({
                     border: '1px solid #d1d5db',
                     fontSize: 14,
                   }}
-                  placeholder="(03) 8348 9300"
+                  placeholder="0401941385"
                   autoComplete="tel"
                 />
+                <span style={{ display: 'block', marginTop: 4, fontSize: 12, fontWeight: 400, color: '#6b7280' }}>
+                  Enter as 04XXXXXXXX (not landline). Saved for the agent as{" "}
+                  {previewAuMobileE164(autonomousConfirm.contactPhone) || "+61…"}
+                </span>
               </label>
             </div>
             <ul style={{ margin: '0 0 16px', paddingLeft: 18, fontSize: 12, color: '#6b7280' }}>

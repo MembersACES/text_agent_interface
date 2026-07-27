@@ -85,6 +85,7 @@ const PAGE_SIZE = 20;
 const RESTARTABLE_SEQUENCE_TYPES = new Set([
   "gas_base2_followup_v1",
   "ci_electricity_base2_followup_v1",
+  "ci_electricity_offer",
 ]);
 
 // ─── small UI helpers ───────────────────────────────────────────────────────
