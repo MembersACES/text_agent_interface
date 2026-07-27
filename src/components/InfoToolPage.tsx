@@ -280,6 +280,108 @@ interface ElectricityInvoiceData {
 /** Utility Invoice Info → C&I Electricity Offer template (not Base 2). */
 const AUTONOMOUS_SEQUENCE_CI_ELECTRICITY = "ci_electricity_offer";
 
+/** Matches the n8n C&I electricity comparison outbound footer (team signature). */
+const ACES_ELECTRICITY_FOLLOWUP_SIGNATURE_HTML = `<p style="margin-bottom:0;">Kind regards,</p>
+<p style="margin-bottom:0;"><strong>The Team</strong><br>
+Australian Circular Economy Solutions</p>
+<p style="margin-top:16px; margin-bottom:0;"><strong>Carbon Zero Australasia</strong><br>
+Australian Circular Economy Solutions Division<br>
+Phone: 1300 938 638<br>
+Email: <a href="mailto:business@acesolutions.com.au" style="color:#1a73e8;">business@acesolutions.com.au</a><br>
+470 St Kilda Road, Melbourne VIC 3004<br>
+Website: <a href="https://acesolutions.com.au" style="color:#1a73e8;">acesolutions.com.au</a></p>`;
+
+/**
+ * Resolve pricing validity for autonomous follow-ups.
+ * Prefer webhook calendar dates; else parse form "30 days" / dd/mm/yyyy.
+ * Returns Brisbane-local date ISO (YYYY-MM-DD) + display label.
+ */
+function resolveElectricityOfferValidity(opts: {
+  webhookResult: Record<string, unknown>;
+  formValidityRaw: string;
+  anchor: Date;
+}): { offer_validity_date: string; validity_date: string; offer_validity_label: string } | null {
+  const webhookKeys = [
+    "offer_valid_until",
+    "offer_validity_until",
+    "pricing_valid_until",
+    "validity_date",
+    "offer_validity_date",
+    "valid_until",
+  ];
+  for (const key of webhookKeys) {
+    const raw = opts.webhookResult[key];
+    if (typeof raw !== "string" && typeof raw !== "number") continue;
+    const parsed = parseFlexibleDateToIso(String(raw));
+    if (parsed) {
+      return {
+        offer_validity_date: parsed.isoDate,
+        validity_date: parsed.display,
+        offer_validity_label: String(raw).trim(),
+      };
+    }
+  }
+
+  const formRaw = (opts.formValidityRaw || "").trim();
+  if (!formRaw) return null;
+
+  const asDate = parseFlexibleDateToIso(formRaw);
+  if (asDate) {
+    return {
+      offer_validity_date: asDate.isoDate,
+      validity_date: asDate.display,
+      offer_validity_label: formRaw,
+    };
+  }
+
+  const daysMatch = formRaw.match(/^(\d+)\s*days?$/i);
+  if (daysMatch) {
+    const days = parseInt(daysMatch[1], 10);
+    if (Number.isFinite(days) && days > 0) {
+      const until = new Date(opts.anchor.getTime());
+      until.setUTCDate(until.getUTCDate() + days);
+      const isoDate = until.toISOString().slice(0, 10);
+      const [y, m, d] = isoDate.split("-");
+      const display = `${d}/${m}/${y}`;
+      return {
+        offer_validity_date: isoDate,
+        validity_date: `${display} (12pm)`,
+        offer_validity_label: formRaw,
+      };
+    }
+  }
+
+  // Non-date labels like "12 months" are contract term, not pricing expiry — keep as label only.
+  return {
+    offer_validity_date: "",
+    validity_date: formRaw,
+    offer_validity_label: formRaw,
+  };
+}
+
+function parseFlexibleDateToIso(raw: string): { isoDate: string; display: string } | null {
+  const s = raw.trim();
+  if (!s) return null;
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) {
+    return { isoDate: `${iso[1]}-${iso[2]}-${iso[3]}`, display: `${iso[3]}/${iso[2]}/${iso[1]}` };
+  }
+  const dmy = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/);
+  if (dmy) {
+    const dd = dmy[1].padStart(2, "0");
+    const mm = dmy[2].padStart(2, "0");
+    const yyyy = dmy[3];
+    return { isoDate: `${yyyy}-${mm}-${dd}`, display: `${dd}/${mm}/${yyyy}` };
+  }
+  const t = Date.parse(s);
+  if (!Number.isNaN(t)) {
+    const isoDate = new Date(t).toISOString().slice(0, 10);
+    const [y, m, d] = isoDate.split("-");
+    return { isoDate, display: `${d}/${m}/${y}` };
+  }
+  return null;
+}
+
 interface AutonomousElectricityConfirmState {
   open: boolean;
   offerIdToUse: number;
@@ -923,6 +1025,20 @@ function CIElectricityOfferModal({
         const yearlyEst = normalizeMoneyToNumber(
           invoiceData?.electricity_ci_invoice_details?.full_invoice_data?.["Yearly Consumption Est"]
         );
+        const periodYears =
+          parseInt(String(formData.offer1PeriodYears || ""), 10) ||
+          (String(formData.offer1Type || "") === "stepped" ? 2 : 1);
+        const contractSavingsFromWebhook =
+          normalizeMoneyToNumber((result as any)?.contract_savings) ??
+          normalizeMoneyToNumber((result as any)?.total_savings) ??
+          normalizeMoneyToNumber((result as any)?.estimated_contract_saving) ??
+          normalizeMoneyToNumber((result as any)?.term_savings) ??
+          null;
+        const contractSavings =
+          contractSavingsFromWebhook ??
+          (annualSavings != null && periodYears > 1
+            ? Math.round(annualSavings * periodYears * 100) / 100
+            : annualSavings ?? null);
 
         let successMessage = "C&I Electricity Offer Comparison sent successfully!";
         if (pdfLink) successMessage += `\nPDF: ${pdfLink}`;
@@ -987,6 +1103,9 @@ function CIElectricityOfferModal({
                 source: "utility_invoice_info_page",
               };
               if (annualSavings != null) metadata.annual_savings = annualSavings;
+              if (contractSavings != null) metadata.contract_savings = contractSavings;
+              if (contractSavings != null) metadata.total_savings = contractSavings;
+              if (periodYears) metadata.period_years = periodYears;
               if (currentCost != null) metadata.current_cost = currentCost;
               if (newCost != null) metadata.new_cost = newCost;
               if (annualUsageGj != null) metadata.annual_usage_gj = annualUsageGj;
@@ -1069,9 +1188,19 @@ function CIElectricityOfferModal({
         }
 
         if (offerIdToUse != null && token) {
+          const anchor = new Date();
+          const validityResolved = resolveElectricityOfferValidity({
+            webhookResult: (result && typeof result === "object" ? result : {}) as Record<string, unknown>,
+            formValidityRaw: String(formData.offer1Validity || ""),
+            anchor,
+          });
+
           const comparisonSnapshot: Record<string, unknown> = {
             lane: "ci_electricity",
             annual_savings: annualSavings ?? null,
+            contract_savings: contractSavings,
+            total_savings: contractSavings,
+            period_years: periodYears,
             current_cost: currentCost ?? null,
             new_cost: newCost ?? null,
             annual_usage_kwh:
@@ -1085,25 +1214,60 @@ function CIElectricityOfferModal({
             offer_peak_cpkwh: normalizeMoneyToNumber(offerPeak) ?? null,
             offer_offpeak_cpkwh: normalizeMoneyToNumber(offerOffPeak) ?? null,
           };
+          if (validityResolved?.offer_validity_date) {
+            comparisonSnapshot.offer_validity_date = validityResolved.offer_validity_date;
+            comparisonSnapshot.validity_date = validityResolved.validity_date;
+            comparisonSnapshot.offer_validity_label = validityResolved.offer_validity_label;
+          } else if (validityResolved?.offer_validity_label) {
+            comparisonSnapshot.offer_validity_label = validityResolved.offer_validity_label;
+            comparisonSnapshot.validity_date = validityResolved.validity_date;
+          }
+
+          const ctxBase: Record<string, unknown> = {
+            utility_invoice_info_trigger: "comparison_success",
+            business_name: businessName,
+            contact_email: contactEmail,
+            contact_phone: contactPhone,
+            contact_name: contactName,
+            signature_html: ACES_ELECTRICITY_FOLLOWUP_SIGNATURE_HTML,
+            use_html_signature: true,
+            // Flatten key metrics so email/voice agents see them without digging into snapshot.
+            annual_savings: annualSavings ?? null,
+            contract_savings: contractSavings,
+            total_savings: contractSavings,
+            period_years: periodYears,
+            current_cost: currentCost ?? null,
+            new_cost: newCost ?? null,
+            annual_usage_kwh: comparisonSnapshot.annual_usage_kwh,
+            current_peak_cpkwh: comparisonSnapshot.current_peak_cpkwh,
+            current_offpeak_cpkwh: comparisonSnapshot.current_offpeak_cpkwh,
+            offer_peak_cpkwh: comparisonSnapshot.offer_peak_cpkwh,
+            offer_offpeak_cpkwh: comparisonSnapshot.offer_offpeak_cpkwh,
+          };
+          if (validityResolved?.offer_validity_date) {
+            ctxBase.offer_validity_date = validityResolved.offer_validity_date;
+            // Noon Brisbane on that date — avoids agent inventing a +7 day window.
+            ctxBase.offer_valid_until = `${validityResolved.offer_validity_date}T02:00:00.000Z`;
+            ctxBase.validity_date = validityResolved.validity_date;
+            ctxBase.offer_validity_label = validityResolved.offer_validity_label;
+          } else if (validityResolved?.offer_validity_label) {
+            ctxBase.offer_validity_label = validityResolved.offer_validity_label;
+            ctxBase.validity_date = validityResolved.validity_date;
+          }
+
           setAutonomousConfirm({
             open: true,
             offerIdToUse,
             clientId: hasValidClientId ? clientId! : null,
             activityId,
-            anchorIso: new Date().toISOString(),
+            anchorIso: anchor.toISOString(),
             tz:
               typeof Intl !== "undefined"
                 ? Intl.DateTimeFormat().resolvedOptions().timeZone || "Australia/Melbourne"
                 : "Australia/Melbourne",
             emailId,
             comparisonSnapshot,
-            ctxBase: {
-              utility_invoice_info_trigger: "comparison_success",
-              business_name: businessName,
-              contact_email: contactEmail,
-              contact_phone: contactPhone,
-              contact_name: contactName,
-            },
+            ctxBase,
             successMessage,
             contactName,
             contactEmail,
@@ -1193,7 +1357,16 @@ function CIElectricityOfferModal({
         utility_lane: "ci_electricity",
         site_identifiers: nmi ? [nmi] : [],
         comparison_snapshot: a.comparisonSnapshot,
+        signature_html:
+          (typeof a.ctxBase.signature_html === "string" && a.ctxBase.signature_html) ||
+          ACES_ELECTRICITY_FOLLOWUP_SIGNATURE_HTML,
+        use_html_signature: true,
       };
+      // Prefer flattened snapshot metrics on the root context for agents.
+      for (const [k, v] of Object.entries(a.comparisonSnapshot || {})) {
+        if (v == null || typeof v === "object") continue;
+        if (sequenceContext[k] == null || sequenceContext[k] === "") sequenceContext[k] = v;
+      }
       if (a.emailId) sequenceContext.email_ID = a.emailId;
       if (nmi && a.emailId) sequenceContext.email_ids_by_site = { [nmi]: a.emailId };
 
@@ -1970,6 +2143,18 @@ function CIElectricityOfferModal({
               </label>
             </div>
             <ul style={{ margin: '0 0 16px', paddingLeft: 18, fontSize: 12, color: '#6b7280' }}>
+              {autonomousConfirm.comparisonSnapshot.contract_savings != null && (
+                <li>
+                  Contract / term savings:{' '}
+                  {Number(autonomousConfirm.comparisonSnapshot.contract_savings).toLocaleString('en-AU', {
+                    style: 'currency',
+                    currency: 'AUD',
+                  })}
+                  {autonomousConfirm.comparisonSnapshot.period_years != null
+                    ? ` (${autonomousConfirm.comparisonSnapshot.period_years} yr)`
+                    : ''}
+                </li>
+              )}
               {autonomousConfirm.comparisonSnapshot.annual_savings != null && (
                 <li>
                   Annual savings:{' '}
@@ -1977,6 +2162,16 @@ function CIElectricityOfferModal({
                     style: 'currency',
                     currency: 'AUD',
                   })}
+                </li>
+              )}
+              {(autonomousConfirm.comparisonSnapshot.validity_date != null ||
+                autonomousConfirm.ctxBase.validity_date != null) && (
+                <li>
+                  Offer valid until:{' '}
+                  {String(
+                    autonomousConfirm.comparisonSnapshot.validity_date ??
+                      autonomousConfirm.ctxBase.validity_date,
+                  )}
                 </li>
               )}
               {autonomousConfirm.emailId && (
