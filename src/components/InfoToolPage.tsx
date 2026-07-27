@@ -250,6 +250,11 @@ interface AutonomousElectricityConfirmState {
   comparisonSnapshot: Record<string, unknown>;
   ctxBase: Record<string, unknown>;
   successMessage: string;
+  /** Editable outreach fields — saved into sequence context on start */
+  contactName: string;
+  contactEmail: string;
+  contactPhone: string;
+  businessName: string;
 }
 
 function CIElectricityOfferModal({ 
@@ -260,7 +265,8 @@ function CIElectricityOfferModal({
   token,
   businessInfo,
   offerId,
-  clientId
+  clientId,
+  contactDefaults,
 }: { 
   isOpen: boolean; 
   onClose: () => void; 
@@ -270,6 +276,17 @@ function CIElectricityOfferModal({
   businessInfo?: any;
   offerId?: number;
   clientId?: number;
+  /** Prefer URL / CRM contact fields over invoice payload (avoids ACES login email). */
+  contactDefaults?: {
+    businessName?: string;
+    contactName?: string;
+    contactEmail?: string;
+    contactPhone?: string;
+    contactPosition?: string;
+    businessAbn?: string;
+    businessTradingName?: string;
+    postalAddress?: string;
+  };
 }) {
   const [formData, setFormData] = useState<CIElectricityOfferData>({
     invoiceId: '',
@@ -333,6 +350,7 @@ function CIElectricityOfferModal({
     businessName: string;
     contactName: string;
     contactEmail: string;
+    contactPhone: string;
   } | null>(null);
   
   const calculateEndDate = (startDate: string): string => {
@@ -400,21 +418,69 @@ function CIElectricityOfferModal({
         shoulderUsageInvoice: invoiceDetails?.full_invoice_data?.['Retail Quantity Shoulder (kWh)']?.toString() || '',
         totalMonthlyUsage: invoiceDetails?.monthly_usage || invoiceDetails?.full_invoice_data?.['Monthly Consumption']?.toString() || '',
         
-        // Business Information - try multiple possible locations including URL parameters and businessInfo
-        businessName: businessDetails?.name || invoiceData?.business_name || invoiceDetails?.business_name || businessInfo?.business_name || '',
-        businessAbn: businessDetails?.abn || invoiceData?.business_abn || invoiceDetails?.business_abn || businessInfo?.business_abn || '',
-        businessTradingName: businessDetails?.trading_name || invoiceData?.business_trading_name || invoiceDetails?.business_trading_name || businessInfo?.business_trading_name || '',
+        // Business Information — URL/CRM defaults win over invoice payload (prevents ACES login email)
+        businessName:
+          contactDefaults?.businessName ||
+          businessDetails?.name ||
+          invoiceData?.business_name ||
+          invoiceDetails?.business_name ||
+          businessInfo?.business_name ||
+          '',
+        businessAbn:
+          contactDefaults?.businessAbn ||
+          businessDetails?.abn ||
+          invoiceData?.business_abn ||
+          invoiceDetails?.business_abn ||
+          businessInfo?.business_abn ||
+          '',
+        businessTradingName:
+          contactDefaults?.businessTradingName ||
+          businessDetails?.trading_name ||
+          invoiceData?.business_trading_name ||
+          invoiceDetails?.business_trading_name ||
+          businessInfo?.business_trading_name ||
+          '',
         businessIndustry: businessDetails?.industry || invoiceData?.business_industry || invoiceDetails?.business_industry || businessInfo?.business_industry || '',
         businessWebsite: businessDetails?.website || invoiceData?.business_website || invoiceDetails?.business_website || businessInfo?.business_website || '',
-        postalAddress: contactInfo?.postal_address || invoiceData?.postal_address || invoiceDetails?.postal_address || businessInfo?.postal_address || '',
-        contactPhone: contactInfo?.telephone || invoiceData?.contact_phone || invoiceDetails?.contact_phone || businessInfo?.contact_phone || '',
-        contactEmail: contactInfo?.email || invoiceData?.contact_email || invoiceDetails?.contact_email || businessInfo?.contact_email || '',
-        contactName: repDetails?.contact_name || invoiceData?.contact_name || invoiceDetails?.contact_name || businessInfo?.contact_name || '',
-        contactPosition: repDetails?.position || invoiceData?.contact_position || invoiceDetails?.contact_position || businessInfo?.contact_position || '',
+        postalAddress:
+          contactDefaults?.postalAddress ||
+          contactInfo?.postal_address ||
+          invoiceData?.postal_address ||
+          invoiceDetails?.postal_address ||
+          businessInfo?.postal_address ||
+          '',
+        contactPhone:
+          contactDefaults?.contactPhone ||
+          contactInfo?.telephone ||
+          invoiceData?.contact_phone ||
+          invoiceDetails?.contact_phone ||
+          businessInfo?.contact_phone ||
+          '',
+        contactEmail:
+          contactDefaults?.contactEmail ||
+          contactInfo?.email ||
+          invoiceData?.contact_email ||
+          invoiceDetails?.contact_email ||
+          businessInfo?.contact_email ||
+          '',
+        contactName:
+          contactDefaults?.contactName ||
+          repDetails?.contact_name ||
+          invoiceData?.contact_name ||
+          invoiceDetails?.contact_name ||
+          businessInfo?.contact_name ||
+          '',
+        contactPosition:
+          contactDefaults?.contactPosition ||
+          repDetails?.position ||
+          invoiceData?.contact_position ||
+          invoiceDetails?.contact_position ||
+          businessInfo?.contact_position ||
+          '',
         loaSignDate: repDetails?.loa_sign_date || invoiceData?.loa_sign_date || invoiceDetails?.loa_sign_date || businessInfo?.loa_sign_date || '',
       }));
     }
-  }, [isOpen, invoiceData]);
+  }, [isOpen, invoiceData, contactDefaults]);
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -567,9 +633,27 @@ function CIElectricityOfferModal({
   const openRecipientConfirm = () => {
     setRecipientConfirm({
       open: true,
-      businessName: formData.businessName || businessInfo?.name || businessInfo?.business_name || "",
-      contactName: formData.contactName || businessInfo?.contact_name || "",
-      contactEmail: formData.contactEmail || businessInfo?.email || businessInfo?.contact_email || "",
+      businessName:
+        formData.businessName ||
+        contactDefaults?.businessName ||
+        businessInfo?.business_name ||
+        "",
+      contactName:
+        formData.contactName ||
+        contactDefaults?.contactName ||
+        businessInfo?.contact_name ||
+        "",
+      // Never fall back to businessInfo.email / user_email — that can be the ACES login.
+      contactEmail:
+        formData.contactEmail ||
+        contactDefaults?.contactEmail ||
+        businessInfo?.contact_email ||
+        "",
+      contactPhone:
+        formData.contactPhone ||
+        contactDefaults?.contactPhone ||
+        businessInfo?.contact_phone ||
+        "",
     });
   };
 
@@ -577,6 +661,7 @@ function CIElectricityOfferModal({
     if (!recipientConfirm) return;
     const contactName = recipientConfirm.contactName.trim();
     const contactEmail = recipientConfirm.contactEmail.trim();
+    const contactPhone = recipientConfirm.contactPhone.trim();
     if (!contactEmail || !contactEmail.includes("@")) {
       alert("Enter a valid member email address before sending.");
       return;
@@ -585,12 +670,14 @@ function CIElectricityOfferModal({
       ...prev,
       contactName: contactName || prev.contactName,
       contactEmail,
+      contactPhone: contactPhone || prev.contactPhone,
       businessName: recipientConfirm.businessName.trim() || prev.businessName,
     }));
     setRecipientConfirm(null);
     void sendCIElectricityOffer({
       contactName: contactName || formData.contactName,
       contactEmail,
+      contactPhone: contactPhone || formData.contactPhone,
       businessName: recipientConfirm.businessName.trim() || formData.businessName,
     });
   };
@@ -598,12 +685,14 @@ function CIElectricityOfferModal({
   const sendCIElectricityOffer = async (recipient?: {
     contactName: string;
     contactEmail: string;
+    contactPhone: string;
     businessName: string;
   }) => {
     setSending(true);
     try {
       const contactName = recipient?.contactName ?? formData.contactName;
       const contactEmail = recipient?.contactEmail ?? formData.contactEmail;
+      const contactPhone = recipient?.contactPhone ?? formData.contactPhone;
       const businessName = recipient?.businessName ?? formData.businessName;
       const tableHTML = generateOfferTableHTML();
       
@@ -730,7 +819,7 @@ function CIElectricityOfferModal({
         business_industry: formData.businessIndustry,
         business_website: formData.businessWebsite,
         postal_address: formData.postalAddress,
-        contact_phone: formData.contactPhone,
+        contact_phone: contactPhone,
         contact_email: contactEmail,
         contact_name: contactName,
         contact_position: formData.contactPosition,
@@ -969,12 +1058,16 @@ function CIElectricityOfferModal({
             comparisonSnapshot,
             ctxBase: {
               utility_invoice_info_trigger: "comparison_success",
-              business_name: businessName || businessInfo?.name || businessInfo?.business_name,
-              contact_email: contactEmail || businessInfo?.email || businessInfo?.contact_email,
-              contact_phone: formData.contactPhone || businessInfo?.telephone || businessInfo?.contact_phone,
-              contact_name: contactName || businessInfo?.contact_name,
+              business_name: businessName,
+              contact_email: contactEmail,
+              contact_phone: contactPhone,
+              contact_name: contactName,
             },
             successMessage,
+            contactName,
+            contactEmail,
+            contactPhone,
+            businessName,
           });
         } else {
           alert(
@@ -1003,6 +1096,14 @@ function CIElectricityOfferModal({
   const confirmAutonomousStart = async () => {
     if (!token || !autonomousConfirm?.open) return;
     const a = autonomousConfirm;
+    const contactName = a.contactName.trim();
+    const contactEmail = a.contactEmail.trim();
+    const contactPhone = a.contactPhone.trim();
+    const businessName = a.businessName.trim();
+    if (!contactEmail || !contactEmail.includes("@")) {
+      alert("Enter a valid member email before starting the sequence.");
+      return;
+    }
     setAutonomousStarting(true);
     try {
       const headers = { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
@@ -1010,6 +1111,10 @@ function CIElectricityOfferModal({
       const nmi = formData.nmi?.trim() || undefined;
       const sequenceContext: Record<string, unknown> = {
         ...a.ctxBase,
+        business_name: businessName || a.ctxBase.business_name,
+        contact_name: contactName,
+        contact_email: contactEmail,
+        contact_phone: contactPhone,
         utility_lane: "ci_electricity",
         site_identifiers: nmi ? [nmi] : [],
         comparison_snapshot: a.comparisonSnapshot,
@@ -1617,6 +1722,27 @@ function CIElectricityOfferModal({
                   autoComplete="email"
                 />
               </label>
+              <label style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
+                Phone
+                <input
+                  type="tel"
+                  value={recipientConfirm.contactPhone}
+                  onChange={(e) =>
+                    setRecipientConfirm((prev) => (prev ? { ...prev, contactPhone: e.target.value } : prev))
+                  }
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    marginTop: 4,
+                    padding: '10px 12px',
+                    borderRadius: 8,
+                    border: '1px solid #d1d5db',
+                    fontSize: 14,
+                  }}
+                  placeholder="(03) 8348 9300"
+                  autoComplete="tel"
+                />
+              </label>
             </div>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
               <Button
@@ -1669,15 +1795,94 @@ function CIElectricityOfferModal({
             <h3 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 600 }}>Start autonomous follow-up?</h3>
             <p style={{ margin: '0 0 16px', fontSize: 14, color: '#6b7280' }}>
               Offer #{autonomousConfirm.offerIdToUse} will be enrolled in scheduled email, SMS, and voice steps for C&I electricity
-              ({AUTONOMOUS_SEQUENCE_CI_ELECTRICITY}).
+              ({AUTONOMOUS_SEQUENCE_CI_ELECTRICITY}). Confirm / edit the member contact below before starting.
             </p>
-            <ul style={{ margin: '0 0 16px', paddingLeft: 18, fontSize: 13, color: '#374151' }}>
-              {typeof autonomousConfirm.ctxBase.contact_name === 'string' && autonomousConfirm.ctxBase.contact_name && (
-                <li>Contact: {autonomousConfirm.ctxBase.contact_name}</li>
-              )}
-              {typeof autonomousConfirm.ctxBase.contact_email === 'string' && autonomousConfirm.ctxBase.contact_email && (
-                <li>Email: {autonomousConfirm.ctxBase.contact_email}</li>
-              )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
+              <label style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
+                Business
+                <input
+                  type="text"
+                  value={autonomousConfirm.businessName}
+                  onChange={(e) =>
+                    setAutonomousConfirm((prev) => (prev ? { ...prev, businessName: e.target.value } : prev))
+                  }
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    marginTop: 4,
+                    padding: '10px 12px',
+                    borderRadius: 8,
+                    border: '1px solid #d1d5db',
+                    fontSize: 14,
+                  }}
+                  placeholder="Business name"
+                />
+              </label>
+              <label style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
+                Contact name
+                <input
+                  type="text"
+                  value={autonomousConfirm.contactName}
+                  onChange={(e) =>
+                    setAutonomousConfirm((prev) => (prev ? { ...prev, contactName: e.target.value } : prev))
+                  }
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    marginTop: 4,
+                    padding: '10px 12px',
+                    borderRadius: 8,
+                    border: '1px solid #d1d5db',
+                    fontSize: 14,
+                  }}
+                  placeholder="Contact name"
+                  autoComplete="name"
+                />
+              </label>
+              <label style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
+                Email
+                <input
+                  type="email"
+                  value={autonomousConfirm.contactEmail}
+                  onChange={(e) =>
+                    setAutonomousConfirm((prev) => (prev ? { ...prev, contactEmail: e.target.value } : prev))
+                  }
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    marginTop: 4,
+                    padding: '10px 12px',
+                    borderRadius: 8,
+                    border: '1px solid #d1d5db',
+                    fontSize: 14,
+                  }}
+                  placeholder="name@example.com"
+                  autoComplete="email"
+                />
+              </label>
+              <label style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
+                Phone
+                <input
+                  type="tel"
+                  value={autonomousConfirm.contactPhone}
+                  onChange={(e) =>
+                    setAutonomousConfirm((prev) => (prev ? { ...prev, contactPhone: e.target.value } : prev))
+                  }
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    marginTop: 4,
+                    padding: '10px 12px',
+                    borderRadius: 8,
+                    border: '1px solid #d1d5db',
+                    fontSize: 14,
+                  }}
+                  placeholder="(03) 8348 9300"
+                  autoComplete="tel"
+                />
+              </label>
+            </div>
+            <ul style={{ margin: '0 0 16px', paddingLeft: 18, fontSize: 12, color: '#6b7280' }}>
               {autonomousConfirm.comparisonSnapshot.annual_savings != null && (
                 <li>
                   Annual savings:{' '}
@@ -6260,7 +6465,16 @@ const EnhancedSMEGasInvoiceDetails = ({ smeGasData }: { smeGasData: any }) => {
   );
 };
 
-function InvoiceResult({ result, session, token, autoOpenDMA = false, autoExpandDetails = false, offerId, clientId }: { result: any; session: any; token: string; autoOpenDMA?: boolean; autoExpandDetails?: boolean; offerId?: number; clientId?: number }) {
+function InvoiceResult({ result, session, token, autoOpenDMA = false, autoExpandDetails = false, offerId, clientId, contactDefaults }: { result: any; session: any; token: string; autoOpenDMA?: boolean; autoExpandDetails?: boolean; offerId?: number; clientId?: number; contactDefaults?: {
+  businessName?: string;
+  contactName?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  contactPosition?: string;
+  businessAbn?: string;
+  businessTradingName?: string;
+  postalAddress?: string;
+} }) {
   const [showDMAModal, setShowDMAModal] = useState(false);
   const [showCIOfferModal, setShowCIOfferModal] = useState(false);
   const [showCIGasOfferModal, setShowCIGasOfferModal] = useState(false);
@@ -6557,6 +6771,7 @@ function InvoiceResult({ result, session, token, autoOpenDMA = false, autoExpand
             businessInfo={result}
             offerId={offerId}
             clientId={clientId}
+            contactDefaults={contactDefaults}
           />
           <DMAModal
             isOpen={showDMAModal}
@@ -7558,6 +7773,16 @@ export default function InfoToolPage({ title, description, endpoint, extraFields
                 autoExpandDetails={autoSubmit}
                 offerId={offerId}
                 clientId={clientId}
+                contactDefaults={{
+                  businessName: initialBusinessName || businessName || undefined,
+                  contactName: fields.contact_name || undefined,
+                  contactEmail: fields.contact_email || undefined,
+                  contactPhone: fields.contact_phone || undefined,
+                  contactPosition: fields.contact_position || undefined,
+                  businessAbn: fields.business_abn || undefined,
+                  businessTradingName: fields.business_trading_name || undefined,
+                  postalAddress: fields.postal_address || undefined,
+                }}
               />
             )}
           </CardContent>
