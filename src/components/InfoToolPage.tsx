@@ -286,7 +286,7 @@ const ACES_ELECTRICITY_FOLLOWUP_SIGNATURE_HTML = `<p style="margin-bottom:0;">Ki
 Australian Circular Economy Solutions</p>
 <p style="margin-top:16px; margin-bottom:0;"><strong>Carbon Zero Australasia</strong><br>
 Australian Circular Economy Solutions Division<br>
-Phone: 1300 938 638<br>
+Direct: 0468 050 399<br>
 Email: <a href="mailto:business@acesolutions.com.au" style="color:#1a73e8;">business@acesolutions.com.au</a><br>
 470 St Kilda Road, Melbourne VIC 3004<br>
 Website: <a href="https://acesolutions.com.au" style="color:#1a73e8;">acesolutions.com.au</a></p>`;
