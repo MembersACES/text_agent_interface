@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useSession } from "next-auth/react";
 import ReactMarkdown from 'react-markdown';
-import { getApiBaseUrl } from "@/lib/utils";
+import { getApiBaseUrl, getAutonomousApiBaseUrl } from "@/lib/utils";
 import { formatBackendErrorBody } from "@/lib/api-errors";
 import { ToolPageLayout } from "@/components/Layouts/ToolPageLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -237,6 +237,21 @@ interface ElectricityInvoiceData {
 }
 
 
+const AUTONOMOUS_SEQUENCE_CI_ELECTRICITY = "ci_electricity_base2_followup_v1";
+
+interface AutonomousElectricityConfirmState {
+  open: boolean;
+  offerIdToUse: number;
+  clientId: number | null;
+  activityId?: number;
+  anchorIso: string;
+  tz: string;
+  emailId?: string;
+  comparisonSnapshot: Record<string, unknown>;
+  ctxBase: Record<string, unknown>;
+  successMessage: string;
+}
+
 function CIElectricityOfferModal({ 
   isOpen, 
   onClose, 
@@ -311,6 +326,14 @@ function CIElectricityOfferModal({
 
   const [sending, setSending] = useState(false);
   const [numOffers, setNumOffers] = useState(1);
+  const [autonomousConfirm, setAutonomousConfirm] = useState<AutonomousElectricityConfirmState | null>(null);
+  const [autonomousStarting, setAutonomousStarting] = useState(false);
+  const [recipientConfirm, setRecipientConfirm] = useState<{
+    open: boolean;
+    businessName: string;
+    contactName: string;
+    contactEmail: string;
+  } | null>(null);
   
   const calculateEndDate = (startDate: string): string => {
     if (!startDate) return '';
@@ -541,9 +564,47 @@ function CIElectricityOfferModal({
     });
   };
 
-  const sendCIElectricityOffer = async () => {
+  const openRecipientConfirm = () => {
+    setRecipientConfirm({
+      open: true,
+      businessName: formData.businessName || businessInfo?.name || businessInfo?.business_name || "",
+      contactName: formData.contactName || businessInfo?.contact_name || "",
+      contactEmail: formData.contactEmail || businessInfo?.email || businessInfo?.contact_email || "",
+    });
+  };
+
+  const handleRecipientConfirmSubmit = () => {
+    if (!recipientConfirm) return;
+    const contactName = recipientConfirm.contactName.trim();
+    const contactEmail = recipientConfirm.contactEmail.trim();
+    if (!contactEmail || !contactEmail.includes("@")) {
+      alert("Enter a valid member email address before sending.");
+      return;
+    }
+    setFormData((prev) => ({
+      ...prev,
+      contactName: contactName || prev.contactName,
+      contactEmail,
+      businessName: recipientConfirm.businessName.trim() || prev.businessName,
+    }));
+    setRecipientConfirm(null);
+    void sendCIElectricityOffer({
+      contactName: contactName || formData.contactName,
+      contactEmail,
+      businessName: recipientConfirm.businessName.trim() || formData.businessName,
+    });
+  };
+
+  const sendCIElectricityOffer = async (recipient?: {
+    contactName: string;
+    contactEmail: string;
+    businessName: string;
+  }) => {
     setSending(true);
     try {
+      const contactName = recipient?.contactName ?? formData.contactName;
+      const contactEmail = recipient?.contactEmail ?? formData.contactEmail;
+      const businessName = recipient?.businessName ?? formData.businessName;
       const tableHTML = generateOfferTableHTML();
       
       // Include every selected offer slot (1..numOffers). Retailer name is no longer collected —
@@ -662,18 +723,21 @@ function CIElectricityOfferModal({
         shoulder_usage_invoice: formData.shoulderUsageInvoice,
         total_monthly_usage: formData.totalMonthlyUsage,
         
-        // Business Information
-        business_name: formData.businessName,
+        // Business Information — member recipient (confirmed before send)
+        business_name: businessName,
         business_abn: formData.businessAbn,
         business_trading_name: formData.businessTradingName,
         business_industry: formData.businessIndustry,
         business_website: formData.businessWebsite,
         postal_address: formData.postalAddress,
         contact_phone: formData.contactPhone,
-        contact_email: formData.contactEmail,
-        contact_name: formData.contactName,
+        contact_email: contactEmail,
+        contact_name: contactName,
         contact_position: formData.contactPosition,
         loa_sign_date: formData.loaSignDate,
+        // Explicit aliases for n8n (Gmail should send to contact_email / send_to_email, NOT user_email)
+        client_email: contactEmail,
+        send_to_email: contactEmail,
         
         ...getOfferData(1),
         ...getOfferData(2),
@@ -709,8 +773,36 @@ function CIElectricityOfferModal({
         const energyChargePct = normalizeMoneyToNumber((result as any)?.energy_charge_pct);
         const contractedRate = normalizeMoneyToNumber((result as any)?.contracted_rate);
         const offerRate = normalizeMoneyToNumber((result as any)?.offer_rate);
+        const emailIdRaw = (result as any)?.email_ID ?? (result as any)?.email_id;
+        const emailId = typeof emailIdRaw === "string" && emailIdRaw.trim() ? emailIdRaw.trim() : undefined;
+
+        const offerType = String(formData.offer1Type || "");
+        const periodYears = parseInt(formData.offer1PeriodYears) || 0;
+        let offerPeak = String(formData.offer1PeakRate || "").trim();
+        let offerOffPeak = String(formData.offer1OffPeakRate || "").trim();
+        let offerShoulder = String(formData.offer1ShoulderRate || "").trim();
+        if (offerType === "stepped" && periodYears >= 1) {
+          if (!offerPeak) offerPeak = String(formData.offer1Period1PeakRate || "").trim();
+          if (!offerOffPeak) offerOffPeak = String(formData.offer1Period1OffPeakRate || "").trim();
+          if (!offerShoulder) offerShoulder = String(formData.offer1Period1ShoulderRate || "").trim();
+        }
+        const peakU = normalizeMoneyToNumber(formData.peakUsageInvoice) ?? 0;
+        const offU = normalizeMoneyToNumber(formData.offPeakUsageInvoice) ?? 0;
+        const shoulderU = normalizeMoneyToNumber(formData.shoulderUsageInvoice) ?? 0;
+        const periodKwh = peakU + offU + shoulderU;
+        const yearlyEst = normalizeMoneyToNumber(
+          invoiceData?.electricity_ci_invoice_details?.full_invoice_data?.["Yearly Consumption Est"]
+        );
+
+        let successMessage = "C&I Electricity Offer Comparison sent successfully!";
+        if (pdfLink) successMessage += `\nPDF: ${pdfLink}`;
+        if (spreadsheetLink) successMessage += `\nSpreadsheet: ${spreadsheetLink}`;
 
         // Log into the offer activity report (same pattern as Base 2)
+        let offerIdToUse: number | null = typeof offerId === "number" ? offerId : null;
+        let activityId: number | undefined;
+        const hasValidClientId = typeof clientId === "number" && !isNaN(clientId);
+
         if (session?.user?.email && token) {
           console.log("[C&I Electricity offer] Logging comparison activity:", {
             offerId,
@@ -720,25 +812,25 @@ function CIElectricityOfferModal({
             annualSavings,
             currentCost,
             newCost,
+            emailId,
           });
 
           try {
             const baseUrl = getApiBaseUrl();
-
-            let offerIdToUse: number | null = typeof offerId === "number" ? offerId : null;
+            const headers = {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            };
 
             // If no offerId was provided, create a minimal offer like Base 2 does (when we have clientId).
-            if (offerIdToUse == null && typeof clientId === "number" && !isNaN(clientId)) {
+            if (offerIdToUse == null && hasValidClientId) {
               const createRes = await fetch(`${baseUrl}/api/offers`, {
                 method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  "Authorization": `Bearer ${token}`,
-                },
+                headers,
                 body: JSON.stringify({
                   client_id: clientId,
                   status: "requested",
-                  business_name: formData.businessName || businessInfo?.name || undefined,
+                  business_name: businessName || businessInfo?.name || undefined,
                 }),
               });
 
@@ -772,7 +864,7 @@ function CIElectricityOfferModal({
               if (contractedRate != null) metadata.contracted_rate = contractedRate;
               if (offerRate != null) metadata.offer_rate = offerRate;
 
-              const payload = {
+              const activityPayload = {
                 activity_type: "comparison",
                 document_link: normalizeDocumentLink(documentLink) ?? undefined,
                 metadata,
@@ -781,18 +873,15 @@ function CIElectricityOfferModal({
 
               console.log("[C&I Electricity offer] POST /api/offers/:id/activities payload:", {
                 offerIdToUse,
-                activity_type: payload.activity_type,
-                document_link: payload.document_link,
+                activity_type: activityPayload.activity_type,
+                document_link: activityPayload.document_link,
                 metadata,
               });
 
               const activityRes = await fetch(`${baseUrl}/api/offers/${offerIdToUse}/activities`, {
                 method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  "Authorization": `Bearer ${token}`,
-                },
-                body: JSON.stringify(payload),
+                headers,
+                body: JSON.stringify(activityPayload),
               });
 
               console.log("[C&I Electricity offer] activity POST response:", {
@@ -800,9 +889,43 @@ function CIElectricityOfferModal({
                 status: activityRes.status,
               });
 
-              if (!activityRes.ok) {
+              if (activityRes.ok) {
+                try {
+                  const act = (await activityRes.json()) as { id?: number };
+                  if (typeof act.id === "number") activityId = act.id;
+                } catch {
+                  /* ignore */
+                }
+              } else {
                 const errBody = await activityRes.text().catch(() => "");
                 console.warn("[C&I Electricity offer] Failed to log activity:", errBody);
+              }
+
+              // Persist TOU rates on the offer (same as Base 2) for voice/email follow-up.
+              const touBody: Record<string, number> = {};
+              const setRate = (k: string, v: unknown) => {
+                const n = normalizeMoneyToNumber(v);
+                if (n != null) touBody[k] = n;
+              };
+              const hasShoulder =
+                (normalizeMoneyToNumber(formData.shoulderRateInvoice) ?? 0) > 0 ||
+                (normalizeMoneyToNumber(offerShoulder) ?? 0) > 0;
+              setRate("current_peak_rate", formData.peakRateInvoice);
+              if (hasShoulder) setRate("current_shoulder_rate", formData.shoulderRateInvoice);
+              setRate("current_offpeak_rate", formData.offPeakRateInvoice);
+              setRate("new_peak_rate", offerPeak);
+              if (hasShoulder) setRate("new_shoulder_rate", offerShoulder);
+              setRate("new_offpeak_rate", offerOffPeak);
+              if (Object.keys(touBody).length) {
+                try {
+                  await fetch(`${baseUrl}/api/offers/${offerIdToUse}`, {
+                    method: "PATCH",
+                    headers,
+                    body: JSON.stringify(touBody),
+                  });
+                } catch (e) {
+                  console.warn("[C&I Electricity offer] failed to patch TOU rates onto offer", e);
+                }
               }
             } else {
               console.warn("[C&I Electricity offer] Skipping activity log: no offerIdToUse available.");
@@ -811,13 +934,49 @@ function CIElectricityOfferModal({
             console.warn("Failed to log C&I Electricity offer comparison activity:", logErr);
           }
         }
-        
-        let message = 'C&I Electricity Offer Comparison sent successfully!';
-        if (pdfLink) message += `\nPDF: ${pdfLink}`;
-        if (spreadsheetLink) message += `\nSpreadsheet: ${spreadsheetLink}`;
-        
-        alert(message);
-        onClose();
+
+        if (offerIdToUse != null && token) {
+          const comparisonSnapshot: Record<string, unknown> = {
+            lane: "ci_electricity",
+            annual_savings: annualSavings ?? null,
+            current_cost: currentCost ?? null,
+            new_cost: newCost ?? null,
+            annual_usage_kwh:
+              normalizeMoneyToNumber((result as any)?.annual_usage_kwh) ??
+              normalizeMoneyToNumber((result as any)?.annual_kwh) ??
+              yearlyEst ??
+              null,
+            bill_period_usage_kwh: periodKwh > 0 ? Math.round(periodKwh * 100) / 100 : null,
+            current_peak_cpkwh: normalizeMoneyToNumber(formData.peakRateInvoice) ?? null,
+            current_offpeak_cpkwh: normalizeMoneyToNumber(formData.offPeakRateInvoice) ?? null,
+            offer_peak_cpkwh: normalizeMoneyToNumber(offerPeak) ?? null,
+            offer_offpeak_cpkwh: normalizeMoneyToNumber(offerOffPeak) ?? null,
+          };
+          setAutonomousConfirm({
+            open: true,
+            offerIdToUse,
+            clientId: hasValidClientId ? clientId! : null,
+            activityId,
+            anchorIso: new Date().toISOString(),
+            tz:
+              typeof Intl !== "undefined"
+                ? Intl.DateTimeFormat().resolvedOptions().timeZone || "Australia/Melbourne"
+                : "Australia/Melbourne",
+            emailId,
+            comparisonSnapshot,
+            ctxBase: {
+              utility_invoice_info_trigger: "comparison_success",
+              business_name: businessName || businessInfo?.name || businessInfo?.business_name,
+              contact_email: contactEmail || businessInfo?.email || businessInfo?.contact_email,
+              contact_phone: formData.contactPhone || businessInfo?.telephone || businessInfo?.contact_phone,
+              contact_name: contactName || businessInfo?.contact_name,
+            },
+            successMessage,
+          });
+        } else {
+          alert(successMessage);
+          onClose();
+        }
       } else {
         throw new Error('Failed to send C&I Electricity offer comparison');
       }
@@ -826,6 +985,68 @@ function CIElectricityOfferModal({
       alert('Failed to send offer comparison. Please try again.');
     } finally {
       setSending(false);
+    }
+  };
+
+  const cancelAutonomousConfirm = () => {
+    const msg = autonomousConfirm?.successMessage;
+    setAutonomousConfirm(null);
+    if (msg) alert(msg);
+    onClose();
+  };
+
+  const confirmAutonomousStart = async () => {
+    if (!token || !autonomousConfirm?.open) return;
+    const a = autonomousConfirm;
+    setAutonomousStarting(true);
+    try {
+      const headers = { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
+      const baseUrl = getAutonomousApiBaseUrl();
+      const nmi = formData.nmi?.trim() || undefined;
+      const sequenceContext: Record<string, unknown> = {
+        ...a.ctxBase,
+        utility_lane: "ci_electricity",
+        site_identifiers: nmi ? [nmi] : [],
+        comparison_snapshot: a.comparisonSnapshot,
+      };
+      if (a.emailId) sequenceContext.email_ID = a.emailId;
+      if (nmi && a.emailId) sequenceContext.email_ids_by_site = { [nmi]: a.emailId };
+
+      const startRes = await fetch(`${baseUrl}/api/autonomous/sequences/start`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          sequence_type: AUTONOMOUS_SEQUENCE_CI_ELECTRICITY,
+          offer_id: a.offerIdToUse,
+          client_id: a.clientId ?? undefined,
+          crm_activity_id: a.activityId,
+          anchor_at: a.anchorIso,
+          timezone: a.tz,
+          context: sequenceContext,
+        }),
+      });
+      if (!startRes.ok) {
+        const errTxt = await startRes.text();
+        console.warn("[C&I Electricity autonomous] start failed", startRes.status, errTxt);
+        alert(
+          `${a.successMessage}\n\nComparison saved, but autonomous sequence failed to start (${startRes.status}). Check Autonomous Agent / backend logs.`
+        );
+      } else {
+        const started = await startRes.json().catch(() => ({}));
+        console.log("[C&I Electricity autonomous] sequence start", started);
+        alert(
+          `${a.successMessage}\n\n✅ Autonomous sequence started: ${AUTONOMOUS_SEQUENCE_CI_ELECTRICITY} — see Autonomous Agent.`
+        );
+      }
+    } catch (autoErr) {
+      console.warn("[C&I Electricity autonomous] start error", autoErr);
+      alert(
+        `${a.successMessage}\n\nComparison saved, but autonomous sequence failed to start. Check console / backend.`
+      );
+    } finally {
+      setAutonomousStarting(false);
+      setAutonomousConfirm(null);
+      onClose();
     }
   };
 
@@ -1281,7 +1502,7 @@ function CIElectricityOfferModal({
             Copy for Gmail
           </button>
           <button
-            onClick={sendCIElectricityOffer}
+            onClick={openRecipientConfirm}
             disabled={sending}
             style={{
               padding: '8px 16px',
@@ -1297,6 +1518,198 @@ function CIElectricityOfferModal({
           </button>
         </div>
       </div>
+
+      {recipientConfirm?.open && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 10000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: 'rgba(0,0,0,0.45)',
+            padding: 16,
+          }}
+          aria-modal="true"
+          role="dialog"
+        >
+          <div
+            style={{
+              backgroundColor: 'white',
+              borderRadius: 16,
+              boxShadow: '0 25px 50px rgba(0,0,0,0.25)',
+              maxWidth: 440,
+              width: '100%',
+              padding: 24,
+              border: '1px solid #e5e7eb',
+            }}
+          >
+            <h3 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 600 }}>Comparison recipient</h3>
+            <p style={{ margin: '0 0 16px', fontSize: 14, color: '#6b7280' }}>
+              Confirm who this comparison email should go to. This must be the member contact — not your ACES login.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
+              <label style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
+                Business
+                <input
+                  type="text"
+                  value={recipientConfirm.businessName}
+                  onChange={(e) =>
+                    setRecipientConfirm((prev) => (prev ? { ...prev, businessName: e.target.value } : prev))
+                  }
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    marginTop: 4,
+                    padding: '10px 12px',
+                    borderRadius: 8,
+                    border: '1px solid #d1d5db',
+                    fontSize: 14,
+                  }}
+                  placeholder="Business name"
+                />
+              </label>
+              <label style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
+                Contact name
+                <input
+                  type="text"
+                  value={recipientConfirm.contactName}
+                  onChange={(e) =>
+                    setRecipientConfirm((prev) => (prev ? { ...prev, contactName: e.target.value } : prev))
+                  }
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    marginTop: 4,
+                    padding: '10px 12px',
+                    borderRadius: 8,
+                    border: '1px solid #d1d5db',
+                    fontSize: 14,
+                  }}
+                  placeholder="Contact name"
+                  autoComplete="name"
+                />
+              </label>
+              <label style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
+                Email
+                <input
+                  type="email"
+                  value={recipientConfirm.contactEmail}
+                  onChange={(e) =>
+                    setRecipientConfirm((prev) => (prev ? { ...prev, contactEmail: e.target.value } : prev))
+                  }
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    marginTop: 4,
+                    padding: '10px 12px',
+                    borderRadius: 8,
+                    border: '1px solid #d1d5db',
+                    fontSize: 14,
+                  }}
+                  placeholder="name@example.com"
+                  autoComplete="email"
+                />
+              </label>
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setRecipientConfirm(null)}
+                disabled={sending}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={handleRecipientConfirmSubmit}
+                disabled={sending}
+                loading={sending}
+              >
+                Send Comparison
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {autonomousConfirm?.open && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 10000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: 'rgba(0,0,0,0.45)',
+            padding: 16,
+          }}
+          aria-modal="true"
+          role="dialog"
+        >
+          <div
+            style={{
+              backgroundColor: 'white',
+              borderRadius: 16,
+              boxShadow: '0 25px 50px rgba(0,0,0,0.25)',
+              maxWidth: 420,
+              width: '100%',
+              padding: 24,
+              border: '1px solid #e5e7eb',
+            }}
+          >
+            <h3 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 600 }}>Start autonomous follow-up?</h3>
+            <p style={{ margin: '0 0 16px', fontSize: 14, color: '#6b7280' }}>
+              Offer #{autonomousConfirm.offerIdToUse} will be enrolled in scheduled email, SMS, and voice steps for C&I electricity
+              ({AUTONOMOUS_SEQUENCE_CI_ELECTRICITY}).
+            </p>
+            <ul style={{ margin: '0 0 16px', paddingLeft: 18, fontSize: 13, color: '#374151' }}>
+              {typeof autonomousConfirm.ctxBase.contact_name === 'string' && autonomousConfirm.ctxBase.contact_name && (
+                <li>Contact: {autonomousConfirm.ctxBase.contact_name}</li>
+              )}
+              {typeof autonomousConfirm.ctxBase.contact_email === 'string' && autonomousConfirm.ctxBase.contact_email && (
+                <li>Email: {autonomousConfirm.ctxBase.contact_email}</li>
+              )}
+              {autonomousConfirm.comparisonSnapshot.annual_savings != null && (
+                <li>
+                  Annual savings:{' '}
+                  {Number(autonomousConfirm.comparisonSnapshot.annual_savings).toLocaleString('en-AU', {
+                    style: 'currency',
+                    currency: 'AUD',
+                  })}
+                </li>
+              )}
+              {autonomousConfirm.emailId && (
+                <li>
+                  Thread email ID: <code>{autonomousConfirm.emailId}</code>
+                </li>
+              )}
+              {formData.nmi && <li>NMI: {formData.nmi}</li>}
+            </ul>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={cancelAutonomousConfirm}
+                disabled={autonomousStarting}
+              >
+                Not now
+              </Button>
+              <Button
+                type="button"
+                onClick={() => void confirmAutonomousStart()}
+                disabled={autonomousStarting}
+                loading={autonomousStarting}
+              >
+                Start sequence
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
