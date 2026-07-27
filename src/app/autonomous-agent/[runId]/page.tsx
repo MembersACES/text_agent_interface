@@ -204,7 +204,11 @@ function SequenceMetricsSidebar({ run, offer }: { run: RunDetail; offer: Offer |
     );
   }
 
-  if (run.sequence_type === "ci_electricity_base2_followup_v1" && lane === "ci_electricity") {
+  const isCiElectricitySeq =
+    run.sequence_type === "ci_electricity_base2_followup_v1" ||
+    run.sequence_type === "ci_electricity_offer";
+
+  if (isCiElectricitySeq && lane === "ci_electricity") {
     const sav = numFromUnknown(snap?.annual_savings) ?? offer?.annual_savings ?? null;
     const cur = numFromUnknown(snap?.current_cost) ?? offer?.current_cost ?? null;
     const neu = numFromUnknown(snap?.new_cost) ?? offer?.new_cost ?? null;
@@ -219,7 +223,7 @@ function SequenceMetricsSidebar({ run, offer }: { run: RunDetail; offer: Offer |
     if (sav == null && cur == null && neu == null && !hasRates && !hasUsage) {
       return (
         <div className="rounded-xl border border-dashed border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-5 text-sm text-gray-500 dark:text-gray-400 xl:sticky xl:top-4">
-          Electricity comparison metrics will appear here when the sequence is started from Base 2 (comparison snapshot on the run).
+          Electricity comparison metrics will appear here when the sequence is started from Base 2 or Utility Invoice Info (comparison snapshot on the run).
         </div>
       );
     }
@@ -358,14 +362,14 @@ function SequenceMetricsSidebar({ run, offer }: { run: RunDetail; offer: Offer |
   }
 
   // ci_electricity without snapshot (legacy): avoid GJ tiles; show offer savings/cost only if present.
-  if (run.sequence_type === "ci_electricity_base2_followup_v1") {
+  if (isCiElectricitySeq) {
     const sav = offer?.annual_savings ?? null;
     const cur = offer?.current_cost ?? null;
     const neu = offer?.new_cost ?? null;
     if (sav == null && cur == null && neu == null) {
       return (
         <div className="rounded-xl border border-dashed border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-5 text-sm text-gray-500 dark:text-gray-400 xl:sticky xl:top-4">
-          Electricity comparison metrics will appear here for new runs started from Base 2. Older runs may only have CRM offer totals.
+          Electricity comparison metrics will appear here for new runs started from Base 2 or Utility Invoice Info. Older runs may only have CRM offer totals.
         </div>
       );
     }
