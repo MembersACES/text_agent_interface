@@ -686,7 +686,7 @@ function CIElectricityOfferModal({
         timestamp: new Date().toISOString()
       };
       
-      const response = await fetch('https://membersaces.app.n8n.cloud/webhook-test/generate-electricity-ci-comparaison-interface', {
+      const response = await fetch('https://membersaces.app.n8n.cloud/webhook/generate-electricity-ci-comparaison-interface', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
