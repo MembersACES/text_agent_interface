@@ -293,8 +293,8 @@ Website: <a href="https://acesolutions.com.au" style="color:#1a73e8;">acesolutio
 
 /**
  * Resolve pricing validity for autonomous follow-ups.
- * Prefer webhook calendar dates; else parse form "30 days" / dd/mm/yyyy.
- * Returns Brisbane-local date ISO (YYYY-MM-DD) + display label.
+ * Prefer webhook calendar dates; else parse form / labels like "12pm on 30/07/2026".
+ * Returns Brisbane-local date ISO (YYYY-MM-DD) + display label (always 12pm).
  */
 function resolveElectricityOfferValidity(opts: {
   webhookResult: Record<string, unknown>;
@@ -307,7 +307,9 @@ function resolveElectricityOfferValidity(opts: {
     "pricing_valid_until",
     "validity_date",
     "offer_validity_date",
+    "offer_validity_label",
     "valid_until",
+    "offer_validity",
   ];
   for (const key of webhookKeys) {
     const raw = opts.webhookResult[key];
@@ -316,8 +318,8 @@ function resolveElectricityOfferValidity(opts: {
     if (parsed) {
       return {
         offer_validity_date: parsed.isoDate,
-        validity_date: parsed.display,
-        offer_validity_label: String(raw).trim(),
+        validity_date: `${parsed.display} (12pm)`,
+        offer_validity_label: `12pm on ${parsed.display}`,
       };
     }
   }
@@ -329,8 +331,8 @@ function resolveElectricityOfferValidity(opts: {
   if (asDate) {
     return {
       offer_validity_date: asDate.isoDate,
-      validity_date: asDate.display,
-      offer_validity_label: formRaw,
+      validity_date: `${asDate.display} (12pm)`,
+      offer_validity_label: `12pm on ${asDate.display}`,
     };
   }
 
@@ -338,15 +340,15 @@ function resolveElectricityOfferValidity(opts: {
   if (daysMatch) {
     const days = parseInt(daysMatch[1], 10);
     if (Number.isFinite(days) && days > 0) {
-      const until = new Date(opts.anchor.getTime());
-      until.setUTCDate(until.getUTCDate() + days);
+      // Use Brisbane calendar arithmetic via ISO date parts from anchor+days in local-ish UTC noon.
+      const until = new Date(opts.anchor.getTime() + days * 24 * 60 * 60 * 1000);
       const isoDate = until.toISOString().slice(0, 10);
       const [y, m, d] = isoDate.split("-");
       const display = `${d}/${m}/${y}`;
       return {
         offer_validity_date: isoDate,
         validity_date: `${display} (12pm)`,
-        offer_validity_label: formRaw,
+        offer_validity_label: `12pm on ${display}`,
       };
     }
   }
@@ -359,20 +361,27 @@ function resolveElectricityOfferValidity(opts: {
   };
 }
 
+/** Extract a calendar date from free text (e.g. "12pm on 30/07/2026", "valid until 30/07/2026"). */
 function parseFlexibleDateToIso(raw: string): { isoDate: string; display: string } | null {
   const s = raw.trim();
   if (!s) return null;
-  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (iso) {
-    return { isoDate: `${iso[1]}-${iso[2]}-${iso[3]}`, display: `${iso[3]}/${iso[2]}/${iso[1]}` };
+
+  const isoAnywhere = s.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (isoAnywhere) {
+    return {
+      isoDate: `${isoAnywhere[1]}-${isoAnywhere[2]}-${isoAnywhere[3]}`,
+      display: `${isoAnywhere[3]}/${isoAnywhere[2]}/${isoAnywhere[1]}`,
+    };
   }
-  const dmy = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/);
-  if (dmy) {
-    const dd = dmy[1].padStart(2, "0");
-    const mm = dmy[2].padStart(2, "0");
-    const yyyy = dmy[3];
+
+  const dmyAnywhere = s.match(/(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/);
+  if (dmyAnywhere) {
+    const dd = dmyAnywhere[1].padStart(2, "0");
+    const mm = dmyAnywhere[2].padStart(2, "0");
+    const yyyy = dmyAnywhere[3];
     return { isoDate: `${yyyy}-${mm}-${dd}`, display: `${dd}/${mm}/${yyyy}` };
   }
+
   const t = Date.parse(s);
   if (!Number.isNaN(t)) {
     const isoDate = new Date(t).toISOString().slice(0, 10);
@@ -1222,6 +1231,9 @@ function CIElectricityOfferModal({
             comparisonSnapshot.validity_date = validityResolved.validity_date;
           }
 
+          const agreementStartRaw = String(formData.offer1StartDate || "").trim();
+          const agreementStartParsed = agreementStartRaw ? parseFlexibleDateToIso(agreementStartRaw) : null;
+
           const ctxBase: Record<string, unknown> = {
             utility_invoice_info_trigger: "comparison_success",
             business_name: businessName,
@@ -1243,12 +1255,25 @@ function CIElectricityOfferModal({
             offer_peak_cpkwh: comparisonSnapshot.offer_peak_cpkwh,
             offer_offpeak_cpkwh: comparisonSnapshot.offer_offpeak_cpkwh,
           };
+          if (agreementStartParsed) {
+            ctxBase.agreement_start_date = agreementStartParsed.display;
+            ctxBase.new_agreement_start_date = agreementStartParsed.display;
+            comparisonSnapshot.agreement_start_date = agreementStartParsed.display;
+            comparisonSnapshot.new_agreement_start_date = agreementStartParsed.display;
+          } else if (agreementStartRaw) {
+            ctxBase.agreement_start_date = agreementStartRaw;
+            ctxBase.new_agreement_start_date = agreementStartRaw;
+            comparisonSnapshot.agreement_start_date = agreementStartRaw;
+            comparisonSnapshot.new_agreement_start_date = agreementStartRaw;
+          }
           if (validityResolved?.offer_validity_date) {
             ctxBase.offer_validity_date = validityResolved.offer_validity_date;
             // Noon Brisbane on that date — avoids agent inventing a +7 day window.
             ctxBase.offer_valid_until = `${validityResolved.offer_validity_date}T02:00:00.000Z`;
             ctxBase.validity_date = validityResolved.validity_date;
             ctxBase.offer_validity_label = validityResolved.offer_validity_label;
+            // Explicitly clear the misleading +7 default key if present later.
+            ctxBase.offer_validity_days = null;
           } else if (validityResolved?.offer_validity_label) {
             ctxBase.offer_validity_label = validityResolved.offer_validity_label;
             ctxBase.validity_date = validityResolved.validity_date;
