@@ -14,6 +14,7 @@ import {
   KeyRound,
   LayoutDashboard,
   LayoutGrid,
+  Leaf,
   Lightbulb,
   Lock,
   Sparkles,
@@ -82,6 +83,14 @@ export const JOB_GROUPS: NavGroupItem[] = [
       { title: "Personal Assistant", url: "/personal-assistant" },
       { title: "RSL Agent", url: "/rsl-agent" },
       { title: "Videos", url: "/videos" },
+    ],
+  },
+  {
+    title: "GHG Reporting",
+    icon: Leaf,
+    items: [
+      { title: "Linked entities", url: "/ghg-reporting/entities" },
+      { title: "WIP review", url: "/ghg-reporting" },
     ],
   },
   {
