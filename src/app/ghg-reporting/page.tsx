@@ -657,7 +657,8 @@ export default function GhgReportingPage() {
   return (
     <div className="space-y-4">
       <PageHeader
-        pageName="GHG reporting"
+        pageName="WIP review"
+        title="GHG WIP review"
         description="Search a business, inspect utility invoice health, and review GHG readiness."
       />
       <Card variant="elevated">

@@ -157,12 +157,14 @@ export function Sidebar() {
     }
   }, [jumpQuery, filtering, setJobGroupExpanded, setSectionExpanded]);
 
+  // Auto-expand the section/group that owns the current route when navigating.
+  // Depend only on pathname so a manual collapse while staying on that page sticks.
   useEffect(() => {
     NAV_DATA.forEach((section) => {
       section.items.forEach((item) => {
         if (isNavGroup(item)) {
           const hasActive = item.items.some((sub) => sub.url === pathname);
-          if (hasActive && !isSectionOpen(section.label)) {
+          if (hasActive) {
             setSectionExpanded(section.label, true);
           }
         }
@@ -170,11 +172,11 @@ export function Sidebar() {
     });
     JOB_GROUPS.forEach((group) => {
       const hasActive = group.items.some((sub) => sub.url === pathname);
-      if (hasActive && !isJobGroupOpen(group.title)) {
+      if (hasActive) {
         setJobGroupExpanded(group.title, true);
       }
     });
-  }, [pathname, isSectionOpen, isJobGroupOpen, setSectionExpanded, setJobGroupExpanded]);
+  }, [pathname, setSectionExpanded, setJobGroupExpanded]);
 
   useEffect(() => {
     if (status !== "authenticated" || !session?.user?.email) return;
