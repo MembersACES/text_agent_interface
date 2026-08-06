@@ -13,7 +13,7 @@ import { useToast } from "@/components/ui/toast";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { FileText } from "lucide-react";
-import { BRAND } from "@/lib/brand";
+import { BRAND, CONTRACT_STATUS_OPTIONS } from "@/lib/brand";
 import { RecordRow, RecordRowOpenAction } from "../shared/RecordRow";
 import { getRecordRowIcon } from "../shared/recordRowIcons";
 import { combineFilesIntoPdf } from "@/lib/combineFiles";
@@ -32,6 +32,7 @@ import {
   getDocumentsCountFromBusinessInfo,
   getKeyDocumentsFromProcessed,
   KEY_DOC_LABELS,
+  withUpdatedContractStatus,
 } from "./documentHelpers";
 
 export interface DocumentsTabProps {
@@ -135,6 +136,16 @@ function contractStatusBadge(status: string | undefined, hasUrl: boolean) {
     return (
       <Badge intent="success" shape="pill">
         {status || BRAND.signedContractStatusLabel}
+      </Badge>
+    );
+  }
+  if (
+    status === BRAND.signedExternallyStatusValue ||
+    s.includes("signed externally")
+  ) {
+    return (
+      <Badge intent="info" shape="pill">
+        {BRAND.signedExternallyStatusLabel}
       </Badge>
     );
   }
@@ -299,6 +310,7 @@ export function DocumentsTab({
   const [driveFile, setDriveFile] = useState<File | null>(null);
   const [driveLoading, setDriveLoading] = useState(false);
   const [driveResult, setDriveResult] = useState<string | null>(null);
+  const [statusSavingKey, setStatusSavingKey] = useState<string | null>(null);
 
   const [showAddDocModal, setShowAddDocModal] = useState(false);
   const [addDocFiles, setAddDocFiles] = useState<File[]>([]);
@@ -478,6 +490,64 @@ export function DocumentsTab({
     "C&I Electricity": "signed_CI_E", "SME Electricity": "signed_SME_E",
     "C&I Gas": "signed_CI_G", "SME Gas": "signed_SME_G",
     Waste: "signed_WASTE", Oil: "signed_OIL", DMA: "signed_DMA",
+  };
+
+  const updateContractStatus = async (
+    contractKey: string,
+    fileIndex: number,
+    newStatus: string
+  ) => {
+    if (!token || !businessInfo) return;
+    const businessNameResolved =
+      String(business?.name ?? "").trim() ||
+      String(businessName ?? "").trim();
+    if (!businessNameResolved) {
+      showToast("Missing business name for contract update", "error");
+      return;
+    }
+    const saveKey = `${contractKey}-${fileIndex}`;
+    setStatusSavingKey(saveKey);
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/contracts/status`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          business_name: businessNameResolved,
+          contract_key: contractKey,
+          status: newStatus,
+          file_index: fileIndex,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(
+          formatBackendErrorBody(data) || `Status update failed (${res.status})`
+        );
+      }
+      const cell = (data as { updated_status_cell?: string }).updated_status_cell;
+      setBusinessInfo((prev) =>
+        prev
+          ? withUpdatedContractStatus(
+              prev,
+              contractKey,
+              fileIndex,
+              newStatus,
+              cell ?? null
+            )
+          : prev
+      );
+      showToast(`${contractKey} status updated`, "success");
+    } catch (err) {
+      showToast(
+        err instanceof Error ? err.message : "Status update failed",
+        "error"
+      );
+    } finally {
+      setStatusSavingKey(null);
+    }
   };
 
   const contracts = getContractsFromProcessed(processed);
@@ -1130,13 +1200,47 @@ export function DocumentsTab({
                               const title =
                                 c.items.length > 1 ? `${c.key} (#${idx + 1})` : c.key;
                               if (!matchesSearch(title)) return null;
+                              const rowKey = `${c.key}-${idx}`;
+                              const saving = statusSavingKey === rowKey;
                               return (
                                 <RecordRow
-                                  key={`${c.key}-${idx}`}
+                                  key={rowKey}
                                   leadingIcon={categoryIcon.icon}
                                   iconIntent={categoryIcon.intent}
                                   title={title}
-                                  status={contractStatusBadge(item.status, !!item.url)}
+                                  status={
+                                    <div className="flex flex-col items-end gap-1">
+                                      {contractStatusBadge(item.status, !!item.url)}
+                                      <select
+                                        aria-label={`${title} contract status`}
+                                        disabled={saving || !token}
+                                        value={item.status || ""}
+                                        onChange={(e) =>
+                                          updateContractStatus(
+                                            c.key,
+                                            idx,
+                                            e.target.value
+                                          )
+                                        }
+                                        className="max-w-[12rem] rounded-md border border-stroke/60 bg-white px-1.5 py-1 text-[11px] text-gray-700 dark:border-dark-3 dark:bg-dark-2 dark:text-gray-200"
+                                      >
+                                        <option value="">No status</option>
+                                        {CONTRACT_STATUS_OPTIONS.map((opt) => (
+                                          <option key={opt.value} value={opt.value}>
+                                            {opt.label}
+                                          </option>
+                                        ))}
+                                        {item.status &&
+                                          !CONTRACT_STATUS_OPTIONS.some(
+                                            (o) => o.value === item.status
+                                          ) && (
+                                            <option value={item.status}>
+                                              {item.status}
+                                            </option>
+                                          )}
+                                      </select>
+                                    </div>
+                                  }
                                   muted={!item.url}
                                   actions={
                                     <>
@@ -1360,11 +1464,8 @@ export function DocumentsTab({
         )}
         {driveFilingType.startsWith("signed_") && (
           <MField label="Contract Status">
-            <div className="flex gap-5 mt-0.5">
-              {[
-                { value: BRAND.signedContractStatusValue, label: BRAND.signedContractStatusLabel },
-                { value: "Existing Contract", label: "Existing Contract (Copy)" },
-              ].map(({ value, label }) => (
+            <div className="flex flex-col gap-2 mt-0.5">
+              {CONTRACT_STATUS_OPTIONS.map(({ value, label }) => (
                 <label key={value} className="flex items-center gap-2 cursor-pointer text-sm text-gray-700 dark:text-gray-300">
                   <input type="radio" name="driveStatus" checked={driveContractStatus === value} onChange={() => setDriveContractStatus(value)} className="accent-gray-900 dark:accent-white" />
                   {label}

@@ -262,3 +262,55 @@ export function getBusinessDocumentsForOverview(
     .filter((item): item is { name: string; url: string } => !!item.url);
 }
 
+/**
+ * Optimistically update `_processed_file_ids` after a per-file contract status PATCH.
+ * Prefer `updatedStatusCell` from the API when present (authoritative comma-separated cell).
+ */
+export function withUpdatedContractStatus(
+  businessInfo: Record<string, unknown>,
+  contractKey: string,
+  fileIndex: number,
+  newStatus: string,
+  updatedStatusCell?: string | null
+): Record<string, unknown> {
+  const prevProcessed =
+    (businessInfo._processed_file_ids as Record<string, unknown> | undefined) ?? {};
+  const processed: Record<string, unknown> = { ...prevProcessed };
+  const statusKey = `contract_${contractKey}_status`;
+
+  if (updatedStatusCell != null && updatedStatusCell !== "") {
+    processed[statusKey] = updatedStatusCell;
+  } else if (updatedStatusCell === "") {
+    delete processed[statusKey];
+  } else {
+    const urlRaw = processed[`contract_${contractKey}`];
+    const urls =
+      urlRaw != null && String(urlRaw).trim()
+        ? String(urlRaw)
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : [];
+    const statusRaw = processed[statusKey];
+    const statuses =
+      statusRaw != null && String(statusRaw).trim()
+        ? String(statusRaw)
+            .split(",")
+            .map((s) => s.trim())
+        : [];
+    const targetLen = Math.max(urls.length, fileIndex + 1, statuses.length, 1);
+    while (statuses.length < targetLen) {
+      statuses.push(statuses.length ? statuses[statuses.length - 1]! : "");
+    }
+    statuses[fileIndex] = newStatus;
+    const joined = statuses.join(",");
+    if (joined.replace(/,/g, "").trim()) {
+      processed[statusKey] = joined;
+    } else {
+      delete processed[statusKey];
+    }
+  }
+
+  return { ...businessInfo, _processed_file_ids: processed };
+}
+
