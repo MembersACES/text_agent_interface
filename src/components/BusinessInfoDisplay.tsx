@@ -4831,7 +4831,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
           <div className="flex justify-end gap-2">
             <Button
               type="button"
-              variant="outline"
+              variant="secondary"
               disabled={bizEditSaving}
               onClick={() => setBizEditOpen(false)}
             >
