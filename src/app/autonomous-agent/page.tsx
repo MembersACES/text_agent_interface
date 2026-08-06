@@ -6,8 +6,9 @@ import Link from "next/link";
 import { getAutonomousApiBaseUrl, cn } from "@/lib/utils";
 import { PageHeader } from "@/components/Layouts/PageHeader";
 import { useToast } from "@/components/ui/toast";
+import AutonomousResources from "./_components/AutonomousResources";
 
-type AgentTab = "running" | "finished" | "templates";
+type AgentTab = "running" | "finished" | "templates" | "resources";
 
 interface AutonomousRunRow {
   id: number;
@@ -202,7 +203,7 @@ export default function AutonomousAgentPage() {
 
   useEffect(() => {
     if (!token) { setLoading(false); return; }
-    if (tab === "templates") { setLoading(false); return; }
+    if (tab === "templates" || tab === "resources") { setLoading(false); return; }
     const fetchRuns = async () => {
       try {
         setLoading(true); setError(null);
@@ -579,11 +580,12 @@ export default function AutonomousAgentPage() {
               role="tablist"
               aria-label="Autonomous sequence queue"
             >
-              {(["running", "finished", "templates"] as AgentTab[]).map((t) => {
+              {(["running", "finished", "templates", "resources"] as AgentTab[]).map((t) => {
                 const labels: Record<AgentTab, string> = {
                   running: "Running",
                   finished: "Finished",
                   templates: "Sequence templates",
+                  resources: "Autonomous Resources",
                 };
                 return (
                   <button
@@ -625,15 +627,18 @@ export default function AutonomousAgentPage() {
         </div>
 
         {/* ── error banner ── */}
-        {tab !== "templates" && error && (
+        {tab !== "templates" && tab !== "resources" && error && (
           <div className="flex items-start gap-3 rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30 p-3.5 text-sm text-red-700 dark:text-red-300">
             <span className="mt-0.5 shrink-0 text-base">⚠️</span>
             <span>{error}</span>
           </div>
         )}
 
-        {/* ══════════════ TEMPLATES TAB ══════════════ */}
-        {tab === "templates" ? (
+        {/* ══════════════ RESOURCES TAB ══════════════ */}
+        {tab === "resources" ? (
+          <AutonomousResources />
+        ) : /* ══════════════ TEMPLATES TAB ══════════════ */
+        tab === "templates" ? (
           <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4 items-start">
 
             {/* sidebar list */}
@@ -1029,7 +1034,7 @@ export default function AutonomousAgentPage() {
         )}
 
         {/* load more */}
-        {tab !== "templates" && !loading && runs.length > 0 && runs.length < total && (
+        {tab !== "templates" && tab !== "resources" && !loading && runs.length > 0 && runs.length < total && (
           <div className="flex justify-center">
             <button type="button" onClick={() => loadMore()} disabled={loadingMore}
               className={cn(btnSecondary, "px-6 py-2 text-sm")}>
