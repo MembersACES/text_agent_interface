@@ -8,13 +8,14 @@ import {
   parseAdditionalDocuments,
   parseEngagementForms,
 } from "@/lib/member-documents-api";
-import { displayDocName, getContractsFromProcessed } from "@/components/crm-member/tabs/documentHelpers";
+import { displayDocName, getContractsFromProcessed, withUpdatedContractStatus } from "@/components/crm-member/tabs/documentHelpers";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { combineFilesIntoPdf } from "@/lib/combineFiles";
 import { PrimaryButton, SecondaryButton, LinkButton } from "@/components/BusinessInfoButtons";
-import { BRAND } from "@/lib/brand";
+import { BRAND, CONTRACT_STATUS_OPTIONS } from "@/lib/brand";
 import { Modal } from "@/components/ui/modal";
+import { Button } from "@/components/ui/button";
 
 
 function InfoRow({
@@ -253,8 +254,149 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
   const [utilityEditLoading, setUtilityEditLoading] = useState(false);
   const [utilityEditError, setUtilityEditError] = useState<string | null>(null);
 
+  const [bizEditOpen, setBizEditOpen] = useState(false);
+  const [bizEditSaving, setBizEditSaving] = useState(false);
+  const [bizEditError, setBizEditError] = useState<string | null>(null);
+  const [bizEditForm, setBizEditForm] = useState({
+    trading_name: "",
+    postal_address: "",
+    site_address: "",
+    telephone: "",
+    email: "",
+    contact_name: "",
+    position: "",
+  });
+  const [contractStatusSavingKey, setContractStatusSavingKey] = useState<string | null>(null);
+
   const { data: session } = useSession();
   const token = (session as any)?.id_token;
+
+  const openBizEditModal = () => {
+    setBizEditError(null);
+    setBizEditForm({
+      trading_name: String(business.trading_name ?? ""),
+      postal_address: String(contact.postal_address ?? ""),
+      site_address: String(contact.site_address ?? ""),
+      telephone: String(contact.telephone ?? ""),
+      email: String(contact.email ?? ""),
+      contact_name: String(rep.contact_name ?? ""),
+      position: String(rep.position ?? ""),
+    });
+    setBizEditOpen(true);
+  };
+
+  const saveBizEdit = async () => {
+    if (!token) {
+      setBizEditError("Sign in required to update business details");
+      return;
+    }
+    const recordId = String(info?.record_ID ?? "").trim();
+    const name = String(business.name ?? "").trim();
+    if (!recordId && !name) {
+      setBizEditError("Missing LOA record id / business name");
+      return;
+    }
+    setBizEditSaving(true);
+    setBizEditError(null);
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/business-info`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          ...(recordId ? { record_id: recordId } : {}),
+          business_name: name,
+          ...bizEditForm,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(formatBackendErrorBody(data) || `Update failed (${res.status})`);
+      }
+      const updated = (data as { business_info?: Record<string, unknown> }).business_info;
+      if (updated && setInfo) {
+        setInfo({
+          ...info,
+          business_details: {
+            ...(info.business_details || {}),
+            ...(updated.business_details as object),
+          },
+          contact_information: {
+            ...(info.contact_information || {}),
+            ...(updated.contact_information as object),
+          },
+          representative_details: {
+            ...(info.representative_details || {}),
+            ...(updated.representative_details as object),
+          },
+          record_ID:
+            (updated.record_ID as string) || info.record_ID || recordId,
+        });
+      }
+      setBizEditOpen(false);
+    } catch (e) {
+      setBizEditError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBizEditSaving(false);
+    }
+  };
+
+  const updateContractStatus = async (
+    contractKey: string,
+    fileIndex: number,
+    newStatus: string
+  ) => {
+    if (!token) {
+      alert("Sign in required to update contract status");
+      return;
+    }
+    const name = String(business.name ?? "").trim();
+    if (!name) {
+      alert("Missing business name for contract update");
+      return;
+    }
+    const saveKey = `${contractKey}-${fileIndex}`;
+    setContractStatusSavingKey(saveKey);
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/contracts/status`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          business_name: name,
+          contract_key: contractKey,
+          status: newStatus,
+          file_index: fileIndex,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(
+          formatBackendErrorBody(data) || `Status update failed (${res.status})`
+        );
+      }
+      const cell = (data as { updated_status_cell?: string }).updated_status_cell;
+      if (setInfo) {
+        setInfo(
+          withUpdatedContractStatus(
+            info,
+            contractKey,
+            fileIndex,
+            newStatus,
+            cell ?? null
+          )
+        );
+      }
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Status update failed");
+    } finally {
+      setContractStatusSavingKey(null);
+    }
+  };
 
   // C&I Electricity NMI logic
   const ciElectricity = linked["C&I Electricity"];
@@ -1859,10 +2001,15 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
       <div className="px-6 py-4 space-y-8">
         {/* Overview Section */}
         <div id="overview">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h2 className="text-lg font-semibold text-gray-800">Business &amp; contact</h2>
+            <PrimaryButton onClick={openBizEditModal}>Edit details</PrimaryButton>
+          </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Contact Information */}
             <div className="space-y-3">
               <h3 className="font-semibold text-gray-800 text-base mb-3">Contact Information</h3>
+              <InfoRow label="Trading As" value={business.trading_name || <span className="text-xs text-gray-400">Not available</span>} />
               <InfoRow label="Postal Address" value={contact.postal_address || <span className="text-xs text-gray-400">Not available</span>} />
               <InfoRow label="Site Address" value={contact.site_address || <span className="text-xs text-gray-400">Not available</span>} />
               <InfoRow label="Phone" value={contact.telephone || <span className="text-xs text-gray-400">Not available</span>} />
@@ -2066,9 +2213,14 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                               item.status?.toLowerCase().includes("carbon zero") ||
                               item.status?.toLowerCase().includes("aces") ||
                               item.status?.toLowerCase().includes("signed via aces");
+                            const isExternal =
+                              item.status?.toLowerCase().includes("signed externally") ||
+                              item.status === BRAND.signedExternallyStatusValue;
+                            const rowKey = `${key}-${idx}`;
+                            const saving = contractStatusSavingKey === rowKey;
                             return (
                               <div
-                                key={`${key}-${idx}`}
+                                key={rowKey}
                                 className="flex flex-wrap items-center gap-2 text-xs text-gray-500"
                               >
                                 {items.length > 1 && (
@@ -2082,12 +2234,40 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                                     className={`px-2 py-0.5 rounded-full text-xs font-medium ${
                                       isBrandSigned
                                         ? "bg-green-100 text-green-700"
-                                        : "bg-blue-100 text-blue-700"
+                                        : isExternal
+                                          ? "bg-amber-100 text-amber-800"
+                                          : "bg-blue-100 text-blue-700"
                                     }`}
                                   >
-                                    {isBrandSigned ? "✓ Carbon Zero Signed" : item.status}
+                                    {isBrandSigned
+                                      ? "✓ Carbon Zero Signed"
+                                      : isExternal
+                                        ? BRAND.signedExternallyStatusLabel
+                                        : item.status}
                                   </span>
                                 )}
+                                <select
+                                  aria-label={`${key}${items.length > 1 ? ` #${idx + 1}` : ""} contract status`}
+                                  disabled={saving || !token}
+                                  value={item.status || ""}
+                                  onChange={(e) =>
+                                    updateContractStatus(key, idx, e.target.value)
+                                  }
+                                  className="max-w-[12rem] rounded border border-gray-300 bg-white px-1.5 py-0.5 text-[11px] text-gray-700"
+                                >
+                                  <option value="">No status</option>
+                                  {CONTRACT_STATUS_OPTIONS.map((opt) => (
+                                    <option key={opt.value} value={opt.value}>
+                                      {opt.label}
+                                    </option>
+                                  ))}
+                                  {item.status &&
+                                    !CONTRACT_STATUS_OPTIONS.some(
+                                      (o) => o.value === item.status
+                                    ) && (
+                                      <option value={item.status}>{item.status}</option>
+                                    )}
+                                </select>
                               </div>
                             );
                           })}
@@ -3845,28 +4025,19 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                   <div className="mb-4 p-3 border border-blue-200 rounded bg-blue-50">
                     <label className="font-semibold block mb-2">Contract Status:</label>
                     <div className="space-y-2">
-                      <label className="flex items-center cursor-pointer">
-                        <input
-                          type="radio"
-                          name="contractStatus"
-                          value={BRAND.signedContractStatusValue}
-                          checked={driveModalContractStatus === BRAND.signedContractStatusValue}
-                          onChange={(e) => setDriveModalContractStatus(e.target.value)}
-                          className="mr-2"
-                        />
-                        <span className="text-sm">{BRAND.signedContractStatusLabel}</span>
-                      </label>
-                      <label className="flex items-center cursor-pointer">
-                        <input
-                          type="radio"
-                          name="contractStatus"
-                          value="Existing Contract"
-                          checked={driveModalContractStatus === 'Existing Contract'}
-                          onChange={(e) => setDriveModalContractStatus(e.target.value)}
-                          className="mr-2"
-                        />
-                        <span className="text-sm">Existing Contract (Copy)</span>
-                      </label>
+                      {CONTRACT_STATUS_OPTIONS.map(({ value, label }) => (
+                        <label key={value} className="flex items-center cursor-pointer">
+                          <input
+                            type="radio"
+                            name="contractStatus"
+                            value={value}
+                            checked={driveModalContractStatus === value}
+                            onChange={(e) => setDriveModalContractStatus(e.target.value)}
+                            className="mr-2"
+                          />
+                          <span className="text-sm">{label}</span>
+                        </label>
+                      ))}
                     </div>
                     {driveModalContractStatus === 'Pending Refresh' && (
                       <p className="text-xs text-orange-600 mt-2 font-medium">
@@ -4650,6 +4821,80 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
           </div>
         </div>
       )}
+
+      <Modal
+        open={bizEditOpen}
+        onClose={() => !bizEditSaving && setBizEditOpen(false)}
+        title="Edit business details"
+        size="lg"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={bizEditSaving}
+              onClick={() => setBizEditOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button type="button" loading={bizEditSaving} onClick={saveBizEdit}>
+              Save changes
+            </Button>
+          </div>
+        }
+      >
+        <div className="grid gap-3 sm:grid-cols-2">
+          {(
+            [
+              ["trading_name", "Trading name"],
+              ["contact_name", "Contact name"],
+              ["position", "Position"],
+              ["telephone", "Phone"],
+              ["email", "Email"],
+            ] as const
+          ).map(([key, label]) => (
+            <label key={key} className="block space-y-1">
+              <span className="text-xs font-medium text-gray-500">{label}</span>
+              <input
+                type="text"
+                value={bizEditForm[key]}
+                onChange={(e) =>
+                  setBizEditForm((f) => ({ ...f, [key]: e.target.value }))
+                }
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              />
+            </label>
+          ))}
+          <label className="block space-y-1 sm:col-span-2">
+            <span className="text-xs font-medium text-gray-500">Postal address</span>
+            <textarea
+              rows={2}
+              value={bizEditForm.postal_address}
+              onChange={(e) =>
+                setBizEditForm((f) => ({ ...f, postal_address: e.target.value }))
+              }
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            />
+          </label>
+          <label className="block space-y-1 sm:col-span-2">
+            <span className="text-xs font-medium text-gray-500">Site address</span>
+            <textarea
+              rows={2}
+              value={bizEditForm.site_address}
+              onChange={(e) =>
+                setBizEditForm((f) => ({ ...f, site_address: e.target.value }))
+              }
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            />
+          </label>
+        </div>
+        {bizEditError && (
+          <p className="mt-3 text-sm text-red-600">{bizEditError}</p>
+        )}
+        <p className="mt-3 text-[11px] text-gray-400">
+          Saves to the LOA Business Details record in Airtable.
+        </p>
+      </Modal>
 
       </div>
     </React.Fragment>

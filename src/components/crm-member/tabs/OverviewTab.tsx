@@ -1,12 +1,18 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
-import { cn } from "@/lib/utils";
+import { useSession } from "next-auth/react";
+import { cn, getApiBaseUrl } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card as UiCard } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Modal } from "@/components/ui/modal";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
+import { formatBackendErrorBody } from "@/lib/api-errors";
 import { SectionHeader } from "../shared/SectionHeader";
-import { FileText, Building2 } from "lucide-react";
+import { FileText, Building2, Pencil } from "lucide-react";
 import { BusinessInfoRow } from "../shared/BusinessInfoRow";
 import {
   MEMBER_CARD_BODY,
@@ -17,7 +23,6 @@ import { OfferStatusBadge } from "../shared/OfferStatusBadge";
 import { RecordRow, RecordRowOpenAction } from "../shared/RecordRow";
 import { buildOfferRecordSubtitle } from "../shared/offerRecordMeta";
 import { getRecordRowIcon } from "../shared/recordRowIcons";
-import { formatDate } from "../shared/formatDate";
 import type { Task, Offer, Note, Client } from "../types";
 import {
   getBusinessDocumentsForOverview,
@@ -25,7 +30,19 @@ import {
   getDocumentsCountFromBusinessInfo,
   getKeyDocumentsFromBusinessInfo,
   getSfaFilesFromBusinessInfo,
+  withUpdatedContractStatus,
 } from "./documentHelpers";
+import { CONTRACT_STATUS_OPTIONS } from "@/lib/brand";
+
+type BusinessEditForm = {
+  trading_name: string;
+  postal_address: string;
+  site_address: string;
+  telephone: string;
+  email: string;
+  contact_name: string;
+  position: string;
+};
 
 export interface OverviewTabProps {
   clientId: number;
@@ -145,6 +162,31 @@ function CountBadge({ count }: { count: number }) {
   );
 }
 
+function EditField({
+  label,
+  value,
+  onChange,
+  multiline,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  multiline?: boolean;
+}) {
+  const cls =
+    "w-full rounded-lg border border-stroke bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-primary dark:border-dark-3 dark:bg-dark-2 dark:text-gray-100";
+  return (
+    <label className="block space-y-1">
+      <span className="text-xs font-medium text-gray-500 dark:text-gray-400">{label}</span>
+      {multiline ? (
+        <textarea rows={2} value={value} onChange={(e) => onChange(e.target.value)} className={cls} />
+      ) : (
+        <input type="text" value={value} onChange={(e) => onChange(e.target.value)} className={cls} />
+      )}
+    </label>
+  );
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export function OverviewTab({
@@ -152,12 +194,20 @@ export function OverviewTab({
   client,
   businessInfo,
   businessInfoLoading = false,
+  setBusinessInfo,
   businessInfoOpen,
   onToggleBusinessInfo,
   offers,
   notes,
   onCreateOfferClick,
 }: OverviewTabProps) {
+  const { data: session } = useSession();
+  const { showToast } = useToast();
+  const token =
+    (session as { id_token?: string; accessToken?: string } | null)?.id_token ??
+    (session as { id_token?: string; accessToken?: string } | null)?.accessToken ??
+    "";
+
   const biz = (businessInfo as any)?.business_details ?? {};
   const contact = (businessInfo as any)?.contact_information ?? {};
   const rep = (businessInfo as any)?.representative_details ?? {};
@@ -192,31 +242,185 @@ export function OverviewTab({
     businessInfo as Record<string, unknown> | null
   );
 
+  const [editOpen, setEditOpen] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editForm, setEditForm] = useState<BusinessEditForm>({
+    trading_name: "",
+    postal_address: "",
+    site_address: "",
+    telephone: "",
+    email: "",
+    contact_name: "",
+    position: "",
+  });
+  const [statusSavingKey, setStatusSavingKey] = useState<string | null>(null);
+
+  const openEditModal = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditForm({
+      trading_name: String(biz?.trading_name ?? ""),
+      postal_address: String(contact?.postal_address ?? ""),
+      site_address: String(contact?.site_address ?? ""),
+      telephone: String(contact?.telephone ?? ""),
+      email: String(contact?.email ?? ""),
+      contact_name: String(rep?.contact_name ?? ""),
+      position: String(rep?.position ?? ""),
+    });
+    setEditOpen(true);
+  };
+
+  const saveBusinessDetails = async () => {
+    if (!token) {
+      showToast("Sign in required to update business details", "error");
+      return;
+    }
+    const recordId = String((businessInfo as any)?.record_ID ?? "").trim();
+    const businessName =
+      String(biz?.name ?? "").trim() || String(client.business_name ?? "").trim();
+    if (!recordId && !businessName) {
+      showToast("Missing LOA record id / business name", "error");
+      return;
+    }
+
+    setEditSaving(true);
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/business-info`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          ...(recordId ? { record_id: recordId } : {}),
+          business_name: businessName,
+          ...editForm,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(formatBackendErrorBody(data) || `Update failed (${res.status})`);
+      }
+
+      const updated = (data as { business_info?: Record<string, unknown> }).business_info;
+      if (updated && businessInfo) {
+        setBusinessInfo({
+          ...businessInfo,
+          business_details: {
+            ...((businessInfo.business_details as object) ?? {}),
+            ...((updated.business_details as object) ?? {}),
+          },
+          contact_information: {
+            ...((businessInfo.contact_information as object) ?? {}),
+            ...((updated.contact_information as object) ?? {}),
+          },
+          representative_details: {
+            ...((businessInfo.representative_details as object) ?? {}),
+            ...((updated.representative_details as object) ?? {}),
+          },
+          record_ID:
+            (updated.record_ID as string) ||
+            (businessInfo.record_ID as string) ||
+            recordId,
+        });
+      }
+      showToast("Business details updated", "success");
+      setEditOpen(false);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Update failed", "error");
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
+  const updateContractStatus = async (
+    contractKey: string,
+    fileIndex: number,
+    newStatus: string
+  ) => {
+    if (!token || !businessInfo) return;
+    const businessName =
+      String(biz?.name ?? "").trim() || String(client.business_name ?? "").trim();
+    if (!businessName) {
+      showToast("Missing business name for contract update", "error");
+      return;
+    }
+    const saveKey = `${contractKey}-${fileIndex}`;
+    setStatusSavingKey(saveKey);
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/contracts/status`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          business_name: businessName,
+          contract_key: contractKey,
+          status: newStatus,
+          file_index: fileIndex,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(formatBackendErrorBody(data) || `Status update failed (${res.status})`);
+      }
+      const cell = (data as { updated_status_cell?: string }).updated_status_cell;
+      setBusinessInfo(
+        withUpdatedContractStatus(
+          businessInfo,
+          contractKey,
+          fileIndex,
+          newStatus,
+          cell ?? null
+        )
+      );
+      showToast(`${contractKey} status updated`, "success");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Status update failed", "error");
+    } finally {
+      setStatusSavingKey(null);
+    }
+  };
+
   return (
     <div className="space-y-4">
 
       {/* ── Business Information ── */}
       <Card>
-        <button
-          type="button"
-          onClick={onToggleBusinessInfo}
-          className="w-full px-5 py-4 flex items-center justify-between text-left hover:bg-gray-50/60 dark:hover:bg-white/[0.02] transition-colors"
-          aria-expanded={businessInfoOpen}
-        >
-          <div className="flex items-center gap-2.5">
-            <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary dark:bg-primary/20">
-              <Building2 className="size-4" aria-hidden />
-            </span>
-            <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">Business Information</span>
-            {businessInfoLoading && (
-              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-900/20 text-[11px] font-semibold text-amber-600 dark:text-amber-400">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-                Loading
+        <div className="px-5 py-4 flex items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={onToggleBusinessInfo}
+            className="flex min-w-0 flex-1 items-center justify-between text-left hover:opacity-90 transition-opacity"
+            aria-expanded={businessInfoOpen}
+          >
+            <div className="flex items-center gap-2.5">
+              <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary dark:bg-primary/20">
+                <Building2 className="size-4" aria-hidden />
               </span>
-            )}
-          </div>
-          <IconChevron rotated={businessInfoOpen} />
-        </button>
+              <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">Business Information</span>
+              {businessInfoLoading && (
+                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-900/20 text-[11px] font-semibold text-amber-600 dark:text-amber-400">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                  Loading
+                </span>
+              )}
+            </div>
+            <IconChevron rotated={businessInfoOpen} />
+          </button>
+          {businessInfo && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="shrink-0 gap-1.5"
+              onClick={openEditModal}
+            >
+              <Pencil className="size-3.5" aria-hidden />
+              Edit details
+            </Button>
+          )}
+        </div>
 
         {businessInfoOpen && (
           <>
@@ -352,17 +556,20 @@ export function OverviewTab({
                               .flatMap((c) =>
                                 c.items.map((item, idx) => ({
                                   url: item.url,
+                                  status: item.status,
                                   label:
                                     c.items.length > 1
                                       ? `${c.key} (#${idx + 1})`
                                       : c.key,
                                   rowKey: `${c.key}-${idx}`,
                                   category: c.key,
+                                  fileIndex: idx,
                                 })),
                               )
                               .slice(0, 6)
-                              .map(({ rowKey, label, url, category }) => {
+                              .map(({ rowKey, label, url, category, status, fileIndex }) => {
                                 const rowIcon = getRecordRowIcon(category);
+                                const saving = statusSavingKey === rowKey;
                                 return (
                                   <RecordRow
                                     key={rowKey}
@@ -370,6 +577,34 @@ export function OverviewTab({
                                     leadingIcon={rowIcon.icon}
                                     iconIntent={rowIcon.intent}
                                     title={label}
+                                    status={
+                                      <select
+                                        aria-label={`${label} contract status`}
+                                        disabled={saving || !token}
+                                        value={status || ""}
+                                        onChange={(e) =>
+                                          updateContractStatus(
+                                            category,
+                                            fileIndex,
+                                            e.target.value
+                                          )
+                                        }
+                                        className="max-w-[11rem] rounded-md border border-stroke/60 bg-white px-1.5 py-1 text-[11px] text-gray-700 dark:border-dark-3 dark:bg-dark-2 dark:text-gray-200"
+                                      >
+                                        <option value="">No status</option>
+                                        {CONTRACT_STATUS_OPTIONS.map((opt) => (
+                                          <option key={opt.value} value={opt.value}>
+                                            {opt.label}
+                                          </option>
+                                        ))}
+                                        {status &&
+                                          !CONTRACT_STATUS_OPTIONS.some(
+                                            (o) => o.value === status
+                                          ) && (
+                                            <option value={status}>{status}</option>
+                                          )}
+                                      </select>
+                                    }
                                     actions={url ? <RecordRowOpenAction href={url} /> : undefined}
                                   />
                                 );
@@ -610,6 +845,75 @@ export function OverviewTab({
           </div>
         )}
       </Card>
+
+      <Modal
+        open={editOpen}
+        onClose={() => !editSaving && setEditOpen(false)}
+        title="Edit business details"
+        size="lg"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={editSaving}
+              onClick={() => setEditOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button type="button" loading={editSaving} onClick={saveBusinessDetails}>
+              Save changes
+            </Button>
+          </div>
+        }
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
+          <EditField
+            label="Trading name"
+            value={editForm.trading_name}
+            onChange={(v) => setEditForm((f) => ({ ...f, trading_name: v }))}
+          />
+          <EditField
+            label="Contact name"
+            value={editForm.contact_name}
+            onChange={(v) => setEditForm((f) => ({ ...f, contact_name: v }))}
+          />
+          <EditField
+            label="Position"
+            value={editForm.position}
+            onChange={(v) => setEditForm((f) => ({ ...f, position: v }))}
+          />
+          <EditField
+            label="Phone"
+            value={editForm.telephone}
+            onChange={(v) => setEditForm((f) => ({ ...f, telephone: v }))}
+          />
+          <EditField
+            label="Email"
+            value={editForm.email}
+            onChange={(v) => setEditForm((f) => ({ ...f, email: v }))}
+          />
+          <div className="sm:col-span-2">
+            <EditField
+              label="Postal address"
+              value={editForm.postal_address}
+              onChange={(v) => setEditForm((f) => ({ ...f, postal_address: v }))}
+              multiline
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <EditField
+              label="Site address"
+              value={editForm.site_address}
+              onChange={(v) => setEditForm((f) => ({ ...f, site_address: v }))}
+              multiline
+            />
+          </div>
+        </div>
+        <p className="mt-3 text-[11px] text-gray-400">
+          Saves to the LOA Business Details record in Airtable (same source as business-info).
+        </p>
+      </Modal>
 
     </div>
   );
