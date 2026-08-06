@@ -411,7 +411,7 @@ export function OverviewTab({
           {businessInfo && (
             <Button
               type="button"
-              variant="outline"
+              variant="secondary"
               size="sm"
               className="shrink-0 gap-1.5"
               onClick={openEditModal}
@@ -855,7 +855,7 @@ export function OverviewTab({
           <div className="flex justify-end gap-2">
             <Button
               type="button"
-              variant="outline"
+              variant="secondary"
               disabled={editSaving}
               onClick={() => setEditOpen(false)}
             >
