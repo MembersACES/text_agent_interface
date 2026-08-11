@@ -10,6 +10,11 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { getApiBaseUrl } from "@/lib/utils";
+import {
+  InvoicingModeToggle,
+  type InvoicingViewMode,
+} from "@/components/invoicing/InvoicingModeToggle";
+import { InvoicingDocumentsPanel } from "@/components/invoicing/InvoicingDocumentsPanel";
 
 type SheetEntry = {
   title: string;
@@ -285,6 +290,7 @@ function PageSkeleton() {
 export default function RobotDashboardInvoicingPage() {
   const { data: session, status } = useSession();
   const [invoicingAllowed, setInvoicingAllowed] = useState<boolean | null>(null);
+  const [viewMode, setViewMode] = useState<InvoicingViewMode>("sheets");
   const [commissionFiguresClientCount, setCommissionFiguresClientCount] = useState<
     number | null
   >(null);
@@ -550,22 +556,43 @@ export default function RobotDashboardInvoicingPage() {
       {/* ---------- Header / summary strip ---------- */}
       <Card variant="elevated">
         <CardHeader>
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="space-y-4">
             <div>
               <CardTitle className="text-xl">Invoicing</CardTitle>
               <CardDescription>
-                Central view for all invoicing Google Sheets.
+                {viewMode === "sheets"
+                  ? "Central view for all invoicing Google Sheets."
+                  : "Browse invoice documents from Google Drive by category and business."}
               </CardDescription>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <SummaryStat label="Sheets" value={allSheets.length} />
-              <SummaryStat label="Categories" value={SHEET_SECTIONS.length} />
-              <SummaryStat label="Tabs tracked" value={totalTabs} />
-            </div>
+            <InvoicingModeToggle
+              mode={viewMode}
+              onChange={setViewMode}
+              sheetStats={{
+                sheets: allSheets.length,
+                categories: SHEET_SECTIONS.length,
+                tabs: totalTabs,
+              }}
+            />
           </div>
         </CardHeader>
       </Card>
 
+      {viewMode === "documents" ? (
+        <Card variant="elevated">
+          <CardContent className="pt-4">
+            <InvoicingDocumentsPanel
+              token={
+                (session as { id_token?: string; accessToken?: string } | null)
+                  ?.id_token ??
+                (session as { id_token?: string; accessToken?: string } | null)
+                  ?.accessToken
+              }
+            />
+          </CardContent>
+        </Card>
+      ) : (
+        <>
       {/* ---------- Tab bar (sheet selector) ---------- */}
       <Card variant="elevated">
         <CardContent className="py-3">
@@ -794,19 +821,8 @@ export default function RobotDashboardInvoicingPage() {
           )}
         </CardContent>
       </Card>
-    </div>
-  );
-}
-
-// --- Small helpers ---
-
-function SummaryStat({ label, value }: { label: string; value: number | string }) {
-  return (
-    <div className="flex items-baseline gap-1.5 rounded-lg border border-stroke bg-white px-3 py-1.5 dark:border-dark-3 dark:bg-dark-2">
-      <span className="text-sm font-bold text-dark dark:text-white">{value}</span>
-      <span className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
-        {label}
-      </span>
+        </>
+      )}
     </div>
   );
 }
