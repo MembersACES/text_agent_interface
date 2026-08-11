@@ -122,7 +122,7 @@ export const DEFAULT_BASE2_DEFAULTS: Base2Defaults = {
     smeEnergyShare: 0.75,
     discountFactor: 0.95,
   },
-  oil: { comparisonPerL: 3 },
+  oil: { comparisonPerL: 3.30 },
   waste: { discountFactor: 0.95 },
   cleaning: { discountFactor: 0.95 },
 };
