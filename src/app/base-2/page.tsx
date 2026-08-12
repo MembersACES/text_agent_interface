@@ -495,7 +495,7 @@ function formatAud(value: number | undefined, empty = "—"): string {
 const AU_GST_DIVISOR = 1.1;
 let DEFAULT_CI_GAS_COMPARISON_RATE_PER_GJ = 17.8;
 let DEFAULT_CI_GAS_COMMISSION_AUD_PER_GJ = 3.00;
-let DEFAULT_OIL_COMPARISON_RATE_PER_L = 3;
+let DEFAULT_OIL_COMPARISON_RATE_PER_L = 3.30;
 
 let activeBase2Defaults: Base2Defaults = DEFAULT_BASE2_DEFAULTS;
 function applyBase2Defaults(d: Base2Defaults) {
