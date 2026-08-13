@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import {
   DEFAULT_INVOICING_DRIVE_CATEGORY,
   INVOICING_DRIVE_CATEGORIES,
+  INVOICING_DRIVE_CATEGORY_GROUPS,
   type InvoicingDriveCategoryKey,
 } from "@/lib/invoicing-drive-categories";
 import {
@@ -262,27 +263,53 @@ export function InvoicingDocumentsPanel({ token }: Props) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-1.5">
-        {INVOICING_DRIVE_CATEGORIES.map((cat) => {
-          const isActive = cat.key === category;
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+        {INVOICING_DRIVE_CATEGORY_GROUPS.map((group, gIdx) => {
+          const items = INVOICING_DRIVE_CATEGORIES.filter(
+            (cat) => cat.group === group.id
+          );
+          const activeBg =
+            group.id === "retailer" ? "bg-indigo-600" : "bg-emerald-600";
+          const activeRing =
+            group.id === "retailer"
+              ? "ring-indigo-600/30"
+              : "ring-emerald-600/30";
           return (
-            <button
-              key={cat.key}
-              type="button"
-              onClick={() => {
-                setCategory(cat.key);
-                setBusinessSearch("");
-              }}
-              title={cat.label}
-              className={cn(
-                "rounded-lg px-3 py-1.5 text-xs font-semibold transition-all",
-                isActive
-                  ? "bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-600/30 ring-offset-1 dark:ring-offset-dark"
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-dark-2 dark:text-gray-300 dark:hover:bg-dark-3"
-              )}
-            >
-              {cat.shortLabel}
-            </button>
+            <div key={group.id} className="flex items-center gap-2">
+              {gIdx > 0 ? (
+                <span
+                  className="hidden h-6 w-px bg-stroke dark:bg-dark-3 lg:inline-block"
+                  aria-hidden
+                />
+              ) : null}
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                {group.title}
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {items.map((cat) => {
+                  const isActive = cat.key === category;
+                  return (
+                    <button
+                      key={cat.key}
+                      type="button"
+                      onClick={() => {
+                        setCategory(cat.key);
+                        setBusinessSearch("");
+                      }}
+                      title={cat.label}
+                      className={cn(
+                        "rounded-lg px-3 py-1.5 text-xs font-semibold transition-all",
+                        isActive
+                          ? `${activeBg} text-white shadow-sm ring-2 ${activeRing} ring-offset-1 dark:ring-offset-dark`
+                          : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-dark-2 dark:text-gray-300 dark:hover:bg-dark-3"
+                      )}
+                    >
+                      {cat.shortLabel}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           );
         })}
       </div>
