@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
 import { Breadcrumb } from "@/components/ui/breadcrumb";
@@ -683,22 +683,24 @@ export default function DiscrepancyCheckPage() {
     });
   }, []);
 
+  const fetchAbortRef = useRef<AbortController | null>(null);
+
   const fetchData = useCallback(async () => {
     if (!token) {
       setError("Please sign in to load discrepancy data.");
       setLoading(false);
       return;
     }
+    fetchAbortRef.current?.abort();
+    const ac = new AbortController();
+    fetchAbortRef.current = ac;
     setLoading(true);
     setError(null);
     try {
-      const base = getApiBaseUrl();
-      const params = new URLSearchParams();
-      const businessNameParam = filterBusinessName.trim();
-      if (businessNameParam) params.set("business_name", businessNameParam);
-      const url = `${base}/api/resources/discrepancy-check${params.toString() ? `?${params.toString()}` : ""}`;
+      const url = `${getApiBaseUrl()}/api/resources/discrepancy-check`;
       const res = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` },
+        signal: ac.signal,
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -710,6 +712,7 @@ export default function DiscrepancyCheckPage() {
       setElectricityDmaRows((data.electricity_dma ?? []) as DmaRow[]);
       setElectricityDemandCheckRows(data.electricity_demand_check ?? []);
     } catch (e) {
+      if (ac.signal.aborted) return;
       const message = e instanceof Error ? e.message : "Failed to load discrepancy data.";
       setError(message);
       showToast(message, "error");
@@ -717,44 +720,58 @@ export default function DiscrepancyCheckPage() {
       setElectricityContractRows([]);
       setElectricityDmaRows([]);
     } finally {
-      setLoading(false);
+      if (!ac.signal.aborted) setLoading(false);
     }
-  }, [token, filterBusinessName, showToast]);
+  }, [token, showToast]);
 
   useEffect(() => {
     fetchData();
+    return () => {
+      fetchAbortRef.current?.abort();
+    };
   }, [fetchData]);
 
   const idFilter = filterIdentifier.trim().toLowerCase();
-  const filterById = useCallback(
-    (r: { utility_identifier?: string }) => {
-      if (!idFilter) return true;
-      return (r.utility_identifier ?? "").toLowerCase().includes(idFilter);
+  const nameFilter = filterBusinessName.trim().toLowerCase();
+  const matchesFilters = useCallback(
+    (r: { utility_identifier?: string; linked_business_name?: string }) => {
+      if (idFilter && !(r.utility_identifier ?? "").toLowerCase().includes(idFilter)) {
+        return false;
+      }
+      if (nameFilter && !(r.linked_business_name ?? "").toLowerCase().includes(nameFilter)) {
+        return false;
+      }
+      return true;
     },
-    [idFilter]
+    [idFilter, nameFilter]
   );
 
   const filteredRows = useMemo(
-    () => (idFilter ? rows.filter(filterById) : rows),
-    [rows, filterById, idFilter]
+    () => (idFilter || nameFilter ? rows.filter(matchesFilters) : rows),
+    [rows, matchesFilters, idFilter, nameFilter]
   );
 
   const filteredElectricityContract = useMemo(
-    () => (idFilter ? electricityContractRows.filter(filterById) : electricityContractRows),
-    [electricityContractRows, filterById, idFilter]
+    () =>
+      idFilter || nameFilter
+        ? electricityContractRows.filter(matchesFilters)
+        : electricityContractRows,
+    [electricityContractRows, matchesFilters, idFilter, nameFilter]
   );
 
   const filteredElectricityDma = useMemo(
-    () => (idFilter ? electricityDmaRows.filter(filterById) : electricityDmaRows),
-    [electricityDmaRows, filterById, idFilter]
+    () =>
+      idFilter || nameFilter ? electricityDmaRows.filter(matchesFilters) : electricityDmaRows,
+    [electricityDmaRows, matchesFilters, idFilter, nameFilter]
   );
 
   const filteredDemandCheck = useMemo(() => {
-    const withId = idFilter
-      ? electricityDemandCheckRows.filter(filterById)
-      : electricityDemandCheckRows;
-    return withId.filter(rowHasAnyValue);
-  }, [electricityDemandCheckRows, filterById, idFilter]);
+    const withFilters =
+      idFilter || nameFilter
+        ? electricityDemandCheckRows.filter(matchesFilters)
+        : electricityDemandCheckRows;
+    return withFilters.filter(rowHasAnyValue);
+  }, [electricityDemandCheckRows, matchesFilters, idFilter, nameFilter]);
 
   const sortedRows = useMemo(() => sortByInvoicePeriod(filteredRows), [filteredRows]);
 
@@ -955,7 +972,7 @@ export default function DiscrepancyCheckPage() {
               showOnlyMismatchesDma ||
               showOnlyMismatchesDemand) && (
               <span className="text-xs text-gray-500 dark:text-gray-400">
-                {filterBusinessName.trim() ? "Business filter applied on server. " : ""}
+                {filterBusinessName.trim() ? "Business filter applied. " : ""}
                 {activeRowCount} row(s)
                 {viewType === "gas" &&
                 showOnlyOverchargedGas &&

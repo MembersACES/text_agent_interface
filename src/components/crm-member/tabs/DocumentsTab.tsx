@@ -18,12 +18,17 @@ import { RecordRow, RecordRowOpenAction } from "../shared/RecordRow";
 import { getRecordRowIcon } from "../shared/recordRowIcons";
 import { combineFilesIntoPdf } from "@/lib/combineFiles";
 import {
+  collectMemberDocumentFileIds,
   fetchMemberEoiIds,
   fetchMemberWip,
+  formatDocumentUploadDate,
   mapEoiRowsToFileIds,
   parseAdditionalDocuments,
   parseEngagementForms,
+  uploadDateForRef,
+  type MemberSimpleDoc,
 } from "@/lib/member-documents-api";
+import { useDocumentUploadDates } from "@/lib/use-document-upload-dates";
 import {
   getBusinessDocumentFileUrl,
   getBusinessDocumentsForOverview,
@@ -71,7 +76,10 @@ function pickDocumentLinkFromUploadResponse(d: unknown): string | undefined {
   return undefined;
 }
 
-interface SimpleDoc { fileName: string; id: string; }
+function uploadedLabel(date?: string) {
+  const formatted = formatDocumentUploadDate(date);
+  return formatted ? `Uploaded ${formatted}` : undefined;
+}
 
 export { getDocumentsCountFromBusinessInfo } from "./documentHelpers";
 
@@ -294,9 +302,20 @@ export function DocumentsTab({
   const [searchQuery, setSearchQuery] = useState("");
   const [uploadCategory, setUploadCategory] = useState<UploadCategory>("additional");
   const [eoiRefreshing, setEoiRefreshing] = useState(false);
-  const [additionalDocs, setAdditionalDocs] = useState<SimpleDoc[]>([]);
-  const [engagementForms, setEngagementForms] = useState<SimpleDoc[]>([]);
+  const [additionalDocs, setAdditionalDocs] = useState<MemberSimpleDoc[]>([]);
+  const [engagementForms, setEngagementForms] = useState<MemberSimpleDoc[]>([]);
   const [wipLoading, setWipLoading] = useState(false);
+  const documentFileIds = useMemo(
+    () =>
+      collectMemberDocumentFileIds(processed, [
+        ...additionalDocs.map((d) => d.id),
+        ...engagementForms.map((f) => f.id),
+      ]),
+    [processed, additionalDocs, engagementForms],
+  );
+  const driveUploadDates = useDocumentUploadDates(documentFileIds, token);
+  const dateFor = (urlOrId?: string, fallback?: string) =>
+    uploadDateForRef(urlOrId, driveUploadDates) || fallback;
 
   const [showDriveModal, setShowDriveModal] = useState(false);
   const [driveFilingType, setDriveFilingType] = useState("");
@@ -1202,12 +1221,14 @@ export function DocumentsTab({
                               if (!matchesSearch(title)) return null;
                               const rowKey = `${c.key}-${idx}`;
                               const saving = statusSavingKey === rowKey;
+                              const uploaded = uploadedLabel(dateFor(item.url));
                               return (
                                 <RecordRow
                                   key={rowKey}
                                   leadingIcon={categoryIcon.icon}
                                   iconIntent={categoryIcon.intent}
                                   title={title}
+                                  subtitle={uploaded}
                                   status={
                                     <div className="flex flex-col items-end gap-1">
                                       {contractStatusBadge(item.status, !!item.url)}
@@ -1278,6 +1299,11 @@ export function DocumentsTab({
                           const title = displayDocName(doc);
                           if (!matchesSearch(title)) return null;
                           const docIcon = getRecordRowIcon(doc);
+                          const uploaded = uploadedLabel(
+                            dateFor(
+                              isAmort ? amortExcelUrl || amortPdfUrl : fileUrl,
+                            ),
+                          );
                           return (
                             <RecordRow
                               key={doc}
@@ -1285,25 +1311,28 @@ export function DocumentsTab({
                               iconIntent={docIcon.intent}
                               title={title}
                               subtitle={
-                                isAmort ? (
-                                  <>
-                                    {amortExcelUrl && (
-                                      <>
-                                        <FileLink label="Excel" url={amortExcelUrl} />
-                                        {amortPdfUrl && " | "}
-                                      </>
-                                    )}
-                                    {amortPdfUrl && <FileLink label="PDF" url={amortPdfUrl} />}
-                                    {!amortExcelUrl && !amortPdfUrl && "Not available"}
-                                  </>
-                                ) : fileUrl ? (
-                                  <FileLink
-                                    label={isLoa || isSfa ? "Open file" : "View File"}
-                                    url={fileUrl}
-                                  />
-                                ) : (
-                                  "Not available"
-                                )
+                                <>
+                                  {isAmort ? (
+                                    <>
+                                      {amortExcelUrl && (
+                                        <>
+                                          <FileLink label="Excel" url={amortExcelUrl} />
+                                          {amortPdfUrl && " | "}
+                                        </>
+                                      )}
+                                      {amortPdfUrl && <FileLink label="PDF" url={amortPdfUrl} />}
+                                      {!amortExcelUrl && !amortPdfUrl && "Not available"}
+                                    </>
+                                  ) : fileUrl ? (
+                                    <FileLink
+                                      label={isLoa || isSfa ? "Open file" : "View File"}
+                                      url={fileUrl}
+                                    />
+                                  ) : (
+                                    "Not available"
+                                  )}
+                                  {uploaded ? <span className="block">{uploaded}</span> : null}
+                                </>
                               }
                               status={
                                 fileUrl || amortExcelUrl || amortPdfUrl ? (
@@ -1364,12 +1393,14 @@ export function DocumentsTab({
                         eoiEntries.map(([key, url]) => {
                           const title = key.replace(/^eoi_/, "").replace(/_/g, " ");
                           if (!matchesSearch(title)) return null;
+                          const uploaded = uploadedLabel(dateFor(String(url)));
                           return (
                             <RecordRow
                               key={key}
                               leadingIcon={FileText}
                               iconIntent="neutral"
                               title={title}
+                              subtitle={uploaded}
                               status={
                                 <Badge intent="success" shape="pill">
                                   Available
@@ -1383,12 +1414,14 @@ export function DocumentsTab({
                       {category === "engagement" &&
                         engagementForms.map((f) => {
                           if (!matchesSearch(f.fileName)) return null;
+                          const uploaded = uploadedLabel(dateFor(f.id, f.uploadedAt));
                           return (
                             <RecordRow
                               key={f.id}
                               leadingIcon={FileText}
                               iconIntent="neutral"
                               title={f.fileName}
+                              subtitle={uploaded}
                               status={
                                 <Badge intent="success" shape="pill">
                                   Signed
@@ -1402,12 +1435,14 @@ export function DocumentsTab({
                       {category === "additional" &&
                         additionalDocs.map((doc) => {
                           if (!matchesSearch(doc.fileName)) return null;
+                          const uploaded = uploadedLabel(dateFor(doc.id, doc.uploadedAt));
                           return (
                             <RecordRow
                               key={doc.id}
                               leadingIcon={FileText}
                               iconIntent="neutral"
                               title={doc.fileName}
+                              subtitle={uploaded}
                               status={
                                 <Badge intent="success" shape="pill">
                                   Available
