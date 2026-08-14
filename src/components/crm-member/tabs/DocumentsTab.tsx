@@ -17,6 +17,8 @@ import { BRAND, CONTRACT_STATUS_OPTIONS } from "@/lib/brand";
 import { RecordRow, RecordRowOpenAction } from "../shared/RecordRow";
 import { getRecordRowIcon } from "../shared/recordRowIcons";
 import { combineFilesIntoPdf } from "@/lib/combineFiles";
+import { ShareFolderModal, SharedFolderStatusCard } from "@/components/ShareFolderModal";
+import { defaultShareEmail } from "@/lib/share-folder-api";
 import {
   collectMemberDocumentFileIds,
   fetchMemberEoiIds,
@@ -341,6 +343,8 @@ export function DocumentsTab({
   const [eoiFile, setEoiFile] = useState<File | null>(null);
   const [eoiLoading, setEoiLoading] = useState(false);
   const [eoiResult, setEoiResult] = useState("");
+  const [shareFolderOpen, setShareFolderOpen] = useState(false);
+  const [shareRefresh, setShareRefresh] = useState(0);
 
   const efRef = useRef<HTMLInputElement>(null);
   const [efLoading, setEfLoading] = useState(false);
@@ -1059,6 +1063,15 @@ export function DocumentsTab({
 
   return (
     <>
+      {driveUrl ? (
+        <div className="mb-4">
+          <SharedFolderStatusCard
+            driveUrl={driveUrl}
+            refreshKey={shareRefresh}
+            onManage={() => setShareFolderOpen(true)}
+          />
+        </div>
+      ) : null}
       <Panel>
         <div className="space-y-3 border-b border-gray-100 px-5 py-4 dark:border-gray-800/60">
           <input
@@ -1624,6 +1637,15 @@ export function DocumentsTab({
         {eoiResult && <Alert msg={eoiResult} successStart="EOI successfully" />}
         <MFooter onCancel={() => setShowEOIModal(false)} onSubmit={uploadEOI} label="Upload" disabled={!eoiFile} loading={eoiLoading} />
       </Modal>
+
+      <ShareFolderModal
+        open={shareFolderOpen}
+        onClose={() => setShareFolderOpen(false)}
+        driveUrl={driveUrl}
+        businessName={business?.name || businessName || ""}
+        defaultEmail={defaultShareEmail(info, typeof contact.email === "string" ? contact.email : "")}
+        onShared={() => setShareRefresh((n) => n + 1)}
+      />
     </>
   );
 }

@@ -9,7 +9,10 @@ import {
   Folder,
   Layers,
   ScrollText,
+  Share2,
 } from "lucide-react";
+import { ShareFolderModal } from "@/components/ShareFolderModal";
+import { defaultShareEmail } from "@/lib/share-folder-api";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -189,6 +192,11 @@ export function MemberProfileHeader({
     return typeof url === "string" && url.trim() ? url.trim() : null;
   }, [client.gdrive_folder_url, businessInfo]);
 
+  const shareDefaultEmail = useMemo(
+    () => defaultShareEmail(businessInfo, client.primary_contact_email),
+    [businessInfo, client.primary_contact_email],
+  );
+
   const subtitleParts = useMemo(() => {
     const parts: string[] = [];
     if (tradingName) parts.push(tradingName);
@@ -299,6 +307,7 @@ export function MemberProfileHeader({
   };
 
   const [showGenerateDocumentsMenu, setShowGenerateDocumentsMenu] = useState(false);
+  const [shareFolderOpen, setShareFolderOpen] = useState(false);
   const generateDocumentsMenuRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!showGenerateDocumentsMenu) return;
@@ -473,6 +482,7 @@ export function MemberProfileHeader({
     "h-9 rounded-lg border border-stroke bg-white text-dark hover:bg-gray-2 dark:border-dark-3 dark:bg-gray-dark dark:text-white dark:hover:bg-dark-2";
 
   return (
+    <>
     <div className="rounded-xl border border-stroke/40 bg-white shadow-sm ring-1 ring-gray-200/60 dark:border-dark-3/60 dark:bg-dark-2 dark:ring-gray-700/50">
       <div className="flex flex-col gap-4 p-4 lg:p-5 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0 flex-1">
@@ -530,6 +540,19 @@ export function MemberProfileHeader({
               Drive Folder
             </a>
           ) : null}
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            radius="md"
+            className={actionButtonClass}
+            onClick={() => setShareFolderOpen(true)}
+            disabled={!driveUrl}
+            title={driveUrl ? "Share files with the client" : "No Drive folder linked"}
+            leftIcon={<Share2 className="size-4 shrink-0" aria-hidden />}
+          >
+            Share Folder / File
+          </Button>
           {onStageChange ? (
             <StageSelectShell
               value={client.stage}
@@ -722,5 +745,13 @@ export function MemberProfileHeader({
         <div className="border-t border-stroke/60 px-3 dark:border-dark-3/60">{tabsSlot}</div>
       ) : null}
     </div>
+    <ShareFolderModal
+      open={shareFolderOpen}
+      onClose={() => setShareFolderOpen(false)}
+      driveUrl={driveUrl || ""}
+      businessName={client.business_name || ""}
+      defaultEmail={shareDefaultEmail}
+    />
+    </>
   );
 }
