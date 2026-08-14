@@ -2,12 +2,17 @@ import React, { useState, useCallback, useRef, useEffect, useMemo } from "react"
 import { getApiBaseUrl, formatDateAustralian, formatDateDDMMYYYY, parseDateDDMMYYYYToISO } from "@/lib/utils";
 import { formatBackendErrorBody } from "@/lib/api-errors";
 import {
+  collectMemberDocumentFileIds,
   fetchMemberEoiIds,
   fetchMemberWip,
+  formatDocumentUploadDate,
   mapEoiRowsToFileIds,
   parseAdditionalDocuments,
   parseEngagementForms,
+  uploadDateForRef,
+  type MemberSimpleDoc,
 } from "@/lib/member-documents-api";
+import { useDocumentUploadDates } from "@/lib/use-document-upload-dates";
 import { displayDocName, getContractsFromProcessed, withUpdatedContractStatus } from "@/components/crm-member/tabs/documentHelpers";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
@@ -85,6 +90,16 @@ function FileLink({ label, url }: { label: string; url?: string }) {
     >
       {label}
     </a>
+  );
+}
+
+function DocumentUploadedLine({ date, block }: { date?: string; block?: boolean }) {
+  const label = formatDocumentUploadDate(date);
+  if (!label) return null;
+  return (
+    <span className={block ? "mt-0.5 block text-[11px] text-gray-400" : "text-[11px] text-gray-400"}>
+      Uploaded {label}
+    </span>
   );
 }
 
@@ -426,7 +441,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
   const [additionalDocLoading, setAdditionalDocLoading] = useState(false);
   const [additionalDocResult, setAdditionalDocResult] = useState<string | null>(null);
   const [additionalDocsRefreshing, setAdditionalDocsRefreshing] = useState(false);
-  const [additionalDocs, setAdditionalDocs] = useState<Array<{ fileName: string; id: string }>>([]);
+  const [additionalDocs, setAdditionalDocs] = useState<MemberSimpleDoc[]>([]);
 
   useEffect(() => {
     if (!token || !businessName.trim()) {
@@ -482,7 +497,18 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
   const [engagementFormLoading, setEngagementFormLoading] = useState(false);
   const [engagementFormResult, setEngagementFormResult] = useState<string | null>(null);
   const [engagementFormsRefreshing, setEngagementFormsRefreshing] = useState(false);
-  const [engagementForms, setEngagementForms] = useState<Array<{ fileName: string; id: string }>>([]);
+  const [engagementForms, setEngagementForms] = useState<MemberSimpleDoc[]>([]);
+  const documentFileIds = useMemo(
+    () =>
+      collectMemberDocumentFileIds(info._processed_file_ids, [
+        ...additionalDocs.map((d) => d.id),
+        ...engagementForms.map((f) => f.id),
+      ]),
+    [info._processed_file_ids, additionalDocs, engagementForms],
+  );
+  const driveUploadDates = useDocumentUploadDates(documentFileIds, token);
+  const dateFor = (urlOrId?: string, fallback?: string) =>
+    uploadDateForRef(urlOrId, driveUploadDates) || fallback;
   const engagementFormFileInputRef = useRef<HTMLInputElement>(null);
   const wipDataFetchingRef = useRef(false); // Prevent concurrent calls to fetchWIPData
   const [sectionsOpen, setSectionsOpen] = useState({
@@ -2092,6 +2118,15 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                             ) : (
                               fileUrl ? <FileLink label="View File" url={fileUrl} /> : "Not available"
                             )}
+                            <DocumentUploadedLine
+                              block
+                              date={dateFor(
+                                isAmortisationAssetList
+                                  ? info._processed_file_ids?.["business_amortisation_excel"]
+                                    || info._processed_file_ids?.["business_amortisation_pdf"]
+                                  : fileUrl,
+                              )}
+                            />
                           </div>
                         </div>
                         <div className="flex gap-1">
@@ -2229,6 +2264,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                                   </span>
                                 )}
                                 <FileLink label="View File" url={item.url} />
+                                <DocumentUploadedLine date={dateFor(item.url)} />
                                 {item.status && (
                                   <span
                                     className={`px-2 py-0.5 rounded-full text-xs font-medium ${
@@ -2337,6 +2373,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                         <div className="text-sm font-medium truncate">{displayName}</div>
                         <div className="text-xs text-gray-500">
                           {url ? <FileLink label="View File" url={url} /> : "Not available"}
+                          <DocumentUploadedLine block date={dateFor(url)} />
                         </div>
                       </div>
                     </div>
@@ -2414,6 +2451,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                           ) : (
                             "Not available"
                           )}
+                          <DocumentUploadedLine block date={dateFor(form.id, form.uploadedAt)} />
                         </div>
                       </div>
                     </div>
@@ -2473,6 +2511,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                           ) : (
                             "Not available"
                           )}
+                          <DocumentUploadedLine block date={dateFor(doc.id, doc.uploadedAt)} />
                         </div>
                       </div>
                     </div>
