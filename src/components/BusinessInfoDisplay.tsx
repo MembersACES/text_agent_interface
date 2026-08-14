@@ -18,6 +18,8 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { combineFilesIntoPdf } from "@/lib/combineFiles";
 import { PrimaryButton, SecondaryButton, LinkButton } from "@/components/BusinessInfoButtons";
+import { ShareFolderModal, SharedFolderStatusCard } from "@/components/ShareFolderModal";
+import { defaultShareEmail } from "@/lib/share-folder-api";
 import { BRAND, CONTRACT_STATUS_OPTIONS } from "@/lib/brand";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
@@ -442,6 +444,8 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
   const [additionalDocResult, setAdditionalDocResult] = useState<string | null>(null);
   const [additionalDocsRefreshing, setAdditionalDocsRefreshing] = useState(false);
   const [additionalDocs, setAdditionalDocs] = useState<MemberSimpleDoc[]>([]);
+  const [shareFolderOpen, setShareFolderOpen] = useState(false);
+  const [shareRefresh, setShareRefresh] = useState(0);
 
   useEffect(() => {
     if (!token || !businessName.trim()) {
@@ -1869,6 +1873,13 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
           >
             GHG
           </PrimaryButton>
+          <PrimaryButton
+            onClick={() => setShareFolderOpen(true)}
+            disabled={!driveUrl}
+            title={driveUrl ? "Share files with the client" : "No Drive folder linked"}
+          >
+            Share Folder / File
+          </PrimaryButton>
         </div>
       </div>
 
@@ -2519,6 +2530,16 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                   })
                 )}
               </div>
+              {driveUrl ? (
+                <div className="mt-4">
+                  <SharedFolderStatusCard
+                    driveUrl={driveUrl}
+                    refreshKey={shareRefresh}
+                    compact
+                    onManage={() => setShareFolderOpen(true)}
+                  />
+                </div>
+              ) : null}
             </div>
           </div>
           )}
@@ -4934,6 +4955,15 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
           Saves to the LOA Business Details record in Airtable.
         </p>
       </Modal>
+
+      <ShareFolderModal
+        open={shareFolderOpen}
+        onClose={() => setShareFolderOpen(false)}
+        driveUrl={driveUrl || ""}
+        businessName={business.name || ""}
+        defaultEmail={defaultShareEmail(info, typeof contact.email === "string" ? contact.email : "")}
+        onShared={() => setShareRefresh((n) => n + 1)}
+      />
 
       </div>
     </React.Fragment>
