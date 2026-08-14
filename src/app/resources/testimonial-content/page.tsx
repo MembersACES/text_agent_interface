@@ -12,9 +12,9 @@ import { useToast } from "@/components/ui/toast";
 
 const FIELDS: { key: keyof TestimonialSolutionContentItem; label: string; multiline?: boolean }[] = [
   { key: "key_outcome_metrics", label: "Key outcome metrics (headline)", multiline: false },
-  { key: "key_challenge_of_solution", label: "Challenge", multiline: true },
-  { key: "key_approach_of_solution", label: "Approach", multiline: true },
-  { key: "key_outcome_of_solution", label: "Outcome", multiline: true },
+  { key: "key_approach_of_solution", label: "The Service Received", multiline: true },
+  { key: "key_challenge_of_solution", label: "The Problem We Solved", multiline: true },
+  { key: "key_outcome_of_solution", label: "What Made the Experience Great", multiline: true },
   { key: "key_outcome_dotpoints_1", label: "Key outcome dot point 1", multiline: false },
   { key: "key_outcome_dotpoints_2", label: "Key outcome dot point 2", multiline: false },
   { key: "key_outcome_dotpoints_3", label: "Key outcome dot point 3", multiline: false },
