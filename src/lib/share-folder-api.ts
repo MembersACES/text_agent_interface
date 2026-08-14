@@ -29,7 +29,7 @@ export type ShareFolderStatus = {
 export type ShareFolderCopyResult = {
   file_id: string;
   name: string;
-  action: "copied" | "already_present" | "failed" | string;
+  action: "copied" | "already_present" | "shortcut" | "failed" | string;
   copied_file_id?: string;
   error?: string;
 };
@@ -40,6 +40,8 @@ export type ShareFolderResult = ShareFolderStatus & {
   copy_failures?: ShareFolderCopyResult[];
   permission?: { email: string; role: string; action: string; error?: string };
   permissions?: Array<{ email: string; role: string; action: string; error?: string }>;
+  email_preview?: { subject?: string; html_body?: string; body_text?: string };
+  email_results?: Array<{ email: string; action: string; error?: string; subject?: string }>;
 };
 
 function authHeaders(token: string): HeadersInit {
@@ -128,6 +130,7 @@ export async function shareMemberFolder(args: {
   fileIds: string[];
   email: string;
   sendNotification: boolean;
+  businessName?: string;
   token: string;
 }): Promise<ShareFolderResult> {
   const res = await fetch(`${getApiBaseUrl()}/api/share-folder`, {
@@ -138,6 +141,7 @@ export async function shareMemberFolder(args: {
       file_ids: args.fileIds,
       email: args.email,
       send_notification: args.sendNotification,
+      business_name: args.businessName || "",
     }),
   });
   const data = await readJson(res);

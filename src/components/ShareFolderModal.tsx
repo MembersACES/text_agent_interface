@@ -275,6 +275,7 @@ function ShareFolderModalInner({
         fileIds: selectedIds,
         email: emailList,
         sendNotification,
+        businessName,
         token,
       });
       setResult(payload);
@@ -485,8 +486,48 @@ function ShareFolderModalInner({
                   checked={sendNotification}
                   onChange={(e) => setSendNotification(e.target.checked)}
                 />
-                <span>Send Google Drive notification email to these addresses</span>
+                <span>Email these people a Carbon Zero message with the folder link</span>
               </label>
+              {sendNotification ? (
+                <div className="rounded-lg border border-stroke/70 bg-gray-50 p-3 dark:border-dark-3 dark:bg-dark-2">
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                    Email preview
+                  </p>
+                  <p className="mb-2 text-xs font-medium text-gray-700 dark:text-gray-200">
+                    Subject: Carbon Zero Australasia has shared documents with you
+                    {businessName ? ` — ${businessName}` : ""}
+                  </p>
+                  <div className="space-y-2 rounded-md bg-white p-3 text-xs text-gray-700 dark:bg-gray-900 dark:text-gray-200">
+                    <p>Hello,</p>
+                    <p>
+                      Carbon Zero Australasia has shared documents with you
+                      {businessName ? ` for ${businessName}` : ""}. Open the folder using the button in the email
+                      (Google account required).
+                    </p>
+                    <p className="font-medium text-primary">Open shared documents</p>
+                    {selectedIds.length > 0 ? (
+                      <p>
+                        {selectedIds.length} file{selectedIds.length === 1 ? "" : "s"} will be listed in the email.
+                      </p>
+                    ) : null}
+                    <p>
+                      Kind regards,
+                      <br />
+                      {session?.user?.name || "Carbon Zero Australasia"}
+                      {session?.user?.email ? (
+                        <>
+                          <br />
+                          {session.user.email}
+                        </>
+                      ) : null}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-gray-400">
+                  Drive access will still be granted. No email will be sent — you can share the folder link yourself.
+                </p>
+              )}
               <p className="text-xs text-gray-400">
                 They get Viewer access to Shared Folder only — not the rest of the member Drive. Each person needs a
                 Google account on that email to open it.
@@ -541,6 +582,17 @@ function ShareFolderModalInner({
                 <p className="text-xs text-amber-700">
                   Some files could not be copied. The folder was still shared.
                 </p>
+              ) : null}
+              {result.email_results && result.email_results.length > 0 ? (
+                <ul className="space-y-1 text-xs text-gray-600 dark:text-gray-300">
+                  {result.email_results.map((row) => (
+                    <li key={row.email}>
+                      Email to {row.email}: {row.action === "sent" ? "sent" : row.error || "failed"}
+                    </li>
+                  ))}
+                </ul>
+              ) : sendNotification ? (
+                <p className="text-xs text-gray-400">No branded email was sent.</p>
               ) : null}
             </div>
           ) : null}
