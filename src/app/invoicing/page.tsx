@@ -202,6 +202,19 @@ const SHEET_SECTIONS: SheetSection[] = [
           { name: "Already Invoiced", gid: "1411900023" },
         ],
       },
+      {
+        title: "Alinta C&I Electricity",
+        shortLabel: "Alinta C&I Elec",
+        sheetIdOrUrl:
+          "https://docs.google.com/spreadsheets/d/1t_Eta4M8bgWVuj9UPgKLWz7A7WBw8U8GCSgrKrzgYzY/edit",
+        status: "Recurring",
+        tabs: [
+          { name: "Database Sheet", gid: "204183407" },
+          { name: "Commission Figures", gid: "1703322444" },
+          { name: "Commission Up to Date", gid: "0" },
+          { name: "Already Invoiced", gid: "1411900023" },
+        ],
+      },
     ],
   },
 ];
@@ -257,7 +270,8 @@ function defaultInvoicingTabGid(itemTitle: string): string | null {
   if (
     itemTitle === "Origin Gas" ||
     itemTitle === "Origin Electricity" ||
-    itemTitle === "Alinta Gas"
+    itemTitle === "Alinta Gas" ||
+    itemTitle === "Alinta C&I Electricity"
   ) {
     return COMMISSION_FIGURES_GID;
   }
@@ -269,10 +283,11 @@ function defaultInvoicingTabGid(itemTitle: string): string | null {
 
 function retailerKeyForCommissionFiguresCount(
   itemTitle: string
-): "origin-gas" | "origin-elec" | "alinta-gas" | null {
+): "origin-gas" | "origin-elec" | "alinta-gas" | "alinta-ci-elec" | null {
   if (itemTitle === "Origin Gas") return "origin-gas";
   if (itemTitle === "Origin Electricity") return "origin-elec";
   if (itemTitle === "Alinta Gas") return "alinta-gas";
+  if (itemTitle === "Alinta C&I Electricity") return "alinta-ci-elec";
   return null;
 }
 
