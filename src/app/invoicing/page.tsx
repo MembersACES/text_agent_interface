@@ -175,6 +175,7 @@ const SHEET_SECTIONS: SheetSection[] = [
           { name: "Commission Figures", gid: "1703322444" },
           { name: "Gas Commission Up to Date", gid: "0" },
           { name: "Already Invoiced", gid: "1411900023" },
+          { name: "Invoices Sent" },
         ],
       },
       {
@@ -188,6 +189,7 @@ const SHEET_SECTIONS: SheetSection[] = [
           { name: "Commission Figures", gid: "1703322444" },
           { name: "Commission Up to Date", gid: "0" },
           { name: "Already Invoiced", gid: "1411900023" },
+          { name: "Invoices Sent" },
         ],
       },
       {
@@ -262,17 +264,24 @@ type PreviewHeight = keyof typeof PREVIEW_HEIGHTS;
 
 /** GID for the Commission Figures tab (Origin / Alinta retailer workbooks). */
 const COMMISSION_FIGURES_GID = "1703322444";
+/** GID for Commission Up to Date (first sheet in Origin / Alinta retailer workbooks). */
+const COMMISSION_UP_TO_DATE_GID = "0";
 /** GID for Trojan Oil tab "All Data" (unique client count). */
 const TROJAN_OIL_ALL_DATA_GID = "2013429471";
 
+type RetailerKey =
+  | "origin-gas"
+  | "origin-elec"
+  | "alinta-gas"
+  | "alinta-ci-elec";
+type OriginRetailerKey = "origin-gas" | "origin-elec";
+
 /** Default sub-tab when opening a sheet (null = use first tab in config). */
 function defaultInvoicingTabGid(itemTitle: string): string | null {
-  if (
-    itemTitle === "Origin Gas" ||
-    itemTitle === "Origin Electricity" ||
-    itemTitle === "Alinta Gas" ||
-    itemTitle === "Alinta C&I Electricity"
-  ) {
+  if (itemTitle === "Origin Gas" || itemTitle === "Origin Electricity") {
+    return COMMISSION_UP_TO_DATE_GID;
+  }
+  if (itemTitle === "Alinta Gas" || itemTitle === "Alinta C&I Electricity") {
     return COMMISSION_FIGURES_GID;
   }
   if (itemTitle === "Trojan Oil") {
@@ -281,14 +290,41 @@ function defaultInvoicingTabGid(itemTitle: string): string | null {
   return null;
 }
 
-function retailerKeyForCommissionFiguresCount(
-  itemTitle: string
-): "origin-gas" | "origin-elec" | "alinta-gas" | "alinta-ci-elec" | null {
+function retailerKeyForCommissionFiguresCount(itemTitle: string): RetailerKey | null {
   if (itemTitle === "Origin Gas") return "origin-gas";
   if (itemTitle === "Origin Electricity") return "origin-elec";
   if (itemTitle === "Alinta Gas") return "alinta-gas";
   if (itemTitle === "Alinta C&I Electricity") return "alinta-ci-elec";
   return null;
+}
+
+function originReadyToInvoiceRetailerKey(itemTitle: string): OriginRetailerKey | null {
+  if (itemTitle === "Origin Gas") return "origin-gas";
+  if (itemTitle === "Origin Electricity") return "origin-elec";
+  return null;
+}
+
+function isCommissionUpToDateTab(tabName: string): boolean {
+  return tabName.trim().toLowerCase().includes("commission up to date");
+}
+
+function mergeSheetTabs(
+  configured: { name: string; gid?: string }[],
+  live: { name: string; gid: string }[] | null
+): { name: string; gid?: string }[] {
+  if (!live?.length) return configured;
+  const byName = new Map(live.map((tab) => [tab.name.trim().toLowerCase(), tab.gid]));
+  return configured.map((tab) => {
+    const gid = byName.get(tab.name.trim().toLowerCase());
+    return gid ? { ...tab, gid } : tab;
+  });
+}
+
+function formatAud(amount: number): string {
+  return new Intl.NumberFormat("en-AU", {
+    style: "currency",
+    currency: "AUD",
+  }).format(amount);
 }
 
 // --- Skeleton loader for the auth-loading state ---
@@ -318,6 +354,16 @@ export default function RobotDashboardInvoicingPage() {
   >(null);
   const [trojanUniqueCountLoading, setTrojanUniqueCountLoading] = useState(false);
   const [trojanUniqueCountError, setTrojanUniqueCountError] = useState(false);
+  const [liveRetailerTabs, setLiveRetailerTabs] = useState<
+    { name: string; gid: string }[] | null
+  >(null);
+  const [readyToInvoice, setReadyToInvoice] = useState<{
+    rowCount: number;
+    totalCommission: number;
+    rowLabel: string;
+  } | null>(null);
+  const [readyToInvoiceLoading, setReadyToInvoiceLoading] = useState(false);
+  const [readyToInvoiceError, setReadyToInvoiceError] = useState(false);
 
   useEffect(() => {
     if (status !== "authenticated" || !session?.user?.email) return;
@@ -370,9 +416,14 @@ export default function RobotDashboardInvoicingPage() {
     [allSheets, selectedKey]
   );
 
+  const selectedTabs = useMemo(
+    () => mergeSheetTabs(selected?.item.tabs ?? [], liveRetailerTabs),
+    [selected, liveRetailerTabs]
+  );
+
   // Pick which gid to show: the user's clicked one, or the first tab's gid as default
   const effectiveGid =
-    activeTabGid ?? selected?.item.tabs.find((t) => t.gid)?.gid ?? undefined;
+    activeTabGid ?? selectedTabs.find((t) => t.gid)?.gid ?? undefined;
 
   const previewUrl = selected
     ? toEmbedUrl(selected.item.sheetIdOrUrl, effectiveGid)
@@ -386,6 +437,15 @@ export default function RobotDashboardInvoicingPage() {
     : null;
   const showCommissionFiguresClientCount =
     effectiveGid === COMMISSION_FIGURES_GID && commissionFiguresRetailerKey !== null;
+
+  const originReadyKey = selected
+    ? originReadyToInvoiceRetailerKey(selected.item.title)
+    : null;
+  const activeTabName =
+    selectedTabs.find((tab) => tab.gid !== undefined && tab.gid === effectiveGid)
+      ?.name ?? "";
+  const showReadyToInvoiceSummary =
+    originReadyKey !== null && isCommissionUpToDateTab(activeTabName);
 
   const showTrojanUniqueClients =
     selected?.item.title === "Trojan Oil" && effectiveGid === TROJAN_OIL_ALL_DATA_GID;
@@ -511,8 +571,120 @@ export default function RobotDashboardInvoicingPage() {
     };
   }, [showTrojanUniqueClients, status, session]);
 
-  // When switching sheets: open the primary tab for big retailer workbooks
-  // (Commission Figures, Trojan All Data) so counts load without an extra click.
+  useEffect(() => {
+    const retailerKey = originReadyKey;
+    if (!retailerKey) {
+      setLiveRetailerTabs(null);
+      return;
+    }
+    if (status !== "authenticated") return;
+
+    const token =
+      (session as { id_token?: string; accessToken?: string } | null)?.id_token ??
+      (session as { id_token?: string; accessToken?: string } | null)?.accessToken;
+    if (!token) {
+      setLiveRetailerTabs(null);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const u = new URL(`${getApiBaseUrl()}/api/invoicing/retailer-sheet-tabs`);
+        u.searchParams.set("retailer", retailerKey);
+        const res = await fetch(u.toString(), {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const body = (await res.json().catch(() => ({}))) as {
+          tabs?: { name?: string; gid?: string }[];
+        };
+        if (cancelled) return;
+        if (!res.ok || !Array.isArray(body.tabs)) {
+          setLiveRetailerTabs(null);
+          return;
+        }
+        setLiveRetailerTabs(
+          body.tabs
+            .filter((tab) => typeof tab.name === "string" && typeof tab.gid === "string")
+            .map((tab) => ({ name: tab.name as string, gid: tab.gid as string }))
+        );
+      } catch {
+        if (!cancelled) setLiveRetailerTabs(null);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [originReadyKey, status, session]);
+
+  useEffect(() => {
+    if (!showReadyToInvoiceSummary || !originReadyKey) {
+      setReadyToInvoice(null);
+      setReadyToInvoiceError(false);
+      setReadyToInvoiceLoading(false);
+      return;
+    }
+    if (status !== "authenticated") return;
+
+    const token =
+      (session as { id_token?: string; accessToken?: string } | null)?.id_token ??
+      (session as { id_token?: string; accessToken?: string } | null)?.accessToken;
+    if (!token) {
+      setReadyToInvoice(null);
+      setReadyToInvoiceError(true);
+      return;
+    }
+
+    let cancelled = false;
+    setReadyToInvoiceLoading(true);
+    setReadyToInvoiceError(false);
+
+    (async () => {
+      try {
+        const u = new URL(
+          `${getApiBaseUrl()}/api/invoicing/commission-up-to-date-summary`
+        );
+        u.searchParams.set("retailer", originReadyKey);
+        const res = await fetch(u.toString(), {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const body = (await res.json().catch(() => ({}))) as {
+          row_count?: number;
+          total_commission?: number;
+          row_label?: string;
+        };
+        if (cancelled) return;
+        if (!res.ok) {
+          setReadyToInvoice(null);
+          setReadyToInvoiceError(true);
+          return;
+        }
+        setReadyToInvoice({
+          rowCount: typeof body.row_count === "number" ? body.row_count : 0,
+          totalCommission:
+            typeof body.total_commission === "number" ? body.total_commission : 0,
+          rowLabel: typeof body.row_label === "string" && body.row_label
+            ? body.row_label
+            : "MRIN",
+        });
+      } catch {
+        if (!cancelled) {
+          setReadyToInvoice(null);
+          setReadyToInvoiceError(true);
+        }
+      } finally {
+        if (!cancelled) setReadyToInvoiceLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [showReadyToInvoiceSummary, originReadyKey, status, session]);
+
+  // When switching sheets: open the primary tab for Origin (Commission Up to Date),
+  // Alinta (Commission Figures), and Trojan (All Data).
   function selectSheet(key: string) {
     setSelectedKey(key);
     const match = allSheets.find(
@@ -692,7 +864,7 @@ export default function RobotDashboardInvoicingPage() {
                   <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                     Tabs:
                   </span>
-                  {selected.item.tabs.map((tab) => {
+                  {selectedTabs.map((tab) => {
                     const isActiveTab =
                       tab.gid !== undefined && tab.gid === effectiveGid;
                     const hasGid = !!tab.gid;
@@ -767,7 +939,34 @@ export default function RobotDashboardInvoicingPage() {
       {/* ---------- Full-width preview ---------- */}
       <Card variant="elevated">
         <CardContent>
-          {showCommissionFiguresClientCount ? (
+          {showReadyToInvoiceSummary ? (
+            <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-emerald-100 bg-emerald-50/80 px-3 py-2 text-sm dark:border-emerald-900/50 dark:bg-emerald-950/30">
+              <span className="font-semibold text-emerald-900 dark:text-emerald-100">
+                Commission Up to Date
+              </span>
+              <span className="text-gray-600 dark:text-gray-400">
+                {readyToInvoiceLoading ? (
+                  "Loading commission total…"
+                ) : readyToInvoiceError ? (
+                  "Could not load Total Commission (check backend Sheets access)."
+                ) : readyToInvoice ? (
+                  <>
+                    <span className="font-bold tabular-nums text-dark dark:text-white">
+                      {readyToInvoice.rowCount}
+                    </span>{" "}
+                    {readyToInvoice.rowLabel}{" "}
+                    {readyToInvoice.rowCount === 1 ? "row" : "rows"} equalling{" "}
+                    <span className="font-bold tabular-nums text-dark dark:text-white">
+                      {formatAud(readyToInvoice.totalCommission)}
+                    </span>{" "}
+                    commission ready to invoice
+                  </>
+                ) : (
+                  "—"
+                )}
+              </span>
+            </div>
+          ) : showCommissionFiguresClientCount ? (
             <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-indigo-100 bg-indigo-50/80 px-3 py-2 text-sm dark:border-indigo-900/50 dark:bg-indigo-950/30">
               <span className="font-semibold text-indigo-900 dark:text-indigo-100">
                 Commission Figures
