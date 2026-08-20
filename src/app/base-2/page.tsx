@@ -614,7 +614,7 @@ function parseWebhookResult(responseText: string): Record<string, unknown> | nul
   return null;
 }
 
-type AutonomousCiLane = "ci_gas" | "ci_electricity";
+type AutonomousCiLane = "ci_gas" | "ci_electricity" | "bne_gas";
 
 /** Persisted on the autonomous run `context` for the run detail UI (gas vs electricity vs legacy offer-only). */
 function buildComparisonSnapshot(
@@ -628,7 +628,7 @@ function buildComparisonSnapshot(
     current_cost: normalizeMoneyToNumber(result.current_cost) ?? null,
     new_cost: normalizeMoneyToNumber(result.new_cost) ?? null,
   };
-  if (lane === "ci_gas") {
+  if (lane === "ci_gas" || lane === "bne_gas") {
     return {
       lane,
       ...fin,
@@ -743,7 +743,14 @@ function offerComparisonButtonLabel(c: UtilityComparison): string {
 
 const AUTONOMOUS_SEQUENCE_CI_GAS = 'gas_base2_followup_v1';
 const AUTONOMOUS_SEQUENCE_CI_ELECTRICITY = 'ci_electricity_base2_followup_v1';
+const AUTONOMOUS_SEQUENCE_BNE_GAS = 'bne_gas_base2_followup_v1';
 const BNE_GAS_WEBHOOK_URL = 'https://membersaces.app.n8n.cloud/webhook/generate-gas-ci-comparaison-b%26e';
+
+function sequenceTypeForLane(lane: AutonomousCiLane): string {
+  if (lane === "ci_gas") return AUTONOMOUS_SEQUENCE_CI_GAS;
+  if (lane === "bne_gas") return AUTONOMOUS_SEQUENCE_BNE_GAS;
+  return AUTONOMOUS_SEQUENCE_CI_ELECTRICITY;
+}
 
 // ─── Component ─────────────────────────────────────────────────────────────────
 
@@ -1797,7 +1804,7 @@ export default function Base2Page() {
       patched,
       "comparison",
       false,
-      { contactName: values.contactName, contactEmail: values.contactEmail },
+      { contactName: values.contactName, contactEmail: values.contactEmail, contactPhone: values.contactPhone },
       false,
       true,
     );
@@ -2137,7 +2144,7 @@ export default function Base2Page() {
             const firstUtilityType = simpleUtilityType(first.util); const firstIdentifierKey = first.util.utilityType.includes('Electricity') ? 'nmi' : first.util.utilityType.includes('Gas') ? 'mrin' : first.util.utilityType === 'Waste' ? 'account_number' : first.util.utilityType === 'Oil' ? 'account_name' : 'identifier';
             await fetch(`${baseUrl}/api/offers/${offerIdToUse}/activities`, { method: 'POST', headers, body: JSON.stringify({ activity_type: 'base2_review', document_link: normalizeDocumentLink(docLink) ?? undefined, external_id: externalId, metadata: { utility_type: firstUtilityType, [firstIdentifierKey]: first.util.identifier, source: 'base2_page' }, created_by: session?.user?.email || undefined }) });
             const comparisonTypeSlug = (util: UtilityComparison, isDma: boolean): string | null => { if (isDma && util.utilityType === 'C&I Electricity') return 'dma'; if (util.utilityType === 'C&I Electricity') return 'electricity_ci'; if (util.utilityType === 'SME Electricity') return 'electricity_sme'; if (util.utilityType === 'C&I Gas' || util.utilityType === 'SME Gas') return 'gas'; if (util.utilityType === 'Oil') return 'oil'; if (util.utilityType === 'Waste') return 'waste'; if (util.utilityType === 'Cleaning') return 'cleaning'; return null; };
-            const activityIdByLane: Partial<Record<'ci_gas' | 'ci_electricity', number>> = {};
+            const activityIdByLane: Partial<Record<AutonomousCiLane, number>> = {};
             for (const { util, result } of successResults) {
               const slug = comparisonTypeSlug(util, action === 'dma');
               if (slug) {
@@ -2153,7 +2160,7 @@ export default function Base2Page() {
                 const activityPayload = { activity_type: action === 'dma' ? 'dma_review_generated' : 'comparison', document_link: normalizeDocumentLink(comparisonDocLink) ?? undefined, metadata, created_by: session?.user?.email || undefined };
                 console.log('[Base2 offer activity] POST to backend', { offerId: offerIdToUse, identifier: util.identifier, activity_type: activityPayload.activity_type, document_link: activityPayload.document_link, metadata_keys: Object.keys(metadata), annual_savings: metadata.annual_savings, current_cost: metadata.current_cost, new_cost: metadata.new_cost });
                 const activityRes = await fetch(`${baseUrl}/api/offers/${offerIdToUse}/activities`, { method: 'POST', headers, body: JSON.stringify(activityPayload) });
-                if (activityRes.ok) { try { const act = (await activityRes.json()) as { id?: number }; if (typeof act.id === 'number') { if (slug === 'gas') activityIdByLane.ci_gas = act.id; if (slug === 'electricity_ci') activityIdByLane.ci_electricity = act.id; } } catch { /* ignore */ } }
+                if (activityRes.ok) { try { const act = (await activityRes.json()) as { id?: number }; if (typeof act.id === 'number') { if (slug === 'gas') { if (isBneGas) activityIdByLane.bne_gas = act.id; else activityIdByLane.ci_gas = act.id; } if (slug === 'electricity_ci') activityIdByLane.ci_electricity = act.id; } } catch { /* ignore */ } }
                 else { const errBody = await activityRes.text(); console.warn('[Base2 offer activity] Backend responded with error', activityRes.status, errBody); }
                 // ACES: persist C&I electricity time-of-use rates onto the offer row itself, so the
                 // current/new peak·shoulder·off-peak rates live in one SQL place (for the voice agent).
@@ -2176,10 +2183,11 @@ export default function Base2Page() {
                 }
               }
             }
-            if (action === 'comparison' && !isBneGas) {
+            if (action === 'comparison') {
               const lanes = new Set<AutonomousCiLane>();
               for (const { util } of successResults) {
-                if (util.utilityType === 'C&I Gas' || (util.utilityType === 'SME Gas' && util.smeGasComparisonMode === 'ci_offer')) lanes.add('ci_gas');
+                if (isBneGas && util.utilityType === 'C&I Gas') lanes.add('bne_gas');
+                else if (util.utilityType === 'C&I Gas' || (util.utilityType === 'SME Gas' && util.smeGasComparisonMode === 'ci_offer')) lanes.add('ci_gas');
                 if (util.utilityType === 'C&I Electricity') lanes.add('ci_electricity');
               }
               if (lanes.size > 0) {
@@ -2192,13 +2200,13 @@ export default function Base2Page() {
                   base2_trigger: 'comparison_success',
                   business_name: businessName || businessInfo?.name,
                   contact_email: webhookRecipient?.contactEmail ?? businessInfo?.email,
-                  contact_phone: businessInfo?.telephone,
+                  contact_phone: webhookRecipient?.contactPhone ?? businessInfo?.telephone,
                   contact_name: webhookRecipient?.contactName ?? businessInfo?.contact_name,
                 };
                 const lanePayloads: AutonomousSequenceConfirmState['lanePayloads'] = [];
                 for (const lane of lanes) {
                   const laneSuccess = successResults.filter(({ util }) =>
-                    lane === 'ci_gas'
+                    lane === 'ci_gas' || lane === 'bne_gas'
                       ? util.utilityType === 'C&I Gas' || (util.utilityType === 'SME Gas' && util.smeGasComparisonMode === 'ci_offer')
                       : util.utilityType === 'C&I Electricity',
                   );
@@ -2725,7 +2733,7 @@ export default function Base2Page() {
       const headers = { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
       const baseUrl = getAutonomousApiBaseUrl();
       for (const lp of a.lanePayloads) {
-        const sequence_type = lp.lane === "ci_gas" ? AUTONOMOUS_SEQUENCE_CI_GAS : AUTONOMOUS_SEQUENCE_CI_ELECTRICITY;
+        const sequence_type = sequenceTypeForLane(lp.lane);
         const identifiers = lp.laneSuccess.map(({ util }) => util.identifier);
         const emailIdsBySite: Record<string, string> = {};
         let firstEmailId: string | undefined;
@@ -3455,6 +3463,7 @@ export default function Base2Page() {
         })()}
         defaultContactName={defaultWebhookRecipient(businessInfo, businessInfoData).contactName}
         defaultContactEmail={defaultWebhookRecipient(businessInfo, businessInfoData).contactEmail}
+        defaultContactPhone={businessInfo?.telephone ?? ""}
         onClose={() => setBneGasModal({ open: false, comparison: null })}
         onGenerate={handleBneGasGenerate}
       />
@@ -3612,10 +3621,10 @@ export default function Base2Page() {
             <ul className="mb-5 space-y-2 text-sm text-gray-800 dark:text-gray-200">
               {autonomousSequenceConfirm.lanePayloads.map(({ lane }) => (
                 <li key={lane} className="flex items-center gap-2 rounded-lg border border-gray-100 dark:border-gray-700 px-3 py-2">
-                  <span className="text-lg">{lane === "ci_gas" ? "🔥" : "⚡"}</span>
-                  <span className="font-medium">{lane === "ci_gas" ? "C&I gas" : "C&I electricity"}</span>
+                  <span className="text-lg">{lane === "ci_electricity" ? "⚡" : "🔥"}</span>
+                  <span className="font-medium">{lane === "bne_gas" ? "B&E gas" : lane === "ci_gas" ? "C&I gas" : "C&I electricity"}</span>
                   <span className="text-xs text-gray-400 font-mono ml-auto">
-                    {lane === "ci_gas" ? AUTONOMOUS_SEQUENCE_CI_GAS : AUTONOMOUS_SEQUENCE_CI_ELECTRICITY}
+                    {sequenceTypeForLane(lane)}
                   </span>
                 </li>
               ))}

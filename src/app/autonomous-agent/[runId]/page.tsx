@@ -826,6 +826,10 @@ export default function AutonomousRunDetailPage() {
 
   const handleStartSequenceNow = async () => {
     if (!runId || !run || run.run_status !== "running") return;
+    if (hasScheduleChanges) {
+      showToast("Save schedules first — edited times are not stored until you hit Save schedules.", "warning");
+      return;
+    }
     setStartingNow(true);
     try {
       const res = await fetch(`/api/autonomous/trigger-flows/run/${runId}`, { method: "POST" });
@@ -842,6 +846,13 @@ export default function AutonomousRunDetailPage() {
         typeof data.message === "string" && data.message
           ? data.message
           : `Sequence #${runId} trigger sent.`;
+      if (/no due steps/i.test(msg)) {
+        showToast(
+          "Nothing is due yet. Save schedules if you edited times, then use Start now on the first step — that button ignores the clock. The whole-run Start only sends steps whose time has already passed.",
+          "warning",
+        );
+        return;
+      }
       showToast(msg, "success");
       try {
         const refreshed = await loadRun();

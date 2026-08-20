@@ -3,10 +3,22 @@
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { getAutonomousApiBaseUrl, cn } from "@/lib/utils";
 import { PageHeader } from "@/components/Layouts/PageHeader";
 import { useToast } from "@/components/ui/toast";
 import AutonomousResources from "./_components/AutonomousResources";
+import RetellVoicePromptPanel, {
+  type RetellAgentListItem,
+  type SequenceTypePromptRow,
+} from "./_components/RetellVoicePromptPanel";
+import NewSequenceTemplateWizard from "./_components/NewSequenceTemplateWizard";
+import StartTestRunPanel from "./_components/StartTestRunPanel";
+import DeleteSequenceTemplateModal, {
+  type TemplateDeletePreview,
+  deleteSequenceTemplate,
+  loadTemplateDeletePreview,
+} from "./_components/DeleteSequenceTemplateModal";
 
 type AgentTab = "running" | "finished" | "templates" | "resources";
 
@@ -63,6 +75,14 @@ function isRetellAgentCopiedFlag(v: unknown): boolean {
   if (typeof v === "number" && Number.isFinite(v)) return v === 1;
   if (typeof v === "string") return v === "1" || v.toLowerCase() === "true";
   return false;
+}
+
+function apiDetail(data: unknown, fallback: string): string {
+  if (data && typeof data === "object" && "detail" in data) {
+    const d = (data as { detail: unknown }).detail;
+    if (typeof d === "string" && d.trim()) return d;
+  }
+  return fallback;
 }
 
 function formatDateTime(iso?: string | null) {
@@ -157,6 +177,7 @@ function ProgressBar({ done, total }: { done: number; total: number }) {
 
 export default function AutonomousAgentPage() {
   const { data: session } = useSession();
+  const router = useRouter();
   const token = (session as any)?.id_token || (session as any)?.accessToken;
   const { showToast } = useToast();
 
@@ -176,12 +197,19 @@ export default function AutonomousAgentPage() {
   const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null);
   const [savingTemplateId, setSavingTemplateId] = useState<number | null>(null);
   const [savingStepId, setSavingStepId] = useState<number | null>(null);
-  const [creatingTemplate, setCreatingTemplate] = useState(false);
   const [typePrompts, setTypePrompts] = useState<SequenceTypePromptConfig | null>(null);
   const [typePromptsLoading, setTypePromptsLoading] = useState(false);
   const [typePromptsError, setTypePromptsError] = useState<string | null>(null);
   const [savingTypePrompts, setSavingTypePrompts] = useState(false);
   const [triggeringFlows, setTriggeringFlows] = useState(false);
+  const [retellAgents, setRetellAgents] = useState<RetellAgentListItem[]>([]);
+  const [retellAgentsLoading, setRetellAgentsLoading] = useState(false);
+  const [retellAgentsError, setRetellAgentsError] = useState<string | null>(null);
+  const [retellRefresh, setRetellRefresh] = useState(0);
+  const [showNewWizard, setShowNewWizard] = useState(false);
+  const [deletePreview, setDeletePreview] = useState<TemplateDeletePreview | null>(null);
+  const [deletePreviewLoading, setDeletePreviewLoading] = useState(false);
+  const [deletingTemplate, setDeletingTemplate] = useState(false);
 
   const triggerAutonomousFlows = async () => {
     try {
@@ -249,7 +277,7 @@ export default function AutonomousAgentPage() {
   };
 
   useEffect(() => {
-    if (!token || tab !== "templates") return;
+    if (!token) return;
     const fetchTemplates = async () => {
       try {
         setTemplatesLoading(true); setTemplatesError(null);
@@ -266,7 +294,29 @@ export default function AutonomousAgentPage() {
       } finally { setTemplatesLoading(false); }
     };
     fetchTemplates();
-  }, [token, tab]);
+  }, [token]);
+
+  useEffect(() => {
+    if (!token || tab !== "templates") return;
+    const fetchAgents = async () => {
+      try {
+        setRetellAgentsLoading(true);
+        setRetellAgentsError(null);
+        const res = await fetch(`${getAutonomousApiBaseUrl()}/api/autonomous/retell/agents`, {
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        });
+        const data = await res.json().catch(() => []);
+        if (!res.ok) throw new Error(apiDetail(data, "Failed to load Retell agents"));
+        setRetellAgents(Array.isArray(data) ? (data as RetellAgentListItem[]) : []);
+      } catch (e: unknown) {
+        setRetellAgents([]);
+        setRetellAgentsError(e instanceof Error ? e.message : "Failed to load Retell agents");
+      } finally {
+        setRetellAgentsLoading(false);
+      }
+    };
+    fetchAgents();
+  }, [token, tab, retellRefresh]);
 
   const updateTemplateLocal = (templateId: number, patch: Partial<SequenceTemplate>) =>
     setTemplates((prev) => prev.map((t) => (t.id === templateId ? { ...t, ...patch } : t)));
@@ -334,34 +384,60 @@ export default function AutonomousAgentPage() {
     } finally { setSavingStepId(null); }
   };
 
-  const addTemplate = async () => {
+  const addTemplate = () => {
+    setShowNewWizard(true);
+  };
+
+  const openDeleteTemplate = async (templateId: number) => {
     if (!token) return;
-    setCreatingTemplate(true);
+    setDeletePreviewLoading(true);
     try {
-      const name = window.prompt("New sequence key (e.g. gas_base2_followup_v2):");
-      if (!name?.trim()) return;
-      const sequenceType = name.trim();
-      const res = await fetch(`${getAutonomousApiBaseUrl()}/api/autonomous/sequences/templates`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sequence_type: sequenceType,
-          display_name: sequenceType,
-          description: "",
-          timezone: "Australia/Brisbane",
-          is_active: true,
-          is_restartable: true,
-          steps: [],
-        }),
-      });
+      const res = await loadTemplateDeletePreview(token, templateId);
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Create failed");
-      setTemplates((prev) => [...prev, data as SequenceTemplate]);
-      setSelectedTemplateId((data as SequenceTemplate).id);
-      showToast("Template created.", "success");
+      if (!res.ok) throw new Error(apiDetail(data, "Failed to load delete preview"));
+      setDeletePreview(data as TemplateDeletePreview);
     } catch (e: unknown) {
-      showToast(e instanceof Error ? e.message : "Create failed", "error");
-    } finally { setCreatingTemplate(false); }
+      showToast(e instanceof Error ? e.message : "Failed to load delete preview", "error");
+    } finally {
+      setDeletePreviewLoading(false);
+    }
+  };
+
+  const confirmDeleteTemplate = async () => {
+    if (!token || !deletePreview) return;
+    setDeletingTemplate(true);
+    try {
+      const res = await deleteSequenceTemplate(token, deletePreview.template_id);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(apiDetail(data, "Delete failed"));
+      const warnings = Array.isArray((data as { warnings?: unknown }).warnings)
+        ? ((data as { warnings: string[] }).warnings)
+        : [];
+      setTemplates((prev) => {
+        const next = prev.filter((t) => t.id !== deletePreview.template_id);
+        setSelectedTemplateId((cur) =>
+          cur === deletePreview.template_id ? next[0]?.id ?? null : cur,
+        );
+        return next;
+      });
+      setDeletePreview(null);
+      if (warnings.length) {
+        showToast(warnings[0], "warning");
+      } else {
+        const runs = Number((data as { deleted_runs?: number }).deleted_runs || 0);
+        const retell = Boolean((data as { retell_deleted?: boolean }).retell_deleted);
+        showToast(
+          `Sequence deleted${runs ? ` (${runs} run${runs === 1 ? "" : "s"})` : ""}${
+            retell ? ", including its Retell agent" : ""
+          }.`,
+          "success",
+        );
+      }
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : "Delete failed", "error");
+    } finally {
+      setDeletingTemplate(false);
+    }
   };
 
   const addStep = async (templateId: number) => {
@@ -438,8 +514,6 @@ export default function AutonomousAgentPage() {
           system_prompt: typePrompts.system_prompt ?? "",
           email_example: typePrompts.email_example ?? "",
           sms_example: typePrompts.sms_example ?? "",
-          voice_example: typePrompts.voice_example ?? "",
-          retell_agent_id: typePrompts.retell_agent_id ?? "",
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -489,6 +563,13 @@ export default function AutonomousAgentPage() {
         typeof data.message === "string" && data.message
           ? data.message
           : `Sequence #${runId} trigger sent.`;
+      if (/no due steps/i.test(msg)) {
+        showToast(
+          "Nothing is due yet. Cadence starts next business day unless this was a test run. Save schedules if you edited times, then use Start now on the first step — that one ignores the clock.",
+          "warning",
+        );
+        return;
+      }
       showToast(msg, "success");
     } catch (e: unknown) {
       showToast(e instanceof Error ? e.message : "Start failed", "error");
@@ -543,9 +624,14 @@ export default function AutonomousAgentPage() {
 
   const emptyMessage =
     tab === "running"
-      ? "No active autonomous sequences. Start one via POST /api/autonomous/sequences/start (or wire from Base 2)."
+      ? "No active autonomous sequences. Start a test run from Sequence templates, or generate the linked comparison."
       : "No finished sequences yet.";
   const selectedTemplate = templates.find((t) => t.id === selectedTemplateId) ?? null;
+  const canRestart = (sequenceType: string) => {
+    const tpl = templates.find((t) => t.sequence_type === sequenceType);
+    if (tpl) return tpl.is_restartable;
+    return RESTARTABLE_SEQUENCE_TYPES.has(sequenceType);
+  };
 
   // ── shared input classes ──────────────────────────────────────────────────
 
@@ -645,8 +731,8 @@ export default function AutonomousAgentPage() {
             <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm overflow-hidden">
               <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-800">
                 <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">Templates</span>
-                <button type="button" onClick={addTemplate} disabled={creatingTemplate} className={btnSecondary}>
-                  {creatingTemplate ? "Creating…" : "+ New"}
+                <button type="button" onClick={addTemplate} className={btnSecondary}>
+                  + New
                 </button>
               </div>
               {templatesLoading ? (
@@ -742,8 +828,26 @@ export default function AutonomousAgentPage() {
                         disabled={savingStepId === -1} className={btnSecondary}>
                         {savingStepId === -1 ? "Adding…" : "+ Add step"}
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => void openDeleteTemplate(selectedTemplate.id)}
+                        disabled={deletePreviewLoading || deletingTemplate}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 text-xs font-semibold px-3 py-1.5 transition hover:bg-red-100 dark:hover:bg-red-900/50 disabled:opacity-40"
+                      >
+                        {deletePreviewLoading ? "Checking…" : "Delete sequence"}
+                      </button>
                     </div>
                   </div>
+
+                  {token && (
+                    <StartTestRunPanel
+                      token={token}
+                      sequenceType={selectedTemplate.sequence_type}
+                      displayName={selectedTemplate.display_name}
+                      onStarted={(runId) => router.push(`/autonomous-agent/${runId}`)}
+                      showToast={showToast}
+                    />
+                  )}
 
                   {/* prompt examples */}
                   <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-950/50 p-4 space-y-4">
@@ -751,7 +855,8 @@ export default function AutonomousAgentPage() {
                       <div>
                         <h4 className="text-sm font-bold text-gray-900 dark:text-gray-100">Prompt examples</h4>
                         <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-                          Reads/writes <code className="font-mono text-[10px]">autonomous_sequence_type</code> for this sequence type.
+                          Email/SMS drafts live in <code className="font-mono text-[10px]">autonomous_sequence_type</code>.
+                          Voice prompt is loaded from Retell for the linked agent.
                         </p>
                       </div>
                       <button type="button" onClick={saveTypePrompts}
@@ -784,61 +889,24 @@ export default function AutonomousAgentPage() {
                             onChange={(e) => updateTypePromptsLocal({ sms_example: e.target.value })}
                             rows={3} className={textareaCls} />
                         </label>
-                        <label className={labelCls}>
-                          Voice example
-                          <textarea value={typePrompts.voice_example ?? ""}
-                            onChange={(e) => updateTypePromptsLocal({ voice_example: e.target.value })}
-                            rows={3} className={textareaCls} />
-                        </label>
-
-                        {/* retell agent id */}
-                        <div className="space-y-1.5">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className={labelCls}>Retell agent ID</span>
-                            {isRetellAgentCopiedFlag(typePrompts.retell_agent_copied) && (
-                              <span className="inline-flex items-center rounded-full bg-amber-100 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-800 dark:text-amber-200">
-                                ⚠ Copied default — update
-                              </span>
-                            )}
-                          </div>
-                          <input type="text" value={typePrompts.retell_agent_id ?? ""}
-                            onChange={(e) => updateTypePromptsLocal({ retell_agent_id: e.target.value })}
-                            className={cn(inputCls, "mt-0 font-mono text-xs")} />
-                          {isRetellAgentCopiedFlag(typePrompts.retell_agent_copied) && (
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                if (!token || !typePrompts?.sequence_type) return;
-                                setSavingTypePrompts(true);
-                                try {
-                                  const res = await fetch(
-                                    `${getAutonomousApiBaseUrl()}/api/autonomous/sequences/type-prompts`,
-                                    {
-                                      method: "PATCH",
-                                      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-                                      body: JSON.stringify({
-                                        sequence_type: typePrompts.sequence_type,
-                                        retell_agent_reviewed: "true",
-                                      }),
-                                    },
-                                  );
-                                  const data = await res.json().catch(() => ({}));
-                                  if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Update failed");
-                                  setTypePrompts(data as SequenceTypePromptConfig);
-                                  showToast("Retell agent marked as reviewed.", "success");
-                                } catch (e: unknown) {
-                                  showToast(e instanceof Error ? e.message : "Update failed", "error");
-                                } finally { setSavingTypePrompts(false); }
-                              }}
-                              disabled={savingTypePrompts}
-                              className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline disabled:opacity-50"
-                            >
-                              This Retell ID is correct — clear warning
-                            </button>
-                          )}
-                        </div>
                       </div>
                     ) : null}
+
+                    {token && (
+                      <RetellVoicePromptPanel
+                        token={token}
+                        sequenceType={selectedTemplate.sequence_type}
+                        retellAgentId={typePrompts?.retell_agent_id ?? ""}
+                        retellAgentCopied={isRetellAgentCopiedFlag(typePrompts?.retell_agent_copied)}
+                        agents={retellAgents}
+                        agentsLoading={retellAgentsLoading}
+                        agentsError={retellAgentsError}
+                        onTypePromptsUpdated={(row: SequenceTypePromptRow) =>
+                          setTypePrompts(row as SequenceTypePromptConfig)
+                        }
+                        showToast={showToast}
+                      />
+                    )}
                   </div>
 
                   {/* steps table */}
@@ -1009,7 +1077,7 @@ export default function AutonomousAgentPage() {
                           )}
                           {tab === "finished" &&
                             ["stopped", "completed", "cancelled"].includes(r.run_status) &&
-                            RESTARTABLE_SEQUENCE_TYPES.has(r.sequence_type) && (
+                            canRestart(r.sequence_type) && (
                               <button type="button"
                                 disabled={restartingId === r.id || deletingId === r.id || stoppingId === r.id}
                                 onClick={() => handleRestartRun(r.id)}
@@ -1043,6 +1111,28 @@ export default function AutonomousAgentPage() {
           </div>
         )}
       </div>
+
+      {showNewWizard && token && (
+        <NewSequenceTemplateWizard
+          token={token}
+          templates={templates}
+          onCreated={(created) => {
+            setTemplates((prev) => [...prev, created as SequenceTemplate]);
+            setSelectedTemplateId(created.id);
+            setRetellRefresh((n) => n + 1);
+          }}
+          onClose={() => setShowNewWizard(false)}
+          showToast={showToast}
+        />
+      )}
+      {deletePreview && (
+        <DeleteSequenceTemplateModal
+          preview={deletePreview}
+          submitting={deletingTemplate}
+          onCancel={() => setDeletePreview(null)}
+          onConfirm={() => void confirmDeleteTemplate()}
+        />
+      )}
     </>
   );
 }
