@@ -27,6 +27,19 @@ function apiDetail(data: unknown, fallback: string): string {
   return fallback;
 }
 
+/** 0401941385 → +61401941385 so Twilio/Retell can dial the test mobile. */
+function toE164Au(raw: string): string {
+  const text = raw.trim();
+  if (!text) return "";
+  const digits = text.replace(/\D/g, "");
+  if (!digits) return "";
+  if (text.startsWith("+")) return `+${digits}`;
+  if (digits.startsWith("61") && digits.length >= 11) return `+${digits}`;
+  if (digits.startsWith("0") && digits.length >= 9) return `+61${digits.slice(1)}`;
+  if (digits.length === 9 && digits.startsWith("4")) return `+61${digits}`;
+  return `+${digits}`;
+}
+
 const COMPARISON_HINT: Record<string, string> = {
   gas_base2_followup_v1: "Base 2 — C&I Gas comparison",
   ci_electricity_base2_followup_v1: "Base 2 — C&I Electricity comparison",
@@ -91,6 +104,8 @@ export default function StartTestRunPanel({
       showToast("Enter your own email and phone so the test does not contact the client.", "error");
       return;
     }
+    const e164 = toE164Au(contactPhone);
+    setContactPhone(e164);
     setSubmitting(true);
     try {
       const tz =
@@ -111,7 +126,7 @@ export default function StartTestRunPanel({
             business_name: selected?.business_name,
             contact_name: contactName.trim(),
             contact_email: contactEmail.trim(),
-            contact_phone: contactPhone.trim(),
+            contact_phone: e164,
           },
         }),
       });
@@ -188,8 +203,12 @@ export default function StartTestRunPanel({
             type="tel"
             value={contactPhone}
             onChange={(e) => setContactPhone(e.target.value)}
+            onBlur={() => {
+              const next = toE164Au(contactPhone);
+              if (next) setContactPhone(next);
+            }}
             className={inputCls}
-            placeholder="04…"
+            placeholder="0401941385"
           />
         </label>
       </div>
