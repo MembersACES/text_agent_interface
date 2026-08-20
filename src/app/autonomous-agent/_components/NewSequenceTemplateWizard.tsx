@@ -7,6 +7,7 @@ interface SequenceTemplateLite {
   id: number;
   sequence_type: string;
   display_name: string;
+  signature_html?: string | null;
   steps: unknown[];
 }
 
@@ -53,6 +54,26 @@ const btnSecondary =
 
 const CUSTOM = "__custom__";
 
+export const ACES_TEAM_FOLLOWUP_SIGNATURE_HTML = `<p style="margin-bottom:0;"><strong>The Team</strong><br>
+Australian Circular Economy Solutions</p>
+<p style="margin-top:16px; margin-bottom:0;"><strong>Carbon Zero Australasia</strong><br>
+Australian Circular Economy Solutions Division<br>
+Direct: 0468 050 399<br>
+Email: <a href="mailto:business@acesolutions.com.au" style="color:#1a73e8;">business@acesolutions.com.au</a><br>
+470 St Kilda Road, Melbourne VIC 3004<br>
+Website: <a href="https://acesolutions.com.au" style="color:#1a73e8;">acesolutions.com.au</a></p>`;
+
+const SOLAR_ENGAGEMENT_SIGNATURE_HTML = `<p style="margin-bottom:0;"><strong>Amelia Williams</strong><br>
+<span style="color:#666;">Customer Success Manager (CSM) – Implementation: Connects onboarding directly to future success.</span></p>
+<p style="margin-top:16px; margin-bottom:0;"><strong>Carbon Zero Australasia</strong><br>
+Australian Circular Economy Solutions Division<br>
+Direct: 0468 050 399<br>
+Email: <a href="mailto:business@acesolutions.com.au" style="color:#1a73e8;">business@acesolutions.com.au</a><br>
+470 St Kilda Road, Melbourne VIC 3004<br>
+Ph: 1300 849 908 | Website: <a href="https://acesolutions.com.au" style="color:#1a73e8;">acesolutions.com.au</a></p>`;
+
+const SOLAR_ENGAGEMENT_FORM_SEQUENCE_TYPE = "solar_panel_cleaning_engagement_form_v1";
+
 export default function NewSequenceTemplateWizard({
   token,
   templates,
@@ -67,7 +88,22 @@ export default function NewSequenceTemplateWizard({
   const [sequenceType, setSequenceType] = useState("");
   const [copyFrom, setCopyFrom] = useState("");
   const [duplicateRetell, setDuplicateRetell] = useState(true);
+  const [signatureHtml, setSignatureHtml] = useState(ACES_TEAM_FOLLOWUP_SIGNATURE_HTML);
   const [submitting, setSubmitting] = useState(false);
+
+  const applySignatureFromCopy = (key: string) => {
+    const src = templates.find((t) => t.sequence_type === key);
+    const copied = (src?.signature_html || "").trim();
+    if (copied) {
+      setSignatureHtml(copied);
+      return;
+    }
+    if (key === SOLAR_ENGAGEMENT_FORM_SEQUENCE_TYPE) {
+      setSignatureHtml(SOLAR_ENGAGEMENT_SIGNATURE_HTML);
+      return;
+    }
+    setSignatureHtml(ACES_TEAM_FOLLOWUP_SIGNATURE_HTML);
+  };
 
   useEffect(() => {
     const load = async () => {
@@ -84,7 +120,10 @@ export default function NewSequenceTemplateWizard({
           setFlowKey(rows[0].sequence_type);
           setDisplayName(rows[0].display_name);
           setSequenceType(rows[0].sequence_type);
-          if (rows[0].copy_hint_available && rows[0].copy_hint) setCopyFrom(rows[0].copy_hint);
+          if (rows[0].copy_hint_available && rows[0].copy_hint) {
+            setCopyFrom(rows[0].copy_hint);
+            applySignatureFromCopy(rows[0].copy_hint);
+          }
         } else {
           setFlowKey(CUSTOM);
         }
@@ -112,7 +151,9 @@ export default function NewSequenceTemplateWizard({
     if (!flow) return;
     setDisplayName(flow.display_name);
     setSequenceType(flow.sequence_type);
-    setCopyFrom(flow.copy_hint_available && flow.copy_hint ? flow.copy_hint : "");
+    const hint = flow.copy_hint_available && flow.copy_hint ? flow.copy_hint : "";
+    setCopyFrom(hint);
+    applySignatureFromCopy(hint);
   };
 
   const copySourceHasAgent = useMemo(() => {
@@ -141,6 +182,7 @@ export default function NewSequenceTemplateWizard({
           steps: [],
           copy_from_sequence_type: copyFrom || null,
           duplicate_retell: Boolean(duplicateRetell && copyFrom),
+          signature_html: signatureHtml.trim() || null,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -163,7 +205,7 @@ export default function NewSequenceTemplateWizard({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <button type="button" className="absolute inset-0 bg-black/40" onClick={onClose} aria-label="Close" />
-      <div className="relative w-full max-w-lg rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-xl p-5 space-y-4">
+      <div className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-xl p-5 space-y-4">
         <div>
           <h3 className="text-base font-bold text-gray-900 dark:text-gray-100">New sequence template</h3>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
@@ -215,7 +257,15 @@ export default function NewSequenceTemplateWizard({
 
         <label className={labelCls}>
           Copy cadence from
-          <select value={copyFrom} onChange={(e) => setCopyFrom(e.target.value)} className={inputCls}>
+          <select
+            value={copyFrom}
+            onChange={(e) => {
+              const key = e.target.value;
+              setCopyFrom(key);
+              applySignatureFromCopy(key);
+            }}
+            className={inputCls}
+          >
             <option value="">Start blank (no steps)</option>
             {templates.map((t) => (
               <option key={t.sequence_type} value={t.sequence_type}>
@@ -240,6 +290,20 @@ export default function NewSequenceTemplateWizard({
                 Choose a sequence to copy from first — that agent is cloned, not reused.
               </span>
             )}
+          </span>
+        </label>
+
+        <label className={labelCls}>
+          Email signature
+          <textarea
+            value={signatureHtml}
+            onChange={(e) => setSignatureHtml(e.target.value)}
+            rows={7}
+            className={cn(inputCls, "font-mono text-[11px] leading-relaxed")}
+          />
+          <span className="mt-1 block normal-case tracking-normal font-normal text-[11px] text-gray-400">
+            Appended to every email in this sequence. Pair it with the Retell agent you duplicate above.
+            SMS and voice are unchanged. Leave blank to use the default ACES Team block.
           </span>
         </label>
 

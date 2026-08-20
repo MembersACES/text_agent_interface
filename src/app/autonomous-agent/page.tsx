@@ -57,6 +57,7 @@ interface SequenceTemplate {
   timezone: string;
   is_active: boolean;
   is_restartable: boolean;
+  signature_html: string | null;
   steps: SequenceTemplateStep[];
 }
 
@@ -344,6 +345,7 @@ export default function AutonomousAgentPage() {
             timezone: template.timezone,
             is_active: template.is_active,
             is_restartable: template.is_restartable,
+            signature_html: template.signature_html ?? "",
           }),
         },
       );
@@ -799,6 +801,19 @@ export default function AutonomousAgentPage() {
                           onChange={(e) => updateTemplateLocal(selectedTemplate.id, { is_restartable: e.target.checked })}
                           className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
                         Restartable
+                      </label>
+                      <label className={cn(labelCls, "md:col-span-2")}>
+                        Email signature
+                        <textarea
+                          value={selectedTemplate.signature_html ?? ""}
+                          onChange={(e) => updateTemplateLocal(selectedTemplate.id, { signature_html: e.target.value })}
+                          rows={7}
+                          placeholder="Leave blank to use the default ACES Team signature (Amelia for solar)."
+                          className={cn(inputCls, "font-mono text-[11px] leading-relaxed")}
+                        />
+                        <span className="mt-1 block normal-case tracking-normal font-normal text-[11px] text-gray-400">
+                          Paired with this sequence&rsquo;s Retell agent. Appended to every email; SMS and voice are unchanged.
+                        </span>
                       </label>
                     </div>
                     <div className="flex gap-2 mt-4">
