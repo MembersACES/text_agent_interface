@@ -49,7 +49,7 @@ export async function POST(
       );
     }
 
-    const upstream = await postAutonomousRunner(runnerBase, `/run/run/${parsed}`, bearer);
+    const upstream = await postAutonomousRunner(runnerBase, `/run/run/${parsed}?force=true`, bearer);
 
     if (!upstream.ok) {
       console.error("[autonomous-trigger-run] upstream failure", {
@@ -59,17 +59,20 @@ export async function POST(
         status: upstream.status,
         payload: upstream.payload,
       });
-      const is401 = upstream.status === 401;
-      return NextResponse.json(
-        {
-          error: is401
-            ? "Autonomous runner rejected the bearer token (401). Set interface AUTONOMOUS_RUNNER_API_KEY or BACKEND_API_KEY to match autonomous_agent_backend BACKEND_API_KEY exactly."
-            : `Upstream returned ${upstream.status}`,
-          upstream_url: upstream.url,
-          autonomous_response: upstream.payload,
-        },
-        { status: 502 },
-      );
+      if (upstream.status === 401) {
+        return NextResponse.json(
+          {
+            error:
+              "Autonomous runner rejected the bearer token (401). Set interface AUTONOMOUS_RUNNER_API_KEY or BACKEND_API_KEY to match autonomous_agent_backend BACKEND_API_KEY exactly.",
+            upstream_url: upstream.url,
+            autonomous_response: upstream.payload,
+          },
+          { status: 502 },
+        );
+      }
+      return NextResponse.json(upstream.payload ?? { error: `Upstream returned ${upstream.status}` }, {
+        status: upstream.status,
+      });
     }
 
     return NextResponse.json(upstream.payload ?? { ok: true });

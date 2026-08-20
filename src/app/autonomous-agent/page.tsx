@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getAutonomousApiBaseUrl, cn } from "@/lib/utils";
+import { dispatchRunNowFromList } from "@/lib/autonomous-dispatch";
 import { PageHeader } from "@/components/Layouts/PageHeader";
 import { useToast } from "@/components/ui/toast";
 import AutonomousResources from "./_components/AutonomousResources";
@@ -547,29 +548,10 @@ export default function AutonomousAgentPage() {
   };
 
   const handleStartRunNow = async (runId: number) => {
+    if (!token) return;
     setStartingId(runId);
     try {
-      const res = await fetch(`/api/autonomous/trigger-flows/run/${runId}`, { method: "POST" });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        const message =
-          (typeof data.error === "string" && data.error) ||
-          (typeof data.detail === "string" && data.detail) ||
-          (typeof data.message === "string" && data.message) ||
-          "Start failed";
-        throw new Error(message);
-      }
-      const msg =
-        typeof data.message === "string" && data.message
-          ? data.message
-          : `Sequence #${runId} trigger sent.`;
-      if (/no due steps/i.test(msg)) {
-        showToast(
-          "Nothing is due yet. Cadence starts next business day unless this was a test run. Save schedules if you edited times, then use Start now on the first step — that one ignores the clock.",
-          "warning",
-        );
-        return;
-      }
+      const msg = await dispatchRunNowFromList({ runId, token });
       showToast(msg, "success");
     } catch (e: unknown) {
       showToast(e instanceof Error ? e.message : "Start failed", "error");
