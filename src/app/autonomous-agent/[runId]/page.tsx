@@ -8,6 +8,7 @@ import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { getAutonomousApiBaseUrl, getApiBaseUrl } from "@/lib/utils";
+import { dispatchRunNow, dispatchStepNow } from "@/lib/autonomous-dispatch";
 import { PageHeader } from "@/components/Layouts/PageHeader";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
@@ -825,34 +826,19 @@ export default function AutonomousRunDetailPage() {
   };
 
   const handleStartSequenceNow = async () => {
-    if (!runId || !run || run.run_status !== "running") return;
+    if (!token || !runId || !run || run.run_status !== "running") return;
     if (hasScheduleChanges) {
       showToast("Save schedules first — edited times are not stored until you hit Save schedules.", "warning");
       return;
     }
+    const firstReady = orderedSteps.find((s) => s.step_status === "ready" || s.step_status === "to_start");
     setStartingNow(true);
     try {
-      const res = await fetch(`/api/autonomous/trigger-flows/run/${runId}`, { method: "POST" });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        const message =
-          (typeof data.error === "string" && data.error) ||
-          (typeof data.detail === "string" && data.detail) ||
-          (typeof data.message === "string" && data.message) ||
-          "Start failed";
-        throw new Error(message);
-      }
-      const msg =
-        typeof data.message === "string" && data.message
-          ? data.message
-          : `Sequence #${runId} trigger sent.`;
-      if (/no due steps/i.test(msg)) {
-        showToast(
-          "Nothing is due yet. Save schedules if you edited times, then use Start now on the first step — that button ignores the clock. The whole-run Start only sends steps whose time has already passed.",
-          "warning",
-        );
-        return;
-      }
+      const msg = await dispatchRunNow({
+        runId: Number(runId),
+        token,
+        firstReadyStepId: firstReady?.id ?? null,
+      });
       showToast(msg, "success");
       try {
         const refreshed = await loadRun();
@@ -868,23 +854,10 @@ export default function AutonomousRunDetailPage() {
   };
 
   const handleStartStepNow = async (stepId: number) => {
-    if (!runId || !run || run.run_status !== "running") return;
+    if (!token || !runId || !run || run.run_status !== "running") return;
     setStartingStepId(stepId);
     try {
-      const res = await fetch(`/api/autonomous/trigger-flows/step/${stepId}`, { method: "POST" });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        const message =
-          (typeof data.error === "string" && data.error) ||
-          (typeof data.detail === "string" && data.detail) ||
-          (typeof data.message === "string" && data.message) ||
-          "Step start failed";
-        throw new Error(message);
-      }
-      const msg =
-        typeof data.message === "string" && data.message
-          ? data.message
-          : `Step #${stepId} trigger sent.`;
+      const msg = await dispatchStepNow({ runId: Number(runId), stepId, token });
       showToast(msg, "success");
       try {
         const refreshed = await loadRun();

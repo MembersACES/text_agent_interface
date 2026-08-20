@@ -7,24 +7,11 @@ import {
 } from "@/lib/autonomous-runner-trigger";
 import { getAutonomousRunnerApiBaseUrl } from "@/lib/utils";
 
-function resolveRunnerBaseUrl(): string | null {
-  return getAutonomousRunnerApiBaseUrl();
-}
-
-export async function POST(
-  req: NextRequest,
-  ctx: { params: Promise<{ stepId: string }> },
-) {
+export async function POST(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const { stepId } = await ctx.params;
-    const parsed = Number(stepId);
-    if (!Number.isFinite(parsed) || parsed <= 0) {
-      return NextResponse.json({ error: "Invalid step id" }, { status: 400 });
     }
 
     const bearer = getAutonomousRunnerTriggerBearer();
@@ -38,22 +25,26 @@ export async function POST(
       );
     }
 
-    const runnerBase = resolveRunnerBaseUrl();
+    const runnerBase = getAutonomousRunnerApiBaseUrl();
     if (!runnerBase) {
       return NextResponse.json(
         {
           error:
-            "Autonomous runner base URL is not configured. Set AUTONOMOUS_RUNNER_API_URL (recommended), AUTONOMOUS_API_URL, or NEXT_PUBLIC_AUTONOMOUS_API_BASE_URL to the service that exposes POST /run/step/{id} (this must not be the CRM monolith).",
+            "Autonomous runner base URL is not configured. Set AUTONOMOUS_RUNNER_API_URL (recommended), AUTONOMOUS_API_URL, or NEXT_PUBLIC_AUTONOMOUS_API_BASE_URL to the service that exposes POST /run/dispatch.",
         },
         { status: 503 },
       );
     }
 
-    const upstream = await postAutonomousRunner(runnerBase, `/run/step/${parsed}`, bearer);
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== "object") {
+      return NextResponse.json({ error: "Invalid action payload" }, { status: 400 });
+    }
+
+    const upstream = await postAutonomousRunner(runnerBase, "/run/dispatch", bearer, body);
 
     if (!upstream.ok) {
-      console.error("[autonomous-trigger-step] upstream failure", {
-        step_id: parsed,
+      console.error("[autonomous-trigger-dispatch] upstream failure", {
         runner_base: runnerBase,
         upstream_url: upstream.url,
         status: upstream.status,
@@ -77,11 +68,8 @@ export async function POST(
 
     return NextResponse.json(upstream.payload ?? { ok: true });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Failed to trigger step";
-    console.error("[autonomous-trigger-step] unexpected error", {
-      message,
-      error,
-    });
+    const message = error instanceof Error ? error.message : "Failed to dispatch action";
+    console.error("[autonomous-trigger-dispatch] unexpected error", { message, error });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
