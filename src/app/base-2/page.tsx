@@ -7,6 +7,7 @@ import { getApiBaseUrl, getAutonomousApiBaseUrl } from "@/lib/utils";
 import { ToolPageLayout } from "@/components/Layouts/ToolPageLayout";
 import { Button } from "@/components/ui/button";
 import { Base2ComparisonDefaultsEditor } from "@/components/base2/Base2ComparisonDefaultsEditor";
+import { BneGasContractModal, BneGasGenerateValues } from "@/components/base2/BneGasContractModal";
 import {
   Base2Defaults,
   DEFAULT_BASE2_DEFAULTS,
@@ -121,6 +122,11 @@ interface UtilityComparison {
   smeAirtablePeriodCoverage?: SmeAirtablePeriodCoverage | null;
   ciGasInvoiceReviewDays?: number;
   ciGasAnnualConsumptionGJ?: number;
+  /** Signed / current C&I gas contract end date (YYYY-MM-DD), used by B&E Gas. */
+  ciGasContractEndDate?: string;
+  /** B&E offer period (YYYY-MM-DD). Start defaults to 1st of next month. */
+  ciGasBneStartDate?: string;
+  ciGasBneEndDate?: string;
   /** Required for C&I electricity comparison / DMA ($/MWh). */
   ciElectricityCommissionAudPerMwh?: number;
   /** Required for C&I gas and SME → C&I gas (`ci_offer`) comparison ($/GJ). */
@@ -737,6 +743,7 @@ function offerComparisonButtonLabel(c: UtilityComparison): string {
 
 const AUTONOMOUS_SEQUENCE_CI_GAS = 'gas_base2_followup_v1';
 const AUTONOMOUS_SEQUENCE_CI_ELECTRICITY = 'ci_electricity_base2_followup_v1';
+const BNE_GAS_WEBHOOK_URL = 'https://membersaces.app.n8n.cloud/webhook/generate-gas-ci-comparaison-b%26e';
 
 // ─── Component ─────────────────────────────────────────────────────────────────
 
@@ -784,6 +791,10 @@ export default function Base2Page() {
   });
   const [autonomousSequenceConfirm, setAutonomousSequenceConfirm] = useState<AutonomousSequenceConfirmState | null>(null);
   const [autonomousSequenceStarting, setAutonomousSequenceStarting] = useState(false);
+  const [bneGasModal, setBneGasModal] = useState<{ open: boolean; comparison: UtilityComparison | null }>({
+    open: false,
+    comparison: null,
+  });
 
   const token = (session as any)?.id_token;
 
@@ -1754,6 +1765,44 @@ export default function Base2Page() {
     openRecipientConfirmModal(comparison, 'comparison', false, true);
   };
 
+  // B&E Gas: look up signed C&I gas contract periods for this MRIN only.
+  const handleBneGasClick = (comparison: UtilityComparison) => {
+    setBneGasModal({ open: true, comparison });
+  };
+
+  const handleBneGasGenerate = (values: BneGasGenerateValues) => {
+    const comparison = bneGasModal.comparison;
+    if (!comparison) return;
+    const usage = values.invoiceUsageGj ?? undefined;
+    const patched: UtilityComparison = {
+      ...comparison,
+      currentGasRate: values.currentGasRate ?? undefined,
+      gasUsage: usage,
+      monthlyUsage: usage,
+      comparisonGasRate: values.newGasRate ?? undefined,
+      ciGasCommissionAudPerGj: values.commissionPerGj ?? undefined,
+      ciGasInvoiceReviewDays: values.invoiceDays ?? undefined,
+      ciGasAnnualConsumptionGJ: values.annualUsageGj ?? undefined,
+      ciGasContractEndDate: values.contractEndDate || undefined,
+      ciGasBneStartDate: values.bneStartDate || undefined,
+      ciGasBneEndDate: values.bneEndDate || undefined,
+    };
+    setUtilityComparisons((prev) =>
+      prev.map((u) =>
+        u.utilityType === comparison.utilityType && u.identifier === comparison.identifier ? patched : u,
+      ),
+    );
+    setBneGasModal({ open: false, comparison: null });
+    void generateComparison(
+      patched,
+      "comparison",
+      false,
+      { contactName: values.contactName, contactEmail: values.contactEmail },
+      false,
+      true,
+    );
+  };
+
   const handleGenerateClick = (comparison: UtilityComparison, action: 'comparison' | 'dma' = 'comparison') => {
     if (comparison.utilityType === "SME Gas") {
       const mode = comparison.smeGasComparisonMode ?? "invoice_blocks";
@@ -1803,6 +1852,7 @@ export default function Base2Page() {
     generateAll: boolean = false,
     webhookRecipient?: { contactName: string; contactEmail: string; contactPhone?: string },
     isRsl: boolean = false,
+    isBneGas: boolean = false,
   ) => {
     if (!token || !session) { alert('Please log in to generate comparisons'); return; }
     const utilitiesToProcess = generateAll ? utilityComparisons.filter((u) => { if (u.utilityType !== comparison.utilityType || u.loading || u.error) return false; if (comparison.utilityType === "SME Gas") { const m = comparison.smeGasComparisonMode ?? "invoice_blocks"; const um = u.smeGasComparisonMode ?? "invoice_blocks"; return m === um; } return true; }) : [comparison];
@@ -1897,7 +1947,9 @@ export default function Base2Page() {
           payload.commission_aud_per_mwh = util.ciElectricityCommissionAudPerMwh!.toFixed(4);
           payload.commission_unit_electricity = "$/MWh";
         } else if (util.utilityType === 'C&I Gas') {
-          webhookUrl = 'https://membersaces.app.n8n.cloud/webhook/generate-gas-ci-comparaison-b2';
+          webhookUrl = isBneGas
+            ? BNE_GAS_WEBHOOK_URL
+            : 'https://membersaces.app.n8n.cloud/webhook/generate-gas-ci-comparaison-b2';
           const details = util.invoiceData?.gas_ci_invoice_details || {}; const fullData = details?.full_invoice_data || {};
           payload.mrin = util.identifier; payload.invoice_id = fullData['Invoice ID'] || details?.invoice_id || ''; payload.site_address = fullData['Site Address'] || details?.site_address || businessInfo?.site_address || ''; payload.invoice_number = fullData['Invoice Number'] || details?.invoice_number || '';
           payload.gas_rate_invoice = util.currentGasRate?.toFixed(4) || '0';
@@ -1907,6 +1959,40 @@ export default function Base2Page() {
           payload.current_daily_supply = util.currentDailySupply?.toFixed(2) || '0'; payload.comparison_daily_supply = util.comparisonDailySupply?.toFixed(2) || '0';
           payload.commission_aud_per_gj = util.ciGasCommissionAudPerGj!.toFixed(4);
           payload.commission_unit_gas = "$/GJ";
+          if (util.ciGasContractEndDate) payload.contract_end_date = util.ciGasContractEndDate;
+          if (util.ciGasInvoiceReviewDays != null) payload.invoice_review_days = String(util.ciGasInvoiceReviewDays);
+          if (util.ciGasAnnualConsumptionGJ != null && Number.isFinite(util.ciGasAnnualConsumptionGJ)) {
+            payload.annual_usage_gj = util.ciGasAnnualConsumptionGJ.toFixed(2);
+          }
+          if (
+            util.ciGasAnnualConsumptionGJ != null &&
+            util.ciGasCommissionAudPerGj != null &&
+            Number.isFinite(util.ciGasAnnualConsumptionGJ) &&
+            Number.isFinite(util.ciGasCommissionAudPerGj)
+          ) {
+            payload.estimated_comms = (util.ciGasAnnualConsumptionGJ * util.ciGasCommissionAudPerGj).toFixed(2);
+          }
+          if (isBneGas) {
+            payload.bne_gas = true;
+            if (util.ciGasBneStartDate) {
+              payload.bne_start_date = util.ciGasBneStartDate;
+              payload.offer1StartDate = util.ciGasBneStartDate;
+            }
+            if (util.ciGasBneEndDate) {
+              payload.bne_end_date = util.ciGasBneEndDate;
+              payload.offer1EndDate = util.ciGasBneEndDate;
+            }
+            if (util.ciGasBneStartDate && util.ciGasBneEndDate) {
+              const start = new Date(`${util.ciGasBneStartDate}T00:00:00`);
+              const end = new Date(`${util.ciGasBneEndDate}T00:00:00`);
+              if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()) && end > start) {
+                const months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+                const years = months >= 12 ? String(Math.round(months / 12)) : "1";
+                payload.offer1Validity = `${Math.max(months, 1)} months`;
+                payload.offer1PeriodYears = years;
+              }
+            }
+          }
         } else if (util.utilityType === "SME Gas") {
           if (util.smeGasComparisonMode !== "ci_offer") { errors.push(`${util.identifier}: Select "C&I-style comparison (SME → C&I)" to generate this comparison.`); setSending(null); continue; }
           webhookUrl = "https://membersaces.app.n8n.cloud/webhook/generate-gas-sme-ci-comparaison-b2";
@@ -2090,7 +2176,7 @@ export default function Base2Page() {
                 }
               }
             }
-            if (action === 'comparison') {
+            if (action === 'comparison' && !isBneGas) {
               const lanes = new Set<AutonomousCiLane>();
               for (const { util } of successResults) {
                 if (util.utilityType === 'C&I Gas' || (util.utilityType === 'SME Gas' && util.smeGasComparisonMode === 'ci_offer')) lanes.add('ci_gas');
@@ -3297,6 +3383,15 @@ export default function Base2Page() {
                             ) : (<>⚡ {offerComparisonButtonLabel(comparison)}</>)}
                           </button>
                         )}
+                        {comparison.utilityType === 'C&I Gas' && (
+                          <button
+                            onClick={() => handleBneGasClick(comparison)}
+                            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white shadow-sm transition-all"
+                            style={{ backgroundColor: '#0F766E' }}
+                          >
+                            🔥 B&E Gas
+                          </button>
+                        )}
                         {comparison.utilityType === 'C&I Electricity' && (
                           <button
                             onClick={() => handleRslClick(comparison)}
@@ -3341,6 +3436,28 @@ export default function Base2Page() {
         )}
 
       {/* ── Modals ── */}
+
+      <BneGasContractModal
+        open={bneGasModal.open && bneGasModal.comparison != null}
+        mrin={bneGasModal.comparison?.identifier ?? ""}
+        token={token}
+        preview={(() => {
+          const comparison = bneGasModal.comparison;
+          if (!comparison) return null;
+          const usage = getCiGasEffectiveUsageGJ(comparison);
+          return {
+            currentGasRate: comparison.currentGasRate ?? null,
+            invoiceUsageGj: usage > 0 ? usage : null,
+            invoiceDays: comparison.ciGasInvoiceReviewDays ?? null,
+            newGasRate: comparison.comparisonGasRate ?? null,
+            commissionPerGj: comparison.ciGasCommissionAudPerGj ?? null,
+          };
+        })()}
+        defaultContactName={defaultWebhookRecipient(businessInfo, businessInfoData).contactName}
+        defaultContactEmail={defaultWebhookRecipient(businessInfo, businessInfoData).contactEmail}
+        onClose={() => setBneGasModal({ open: false, comparison: null })}
+        onGenerate={handleBneGasGenerate}
+      />
 
       {/* Generate scope choice modal */}
       {generateChoiceModal.open && generateChoiceModal.comparison && (
