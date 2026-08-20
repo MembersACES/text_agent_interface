@@ -11,6 +11,7 @@ import RetellVoicePromptPanel, {
   type RetellAgentListItem,
   type SequenceTypePromptRow,
 } from "./_components/RetellVoicePromptPanel";
+import NewSequenceTemplateWizard from "./_components/NewSequenceTemplateWizard";
 
 type AgentTab = "running" | "finished" | "templates" | "resources";
 
@@ -67,11 +68,6 @@ function isRetellAgentCopiedFlag(v: unknown): boolean {
   if (typeof v === "number" && Number.isFinite(v)) return v === 1;
   if (typeof v === "string") return v === "1" || v.toLowerCase() === "true";
   return false;
-}
-
-function isVoiceChannel(channel: string): boolean {
-  const c = channel.trim().toLowerCase();
-  return c === "voice_call" || c === "voice";
 }
 
 function apiDetail(data: unknown, fallback: string): string {
@@ -193,7 +189,6 @@ export default function AutonomousAgentPage() {
   const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null);
   const [savingTemplateId, setSavingTemplateId] = useState<number | null>(null);
   const [savingStepId, setSavingStepId] = useState<number | null>(null);
-  const [creatingTemplate, setCreatingTemplate] = useState(false);
   const [typePrompts, setTypePrompts] = useState<SequenceTypePromptConfig | null>(null);
   const [typePromptsLoading, setTypePromptsLoading] = useState(false);
   const [typePromptsError, setTypePromptsError] = useState<string | null>(null);
@@ -202,6 +197,8 @@ export default function AutonomousAgentPage() {
   const [retellAgents, setRetellAgents] = useState<RetellAgentListItem[]>([]);
   const [retellAgentsLoading, setRetellAgentsLoading] = useState(false);
   const [retellAgentsError, setRetellAgentsError] = useState<string | null>(null);
+  const [retellRefresh, setRetellRefresh] = useState(0);
+  const [showNewWizard, setShowNewWizard] = useState(false);
 
   const triggerAutonomousFlows = async () => {
     try {
@@ -308,7 +305,7 @@ export default function AutonomousAgentPage() {
       }
     };
     fetchAgents();
-  }, [token, tab]);
+  }, [token, tab, retellRefresh]);
 
   const updateTemplateLocal = (templateId: number, patch: Partial<SequenceTemplate>) =>
     setTemplates((prev) => prev.map((t) => (t.id === templateId ? { ...t, ...patch } : t)));
@@ -376,34 +373,8 @@ export default function AutonomousAgentPage() {
     } finally { setSavingStepId(null); }
   };
 
-  const addTemplate = async () => {
-    if (!token) return;
-    setCreatingTemplate(true);
-    try {
-      const name = window.prompt("New sequence key (e.g. gas_base2_followup_v2):");
-      if (!name?.trim()) return;
-      const sequenceType = name.trim();
-      const res = await fetch(`${getAutonomousApiBaseUrl()}/api/autonomous/sequences/templates`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sequence_type: sequenceType,
-          display_name: sequenceType,
-          description: "",
-          timezone: "Australia/Brisbane",
-          is_active: true,
-          is_restartable: true,
-          steps: [],
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Create failed");
-      setTemplates((prev) => [...prev, data as SequenceTemplate]);
-      setSelectedTemplateId((data as SequenceTemplate).id);
-      showToast("Template created.", "success");
-    } catch (e: unknown) {
-      showToast(e instanceof Error ? e.message : "Create failed", "error");
-    } finally { setCreatingTemplate(false); }
+  const addTemplate = () => {
+    setShowNewWizard(true);
   };
 
   const addStep = async (templateId: number) => {
@@ -480,7 +451,6 @@ export default function AutonomousAgentPage() {
           system_prompt: typePrompts.system_prompt ?? "",
           email_example: typePrompts.email_example ?? "",
           sms_example: typePrompts.sms_example ?? "",
-          retell_agent_id: typePrompts.retell_agent_id ?? "",
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -686,8 +656,8 @@ export default function AutonomousAgentPage() {
             <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm overflow-hidden">
               <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-800">
                 <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">Templates</span>
-                <button type="button" onClick={addTemplate} disabled={creatingTemplate} className={btnSecondary}>
-                  {creatingTemplate ? "Creating…" : "+ New"}
+                <button type="button" onClick={addTemplate} className={btnSecondary}>
+                  + New
                 </button>
               </div>
               {templatesLoading ? (
@@ -853,7 +823,7 @@ export default function AutonomousAgentPage() {
                       <table className="min-w-full text-xs">
                         <thead>
                           <tr className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-                            {["Index", "Day", "Channel", "Time", "Prompt", "Retell agent", "Active", ""].map((h) => (
+                            {["Index", "Day", "Channel", "Time", "Prompt", "Active", ""].map((h) => (
                               <th key={h} className="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide whitespace-nowrap">{h}</th>
                             ))}
                           </tr>
@@ -887,30 +857,6 @@ export default function AutonomousAgentPage() {
                                   <input type="text" value={s.prompt_text ?? ""}
                                     onChange={(e) => updateStepLocal(selectedTemplate.id, s.id, { prompt_text: e.target.value })}
                                     className="w-72 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-950 px-1.5 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/40" />
-                                </td>
-                                <td className="px-3 py-2">
-                                  {isVoiceChannel(s.channel) ? (
-                                    <select
-                                      value={s.retell_agent_id ?? ""}
-                                      onChange={(e) => updateStepLocal(selectedTemplate.id, s.id, { retell_agent_id: e.target.value })}
-                                      className="w-48 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-950 px-1.5 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
-                                    >
-                                      <option value="">Sequence default</option>
-                                      {retellAgents.map((a) => (
-                                        <option key={a.agent_id} value={a.agent_id}>
-                                          {a.agent_name}
-                                        </option>
-                                      ))}
-                                      {(s.retell_agent_id ?? "") &&
-                                        !retellAgents.some((a) => a.agent_id === s.retell_agent_id) && (
-                                          <option value={s.retell_agent_id ?? ""}>
-                                            {s.retell_agent_id} (not in list)
-                                          </option>
-                                        )}
-                                    </select>
-                                  ) : (
-                                    <span className="text-gray-300 dark:text-gray-600">—</span>
-                                  )}
                                 </td>
                                 <td className="px-3 py-2 text-center">
                                   <input type="checkbox" checked={s.is_active}
@@ -1072,6 +1018,20 @@ export default function AutonomousAgentPage() {
           </div>
         )}
       </div>
+
+      {showNewWizard && token && (
+        <NewSequenceTemplateWizard
+          token={token}
+          templates={templates}
+          onCreated={(created) => {
+            setTemplates((prev) => [...prev, created as SequenceTemplate]);
+            setSelectedTemplateId(created.id);
+            setRetellRefresh((n) => n + 1);
+          }}
+          onClose={() => setShowNewWizard(false)}
+          showToast={showToast}
+        />
+      )}
     </>
   );
 }

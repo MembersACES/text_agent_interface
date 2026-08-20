@@ -46,8 +46,6 @@ function apiDetail(data: unknown, fallback: string): string {
   return fallback;
 }
 
-const inputCls =
-  "mt-1 w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-950 px-2.5 py-1.5 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 transition";
 const textareaCls =
   "mt-1 w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-950 px-2.5 py-2 text-xs text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 transition resize-y";
 const labelCls = "block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide";
@@ -72,14 +70,10 @@ export default function RetellVoicePromptPanel({
   const [promptError, setPromptError] = useState<string | null>(null);
   const [savingAgentId, setSavingAgentId] = useState(false);
   const [savingPrompt, setSavingPrompt] = useState(false);
-  const [selectedId, setSelectedId] = useState(retellAgentId);
 
-  useEffect(() => {
-    setSelectedId(retellAgentId);
-  }, [sequenceType, retellAgentId]);
-
-  const agentId = selectedId;
-  const agentInList = agents.some((a) => a.agent_id === agentId);
+  const agentId = retellAgentId;
+  const listed = agents.find((a) => a.agent_id === agentId);
+  const agentLabel = prompt?.agent_name || listed?.agent_name || agentId;
 
   useEffect(() => {
     if (!token || !agentId) {
@@ -120,26 +114,6 @@ export default function RetellVoicePromptPanel({
       cancelled = true;
     };
   }, [token, agentId]);
-
-  const persistAgentId = async (nextId: string) => {
-    setSelectedId(nextId);
-    setSavingAgentId(true);
-    try {
-      const res = await fetch(`${getAutonomousApiBaseUrl()}/api/autonomous/sequences/type-prompts`, {
-        method: "PATCH",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ sequence_type: sequenceType, retell_agent_id: nextId }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(apiDetail(data, "Failed to save Retell agent"));
-      onTypePromptsUpdated(data as SequenceTypePromptRow);
-      showToast(nextId ? "Retell agent linked to this sequence." : "Retell agent cleared.", "success");
-    } catch (e: unknown) {
-      showToast(e instanceof Error ? e.message : "Failed to save Retell agent", "error");
-    } finally {
-      setSavingAgentId(false);
-    }
-  };
 
   const clearCopiedWarning = async () => {
     setSavingAgentId(true);
@@ -202,7 +176,7 @@ export default function RetellVoicePromptPanel({
             Retell voice agent
           </h5>
           <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">
-            Prompt is stored in Retell. Sequences that share this agent share the same script.
+            This sequence owns one Retell agent. Edit the script here; create a new template to duplicate an agent.
           </p>
         </div>
         {prompt?.prompt_editable && (
@@ -226,27 +200,20 @@ export default function RetellVoicePromptPanel({
             </span>
           )}
         </div>
-        {agentsLoading ? (
-          <p className="text-xs text-gray-400">Loading Retell agents…</p>
-        ) : agentsError ? (
+        {agentsError && !agentId ? (
           <p className="text-xs text-amber-600 dark:text-amber-400">{agentsError}</p>
+        ) : !agentId ? (
+          <p className="text-xs text-gray-400">
+            No voice agent linked. Use <span className="font-semibold">+ New</span> to duplicate an existing
+            sequence&rsquo;s Retell agent onto a new template.
+          </p>
         ) : (
-          <select
-            value={agentId}
-            disabled={savingAgentId}
-            onChange={(e) => persistAgentId(e.target.value)}
-            className={cn(inputCls, "mt-0 font-mono text-xs")}
-          >
-            <option value="">— None —</option>
-            {agents.map((a) => (
-              <option key={a.agent_id} value={a.agent_id}>
-                {a.agent_name} ({a.agent_id})
-              </option>
-            ))}
-            {agentId && !agentInList && (
-              <option value={agentId}>{agentId} (not in Retell list)</option>
-            )}
-          </select>
+          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-950 px-2.5 py-2">
+            <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+              {agentsLoading && !agentLabel ? "Loading agent…" : agentLabel}
+            </p>
+            <p className="text-[11px] font-mono text-gray-400 mt-0.5">{agentId}</p>
+          </div>
         )}
         {retellAgentCopied && (
           <button
@@ -260,9 +227,7 @@ export default function RetellVoicePromptPanel({
         )}
       </div>
 
-      {!agentId ? (
-        <p className="text-xs text-gray-400">Select a Retell agent to load and edit its voice prompt.</p>
-      ) : promptLoading ? (
+      {!agentId ? null : promptLoading ? (
         <p className="text-xs text-gray-400">Loading voice prompt from Retell…</p>
       ) : promptError ? (
         <p className="text-xs text-amber-600 dark:text-amber-400">{promptError}</p>
