@@ -63,6 +63,7 @@ export interface BneGasGenerateValues {
   bneEndDate: string;
   contactName: string;
   contactEmail: string;
+  contactPhone: string;
 }
 
 function numToInput(value: number | null | undefined): string {
@@ -191,6 +192,7 @@ export function BneGasContractModal({
   preview,
   defaultContactName,
   defaultContactEmail,
+  defaultContactPhone,
   onClose,
   onGenerate,
 }: {
@@ -200,6 +202,7 @@ export function BneGasContractModal({
   preview: BneGasPreview | null;
   defaultContactName?: string;
   defaultContactEmail?: string;
+  defaultContactPhone?: string;
   onClose: () => void;
   onGenerate: (values: BneGasGenerateValues) => void;
 }) {
@@ -216,6 +219,7 @@ export function BneGasContractModal({
   const [commissionPerGj, setCommissionPerGj] = useState("");
   const [contactName, setContactName] = useState("");
   const [contactEmail, setContactEmail] = useState("");
+  const [contactPhone, setContactPhone] = useState("");
   const [bneStartDate, setBneStartDate] = useState("");
   const [bneEndDate, setBneEndDate] = useState("");
 
@@ -238,9 +242,10 @@ export function BneGasContractModal({
     setCommissionPerGj(numToInput(preview?.commissionPerGj));
     setContactName(defaultContactName ?? "");
     setContactEmail(defaultContactEmail ?? "");
+    setContactPhone(defaultContactPhone ?? "");
     setBneStartDate(firstOfNextMonthAu());
     setBneEndDate("");
-  }, [open, mrin, preview?.currentGasRate, preview?.invoiceUsageGj, preview?.invoiceDays, preview?.newGasRate, preview?.commissionPerGj, defaultContactName, defaultContactEmail]);
+  }, [open, mrin, preview?.currentGasRate, preview?.invoiceUsageGj, preview?.invoiceDays, preview?.newGasRate, preview?.commissionPerGj, defaultContactName, defaultContactEmail, defaultContactPhone]);
 
   useEffect(() => {
     if (!open) return;
@@ -304,6 +309,7 @@ export function BneGasContractModal({
     bneEndDate: toIsoDate(bneEndDate),
     contactName: contactName.trim(),
     contactEmail: contactEmail.trim(),
+    contactPhone: contactPhone.trim(),
   });
 
   if (!open) return null;
@@ -604,7 +610,10 @@ export function BneGasContractModal({
         <div className="px-5 py-4 border-t border-gray-200 dark:border-gray-700 space-y-3">
           <div>
             <p className="text-xs font-semibold text-gray-700 dark:text-gray-200 mb-2">Send comparison to</p>
-            <div className="grid gap-2 sm:grid-cols-2">
+            <p className="text-[11px] text-gray-500 mb-2">
+              Voice follow-up will call this mobile — use your own number when testing.
+            </p>
+            <div className="grid gap-2 sm:grid-cols-3">
               <input
                 id="bne-contact-name"
                 type="text"
@@ -623,6 +632,15 @@ export function BneGasContractModal({
                 placeholder="name@example.com"
                 autoComplete="email"
               />
+              <input
+                id="bne-contact-phone"
+                type="tel"
+                value={contactPhone}
+                onChange={(e) => setContactPhone(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2.5 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-600"
+                placeholder="04…"
+                autoComplete="tel"
+              />
             </div>
           </div>
           <div className="flex justify-end gap-2.5">
@@ -639,6 +657,10 @@ export function BneGasContractModal({
               const values = generateValues();
               if (!values.contactEmail) {
                 alert("Enter a contact email — this is who the B&E comparison is sent to.");
+                return;
+              }
+              if (!values.contactPhone) {
+                alert("Enter a mobile — this is the number the voice follow-up will call.");
                 return;
               }
               onGenerate(values);

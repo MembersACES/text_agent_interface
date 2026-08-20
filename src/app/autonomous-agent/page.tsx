@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { getAutonomousApiBaseUrl, cn } from "@/lib/utils";
 import { PageHeader } from "@/components/Layouts/PageHeader";
 import { useToast } from "@/components/ui/toast";
@@ -12,6 +13,12 @@ import RetellVoicePromptPanel, {
   type SequenceTypePromptRow,
 } from "./_components/RetellVoicePromptPanel";
 import NewSequenceTemplateWizard from "./_components/NewSequenceTemplateWizard";
+import StartTestRunPanel from "./_components/StartTestRunPanel";
+import DeleteSequenceTemplateModal, {
+  type TemplateDeletePreview,
+  deleteSequenceTemplate,
+  loadTemplateDeletePreview,
+} from "./_components/DeleteSequenceTemplateModal";
 
 type AgentTab = "running" | "finished" | "templates" | "resources";
 
@@ -170,6 +177,7 @@ function ProgressBar({ done, total }: { done: number; total: number }) {
 
 export default function AutonomousAgentPage() {
   const { data: session } = useSession();
+  const router = useRouter();
   const token = (session as any)?.id_token || (session as any)?.accessToken;
   const { showToast } = useToast();
 
@@ -199,6 +207,9 @@ export default function AutonomousAgentPage() {
   const [retellAgentsError, setRetellAgentsError] = useState<string | null>(null);
   const [retellRefresh, setRetellRefresh] = useState(0);
   const [showNewWizard, setShowNewWizard] = useState(false);
+  const [deletePreview, setDeletePreview] = useState<TemplateDeletePreview | null>(null);
+  const [deletePreviewLoading, setDeletePreviewLoading] = useState(false);
+  const [deletingTemplate, setDeletingTemplate] = useState(false);
 
   const triggerAutonomousFlows = async () => {
     try {
@@ -266,7 +277,7 @@ export default function AutonomousAgentPage() {
   };
 
   useEffect(() => {
-    if (!token || tab !== "templates") return;
+    if (!token) return;
     const fetchTemplates = async () => {
       try {
         setTemplatesLoading(true); setTemplatesError(null);
@@ -283,7 +294,7 @@ export default function AutonomousAgentPage() {
       } finally { setTemplatesLoading(false); }
     };
     fetchTemplates();
-  }, [token, tab]);
+  }, [token]);
 
   useEffect(() => {
     if (!token || tab !== "templates") return;
@@ -375,6 +386,58 @@ export default function AutonomousAgentPage() {
 
   const addTemplate = () => {
     setShowNewWizard(true);
+  };
+
+  const openDeleteTemplate = async (templateId: number) => {
+    if (!token) return;
+    setDeletePreviewLoading(true);
+    try {
+      const res = await loadTemplateDeletePreview(token, templateId);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(apiDetail(data, "Failed to load delete preview"));
+      setDeletePreview(data as TemplateDeletePreview);
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : "Failed to load delete preview", "error");
+    } finally {
+      setDeletePreviewLoading(false);
+    }
+  };
+
+  const confirmDeleteTemplate = async () => {
+    if (!token || !deletePreview) return;
+    setDeletingTemplate(true);
+    try {
+      const res = await deleteSequenceTemplate(token, deletePreview.template_id);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(apiDetail(data, "Delete failed"));
+      const warnings = Array.isArray((data as { warnings?: unknown }).warnings)
+        ? ((data as { warnings: string[] }).warnings)
+        : [];
+      setTemplates((prev) => {
+        const next = prev.filter((t) => t.id !== deletePreview.template_id);
+        setSelectedTemplateId((cur) =>
+          cur === deletePreview.template_id ? next[0]?.id ?? null : cur,
+        );
+        return next;
+      });
+      setDeletePreview(null);
+      if (warnings.length) {
+        showToast(warnings[0], "warning");
+      } else {
+        const runs = Number((data as { deleted_runs?: number }).deleted_runs || 0);
+        const retell = Boolean((data as { retell_deleted?: boolean }).retell_deleted);
+        showToast(
+          `Sequence deleted${runs ? ` (${runs} run${runs === 1 ? "" : "s"})` : ""}${
+            retell ? ", including its Retell agent" : ""
+          }.`,
+          "success",
+        );
+      }
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : "Delete failed", "error");
+    } finally {
+      setDeletingTemplate(false);
+    }
   };
 
   const addStep = async (templateId: number) => {
@@ -554,9 +617,14 @@ export default function AutonomousAgentPage() {
 
   const emptyMessage =
     tab === "running"
-      ? "No active autonomous sequences. Start one via POST /api/autonomous/sequences/start (or wire from Base 2)."
+      ? "No active autonomous sequences. Start a test run from Sequence templates, or generate the linked comparison."
       : "No finished sequences yet.";
   const selectedTemplate = templates.find((t) => t.id === selectedTemplateId) ?? null;
+  const canRestart = (sequenceType: string) => {
+    const tpl = templates.find((t) => t.sequence_type === sequenceType);
+    if (tpl) return tpl.is_restartable;
+    return RESTARTABLE_SEQUENCE_TYPES.has(sequenceType);
+  };
 
   // ── shared input classes ──────────────────────────────────────────────────
 
@@ -753,8 +821,26 @@ export default function AutonomousAgentPage() {
                         disabled={savingStepId === -1} className={btnSecondary}>
                         {savingStepId === -1 ? "Adding…" : "+ Add step"}
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => void openDeleteTemplate(selectedTemplate.id)}
+                        disabled={deletePreviewLoading || deletingTemplate}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 text-xs font-semibold px-3 py-1.5 transition hover:bg-red-100 dark:hover:bg-red-900/50 disabled:opacity-40"
+                      >
+                        {deletePreviewLoading ? "Checking…" : "Delete sequence"}
+                      </button>
                     </div>
                   </div>
+
+                  {token && (
+                    <StartTestRunPanel
+                      token={token}
+                      sequenceType={selectedTemplate.sequence_type}
+                      displayName={selectedTemplate.display_name}
+                      onStarted={(runId) => router.push(`/autonomous-agent/${runId}`)}
+                      showToast={showToast}
+                    />
+                  )}
 
                   {/* prompt examples */}
                   <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-950/50 p-4 space-y-4">
@@ -984,7 +1070,7 @@ export default function AutonomousAgentPage() {
                           )}
                           {tab === "finished" &&
                             ["stopped", "completed", "cancelled"].includes(r.run_status) &&
-                            RESTARTABLE_SEQUENCE_TYPES.has(r.sequence_type) && (
+                            canRestart(r.sequence_type) && (
                               <button type="button"
                                 disabled={restartingId === r.id || deletingId === r.id || stoppingId === r.id}
                                 onClick={() => handleRestartRun(r.id)}
@@ -1030,6 +1116,14 @@ export default function AutonomousAgentPage() {
           }}
           onClose={() => setShowNewWizard(false)}
           showToast={showToast}
+        />
+      )}
+      {deletePreview && (
+        <DeleteSequenceTemplateModal
+          preview={deletePreview}
+          submitting={deletingTemplate}
+          onCancel={() => setDeletePreview(null)}
+          onConfirm={() => void confirmDeleteTemplate()}
         />
       )}
     </>

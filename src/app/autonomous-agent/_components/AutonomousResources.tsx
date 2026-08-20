@@ -6,14 +6,15 @@ import { cn } from "@/lib/utils";
 /* ────────────────────────────────────────────────────────────────────────────
    Autonomous Resources
    In-app reference hub for the Autonomous Agent (follow-up sequencer).
-   Content is derived from the `autonomous_agent_backend` codebase and the
-   frontend `src/constants/crm.ts`, verified against source on 6 Aug 2026.
+   Content is derived from the `autonomous_agent_backend` codebase and
+   `text_agent_backend`, verified against source on 20 Aug 2026.
    Every code reference is given as file:line so it can be checked against the
    repo. Items that could NOT be confirmed in code are flagged inline.
    ──────────────────────────────────────────────────────────────────────────── */
 
 type SectionId =
   | "overview"
+  | "create"
   | "system"
   | "lifecycle"
   | "scheduling"
@@ -34,6 +35,7 @@ interface Section {
 
 const SECTIONS: Section[] = [
   { id: "overview", label: "Start here", icon: "🧭" },
+  { id: "create", label: "Create, test, edit", icon: "🛠️" },
   { id: "lifecycle", label: "How a sequence runs", icon: "🔁" },
   { id: "scheduling", label: "Scheduling & the cron", icon: "⏰" },
   { id: "stops", label: "Stop conditions", icon: "🛑" },
@@ -207,21 +209,22 @@ function Overview() {
         <H>What you&rsquo;re looking at on this screen</H>
         <ul className="space-y-2 text-sm text-gray-600 dark:text-gray-300">
           <li>
-            <strong>Running</strong> — sequences still chasing a client.
+            <strong>Running</strong> / <strong>Finished</strong> — live sequence runs, filtered by{" "}
+            <Code>run_status</Code> (running vs stopped / completed / cancelled), not by offer CRM
+            status.
           </li>
           <li>
-            <strong>Finished</strong> — sequences that have stopped or completed.
-          </li>
-          <li>
-            <strong>Sequence templates</strong> — the playbooks: which days, which channel.
+            <strong>Sequence templates</strong> — the playbooks: cadence, email/SMS examples, and the
+            locked Retell voice agent. <strong>+ New</strong> copies an existing playbook and duplicates
+            its Retell agent. Use <strong>Start a test run</strong> there to put a schedule on Running.
           </li>
           <li>
             <strong>Autonomous Resources</strong> — this handbook (you&rsquo;re here).
           </li>
           <li>
-            Which tab an offer lands in is driven by its CRM status:{" "}
-            <strong>Autonomous Agent Trigger</strong> shows under Running,{" "}
-            <strong>Autonomous Agent Stopped</strong> under Finished.
+            Which tab a run lands in is driven by its <Code>run_status</Code> on{" "}
+            <Code>autonomous_sequence_runs</Code>. Offer statuses like Autonomous Agent Trigger exist
+            in CRM but are not what this page filters on.
           </li>
         </ul>
       </Card>
@@ -244,8 +247,7 @@ function Overview() {
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-3">
             <p className="mb-1 text-sm font-semibold text-gray-900 dark:text-gray-100">🧪 Testing / QA</p>
             <p className="text-[13px] leading-relaxed text-gray-600 dark:text-gray-300">
-              How a sequence runs → Scheduling &amp; the cron → Stop conditions → QA &amp; testing
-              notes.
+              Create, test, edit → QA &amp; testing notes → How a sequence runs → Stop conditions.
             </p>
           </div>
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-3">
@@ -273,6 +275,81 @@ function Overview() {
         Ready for the deep end — endpoints, env vars, code paths? Head to{" "}
         <strong>System map &amp; endpoints</strong> and <strong>Integrations &amp; env</strong>.
       </div>
+    </div>
+  );
+}
+
+function CreateLoop() {
+  return (
+    <div className="space-y-4">
+      <Callout tone="info" title="This is the colleague loop">
+        <p>
+          A new sequence is a playbook (template + its own Retell agent). Creating it does not send
+          anything. You still have to start a run, then fire due steps. Do that from this page so you
+          can put <strong>your</strong> email and mobile on the run before anything goes out.
+        </p>
+      </Callout>
+
+      <Card>
+        <H>End-to-end from the dashboard</H>
+        <ol className="ml-4 list-decimal space-y-2 text-sm text-gray-600 dark:text-gray-300">
+          <li>
+            <strong>Sequence templates → + New.</strong> Pick a comparison that has no sequence yet
+            (or a custom key). Copy cadence from a similar template. Leave &ldquo;duplicate Retell
+            agent&rdquo; on so this playbook owns its own voice prompt.
+          </li>
+          <li>
+            <strong>Edit the playbook.</strong> Email / SMS examples on the template; voice opening
+            line and system prompt on the locked Retell panel. Saving voice writes to Retell, not
+            Postgres.
+          </li>
+          <li>
+            <strong>Start a test run</strong> on that same template. Pick a recent offer, then enter{" "}
+            <em>your</em> name, email and mobile. That creates a run with a schedule.
+          </li>
+          <li>
+            The run opens under <strong>Running</strong> (schedule of email / SMS / voice steps). Use{" "}
+            <strong>Start now</strong> on the list, or open the run and <strong>Send</strong> a single
+            step, to fire immediately instead of waiting for the clock.
+          </li>
+          <li>
+            Change the prompt, send again. Stop the run when you are done. If the template is
+            Restartable, <strong>Start again</strong> on Finished clones a new schedule from today.
+            <strong>Delete sequence</strong> removes the playbook, all runs of that type, and the
+            Retell agent if this sequence owns it.
+          </li>
+        </ol>
+      </Card>
+
+      <Card>
+        <H>The real comparison path (same sequence type)</H>
+        <P>
+          Once the template exists and is Active, generating the linked comparison can also start that
+          same <Code>sequence_type</Code>. Confirm <strong>Start sequence</strong> after generate — you
+          should then see the run on Running, same as the dashboard test.
+        </P>
+        <SimpleTable
+          head={["Comparison", "Sequence type", "Starts a run?"]}
+          rows={[
+            ["Base 2 C&I Gas / SME→C&I Gas", <Code key="c">gas_base2_followup_v1</Code>, "Yes"],
+            ["Base 2 C&I Electricity", <Code key="c">ci_electricity_base2_followup_v1</Code>, "Yes"],
+            ["Base 2 B&E Gas", <Code key="c">bne_gas_base2_followup_v1</Code>, "Yes — after you create the template"],
+            ["Utility Invoice Info C&I Electricity", <Code key="c">ci_electricity_offer</Code>, "Yes"],
+            ["Solar cleaning quote", <Code key="c">solar_panel_cleaning_followup_v1</Code>, "Yes"],
+            ["Engagement form", <Code key="c">solar_panel_cleaning_engagement_form_v1</Code>, "Yes"],
+            ["SME electricity, oil, waste, cleaning, GHG", "Catalog suggestions only", "Not yet — use Start a test run"],
+          ]}
+        />
+      </Card>
+
+      <Callout tone="warn" title="What still is not automatic">
+        <p>
+          <strong>+ New</strong> does not by itself hook a comparison. Base 2 B&E is now wired to{" "}
+          <Code>bne_gas_base2_followup_v1</Code> when that template exists. Other catalog ideas (SME
+          electricity, oil, waste, cleaning, GHG) still need a product start path before generate will
+          enrol them. Until then, test those keys with <strong>Start a test run</strong>.
+        </p>
+      </Callout>
     </div>
   );
 }
@@ -514,8 +591,11 @@ function Scheduling() {
             — this is what the <strong>n8n Schedule Trigger</strong> workflow drives.
           </li>
           <li>
-            The worker&rsquo;s <Code>POST /run</Code>, also fired by the dashboard&rsquo;s &ldquo;Trigger
-            Autonomous Flows&rdquo; button.
+            The dashboard&rsquo;s &ldquo;Trigger Autonomous Flows&rdquo; button posts to an{" "}
+            <strong>n8n webhook</strong> that is meant to kick the same due-step poll. Per-run{" "}
+            <strong>Start now</strong> / per-step <strong>Send</strong> call the worker{" "}
+            <Code>POST /run/run/{"{id}"}</Code> and <Code>POST /run/step/{"{id}"}</Code> via the
+            dashboard&rsquo;s trigger-flows routes.
           </li>
         </ul>
       </Card>
@@ -523,9 +603,10 @@ function Scheduling() {
       <Card>
         <H>The seeded sequence types</H>
         <P>
-          Five templates ship by default (staff can add more via the Sequence templates tab). All but
-          the engagement form use the standard 5-step cadence above.{" "}
-          <Ref>autonomous_sequence.py:428</Ref>
+          Five templates ship by default; staff can add more via Sequence templates (+ New copies
+          cadence and can duplicate a Retell agent). All but the engagement form use the standard
+          5-step cadence above. Base 2 B&amp;E Gas is not seeded — create{" "}
+          <Code>bne_gas_base2_followup_v1</Code> in the wizard, then generate or Start a test run.
         </P>
         <SimpleTable
           head={["Sequence type", "Steps", "Cadence"]}
@@ -533,6 +614,7 @@ function Scheduling() {
             [<Code key="c">gas_base2_followup_v1</Code>, "5", "Standard (Day 1–3)"],
             [<Code key="c">ci_electricity_base2_followup_v1</Code>, "5", "Standard (Day 1–3)"],
             [<Code key="c">ci_electricity_offer</Code>, "5", "Standard (Day 1–3)"],
+            [<Code key="c">bne_gas_base2_followup_v1</Code>, "5", "Standard — create via + New, then Base 2 B&E or test run"],
             [<Code key="c">solar_panel_cleaning_followup_v1</Code>, "5", "Standard (Day 1–3)"],
             [
               <Code key="c">solar_panel_cleaning_engagement_form_v1</Code>,
@@ -1018,7 +1100,36 @@ function Testing() {
         </p>
       </Callout>
       <Card className="border-l-4 border-l-amber-500">
-        <H>How to run a safe test (example: Frankston RSL)</H>
+        <H>How to run a safe test (dashboard first)</H>
+        <P>
+          The golden rule: <strong>put your own email and phone in before anything sends</strong>, so
+          the follow-up chases <em>you</em>, not the client.
+        </P>
+        <ol className="ml-4 list-decimal space-y-2 text-sm text-gray-600 dark:text-gray-300">
+          <li>
+            Open <strong>Sequence templates</strong>, select the playbook (e.g. B&amp;E Gas Base 2
+            Follow-up), edit prompts if needed, then <strong>Start a test run</strong>. Pick any recent
+            offer and enter <strong>your</strong> email and mobile.
+          </li>
+          <li>
+            You land on the run schedule. Steps sit as <Code>ready</Code> until due. Use{" "}
+            <strong>Start now</strong> / <strong>Send</strong> to fire a step immediately to those test
+            contacts.
+          </li>
+          <li>
+            Change the Retell or email prompt on the template, send again. Stop when finished;{" "}
+            <strong>Start again</strong> on Finished if the template is restartable.
+          </li>
+          <li>
+            Optional product path: generate the linked comparison (Base 2 B&amp;E Gas now offers Start
+            sequence for <Code>bne_gas_base2_followup_v1</Code>). Put your mobile on the B&amp;E
+            generate form so voice does not dial the member.
+          </li>
+        </ol>
+      </Card>
+
+      <Card className="border-l-4 border-l-amber-500">
+        <H>Older path: Frankston RSL</H>
         <P>
           The golden rule: <strong>put your own email and phone in before anything sends</strong>, so
           the follow-up chases <em>you</em>, not the client. Where you do that depends on the path —
@@ -1143,6 +1254,7 @@ function Testing() {
 
 const BODIES: Record<SectionId, () => React.ReactElement> = {
   overview: Overview,
+  create: CreateLoop,
   system: SystemMap,
   lifecycle: Lifecycle,
   scheduling: Scheduling,
@@ -1169,7 +1281,7 @@ export default function AutonomousResources() {
           <strong>Autonomous Resources.</strong> A single reference for how the Autonomous Agent
           works — methodology, scheduling, stop conditions, channels, data and talking points. Content
           is derived from the <span className="font-mono">autonomous_agent_backend</span> worker and{" "}
-          <span className="font-mono">text_agent_backend</span> monolith (verified 6 Aug 2026). Green
+          <span className="font-mono">text_agent_backend</span> (verified 20 Aug 2026). Green
           tags are confirmed in code; amber tags flag something to action or check.
         </p>
       </div>
