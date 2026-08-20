@@ -2,6 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { getAutonomousApiBaseUrl, cn } from "@/lib/utils";
+import {
+  ACES_TEAM_FOLLOWUP_SIGNATURE_HTML,
+  defaultSignatureHtmlForSequence,
+} from "@/lib/autonomous-signature";
+import SignatureHtmlEditor from "./SignatureHtmlEditor";
 
 interface SequenceTemplateLite {
   id: number;
@@ -54,25 +59,7 @@ const btnSecondary =
 
 const CUSTOM = "__custom__";
 
-export const ACES_TEAM_FOLLOWUP_SIGNATURE_HTML = `<p style="margin-bottom:0;"><strong>The Team</strong><br>
-Australian Circular Economy Solutions</p>
-<p style="margin-top:16px; margin-bottom:0;"><strong>Carbon Zero Australasia</strong><br>
-Australian Circular Economy Solutions Division<br>
-Direct: 0468 050 399<br>
-Email: <a href="mailto:business@acesolutions.com.au" style="color:#1a73e8;">business@acesolutions.com.au</a><br>
-470 St Kilda Road, Melbourne VIC 3004<br>
-Website: <a href="https://acesolutions.com.au" style="color:#1a73e8;">acesolutions.com.au</a></p>`;
-
-const SOLAR_ENGAGEMENT_SIGNATURE_HTML = `<p style="margin-bottom:0;"><strong>Amelia Williams</strong><br>
-<span style="color:#666;">Customer Success Manager (CSM) – Implementation: Connects onboarding directly to future success.</span></p>
-<p style="margin-top:16px; margin-bottom:0;"><strong>Carbon Zero Australasia</strong><br>
-Australian Circular Economy Solutions Division<br>
-Direct: 0468 050 399<br>
-Email: <a href="mailto:business@acesolutions.com.au" style="color:#1a73e8;">business@acesolutions.com.au</a><br>
-470 St Kilda Road, Melbourne VIC 3004<br>
-Ph: 1300 849 908 | Website: <a href="https://acesolutions.com.au" style="color:#1a73e8;">acesolutions.com.au</a></p>`;
-
-const SOLAR_ENGAGEMENT_FORM_SEQUENCE_TYPE = "solar_panel_cleaning_engagement_form_v1";
+export { ACES_TEAM_FOLLOWUP_SIGNATURE_HTML };
 
 export default function NewSequenceTemplateWizard({
   token,
@@ -91,18 +78,14 @@ export default function NewSequenceTemplateWizard({
   const [signatureHtml, setSignatureHtml] = useState(ACES_TEAM_FOLLOWUP_SIGNATURE_HTML);
   const [submitting, setSubmitting] = useState(false);
 
-  const applySignatureFromCopy = (key: string) => {
-    const src = templates.find((t) => t.sequence_type === key);
+  const applySignatureFromCopy = (copyKey: string, ownType?: string) => {
+    const src = templates.find((t) => t.sequence_type === copyKey);
     const copied = (src?.signature_html || "").trim();
     if (copied) {
       setSignatureHtml(copied);
       return;
     }
-    if (key === SOLAR_ENGAGEMENT_FORM_SEQUENCE_TYPE) {
-      setSignatureHtml(SOLAR_ENGAGEMENT_SIGNATURE_HTML);
-      return;
-    }
-    setSignatureHtml(ACES_TEAM_FOLLOWUP_SIGNATURE_HTML);
+    setSignatureHtml(defaultSignatureHtmlForSequence(copyKey || ownType || sequenceType));
   };
 
   useEffect(() => {
@@ -122,7 +105,9 @@ export default function NewSequenceTemplateWizard({
           setSequenceType(rows[0].sequence_type);
           if (rows[0].copy_hint_available && rows[0].copy_hint) {
             setCopyFrom(rows[0].copy_hint);
-            applySignatureFromCopy(rows[0].copy_hint);
+            applySignatureFromCopy(rows[0].copy_hint, rows[0].sequence_type);
+          } else {
+            setSignatureHtml(defaultSignatureHtmlForSequence(rows[0].sequence_type));
           }
         } else {
           setFlowKey(CUSTOM);
@@ -153,7 +138,7 @@ export default function NewSequenceTemplateWizard({
     setSequenceType(flow.sequence_type);
     const hint = flow.copy_hint_available && flow.copy_hint ? flow.copy_hint : "";
     setCopyFrom(hint);
-    applySignatureFromCopy(hint);
+    applySignatureFromCopy(hint, flow.sequence_type);
   };
 
   const copySourceHasAgent = useMemo(() => {
@@ -205,7 +190,7 @@ export default function NewSequenceTemplateWizard({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <button type="button" className="absolute inset-0 bg-black/40" onClick={onClose} aria-label="Close" />
-      <div className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-xl p-5 space-y-4">
+      <div className="relative w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-xl p-5 space-y-4">
         <div>
           <h3 className="text-base font-bold text-gray-900 dark:text-gray-100">New sequence template</h3>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
@@ -262,7 +247,7 @@ export default function NewSequenceTemplateWizard({
             onChange={(e) => {
               const key = e.target.value;
               setCopyFrom(key);
-              applySignatureFromCopy(key);
+              applySignatureFromCopy(key, sequenceType);
             }}
             className={inputCls}
           >
@@ -293,19 +278,16 @@ export default function NewSequenceTemplateWizard({
           </span>
         </label>
 
-        <label className={labelCls}>
-          Email signature
-          <textarea
-            value={signatureHtml}
-            onChange={(e) => setSignatureHtml(e.target.value)}
-            rows={7}
-            className={cn(inputCls, "font-mono text-[11px] leading-relaxed")}
-          />
-          <span className="mt-1 block normal-case tracking-normal font-normal text-[11px] text-gray-400">
-            Appended to every email in this sequence. Pair it with the Retell agent you duplicate above.
-            SMS and voice are unchanged. Leave blank to use the default ACES Team block.
-          </span>
-        </label>
+        <div>
+          <span className={labelCls}>Email signature</span>
+          <div className="mt-1">
+            <SignatureHtmlEditor
+              value={signatureHtml}
+              onChange={setSignatureHtml}
+              hint="Appended to every email in this sequence. Pair it with the Retell agent you duplicate above. SMS and voice are unchanged."
+            />
+          </div>
+        </div>
 
         <div className="flex justify-end gap-2 pt-1">
           <button type="button" onClick={onClose} className={btnSecondary} disabled={submitting}>
