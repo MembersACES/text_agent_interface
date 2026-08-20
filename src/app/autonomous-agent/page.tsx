@@ -7,6 +7,10 @@ import { getAutonomousApiBaseUrl, cn } from "@/lib/utils";
 import { PageHeader } from "@/components/Layouts/PageHeader";
 import { useToast } from "@/components/ui/toast";
 import AutonomousResources from "./_components/AutonomousResources";
+import RetellVoicePromptPanel, {
+  type RetellAgentListItem,
+  type SequenceTypePromptRow,
+} from "./_components/RetellVoicePromptPanel";
 
 type AgentTab = "running" | "finished" | "templates" | "resources";
 
@@ -63,6 +67,19 @@ function isRetellAgentCopiedFlag(v: unknown): boolean {
   if (typeof v === "number" && Number.isFinite(v)) return v === 1;
   if (typeof v === "string") return v === "1" || v.toLowerCase() === "true";
   return false;
+}
+
+function isVoiceChannel(channel: string): boolean {
+  const c = channel.trim().toLowerCase();
+  return c === "voice_call" || c === "voice";
+}
+
+function apiDetail(data: unknown, fallback: string): string {
+  if (data && typeof data === "object" && "detail" in data) {
+    const d = (data as { detail: unknown }).detail;
+    if (typeof d === "string" && d.trim()) return d;
+  }
+  return fallback;
 }
 
 function formatDateTime(iso?: string | null) {
@@ -182,6 +199,9 @@ export default function AutonomousAgentPage() {
   const [typePromptsError, setTypePromptsError] = useState<string | null>(null);
   const [savingTypePrompts, setSavingTypePrompts] = useState(false);
   const [triggeringFlows, setTriggeringFlows] = useState(false);
+  const [retellAgents, setRetellAgents] = useState<RetellAgentListItem[]>([]);
+  const [retellAgentsLoading, setRetellAgentsLoading] = useState(false);
+  const [retellAgentsError, setRetellAgentsError] = useState<string | null>(null);
 
   const triggerAutonomousFlows = async () => {
     try {
@@ -266,6 +286,28 @@ export default function AutonomousAgentPage() {
       } finally { setTemplatesLoading(false); }
     };
     fetchTemplates();
+  }, [token, tab]);
+
+  useEffect(() => {
+    if (!token || tab !== "templates") return;
+    const fetchAgents = async () => {
+      try {
+        setRetellAgentsLoading(true);
+        setRetellAgentsError(null);
+        const res = await fetch(`${getAutonomousApiBaseUrl()}/api/autonomous/retell/agents`, {
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        });
+        const data = await res.json().catch(() => []);
+        if (!res.ok) throw new Error(apiDetail(data, "Failed to load Retell agents"));
+        setRetellAgents(Array.isArray(data) ? (data as RetellAgentListItem[]) : []);
+      } catch (e: unknown) {
+        setRetellAgents([]);
+        setRetellAgentsError(e instanceof Error ? e.message : "Failed to load Retell agents");
+      } finally {
+        setRetellAgentsLoading(false);
+      }
+    };
+    fetchAgents();
   }, [token, tab]);
 
   const updateTemplateLocal = (templateId: number, patch: Partial<SequenceTemplate>) =>
@@ -438,7 +480,6 @@ export default function AutonomousAgentPage() {
           system_prompt: typePrompts.system_prompt ?? "",
           email_example: typePrompts.email_example ?? "",
           sms_example: typePrompts.sms_example ?? "",
-          voice_example: typePrompts.voice_example ?? "",
           retell_agent_id: typePrompts.retell_agent_id ?? "",
         }),
       });
@@ -751,7 +792,8 @@ export default function AutonomousAgentPage() {
                       <div>
                         <h4 className="text-sm font-bold text-gray-900 dark:text-gray-100">Prompt examples</h4>
                         <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-                          Reads/writes <code className="font-mono text-[10px]">autonomous_sequence_type</code> for this sequence type.
+                          Email/SMS drafts live in <code className="font-mono text-[10px]">autonomous_sequence_type</code>.
+                          Voice prompt is loaded from Retell for the linked agent.
                         </p>
                       </div>
                       <button type="button" onClick={saveTypePrompts}
@@ -784,61 +826,24 @@ export default function AutonomousAgentPage() {
                             onChange={(e) => updateTypePromptsLocal({ sms_example: e.target.value })}
                             rows={3} className={textareaCls} />
                         </label>
-                        <label className={labelCls}>
-                          Voice example
-                          <textarea value={typePrompts.voice_example ?? ""}
-                            onChange={(e) => updateTypePromptsLocal({ voice_example: e.target.value })}
-                            rows={3} className={textareaCls} />
-                        </label>
-
-                        {/* retell agent id */}
-                        <div className="space-y-1.5">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className={labelCls}>Retell agent ID</span>
-                            {isRetellAgentCopiedFlag(typePrompts.retell_agent_copied) && (
-                              <span className="inline-flex items-center rounded-full bg-amber-100 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-800 dark:text-amber-200">
-                                ⚠ Copied default — update
-                              </span>
-                            )}
-                          </div>
-                          <input type="text" value={typePrompts.retell_agent_id ?? ""}
-                            onChange={(e) => updateTypePromptsLocal({ retell_agent_id: e.target.value })}
-                            className={cn(inputCls, "mt-0 font-mono text-xs")} />
-                          {isRetellAgentCopiedFlag(typePrompts.retell_agent_copied) && (
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                if (!token || !typePrompts?.sequence_type) return;
-                                setSavingTypePrompts(true);
-                                try {
-                                  const res = await fetch(
-                                    `${getAutonomousApiBaseUrl()}/api/autonomous/sequences/type-prompts`,
-                                    {
-                                      method: "PATCH",
-                                      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-                                      body: JSON.stringify({
-                                        sequence_type: typePrompts.sequence_type,
-                                        retell_agent_reviewed: "true",
-                                      }),
-                                    },
-                                  );
-                                  const data = await res.json().catch(() => ({}));
-                                  if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Update failed");
-                                  setTypePrompts(data as SequenceTypePromptConfig);
-                                  showToast("Retell agent marked as reviewed.", "success");
-                                } catch (e: unknown) {
-                                  showToast(e instanceof Error ? e.message : "Update failed", "error");
-                                } finally { setSavingTypePrompts(false); }
-                              }}
-                              disabled={savingTypePrompts}
-                              className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline disabled:opacity-50"
-                            >
-                              This Retell ID is correct — clear warning
-                            </button>
-                          )}
-                        </div>
                       </div>
                     ) : null}
+
+                    {token && (
+                      <RetellVoicePromptPanel
+                        token={token}
+                        sequenceType={selectedTemplate.sequence_type}
+                        retellAgentId={typePrompts?.retell_agent_id ?? ""}
+                        retellAgentCopied={isRetellAgentCopiedFlag(typePrompts?.retell_agent_copied)}
+                        agents={retellAgents}
+                        agentsLoading={retellAgentsLoading}
+                        agentsError={retellAgentsError}
+                        onTypePromptsUpdated={(row: SequenceTypePromptRow) =>
+                          setTypePrompts(row as SequenceTypePromptConfig)
+                        }
+                        showToast={showToast}
+                      />
+                    )}
                   </div>
 
                   {/* steps table */}
@@ -848,7 +853,7 @@ export default function AutonomousAgentPage() {
                       <table className="min-w-full text-xs">
                         <thead>
                           <tr className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-                            {["Index", "Day", "Channel", "Time", "Prompt", "Active", ""].map((h) => (
+                            {["Index", "Day", "Channel", "Time", "Prompt", "Retell agent", "Active", ""].map((h) => (
                               <th key={h} className="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide whitespace-nowrap">{h}</th>
                             ))}
                           </tr>
@@ -882,6 +887,30 @@ export default function AutonomousAgentPage() {
                                   <input type="text" value={s.prompt_text ?? ""}
                                     onChange={(e) => updateStepLocal(selectedTemplate.id, s.id, { prompt_text: e.target.value })}
                                     className="w-72 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-950 px-1.5 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/40" />
+                                </td>
+                                <td className="px-3 py-2">
+                                  {isVoiceChannel(s.channel) ? (
+                                    <select
+                                      value={s.retell_agent_id ?? ""}
+                                      onChange={(e) => updateStepLocal(selectedTemplate.id, s.id, { retell_agent_id: e.target.value })}
+                                      className="w-48 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-950 px-1.5 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                                    >
+                                      <option value="">Sequence default</option>
+                                      {retellAgents.map((a) => (
+                                        <option key={a.agent_id} value={a.agent_id}>
+                                          {a.agent_name}
+                                        </option>
+                                      ))}
+                                      {(s.retell_agent_id ?? "") &&
+                                        !retellAgents.some((a) => a.agent_id === s.retell_agent_id) && (
+                                          <option value={s.retell_agent_id ?? ""}>
+                                            {s.retell_agent_id} (not in list)
+                                          </option>
+                                        )}
+                                    </select>
+                                  ) : (
+                                    <span className="text-gray-300 dark:text-gray-600">—</span>
+                                  )}
                                 </td>
                                 <td className="px-3 py-2 text-center">
                                   <input type="checkbox" checked={s.is_active}
