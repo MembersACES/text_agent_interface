@@ -134,7 +134,8 @@ export default function StartTestRunPanel({
         <h4 className="text-sm font-bold text-gray-900 dark:text-gray-100">Start a test run</h4>
         <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
           Creates a live schedule for this template and opens it so you can watch steps, send one now,
-          then edit the prompt and try again.
+          then edit the prompt and try again. The first step is due immediately; later steps keep their
+          gaps. This attaches to the selected offer for savings/site context — it does not copy the offer.
           {hint ? (
             <>
               {" "}

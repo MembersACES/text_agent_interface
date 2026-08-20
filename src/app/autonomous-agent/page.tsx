@@ -563,6 +563,13 @@ export default function AutonomousAgentPage() {
         typeof data.message === "string" && data.message
           ? data.message
           : `Sequence #${runId} trigger sent.`;
+      if (/no due steps/i.test(msg)) {
+        showToast(
+          "Nothing is due yet. Cadence starts next business day unless this was a test run. Save schedules if you edited times, then use Start now on the first step — that one ignores the clock.",
+          "warning",
+        );
+        return;
+      }
       showToast(msg, "success");
     } catch (e: unknown) {
       showToast(e instanceof Error ? e.message : "Start failed", "error");
