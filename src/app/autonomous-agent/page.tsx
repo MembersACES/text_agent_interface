@@ -14,7 +14,9 @@ import RetellVoicePromptPanel, {
   type SequenceTypePromptRow,
 } from "./_components/RetellVoicePromptPanel";
 import NewSequenceTemplateWizard from "./_components/NewSequenceTemplateWizard";
+import SignatureHtmlEditor from "./_components/SignatureHtmlEditor";
 import StartTestRunPanel from "./_components/StartTestRunPanel";
+import { resolvedSignatureHtml } from "@/lib/autonomous-signature";
 import DeleteSequenceTemplateModal, {
   type TemplateDeletePreview,
   deleteSequenceTemplate,
@@ -288,8 +290,13 @@ export default function AutonomousAgentPage() {
         });
         const data = await res.json().catch(() => []);
         if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Failed to load sequence templates");
-        const rows = Array.isArray(data) ? data : [];
-        setTemplates(rows);
+        const rows = (Array.isArray(data) ? data : []) as SequenceTemplate[];
+        setTemplates(
+          rows.map((t) => ({
+            ...t,
+            signature_html: resolvedSignatureHtml(t.sequence_type, t.signature_html),
+          })),
+        );
         setSelectedTemplateId((prev) => prev ?? rows[0]?.id ?? null);
       } catch (e: unknown) {
         setTemplatesError(e instanceof Error ? e.message : "Failed to load templates");
@@ -802,19 +809,16 @@ export default function AutonomousAgentPage() {
                           className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
                         Restartable
                       </label>
-                      <label className={cn(labelCls, "md:col-span-2")}>
-                        Email signature
-                        <textarea
-                          value={selectedTemplate.signature_html ?? ""}
-                          onChange={(e) => updateTemplateLocal(selectedTemplate.id, { signature_html: e.target.value })}
-                          rows={7}
-                          placeholder="Leave blank to use the default ACES Team signature (Amelia for solar)."
-                          className={cn(inputCls, "font-mono text-[11px] leading-relaxed")}
-                        />
-                        <span className="mt-1 block normal-case tracking-normal font-normal text-[11px] text-gray-400">
-                          Paired with this sequence&rsquo;s Retell agent. Appended to every email; SMS and voice are unchanged.
-                        </span>
-                      </label>
+                      <div className="md:col-span-2">
+                        <span className={labelCls}>Email signature</span>
+                        <div className="mt-1">
+                          <SignatureHtmlEditor
+                            value={selectedTemplate.signature_html ?? ""}
+                            onChange={(html) => updateTemplateLocal(selectedTemplate.id, { signature_html: html })}
+                            hint="Paired with this sequence&rsquo;s Retell agent. Appended to every email; SMS and voice are unchanged."
+                          />
+                        </div>
+                      </div>
                     </div>
                     <div className="flex gap-2 mt-4">
                       <button type="button" onClick={() => saveTemplate(selectedTemplate)}
@@ -1114,7 +1118,14 @@ export default function AutonomousAgentPage() {
           token={token}
           templates={templates}
           onCreated={(created) => {
-            setTemplates((prev) => [...prev, created as SequenceTemplate]);
+            const row = created as SequenceTemplate;
+            setTemplates((prev) => [
+              ...prev,
+              {
+                ...row,
+                signature_html: resolvedSignatureHtml(row.sequence_type, row.signature_html),
+              },
+            ]);
             setSelectedTemplateId(created.id);
             setRetellRefresh((n) => n + 1);
           }}
