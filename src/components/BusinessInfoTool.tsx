@@ -159,6 +159,25 @@ export default function BusinessInfoTool({
     void getBusinessInfo(entry.businessName);
   };
 
+  const handleCrmUnlinked = useCallback(() => {
+    setBusinessInfo((prev: Record<string, unknown> | null) => {
+      if (!prev || typeof prev !== "object") return prev;
+      const recordId = (prev.record_ID as string | undefined) ?? null;
+      const next = { ...prev };
+      delete next.client_id;
+      return {
+        ...next,
+        crm_link: {
+          status: "no_match",
+          client_id: null,
+          record_id: recordId,
+          reason: "No CRM member linked to this LOA record ID yet",
+          candidates: [],
+        } satisfies CrmLink,
+      };
+    });
+  }, []);
+
   const handleCrmLinked = useCallback(
     (clientId: number) => {
       setBusinessInfo((prev: Record<string, unknown> | null) => {
@@ -262,6 +281,7 @@ export default function BusinessInfoTool({
           gdriveFolderUrl={businessInfo.gdrive?.folder_url}
           token={token}
           onLinked={handleCrmLinked}
+          onUnlinked={handleCrmUnlinked}
         />
       )}
 

@@ -6,7 +6,7 @@ import { type CrmLink, isCrmLinkMatched } from "@/lib/crm-link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { InsightCallout } from "@/components/dashboard";
-import { AlertCircle, ExternalLink, Link2, UserPlus } from "lucide-react";
+import { AlertCircle, ExternalLink, Link2, Unlink, UserPlus } from "lucide-react";
 
 interface CrmClientSummary {
   id: number;
@@ -22,6 +22,7 @@ interface CrmLinkBannerProps {
   gdriveFolderUrl?: string | null;
   token: string;
   onLinked: (clientId: number) => void;
+  onUnlinked?: () => void;
 }
 
 export function CrmLinkBanner({
@@ -32,8 +33,10 @@ export function CrmLinkBanner({
   gdriveFolderUrl,
   token,
   onLinked,
+  onUnlinked,
 }: CrmLinkBannerProps) {
   const [linking, setLinking] = useState(false);
+  const [unlinking, setUnlinking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -43,7 +46,7 @@ export function CrmLinkBanner({
   const rid = (recordId || crmLink?.record_id || "").trim();
 
   const postLink = useCallback(
-    async (clientId?: number) => {
+    async (clientId?: number, reassign = false) => {
       if (!rid) {
         setError("No LOA record ID — cannot link to CRM.");
         return;
@@ -63,6 +66,7 @@ export function CrmLinkBanner({
             primary_contact_email: primaryContactEmail || undefined,
             gdrive_folder_url: gdriveFolderUrl || undefined,
             client_id: clientId ?? undefined,
+            reassign: reassign || undefined,
           }),
         });
         if (!res.ok) {
@@ -79,6 +83,39 @@ export function CrmLinkBanner({
     },
     [rid, businessName, primaryContactEmail, gdriveFolderUrl, token, onLinked],
   );
+
+  const unlinkFromMember = useCallback(async () => {
+    if (!isCrmLinkMatched(crmLink)) return;
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm(
+        "Unlink this LOA business from the CRM member? You can then link it to a different member."
+      )
+    ) {
+      return;
+    }
+    setUnlinking(true);
+    setError(null);
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/clients/${crmLink.client_id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ external_business_id: null }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as { detail?: string }).detail || "Could not unlink CRM member");
+      }
+      onUnlinked?.();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Could not unlink CRM member");
+    } finally {
+      setUnlinking(false);
+    }
+  }, [crmLink, token, onUnlinked]);
 
   const runSearch = useCallback(async () => {
     const q = searchQuery.trim();
@@ -103,25 +140,44 @@ export function CrmLinkBanner({
 
   if (isCrmLinkMatched(crmLink)) {
     return (
-      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-stroke bg-white px-4 py-3 dark:border-dark-3 dark:bg-gray-dark">
-        <p className="text-sm text-gray-600 dark:text-gray-400">
-          CRM member linked
-          {rid ? (
-            <>
-              {" "}
-              <span className="font-mono text-xs text-gray-500 dark:text-gray-500">({rid})</span>
-            </>
-          ) : null}
-        </p>
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          leftIcon={<ExternalLink className="size-3.5" />}
-          onClick={() => window.open(`/crm-members/${crmLink.client_id}`, "_blank", "noopener,noreferrer")}
-        >
-          View in CRM
-        </Button>
+      <div className="space-y-3 rounded-xl border border-stroke bg-white px-4 py-3 dark:border-dark-3 dark:bg-gray-dark">
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            CRM member linked
+            {rid ? (
+              <>
+                {" "}
+                <span className="font-mono text-xs text-gray-500 dark:text-gray-500">({rid})</span>
+              </>
+            ) : null}
+          </p>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            leftIcon={<ExternalLink className="size-3.5" />}
+            onClick={() => window.open(`/crm-members/${crmLink.client_id}`, "_blank", "noopener,noreferrer")}
+          >
+            View in CRM
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900/20 dark:hover:text-red-300"
+            loading={unlinking}
+            disabled={unlinking}
+            leftIcon={<Unlink className="size-3.5" />}
+            onClick={() => void unlinkFromMember()}
+          >
+            Unlink
+          </Button>
+        </div>
+        {error ? (
+          <InsightCallout variant="warning" title="CRM link" icon={<AlertCircle className="text-semantic-flag" />}>
+            {error}
+          </InsightCallout>
+        ) : null}
       </div>
     );
   }
@@ -153,7 +209,7 @@ export function CrmLinkBanner({
                 variant="secondary"
                 size="sm"
                 loading={linking}
-                onClick={() => void postLink(c.client_id)}
+                onClick={() => void postLink(c.client_id, true)}
               >
                 Keep this link
               </Button>
