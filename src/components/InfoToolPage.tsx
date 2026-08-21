@@ -1308,10 +1308,7 @@ function CIElectricityOfferModal({
             clientId: hasValidClientId ? clientId! : null,
             activityId,
             anchorIso: anchor.toISOString(),
-            tz:
-              typeof Intl !== "undefined"
-                ? Intl.DateTimeFormat().resolvedOptions().timeZone || "Australia/Melbourne"
-                : "Australia/Melbourne",
+            tz: "Australia/Brisbane",
             emailId,
             comparisonSnapshot,
             ctxBase,

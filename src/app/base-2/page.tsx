@@ -2192,10 +2192,7 @@ export default function Base2Page() {
               }
               if (lanes.size > 0) {
                 const anchorIso = new Date().toISOString();
-                const tz =
-                  typeof Intl !== 'undefined'
-                    ? Intl.DateTimeFormat().resolvedOptions().timeZone || 'Australia/Melbourne'
-                    : 'Australia/Melbourne';
+                const tz = 'Australia/Brisbane';
                 const ctxBase: Record<string, unknown> = {
                   base2_trigger: 'comparison_success',
                   business_name: businessName || businessInfo?.name,
