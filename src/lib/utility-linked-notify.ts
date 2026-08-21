@@ -1,4 +1,4 @@
-/** After n8n updates Airtable, notify the backend for post-link automation (placeholder → n8n switch). */
+/** After Airtable link succeeds, wait for n8n utility_linked_post_process (Drive move + file-ID register). */
 
 export type UtilityLinkedNotifyDetail = {
   identifier: string | null | undefined;
@@ -35,6 +35,31 @@ export async function notifyUtilityLinkedPostProcess(
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(text || `utility-linked-notify failed: ${res.status}`);
+    throw new Error(formatNotifyError(text, res.status));
   }
+}
+
+function formatNotifyError(text: string, status: number): string {
+  if (!text) return `utility-linked-notify failed: ${status}`;
+  try {
+    const parsed = JSON.parse(text) as { detail?: unknown; error?: unknown };
+    const detail = parsed.detail ?? parsed.error;
+    if (typeof detail === "string" && detail.trim()) return detail;
+    if (Array.isArray(detail)) {
+      const joined = detail
+        .map((item) =>
+          typeof item === "string"
+            ? item
+            : item && typeof item === "object" && "msg" in item
+              ? String((item as { msg: unknown }).msg)
+              : "",
+        )
+        .filter(Boolean)
+        .join("; ");
+      if (joined) return joined;
+    }
+  } catch {
+    // use raw text
+  }
+  return text.slice(0, 400);
 }

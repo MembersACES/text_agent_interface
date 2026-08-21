@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
+/** Allow the proxy to wait for n8n utility_linked_post_process (Drive move + file ID). */
+export const maxDuration = 120;
+
 /**
  * Resolve FastAPI origin for server-side proxies only.
  * Do not use NEXT_PUBLIC_API_BASE_URL — it often points at this Next.js app (:3000).
