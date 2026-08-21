@@ -523,7 +523,12 @@ export function useMemberActions({
         }
         const updated: Client = await res.json();
         setClient(updated);
-        showToast("Airtable LOA record ID saved", "success");
+        showToast(
+          external_business_id
+            ? "Airtable LOA record ID saved"
+            : "LOA business unlinked from this member",
+          "success"
+        );
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : "Failed to save Airtable LOA record ID";
         setError(msg);

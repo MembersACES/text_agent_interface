@@ -9,13 +9,13 @@ import { dispatchRunNowFromList } from "@/lib/autonomous-dispatch";
 import { PageHeader } from "@/components/Layouts/PageHeader";
 import { useToast } from "@/components/ui/toast";
 import AutonomousResources from "./_components/AutonomousResources";
-import RetellVoicePromptPanel, {
-  type RetellAgentListItem,
-  type SequenceTypePromptRow,
-} from "./_components/RetellVoicePromptPanel";
+import SequenceTemplateEditor, {
+  type SequenceTemplate,
+  type SequenceTemplateStep,
+  type SequenceTypePromptConfig,
+} from "./_components/SequenceTemplateEditor";
+import { type RetellAgentListItem, type SequenceTypePromptRow } from "./_components/RetellVoicePromptPanel";
 import NewSequenceTemplateWizard from "./_components/NewSequenceTemplateWizard";
-import SignatureHtmlEditor from "./_components/SignatureHtmlEditor";
-import StartTestRunPanel from "./_components/StartTestRunPanel";
 import { resolvedSignatureHtml } from "@/lib/autonomous-signature";
 import DeleteSequenceTemplateModal, {
   type TemplateDeletePreview,
@@ -37,48 +37,6 @@ interface AutonomousRunRow {
   next_step_at: string | null;
   steps_done: number;
   steps_total: number;
-}
-
-interface SequenceTemplateStep {
-  id: number;
-  template_id: number;
-  step_index: number;
-  day_number: number;
-  channel: string;
-  send_time_local: string;
-  prompt_text: string | null;
-  retell_agent_id: string | null;
-  is_active: boolean;
-}
-
-interface SequenceTemplate {
-  id: number;
-  sequence_type: string;
-  display_name: string;
-  description: string | null;
-  timezone: string;
-  is_active: boolean;
-  is_restartable: boolean;
-  signature_html: string | null;
-  steps: SequenceTemplateStep[];
-}
-
-interface SequenceTypePromptConfig {
-  id?: number;
-  sequence_type: string;
-  system_prompt?: string | null;
-  email_example?: string | null;
-  sms_example?: string | null;
-  voice_example?: string | null;
-  retell_agent_id?: string | null;
-  retell_agent_copied?: number | null;
-}
-
-function isRetellAgentCopiedFlag(v: unknown): boolean {
-  if (v === true) return true;
-  if (typeof v === "number" && Number.isFinite(v)) return v === 1;
-  if (typeof v === "string") return v === "1" || v.toLowerCase() === "true";
-  return false;
 }
 
 function apiDetail(data: unknown, fallback: string): string {
@@ -337,7 +295,7 @@ export default function AutonomousAgentPage() {
       ),
     );
 
-  const saveTemplate = async (template: SequenceTemplate) => {
+  const saveTemplate = async (template: SequenceTemplate, silent = false) => {
     if (!token) return;
     setSavingTemplateId(template.id);
     try {
@@ -349,23 +307,24 @@ export default function AutonomousAgentPage() {
           body: JSON.stringify({
             display_name: template.display_name,
             description: template.description ?? "",
-            timezone: template.timezone,
+            timezone: "Australia/Brisbane",
             is_active: template.is_active,
             is_restartable: template.is_restartable,
             signature_html: template.signature_html ?? "",
+            extra_context: template.extra_context ?? "",
           }),
         },
       );
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Save failed");
       updateTemplateLocal(template.id, data as SequenceTemplate);
-      showToast("Template saved.", "success");
+      if (!silent) showToast("Template saved.", "success");
     } catch (e: unknown) {
       showToast(e instanceof Error ? e.message : "Save failed", "error");
     } finally { setSavingTemplateId(null); }
   };
 
-  const saveStep = async (templateId: number, step: SequenceTemplateStep) => {
+  const saveStep = async (templateId: number, step: SequenceTemplateStep, silent = false) => {
     if (!token) return;
     setSavingStepId(step.id);
     try {
@@ -388,9 +347,10 @@ export default function AutonomousAgentPage() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Save failed");
       updateStepLocal(templateId, step.id, data as SequenceTemplateStep);
-      showToast("Step saved.", "success");
+      if (!silent) showToast("Step saved.", "success");
     } catch (e: unknown) {
       showToast(e instanceof Error ? e.message : "Save failed", "error");
+      throw e;
     } finally { setSavingStepId(null); }
   };
 
@@ -483,6 +443,32 @@ export default function AutonomousAgentPage() {
     } finally { setSavingStepId(null); }
   };
 
+  const deleteStep = async (templateId: number, stepId: number) => {
+    if (!token) return;
+    setSavingStepId(stepId);
+    try {
+      const res = await fetch(
+        `${getAutonomousApiBaseUrl()}/api/autonomous/sequences/templates/${templateId}/steps/${stepId}`,
+        {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        },
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Delete failed");
+      setTemplates((prev) =>
+        prev.map((t) =>
+          t.id === templateId ? { ...t, steps: t.steps.filter((s) => s.id !== stepId) } : t,
+        ),
+      );
+      showToast("Step removed.", "success");
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : "Delete failed", "error");
+    } finally {
+      setSavingStepId(null);
+    }
+  };
+
   useEffect(() => {
     if (!token || tab !== "templates" || !selectedTemplateId) {
       setTypePrompts(null); setTypePromptsError(null); return;
@@ -529,7 +515,7 @@ export default function AutonomousAgentPage() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Prompt save failed");
       setTypePrompts(data as SequenceTypePromptConfig);
-      showToast("Prompt examples saved to autonomous_sequence_type.", "success");
+      showToast("Saved.", "success");
     } catch (e: unknown) {
       showToast(e instanceof Error ? e.message : "Prompt save failed", "error");
     } finally { setSavingTypePrompts(false); }
@@ -626,13 +612,6 @@ export default function AutonomousAgentPage() {
 
   // ── shared input classes ──────────────────────────────────────────────────
 
-  const inputCls =
-    "mt-1 w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-950 px-2.5 py-1.5 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 transition";
-  const textareaCls =
-    "mt-1 w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-950 px-2.5 py-2 text-xs text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 transition resize-y";
-  const labelCls = "block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide";
-  const btnPrimary =
-    "inline-flex items-center gap-1.5 rounded-full bg-gradient-to-br from-primary to-primary/85 text-white text-xs font-semibold px-3 py-1.5 transition hover:-translate-y-0.5 hover:shadow-sm disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:translate-y-0 shadow-sm";
   const btnSecondary =
     "inline-flex items-center gap-1.5 rounded-full border border-stroke dark:border-dark-3 bg-white dark:bg-gray-dark hover:bg-gray/80 dark:hover:bg-dark-3 text-dark dark:text-white text-xs font-semibold px-3 py-1.5 transition disabled:opacity-40 disabled:cursor-not-allowed shadow-sm";
 
@@ -767,210 +746,45 @@ export default function AutonomousAgentPage() {
             </div>
 
             {/* detail pane */}
-            <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm p-5">
+            <div className="min-w-0 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm p-5 overflow-hidden">
               {!selectedTemplate ? (
                 <div className="py-16 text-center text-sm text-gray-400 dark:text-gray-500">
                   Select a template from the list to edit it.
                 </div>
               ) : (
-                <div className="space-y-6">
-
-                  {/* template meta */}
-                  <div>
-                    <h3 className="text-base font-bold text-gray-900 dark:text-gray-100 mb-3">{selectedTemplate.display_name}</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <label className={labelCls}>
-                        Display name
-                        <input type="text" value={selectedTemplate.display_name}
-                          onChange={(e) => updateTemplateLocal(selectedTemplate.id, { display_name: e.target.value })}
-                          className={inputCls} />
-                      </label>
-                      <label className={labelCls}>
-                        Timezone
-                        <input type="text" value={selectedTemplate.timezone}
-                          onChange={(e) => updateTemplateLocal(selectedTemplate.id, { timezone: e.target.value })}
-                          className={inputCls} />
-                      </label>
-                      <label className={cn(labelCls, "md:col-span-2")}>
-                        Description
-                        <input type="text" value={selectedTemplate.description ?? ""}
-                          onChange={(e) => updateTemplateLocal(selectedTemplate.id, { description: e.target.value })}
-                          className={inputCls} />
-                      </label>
-                      <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer select-none">
-                        <input type="checkbox" checked={selectedTemplate.is_active}
-                          onChange={(e) => updateTemplateLocal(selectedTemplate.id, { is_active: e.target.checked })}
-                          className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
-                        Active
-                      </label>
-                      <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer select-none">
-                        <input type="checkbox" checked={selectedTemplate.is_restartable}
-                          onChange={(e) => updateTemplateLocal(selectedTemplate.id, { is_restartable: e.target.checked })}
-                          className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
-                        Restartable
-                      </label>
-                      <div className="md:col-span-2">
-                        <span className={labelCls}>Email signature</span>
-                        <div className="mt-1">
-                          <SignatureHtmlEditor
-                            value={selectedTemplate.signature_html ?? ""}
-                            onChange={(html) => updateTemplateLocal(selectedTemplate.id, { signature_html: html })}
-                            hint="Paired with this sequence&rsquo;s Retell agent. Appended to every email; SMS and voice are unchanged."
-                          />
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex gap-2 mt-4">
-                      <button type="button" onClick={() => saveTemplate(selectedTemplate)}
-                        disabled={savingTemplateId === selectedTemplate.id} className={btnPrimary}>
-                        {savingTemplateId === selectedTemplate.id ? "Saving…" : "Save template"}
-                      </button>
-                      <button type="button" onClick={() => addStep(selectedTemplate.id)}
-                        disabled={savingStepId === -1} className={btnSecondary}>
-                        {savingStepId === -1 ? "Adding…" : "+ Add step"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void openDeleteTemplate(selectedTemplate.id)}
-                        disabled={deletePreviewLoading || deletingTemplate}
-                        className="inline-flex items-center gap-1.5 rounded-full border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 text-xs font-semibold px-3 py-1.5 transition hover:bg-red-100 dark:hover:bg-red-900/50 disabled:opacity-40"
-                      >
-                        {deletePreviewLoading ? "Checking…" : "Delete sequence"}
-                      </button>
-                    </div>
-                  </div>
-
-                  {token && (
-                    <StartTestRunPanel
-                      token={token}
-                      sequenceType={selectedTemplate.sequence_type}
-                      displayName={selectedTemplate.display_name}
-                      onStarted={(runId) => router.push(`/autonomous-agent/${runId}`)}
-                      showToast={showToast}
-                    />
-                  )}
-
-                  {/* prompt examples */}
-                  <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-950/50 p-4 space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h4 className="text-sm font-bold text-gray-900 dark:text-gray-100">Prompt examples</h4>
-                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-                          Email/SMS drafts live in <code className="font-mono text-[10px]">autonomous_sequence_type</code>.
-                          Voice prompt is loaded from Retell for the linked agent.
-                        </p>
-                      </div>
-                      <button type="button" onClick={saveTypePrompts}
-                        disabled={savingTypePrompts || !typePrompts} className={btnPrimary}>
-                        {savingTypePrompts ? "Saving…" : "Save prompts"}
-                      </button>
-                    </div>
-
-                    {typePromptsLoading ? (
-                      <p className="text-xs text-gray-400">Loading prompt fields…</p>
-                    ) : typePromptsError ? (
-                      <p className="text-xs text-amber-600 dark:text-amber-400">{typePromptsError}</p>
-                    ) : typePrompts ? (
-                      <div className="grid grid-cols-1 gap-4">
-                        <label className={labelCls}>
-                          System prompt
-                          <textarea value={typePrompts.system_prompt ?? ""}
-                            onChange={(e) => updateTypePromptsLocal({ system_prompt: e.target.value })}
-                            rows={4} className={textareaCls} />
-                        </label>
-                        <label className={labelCls}>
-                          Email example
-                          <textarea value={typePrompts.email_example ?? ""}
-                            onChange={(e) => updateTypePromptsLocal({ email_example: e.target.value })}
-                            rows={4} className={textareaCls} />
-                        </label>
-                        <label className={labelCls}>
-                          SMS example
-                          <textarea value={typePrompts.sms_example ?? ""}
-                            onChange={(e) => updateTypePromptsLocal({ sms_example: e.target.value })}
-                            rows={3} className={textareaCls} />
-                        </label>
-                      </div>
-                    ) : null}
-
-                    {token && (
-                      <RetellVoicePromptPanel
-                        token={token}
-                        sequenceType={selectedTemplate.sequence_type}
-                        retellAgentId={typePrompts?.retell_agent_id ?? ""}
-                        retellAgentCopied={isRetellAgentCopiedFlag(typePrompts?.retell_agent_copied)}
-                        agents={retellAgents}
-                        agentsLoading={retellAgentsLoading}
-                        agentsError={retellAgentsError}
-                        onTypePromptsUpdated={(row: SequenceTypePromptRow) =>
-                          setTypePrompts(row as SequenceTypePromptConfig)
-                        }
-                        showToast={showToast}
-                      />
-                    )}
-                  </div>
-
-                  {/* steps table */}
-                  <div>
-                    <h4 className="text-sm font-bold text-gray-900 dark:text-gray-100 mb-2">Steps</h4>
-                    <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
-                      <table className="min-w-full text-xs">
-                        <thead>
-                          <tr className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-                            {["Index", "Day", "Channel", "Time", "Prompt", "Active", ""].map((h) => (
-                              <th key={h} className="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide whitespace-nowrap">{h}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                          {[...selectedTemplate.steps]
-                            .sort((a, b) => a.step_index - b.step_index)
-                            .map((s) => (
-                              <tr key={s.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
-                                <td className="px-3 py-2">
-                                  <input type="number" value={s.step_index}
-                                    onChange={(e) => updateStepLocal(selectedTemplate.id, s.id, { step_index: Number(e.target.value) })}
-                                    className="w-14 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-950 px-1.5 py-1 text-xs text-center focus:outline-none focus:ring-2 focus:ring-indigo-500/40" />
-                                </td>
-                                <td className="px-3 py-2">
-                                  <input type="number" value={s.day_number}
-                                    onChange={(e) => updateStepLocal(selectedTemplate.id, s.id, { day_number: Number(e.target.value) })}
-                                    className="w-14 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-950 px-1.5 py-1 text-xs text-center focus:outline-none focus:ring-2 focus:ring-indigo-500/40" />
-                                </td>
-                                <td className="px-3 py-2">
-                                  <input type="text" value={s.channel}
-                                    onChange={(e) => updateStepLocal(selectedTemplate.id, s.id, { channel: e.target.value })}
-                                    className="w-24 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-950 px-1.5 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/40" />
-                                </td>
-                                <td className="px-3 py-2">
-                                  <input type="text" value={s.send_time_local}
-                                    onChange={(e) => updateStepLocal(selectedTemplate.id, s.id, { send_time_local: e.target.value })}
-                                    className="w-20 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-950 px-1.5 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/40" />
-                                </td>
-                                <td className="px-3 py-2">
-                                  <input type="text" value={s.prompt_text ?? ""}
-                                    onChange={(e) => updateStepLocal(selectedTemplate.id, s.id, { prompt_text: e.target.value })}
-                                    className="w-72 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-950 px-1.5 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/40" />
-                                </td>
-                                <td className="px-3 py-2 text-center">
-                                  <input type="checkbox" checked={s.is_active}
-                                    onChange={(e) => updateStepLocal(selectedTemplate.id, s.id, { is_active: e.target.checked })}
-                                    className="h-3.5 w-3.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
-                                </td>
-                                <td className="px-3 py-2">
-                                  <button type="button" onClick={() => saveStep(selectedTemplate.id, s)}
-                                    disabled={savingStepId === s.id} className={btnSecondary}>
-                                    {savingStepId === s.id ? "Saving…" : "Save"}
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-
-                </div>
+                token ? (
+                  <SequenceTemplateEditor
+                    template={selectedTemplate}
+                    token={token}
+                    typePrompts={typePrompts}
+                    typePromptsLoading={typePromptsLoading}
+                    typePromptsError={typePromptsError}
+                    savingTemplateId={savingTemplateId}
+                    savingStepId={savingStepId}
+                    savingTypePrompts={savingTypePrompts}
+                    retellAgents={retellAgents}
+                    retellAgentsLoading={retellAgentsLoading}
+                    retellAgentsError={retellAgentsError}
+                    deletePreviewLoading={deletePreviewLoading}
+                    deletingTemplate={deletingTemplate}
+                    updateTemplateLocal={updateTemplateLocal}
+                    updateStepLocal={updateStepLocal}
+                    updateTypePromptsLocal={updateTypePromptsLocal}
+                    saveTemplate={saveTemplate}
+                    saveTypePrompts={saveTypePrompts}
+                    saveStep={saveStep}
+                    addStep={addStep}
+                    deleteStep={deleteStep}
+                    onDeleteTemplate={(id) => void openDeleteTemplate(id)}
+                    onTypePromptsUpdated={(row: SequenceTypePromptRow) =>
+                      setTypePrompts(row as SequenceTypePromptConfig)
+                    }
+                    onTestStarted={(runId) => router.push(`/autonomous-agent/${runId}`)}
+                    showToast={showToast}
+                  />
+                ) : (
+                  <p className="text-sm text-gray-400">Sign in to edit templates.</p>
+                )
               )}
             </div>
           </div>

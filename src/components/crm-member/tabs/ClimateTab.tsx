@@ -188,15 +188,6 @@ function severityClass(severity?: string | null): string {
   return SEVERITY_STYLES[key] ?? SEVERITY_STYLES.info;
 }
 
-/** First linked identifier per utility type (for ETL form defaults). */
-function linkedUtilityIdentifiers(sites: LinkedUtilitySite[]): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const site of sites) {
-    if (!out[site.utilityType]) out[site.utilityType] = site.identifier;
-  }
-  return out;
-}
-
 type ClimateTabProps = {
   client: Client;
   businessInfo?: Record<string, unknown> | null;
@@ -218,16 +209,19 @@ export function ClimateTab({
 
   const [backendLinked, setBackendLinked] = useState<BackendLinkedUtilities | null>(null);
   const [backendLinkedLoading, setBackendLinkedLoading] = useState(false);
+  /** Bumped after a refresh so the embedded workspace reloads and recomputes. */
+  const [workspaceNonce, setWorkspaceNonce] = useState(0);
 
   const memberSlug = (client.reporting_entity || "").trim();
   const effectiveEntity =
     (backendLinked?.effective_reporting_entity || memberSlug || "").trim();
   const disclosureSource = backendLinked?.disclosure_source;
   const period = "FY26";
-  const iframeSrc = effectiveEntity
+  const disclosureHref = effectiveEntity
     ? `${platformBaseUrl()}/?entity=${encodeURIComponent(effectiveEntity)}&period=${encodeURIComponent(period)}`
     : null;
-  const disclosureHref = iframeSrc;
+  // Cache-busted so a refresh remounts the workspace and it recomputes from the new staged rows.
+  const iframeSrc = disclosureHref ? `${disclosureHref}&r=${workspaceNonce}` : null;
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const platformOrigin = useMemo(() => {
     try {
@@ -256,7 +250,6 @@ export function ClimateTab({
 
   const linkedSites =
     linkedSitesFromBackend.length > 0 ? linkedSitesFromBackend : linkedSitesFromBusinessInfo;
-  const linkedIds = useMemo(() => linkedUtilityIdentifiers(linkedSites), [linkedSites]);
   const utilityCountMismatch =
     backendLinked?.site_count != null &&
     linkedSitesFromBusinessInfo.length > 0 &&
@@ -270,25 +263,15 @@ export function ClimateTab({
   const [invoiceStats, setInvoiceStats] = useState<Record<string, SiteInvoiceStats>>({});
   const [invoiceStatsLoading, setInvoiceStatsLoading] = useState(false);
 
-  const [utilityType, setUtilityType] = useState<EtlUtilityType>("C&I Electricity");
-  const [identifier, setIdentifier] = useState("");
   const [etlLoading, setEtlLoading] = useState(false);
   const [syncAllProgress, setSyncAllProgress] = useState<{ current: number; total: number; label: string } | null>(
     null,
   );
-  const [lastEtlPreview, setLastEtlPreview] = useState<EtlSyncResponse | null>(null);
   const [reportingEntityDraft, setReportingEntityDraft] = useState("");
 
   useEffect(() => {
     setReportingEntityDraft(client.reporting_entity ?? "");
   }, [client.id, client.reporting_entity]);
-
-  useEffect(() => {
-    const suggested = linkedIds[utilityType];
-    if (suggested && !identifier) {
-      setIdentifier(suggested);
-    }
-  }, [utilityType, linkedIds, identifier]);
 
   const fetchClimateData = useCallback(async () => {
     if (!client.id || !token) return;
@@ -454,66 +437,6 @@ export function ClimateTab({
     return () => window.removeEventListener("message", onMessage);
   }, [platformOrigin, postAuthToIframe]);
 
-  const runEtlSync = useCallback(
-    async (dryRun: boolean) => {
-      if (!client.id || !token) {
-        showToast("Sign in required", "error");
-        return;
-      }
-      if (!effectiveEntity) {
-        showToast("Set sustainability reporting entity (or group disclosure slug) first", "error");
-        return;
-      }
-      const idTrim = identifier.trim();
-      if (!idTrim) {
-        showToast("Enter a utility identifier (NMI, MRIN, etc.)", "error");
-        return;
-      }
-
-      setEtlLoading(true);
-      try {
-        const res = await fetch(`${getApiBaseUrl()}/api/clients/${client.id}/climate/etl/sync`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            utility_type: utilityType,
-            identifier: idTrim,
-            reporting_period_label: period,
-            max_records: 100,
-            dry_run: dryRun,
-          }),
-        });
-        const data = (await res.json().catch(() => ({}))) as EtlSyncResponse & { detail?: string };
-        if (!res.ok) {
-          showToast(data.detail || `ETL failed (${res.status})`, "error");
-          return;
-        }
-        setLastEtlPreview(data);
-        if (dryRun) {
-          const produced = (data.preview ?? []).filter((p) => !p.skipped).length;
-          showToast(
-            `Preview: ${produced} record(s), ${data.skipped ?? 0} skipped`,
-            produced > 0 ? "success" : "warning",
-          );
-        } else {
-          showToast(
-            `Synced: ${data.created ?? 0} created, ${data.updated ?? 0} updated, ${data.skipped ?? 0} skipped`,
-            "success",
-          );
-          await fetchClimateData();
-        }
-      } catch {
-        showToast("ETL request failed", "error");
-      } finally {
-        setEtlLoading(false);
-      }
-    },
-    [client.id, token, effectiveEntity, identifier, utilityType, period, showToast, fetchClimateData],
-  );
-
   const runEtlSyncForSite = useCallback(
     async (site: LinkedUtilitySite, dryRun: boolean): Promise<EtlSyncResponse & { ok: boolean }> => {
       if (!client.id || !token || !effectiveEntity) {
@@ -539,67 +462,105 @@ export function ClimateTab({
     [client.id, token, effectiveEntity, period],
   );
 
-  const runSyncAll = useCallback(
-    async (dryRun: boolean) => {
-      if (!client.id || !token) {
-        showToast("Sign in required", "error");
-        return;
-      }
-      if (!effectiveEntity) {
-        showToast("Set sustainability reporting entity (or group disclosure slug) first", "error");
-        return;
-      }
-      if (linkedSites.length === 0) {
-        showToast("No linked utilities on LOA — check business info", "warning");
-        return;
-      }
+  /**
+   * Bring every linked site's invoice data into SQL staging, then bump the workspace
+   * nonce so the embedded Prograde workspace reloads and recomputes.
+   *
+   * Phase 1 of ONE_CLICK_REFRESH_SPEC: this replaces the old manual
+   * "Preview all" / "Sync all to SQL" / "Sync to SQL" buttons. Callers no longer
+   * choose a site — every linked site is refreshed. Failures are reported by name
+   * rather than as an anonymous count, so a partially staged entity is visible.
+   */
+  const refreshStagedData = useCallback(async (): Promise<boolean> => {
+    if (!client.id || !token) {
+      showToast("Sign in required", "error");
+      return false;
+    }
+    if (!effectiveEntity) {
+      showToast("Set a reporting entity (or a group disclosure slug) first", "error");
+      return false;
+    }
+    if (linkedSites.length === 0) {
+      showToast("No linked utilities on the LOA — link accounts in Airtable first", "warning");
+      return false;
+    }
 
-      setEtlLoading(true);
-      let totalCreated = 0;
-      let totalUpdated = 0;
-      let totalSkipped = 0;
-      let failures = 0;
+    setEtlLoading(true);
+    let totalCreated = 0;
+    let totalUpdated = 0;
+    let totalSkipped = 0;
+    const failed: string[] = [];
 
-      try {
-        for (let i = 0; i < linkedSites.length; i++) {
-          const site = linkedSites[i];
-          setSyncAllProgress({
-            current: i + 1,
-            total: linkedSites.length,
-            label: `${site.utilityType} · ${site.identifier}`,
-          });
-          const data = await runEtlSyncForSite(site, dryRun);
-          if (!data.ok) {
-            failures += 1;
-            continue;
-          }
-          totalCreated += data.created ?? 0;
-          totalUpdated += data.updated ?? 0;
-          totalSkipped += data.skipped ?? 0;
+    try {
+      for (let i = 0; i < linkedSites.length; i++) {
+        const site = linkedSites[i];
+        setSyncAllProgress({
+          current: i + 1,
+          total: linkedSites.length,
+          label: `${site.utilityType} · ${site.identifier}`,
+        });
+        let data: (EtlSyncResponse & { ok: boolean }) | null = null;
+        try {
+          data = await runEtlSyncForSite(site, false);
+        } catch {
+          data = { ok: false, detail: "request failed" };
         }
-
-        if (dryRun) {
-          showToast(
-            `Preview all: ${linkedSites.length - failures} site(s) ok, ${failures} failed · ${totalSkipped} row(s) skipped`,
-            failures > 0 ? "warning" : "success",
-          );
-        } else {
-          showToast(
-            `Sync all: ${totalCreated} created, ${totalUpdated} updated, ${totalSkipped} skipped` +
-              (failures ? ` · ${failures} site(s) failed` : ""),
-            failures > 0 ? "warning" : "success",
-          );
-          await fetchClimateData();
+        if (!data.ok) {
+          failed.push(`${site.utilityType} ${site.identifier}${data.detail ? ` — ${data.detail}` : ""}`);
+          continue;
         }
-      } catch {
-        showToast("Batch sync failed", "error");
-      } finally {
-        setSyncAllProgress(null);
-        setEtlLoading(false);
+        totalCreated += data.created ?? 0;
+        totalUpdated += data.updated ?? 0;
+        totalSkipped += data.skipped ?? 0;
       }
-    },
-    [client.id, token, effectiveEntity, linkedSites, runEtlSyncForSite, showToast, fetchClimateData],
-  );
+
+      await fetchClimateData();
+      setWorkspaceNonce((n) => n + 1);
+
+      if (failed.length > 0) {
+        showToast(
+          `Refreshed with ${failed.length} failure(s): ${failed.slice(0, 3).join("; ")}` +
+            (failed.length > 3 ? ` and ${failed.length - 3} more` : ""),
+          "warning",
+        );
+        return false;
+      }
+
+      showToast(
+        `Data refreshed: ${totalCreated} new, ${totalUpdated} updated` +
+          (totalSkipped ? `, ${totalSkipped} skipped` : ""),
+        "success",
+      );
+      return true;
+    } catch {
+      showToast("Refresh failed", "error");
+      return false;
+    } finally {
+      setSyncAllProgress(null);
+      setEtlLoading(false);
+    }
+  }, [
+    client.id,
+    token,
+    effectiveEntity,
+    linkedSites,
+    runEtlSyncForSite,
+    showToast,
+    fetchClimateData,
+  ]);
+
+  /**
+   * The single action the team uses: refresh the data, then open the workspace.
+   * The workspace computes and commits on load, so no further clicks are needed.
+   */
+  const refreshAndOpenWorkspace = useCallback(async () => {
+    if (!disclosureHref) {
+      showToast("Set a reporting entity first", "error");
+      return;
+    }
+    await refreshStagedData();
+    window.open(disclosureHref, "_blank", "noopener,noreferrer");
+  }, [disclosureHref, refreshStagedData, showToast]);
 
   const highestSeverity = driftEvents.reduce<string | null>((best, ev) => {
     const order = ["critical", "high", "medium", "low", "info"];
@@ -612,7 +573,7 @@ export function ClimateTab({
     <div className="space-y-4">
       <CollapsiblePanel
         title="Climate controls"
-        description="Entity setup, drift monitoring, ETL sync, and staged records"
+        description="Reporting entity, drift monitoring, linked utilities and the data brought in"
         defaultOpen
         badge={<PostureBadge variant="preview" />}
       >
@@ -655,22 +616,33 @@ export function ClimateTab({
                 : disclosureSource === "member" && memberSlug
                   ? " (site-level)"
                   : null}
-              {disclosureHref ? (
-                <>
-                  {" "}
-                  ·{" "}
-                  <Link href={disclosureHref} target="_blank" rel="noopener noreferrer" className="underline">
-                    Open Prograde workspace
-                  </Link>
-                </>
-              ) : null}
             </p>
           ) : (
             <p className="text-xs text-amber-800 dark:text-amber-200">
-              Save a site slug or assign a group with a disclosure slug to enable sync and the workspace
-              below.
+              Save a site slug, or assign a group with a disclosure slug, to enable the workspace below.
             </p>
           )}
+          <div className="flex flex-wrap items-center gap-3 pt-1">
+            <Button
+              variant="primary"
+              size="sm"
+              loading={etlLoading}
+              disabled={!effectiveEntity || etlLoading}
+              onClick={() => void refreshAndOpenWorkspace()}
+            >
+              {etlLoading ? "Refreshing data…" : "Open Prograde workspace"}
+            </Button>
+            {syncAllProgress ? (
+              <span className="text-xs text-gray-600 dark:text-gray-400">
+                Bringing in {syncAllProgress.current} of {syncAllProgress.total}: {syncAllProgress.label}
+              </span>
+            ) : (
+              <span className="text-xs text-gray-500 dark:text-gray-400">
+                Brings in the latest invoice data for every linked utility, then opens the workspace, which
+                calculates the emissions on load.
+              </span>
+            )}
+          </div>
           {backendLinkedLoading ? (
             <p className="text-xs text-gray-500">Loading linked utilities from LOA…</p>
           ) : null}
@@ -748,30 +720,21 @@ export function ClimateTab({
           <div>
             <CardTitle className="text-base">Linked utilities (LOA)</CardTitle>
             <CardDescription>
-              All sites from Airtable LOA linked fields — invoice rows in Airtable and staged activity in SQL.
+              Every site on the Airtable LOA. Compare <span className="font-medium">Airtable invoices</span>{" "}
+              against <span className="font-medium">Brought in</span> — a gap means Open Prograde workspace
+              hasn&apos;t been run since those invoices arrived.
             </CardDescription>
           </div>
           {linkedSites.length > 0 ? (
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant="secondary"
-                size="sm"
-                loading={etlLoading}
-                disabled={!effectiveEntity || etlLoading}
-                onClick={() => void runSyncAll(true)}
-              >
-                Preview all
-              </Button>
-              <Button
-                variant="primary"
-                size="sm"
-                loading={etlLoading}
-                disabled={!effectiveEntity || etlLoading}
-                onClick={() => void runSyncAll(false)}
-              >
-                Sync all to SQL
-              </Button>
-            </div>
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={etlLoading}
+              disabled={!effectiveEntity || etlLoading}
+              onClick={() => void refreshStagedData()}
+            >
+              Refresh data only
+            </Button>
           ) : null}
         </CardHeader>
         <CardContent className="space-y-3">
@@ -794,8 +757,7 @@ export function ClimateTab({
                     <th className="px-3 py-2 font-medium">Identifier</th>
                     <th className="px-3 py-2 font-medium">Retailer</th>
                     <th className="px-3 py-2 font-medium text-right">Airtable invoices</th>
-                    <th className="px-3 py-2 font-medium text-right">Staged</th>
-                    <th className="px-3 py-2 font-medium text-right">Actions</th>
+                    <th className="px-3 py-2 font-medium text-right">Brought in</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -822,19 +784,19 @@ export function ClimateTab({
                             <span>{invoiceCount ?? "—"}</span>
                           )}
                         </td>
-                        <td className="px-3 py-2 text-right text-xs">{staged > 0 ? staged : "—"}</td>
-                        <td className="px-3 py-2 text-right">
-                          <button
-                            type="button"
-                            className="text-xs font-medium text-primary hover:underline disabled:opacity-50"
-                            disabled={etlLoading}
-                            onClick={() => {
-                              setUtilityType(site.utilityType);
-                              setIdentifier(site.identifier);
-                            }}
-                          >
-                            Use in form
-                          </button>
+                        <td
+                          className={`px-3 py-2 text-right text-xs ${
+                            staged === 0 && (invoiceCount ?? 0) > 0
+                              ? "font-semibold text-amber-700 dark:text-amber-300"
+                              : ""
+                          }`}
+                          title={
+                            staged === 0 && (invoiceCount ?? 0) > 0
+                              ? "Invoices exist but none have been brought in — run Open Prograde workspace"
+                              : undefined
+                          }
+                        >
+                          {staged > 0 ? staged : "—"}
                         </td>
                       </tr>
                     );
@@ -848,96 +810,18 @@ export function ClimateTab({
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Sync from Airtable</CardTitle>
+          <CardTitle className="text-base">Activity data brought in</CardTitle>
           <CardDescription>
-            Pull invoice rows into <span className="font-mono">climate_activity_records</span> (SQL staging).
-            Preview first, then sync. Requires reporting entity + Airtable direct mode on backend.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block text-sm">
-              <span className="mb-1 block text-gray-600 dark:text-gray-400">Utility type</span>
-              <select
-                className="w-full rounded-md border border-stroke bg-white px-3 py-2 text-sm dark:border-dark-3 dark:bg-gray-dark"
-                value={utilityType}
-                onChange={(e) => {
-                  const next = e.target.value as EtlUtilityType;
-                  setUtilityType(next);
-                  const suggested = linkedIds[next];
-                  if (suggested) setIdentifier(suggested);
-                }}
-                disabled={etlLoading}
-              >
-                {ETL_UTILITY_TYPES.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="block text-sm">
-              <span className="mb-1 block text-gray-600 dark:text-gray-400">Identifier (NMI / MRIN / account)</span>
-              <input
-                type="text"
-                className="w-full rounded-md border border-stroke bg-white px-3 py-2 font-mono text-sm dark:border-dark-3 dark:bg-gray-dark"
-                value={identifier}
-                onChange={(e) => setIdentifier(e.target.value)}
-                placeholder={utilityType.includes("Electricity") ? "NMI" : "MRIN or account"}
-                disabled={etlLoading}
-              />
-            </label>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="secondary"
-              size="sm"
-              loading={etlLoading}
-              disabled={!effectiveEntity || etlLoading}
-              onClick={() => void runEtlSync(true)}
-            >
-              Preview (dry run)
-            </Button>
-            <Button
-              variant="primary"
-              size="sm"
-              loading={etlLoading}
-              disabled={!effectiveEntity || etlLoading}
-              onClick={() => void runEtlSync(false)}
-            >
-              Sync to SQL
-            </Button>
-          </div>
-          {lastEtlPreview?.preview && lastEtlPreview.preview.length > 0 && (
-            <div className="rounded-md border border-stroke bg-gray/30 p-3 text-xs dark:border-dark-3 dark:bg-dark-3/30">
-              <p className="mb-2 font-medium text-gray-700 dark:text-gray-300">Last preview</p>
-              <ul className="max-h-32 space-y-1 overflow-y-auto font-mono text-gray-600 dark:text-gray-400">
-                {lastEtlPreview.preview.slice(0, 8).map((row, i) => (
-                  <li key={i}>
-                    {row.skipped
-                      ? `skip ${row.reason ?? "unknown"}`
-                      : `${row.activity_type} · ${row.quantity ?? "—"} (${row.record_id})`}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Staged activity records</CardTitle>
-          <CardDescription>
-            B4-boundary rows staged before Prograde ingest (post-Tuesday).
+            Invoice lines tidied into a consistent shape, ready for the emissions calculation. Read-only —
+            refreshed by Open Prograde workspace.
           </CardDescription>
         </CardHeader>
         <CardContent>
           {recordsLoading ? (
-            <p className="text-sm text-gray-500">Loading staged records…</p>
+            <p className="text-sm text-gray-500">Loading…</p>
           ) : activityRecords.length === 0 ? (
             <p className="text-sm text-gray-600 dark:text-gray-400">
-              No staged records yet. Use Sync from Airtable above.
+              Nothing brought in yet. Click <span className="font-medium">Open Prograde workspace</span> above.
             </p>
           ) : (
             <ul className="divide-y divide-gray-100 text-sm dark:divide-gray-800">

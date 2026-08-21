@@ -9,6 +9,7 @@ import {
   Link2,
   Network,
   Settings,
+  Unlink,
   UsersRound,
 } from "lucide-react";
 import { cn, getApiBaseUrl } from "@/lib/utils";
@@ -381,23 +382,50 @@ export function EntityGroupSection({
                           placeholder="recXXXXXXXXXXXXXX"
                           disabled={savingExternalBusinessId}
                         />
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          size="sm"
-                          loading={savingExternalBusinessId}
-                          disabled={
-                            savingExternalBusinessId ||
-                            loaRecordId.trim() === (client.external_business_id ?? "").trim()
-                          }
-                          onClick={() =>
-                            void onSaveExternalBusinessId(
-                              loaRecordId.trim() ? loaRecordId.trim() : null
-                            )
-                          }
-                        >
-                          Save ID
-                        </Button>
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            loading={savingExternalBusinessId}
+                            disabled={
+                              savingExternalBusinessId ||
+                              loaRecordId.trim() === (client.external_business_id ?? "").trim()
+                            }
+                            onClick={() =>
+                              void onSaveExternalBusinessId(
+                                loaRecordId.trim() ? loaRecordId.trim() : null
+                              )
+                            }
+                          >
+                            Save ID
+                          </Button>
+                          {client.external_business_id ? (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900/20 dark:hover:text-red-300"
+                              loading={savingExternalBusinessId}
+                              disabled={savingExternalBusinessId}
+                              leftIcon={<Unlink className="size-3.5" aria-hidden />}
+                              onClick={() => {
+                                if (
+                                  typeof window !== "undefined" &&
+                                  !window.confirm(
+                                    "Unlink this LOA business from this CRM member? You can then link it to a different member."
+                                  )
+                                ) {
+                                  return;
+                                }
+                                setLoaRecordId("");
+                                void onSaveExternalBusinessId(null);
+                              }}
+                            >
+                              Unlink
+                            </Button>
+                          ) : null}
+                        </div>
                       </div>
                     ) : client.external_business_id ? (
                       <p className="font-mono text-xs text-gray-600 dark:text-gray-400">
