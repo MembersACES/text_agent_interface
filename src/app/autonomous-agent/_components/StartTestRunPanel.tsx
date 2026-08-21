@@ -108,10 +108,6 @@ export default function StartTestRunPanel({
     setContactPhone(e164);
     setSubmitting(true);
     try {
-      const tz =
-        typeof Intl !== "undefined"
-          ? Intl.DateTimeFormat().resolvedOptions().timeZone || "Australia/Brisbane"
-          : "Australia/Brisbane";
       const res = await fetch(`${getAutonomousApiBaseUrl()}/api/autonomous/sequences/start`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -120,7 +116,7 @@ export default function StartTestRunPanel({
           offer_id: oid,
           client_id: selected?.client_id ?? undefined,
           anchor_at: new Date().toISOString(),
-          timezone: tz,
+          timezone: "Australia/Brisbane",
           context: {
             dashboard_test: true,
             business_name: selected?.business_name,
