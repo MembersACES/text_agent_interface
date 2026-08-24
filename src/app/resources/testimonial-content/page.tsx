@@ -1,6 +1,8 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSession } from "next-auth/react";
+import { ChevronDown, Search } from "lucide-react";
 import { Breadcrumb } from "@/components/ui/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -9,6 +11,7 @@ import {
   type TestimonialSolutionContentItem,
 } from "@/lib/testimonial-solution-content";
 import { useToast } from "@/components/ui/toast";
+import { cn, getApiBaseUrl } from "@/lib/utils";
 
 const FIELDS: { key: keyof TestimonialSolutionContentItem; label: string; multiline?: boolean }[] = [
   { key: "key_outcome_metrics", label: "Key outcome metrics (headline)", multiline: false },
@@ -57,15 +60,116 @@ function driveFileUrl(ex: ExampleItem): string {
   return `https://drive.google.com/file/d/${ex.file_id}/view`;
 }
 
+type CrmMember = {
+  id: number;
+  business_name: string;
+  gdrive_folder_url?: string | null;
+};
+
+function MemberSearchSelect({
+  members,
+  loading,
+  value,
+  onChange,
+}: {
+  members: CrmMember[];
+  loading: boolean;
+  value: CrmMember | null;
+  onChange: (member: CrmMember | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const list = q
+      ? members.filter((m) => m.business_name.toLowerCase().includes(q))
+      : members;
+    return list.slice(0, 80);
+  }, [members, query]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  const displayValue = open ? query : value?.business_name ?? "";
+
+  return (
+    <div ref={wrapRef} className="relative">
+      <Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-gray-400" />
+      <input
+        ref={inputRef}
+        id="upload-business-name"
+        type="search"
+        autoComplete="off"
+        value={displayValue}
+        placeholder={loading ? "Loading members…" : "Search CRM members…"}
+        disabled={loading}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          setOpen(true);
+          if (value && e.target.value !== value.business_name) onChange(null);
+        }}
+        onFocus={() => {
+          setQuery(value?.business_name ?? "");
+          setOpen(true);
+        }}
+        className={cn(INPUT_CLASS, "pl-9 pr-8")}
+      />
+      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-3.5 -translate-y-1/2 text-gray-400" />
+      {open && !loading ? (
+        <ul className="absolute z-20 mt-1 max-h-52 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-900">
+          {filtered.length === 0 ? (
+            <li className="px-3 py-2 text-xs text-gray-500">No members match</li>
+          ) : (
+            filtered.map((m) => (
+              <li key={m.id}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onChange(m);
+                    setQuery(m.business_name);
+                    setOpen(false);
+                    inputRef.current?.blur();
+                  }}
+                  className={cn(
+                    "w-full truncate px-3 py-2 text-left text-sm hover:bg-primary/5",
+                    value?.id === m.id && "bg-primary/10 font-medium"
+                  )}
+                >
+                  {m.business_name}
+                </button>
+              </li>
+            ))
+          )}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
 export default function TestimonialContentPage() {
+  const { data: session } = useSession();
+  const token =
+    (session as { id_token?: string; accessToken?: string } | null)?.id_token ??
+    (session as { id_token?: string; accessToken?: string } | null)?.accessToken;
   const [list, setList] = useState<TestimonialSolutionContentItem[]>(DEFAULT_TESTIMONIAL_SOLUTION_CONTENT);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [selectedSolutionType, setSelectedSolutionType] = useState<string>("ci_electricity");
   const [examples, setExamples] = useState<ExampleItem[]>([]);
   const [examplesLoading, setExamplesLoading] = useState(false);
+  const [members, setMembers] = useState<CrmMember[]>([]);
+  const [membersLoading, setMembersLoading] = useState(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
-  const [uploadBusinessName, setUploadBusinessName] = useState("");
+  const [selectedMember, setSelectedMember] = useState<CrmMember | null>(null);
   const [uploadSavings, setUploadSavings] = useState("");
   const [uploadStatus, setUploadStatus] = useState("Approved");
   const [uploading, setUploading] = useState(false);
@@ -92,6 +196,39 @@ export default function TestimonialContentPage() {
   useEffect(() => {
     fetchContent();
   }, [fetchContent]);
+
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    setMembersLoading(true);
+    fetch(`${getApiBaseUrl()}/api/clients`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(async (res) => {
+        if (!res.ok) throw new Error("Failed to load members");
+        const data = await res.json();
+        const list = Array.isArray(data) ? data : data.items || data.clients || [];
+        if (cancelled) return;
+        const mapped: CrmMember[] = list
+          .map((c: { id?: number; business_name?: string; gdrive_folder_url?: string | null }) => ({
+            id: Number(c.id),
+            business_name: String(c.business_name ?? "").trim(),
+            gdrive_folder_url: c.gdrive_folder_url ?? null,
+          }))
+          .filter((c: CrmMember) => c.id && c.business_name)
+          .sort((a: CrmMember, b: CrmMember) => a.business_name.localeCompare(b.business_name));
+        setMembers(mapped);
+      })
+      .catch(() => {
+        if (!cancelled) setMembers([]);
+      })
+      .finally(() => {
+        if (!cancelled) setMembersLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
 
   const fetchExamples = useCallback(async (solutionType: string) => {
     if (!solutionType) {
@@ -189,8 +326,8 @@ export default function TestimonialContentPage() {
       showToast("File must be a PDF or Word document (.pdf, .docx, .doc).", "error");
       return;
     }
-    if (!uploadBusinessName.trim()) {
-      showToast("Enter the member / business name so this record appears on their dashboard.", "error");
+    if (!selectedMember?.business_name) {
+      showToast("Select a CRM member so this record appears on their dashboard.", "error");
       return;
     }
 
@@ -198,12 +335,15 @@ export default function TestimonialContentPage() {
     try {
       const form = new FormData();
       form.append("file", file);
-      form.append("business_name", uploadBusinessName.trim());
+      form.append("business_name", selectedMember.business_name);
       form.append("status", uploadStatus);
       form.append("testimonial_solution_type_id", selectedSolutionType);
       form.append("testimonial_type", selectedLabel);
       if (uploadSavings.trim()) {
         form.append("testimonial_savings", uploadSavings.trim());
+      }
+      if (selectedMember.gdrive_folder_url) {
+        form.append("gdrive_folder_url", selectedMember.gdrive_folder_url);
       }
       const res = await fetch("/api/testimonials/upload", { method: "POST", body: form });
       const data = await res.json().catch(() => ({}));
@@ -213,7 +353,7 @@ export default function TestimonialContentPage() {
       }
       showToast("Testimonial uploaded and recorded against this solution type.", "success");
       setUploadFile(null);
-      setUploadBusinessName("");
+      setSelectedMember(null);
       setUploadSavings("");
       setUploadStatus("Approved");
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -305,15 +445,13 @@ export default function TestimonialContentPage() {
                           htmlFor="upload-business-name"
                           className="block text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1"
                         >
-                          Member / business name
+                          CRM member
                         </label>
-                        <input
-                          id="upload-business-name"
-                          type="text"
-                          value={uploadBusinessName}
-                          onChange={(e) => setUploadBusinessName(e.target.value)}
-                          placeholder="As it appears in CRM"
-                          className={INPUT_CLASS}
+                        <MemberSearchSelect
+                          members={members}
+                          loading={membersLoading}
+                          value={selectedMember}
+                          onChange={setSelectedMember}
                         />
                       </div>
                       <div>
