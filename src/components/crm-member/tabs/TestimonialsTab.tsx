@@ -236,8 +236,8 @@ export function TestimonialsTab({ businessInfo, clientId }: TestimonialsTabProps
       return;
     }
     const fn = file.name.toLowerCase();
-    if (![".pdf", ".docx", ".doc"].some((e) => fn.endsWith(e))) {
-      setUploadResult("Please upload a PDF or Word file.");
+    if (![".pdf", ".docx", ".doc", ".png", ".jpg", ".jpeg"].some((e) => fn.endsWith(e))) {
+      setUploadResult("Please upload a PDF, Word, PNG, or JPEG file.");
       return;
     }
     setUploading(true);
@@ -1075,11 +1075,13 @@ export function TestimonialsTab({ businessInfo, clientId }: TestimonialsTabProps
             </div>
             <div className="px-6 py-5 space-y-4">
               <div>
-                <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">File (PDF or Word)</p>
+                <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
+                  File (PDF, Word, PNG, or JPEG — images convert to PDF)
+                </p>
                 <input
                   ref={uploadFileInputRef}
                   type="file"
-                  accept=".pdf,.docx,.doc"
+                  accept=".pdf,.docx,.doc,.png,.jpg,.jpeg,image/png,image/jpeg,application/pdf"
                   onChange={(e) => {
                     const chosen = e.target.files?.[0];
                     setUploadFile(chosen ?? null);

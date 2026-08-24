@@ -43,7 +43,7 @@ const DROPDOWN_ORDER = [
 const INPUT_CLASS =
   "w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary/20 focus:border-primary";
 
-const ALLOWED_UPLOAD_EXT = [".pdf", ".docx", ".doc"];
+const ALLOWED_UPLOAD_EXT = [".pdf", ".docx", ".doc", ".png", ".jpg", ".jpeg"];
 
 type ExampleItem = {
   id: number;
@@ -318,12 +318,12 @@ export default function TestimonialContentPage() {
   const handleUpload = async () => {
     const file = uploadFile ?? fileInputRef.current?.files?.[0] ?? null;
     if (!file) {
-      showToast("Choose a PDF or Word file to upload.", "error");
+      showToast("Choose a PDF, Word, PNG, or JPEG file to upload.", "error");
       return;
     }
     const name = file.name.toLowerCase();
     if (!ALLOWED_UPLOAD_EXT.some((ext) => name.endsWith(ext))) {
-      showToast("File must be a PDF or Word document (.pdf, .docx, .doc).", "error");
+      showToast("File must be a PDF, Word, PNG, or JPEG.", "error");
       return;
     }
     if (!selectedMember?.business_name) {
@@ -423,7 +423,7 @@ export default function TestimonialContentPage() {
                   <CardContent className="space-y-4">
                     <div className="rounded-lg border border-dashed border-gray-300 dark:border-gray-600 bg-gray-50/80 dark:bg-gray-800/40 p-3 space-y-3">
                       <p className="text-xs font-semibold text-gray-700 dark:text-gray-200">
-                        Upload an existing PDF or Word file
+                        Upload an existing PDF, Word, PNG, or JPEG file. Images are converted to PDF on upload.
                       </p>
                       <div>
                         <label className="block text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1">
@@ -432,7 +432,7 @@ export default function TestimonialContentPage() {
                         <input
                           ref={fileInputRef}
                           type="file"
-                          accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                          accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                           onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
                           className="block w-full text-xs text-gray-500 file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-medium file:bg-white dark:file:bg-gray-800 file:text-gray-700 dark:file:text-gray-200 file:border file:border-gray-200 dark:file:border-gray-600"
                         />
@@ -501,7 +501,7 @@ export default function TestimonialContentPage() {
                       <p className="text-sm text-gray-500 dark:text-gray-400">Loading testimonials...</p>
                     ) : examples.length === 0 ? (
                       <p className="text-sm text-gray-500 dark:text-gray-400">
-                        None recorded yet for this solution type. Upload a previous PDF or Word file above.
+                        None recorded yet for this solution type. Upload a previous PDF, Word, or image file above.
                       </p>
                     ) : (
                       <ul className="space-y-2 text-sm max-h-[min(52vh,28rem)] overflow-y-auto pr-1">
