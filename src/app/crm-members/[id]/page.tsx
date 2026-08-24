@@ -460,6 +460,7 @@ export default function ClientDetailPage() {
               <aside className="min-w-0 lg:col-span-1">
                 <MemberSidebar
                   client={client}
+                  notes={notes}
                   tasks={tasks}
                   timelineEvents={timelineEvents}
                   businessInfo={businessInfo}
