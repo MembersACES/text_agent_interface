@@ -38,6 +38,13 @@ const DROPDOWN_ORDER = [
   "dma",
   "automated_cleaning_robot",
   "solar_panel_cleaning",
+  "client_endorsement",
+  "ghg_roadmap",
+  "solar_review",
+  "gas_discrepancy",
+  "electricity_discrepancy",
+  "demand_reset",
+  "cds",
 ];
 
 const INPUT_CLASS =
