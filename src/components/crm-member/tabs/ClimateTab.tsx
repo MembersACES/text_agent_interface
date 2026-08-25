@@ -553,17 +553,48 @@ export function ClimateTab({
   ]);
 
   /**
-   * The single action the team uses: refresh the data, then open the workspace.
-   * The workspace computes and commits on load, so no further clicks are needed.
+   * The single action the team uses: refresh the data, then let the workspace compute.
+   *
+   * Two things here are load-bearing and easy to break:
+   *
+   * 1. The tab is opened SYNCHRONOUSLY, inside the click handler, before any await.
+   *    Calling window.open() after awaiting the sync loses the user-gesture context
+   *    and Chrome blocks it as a popup.
+   *
+   * 2. The workspace is opened with awaitRefresh=1, which tells it NOT to compute on
+   *    load. It waits for the aces:refresh-complete message we post below. Without
+   *    that handshake the workspace computes from partially-staged data and offers
+   *    "Commit to disclosure" while sites are still being brought in — i.e. it lets
+   *    you commit a half-loaded number.
    */
   const refreshAndOpenWorkspace = useCallback(async () => {
     if (!disclosureHref) {
       showToast("Set a reporting entity first", "error");
       return;
     }
-    await refreshStagedData();
-    window.open(disclosureHref, "_blank", "noopener,noreferrer");
-  }, [disclosureHref, refreshStagedData, showToast]);
+    const sep = disclosureHref.includes("?") ? "&" : "?";
+    const win = window.open(`${disclosureHref}${sep}awaitRefresh=1`, "_blank");
+    if (!win) {
+      showToast(
+        "Your browser blocked the new tab — allow pop-ups for this site, then try again",
+        "error",
+      );
+      return;
+    }
+    const ok = await refreshStagedData();
+    // Tell the workspace the staged data is final so it can compute. Retried
+    // briefly because the page may still be booting when we finish.
+    const notify = (attempt: number) => {
+      if (win.closed) return;
+      try {
+        win.postMessage({ type: "aces:refresh-complete", ok }, platformOrigin || "*");
+      } catch {
+        /* cross-origin timing — the retry below covers it */
+      }
+      if (attempt < 10) setTimeout(() => notify(attempt + 1), 1000);
+    };
+    notify(0);
+  }, [disclosureHref, refreshStagedData, showToast, platformOrigin]);
 
   const highestSeverity = driftEvents.reduce<string | null>((best, ev) => {
     const order = ["critical", "high", "medium", "low", "info"];

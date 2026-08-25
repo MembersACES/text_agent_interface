@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
-import { ExternalLink, Leaf, Users } from "lucide-react";
+import { ExternalLink, Leaf, RefreshCw, Users } from "lucide-react";
 import { PageHeader } from "@/components/Layouts/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -94,6 +94,129 @@ export default function GhgLinkedEntitiesPage() {
         displayNameFor(a).localeCompare(displayNameFor(b), undefined, { sensitivity: "base" }),
       ),
     [rows],
+  );
+
+  /** Per-entity refresh progress, keyed by slug. */
+  const [busySlug, setBusySlug] = useState<string | null>(null);
+  const [progress, setProgress] = useState<string>("");
+
+  /**
+   * Same single action as the member Climate tab and the group modal: bring in
+   * every member's invoice data, then let the workspace compute.
+   *
+   * This page previously had a plain link straight to the workspace. That skipped
+   * staging entirely, so the workspace computed and auto-committed from whatever
+   * was already in SQL — possibly weeks stale — with nothing on screen saying so.
+   *
+   * Two details that matter:
+   *  - The tab is opened SYNCHRONOUSLY before any await, or Chrome blocks it.
+   *  - awaitRefresh=1 stops the workspace computing until we post
+   *    aces:refresh-complete, so it never computes from a half-staged set.
+   */
+  const refreshAndOpen = useCallback(
+    async (row: ClimateRosterClient) => {
+      const slug = (row.reporting_entity || "").trim();
+      if (!slug) return;
+
+      const base = progradeWorkspaceUrl(slug, period);
+      const url = `${base}${base.includes("?") ? "&" : "?"}awaitRefresh=1`;
+      const win = window.open(url, "_blank");
+      if (!win) {
+        setError("Your browser blocked the new tab — allow pop-ups for this site, then try again.");
+        return;
+      }
+
+      let origin = "*";
+      try {
+        origin = new URL(base).origin;
+      } catch {
+        /* fall back to "*" */
+      }
+
+      const clientIds = (
+        row.aces_client_ids?.length
+          ? row.aces_client_ids
+          : typeof row.aces_client_id === "number"
+            ? [row.aces_client_id]
+            : []
+      ).filter((n): n is number => typeof n === "number");
+
+      let ok = true;
+      if (!token || clientIds.length === 0) {
+        ok = false;
+      } else {
+        setBusySlug(slug);
+        const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+        try {
+          // Collect every linked site across the entity's members first, so the
+          // progress count reflects real work rather than member count.
+          const sites: Array<{ clientId: number; utility_type: string; identifier: string }> = [];
+          for (const clientId of clientIds) {
+            setProgress("finding sites…");
+            try {
+              const r = await fetch(
+                `${getApiBaseUrl()}/api/clients/${clientId}/climate/linked-utilities`,
+                { headers },
+              );
+              if (!r.ok) {
+                ok = false;
+                continue;
+              }
+              const data = (await r.json()) as {
+                sites?: Array<{ utility_type?: string; identifier?: string }>;
+              };
+              for (const s of data.sites ?? []) {
+                if (s.utility_type && s.identifier) {
+                  sites.push({ clientId, utility_type: s.utility_type, identifier: s.identifier });
+                }
+              }
+            } catch {
+              ok = false;
+            }
+          }
+
+          for (let i = 0; i < sites.length; i++) {
+            const s = sites[i];
+            setProgress(`${i + 1}/${sites.length} · ${s.utility_type} ${s.identifier}`);
+            try {
+              const r = await fetch(
+                `${getApiBaseUrl()}/api/clients/${s.clientId}/climate/etl/sync`,
+                {
+                  method: "POST",
+                  headers,
+                  body: JSON.stringify({
+                    utility_type: s.utility_type,
+                    identifier: s.identifier,
+                    reporting_period_label: period,
+                    max_records: 500,
+                    dry_run: false,
+                  }),
+                },
+              );
+              if (!r.ok) ok = false;
+            } catch {
+              ok = false;
+            }
+          }
+        } finally {
+          setBusySlug(null);
+          setProgress("");
+        }
+        void fetchRoster();
+      }
+
+      const notify = (attempt: number) => {
+        if (win.closed) return;
+        try {
+          win.postMessage({ type: "aces:refresh-complete", ok }, origin);
+        } catch {
+          /* cross-origin timing — the retry below covers it */
+        }
+        if (attempt < 10) setTimeout(() => notify(attempt + 1), 1000);
+      };
+      notify(0);
+    },
+    [token, period, fetchRoster],
   );
 
   return (
@@ -221,14 +344,31 @@ export default function GhgLinkedEntitiesPage() {
                   </div>
 
                   <div className="flex shrink-0 flex-wrap items-center gap-2 pl-[3.25rem] sm:pl-0">
+                    {busySlug === slug ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-md bg-primary/70 px-3 py-1.5 text-xs font-semibold text-white">
+                        <RefreshCw className="size-3.5 animate-spin" aria-hidden />
+                        {progress || "Bringing in data…"}
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={busySlug !== null}
+                        onClick={() => void refreshAndOpen(row)}
+                        title="Brings in the latest invoice data for every site, then opens the workspace"
+                        className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary/90 disabled:opacity-50"
+                      >
+                        Open Prograde workspace
+                        <ExternalLink className="size-3.5" aria-hidden />
+                      </button>
+                    )}
                     <a
                       href={workspaceUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary/90"
+                      title="Opens the workspace without refreshing — for a quick look at the last computed figures"
+                      className="inline-flex items-center rounded-md border border-stroke px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 dark:border-dark-3 dark:text-gray-300 dark:hover:bg-dark-3"
                     >
-                      Open Prograde workspace
-                      <ExternalLink className="size-3.5" aria-hidden />
+                      View only
                     </a>
                     {typeof memberId === "number" ? (
                       <Link

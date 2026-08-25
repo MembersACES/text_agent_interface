@@ -155,17 +155,50 @@ export function ClimateDisclosureModal({
   const hasSlug = activeSlug.length > 0;
 
   /**
-   * The single action for a group: refresh every member's data, then open the
-   * workspace — which computes and commits on load. Replaces the old pairing of a
-   * "Sync all in rollup" button next to a plain "Open Prograde" link, where the
-   * two had to be pressed in the right order and nothing said so.
+   * The single action for a group: refresh every member's data, then let the
+   * workspace compute. Replaces the old pairing of a "Sync all in rollup" button
+   * next to a plain "Open Prograde" link, where the two had to be pressed in the
+   * right order and nothing said so.
+   *
+   * The tab is opened SYNCHRONOUSLY before any await — window.open() after an
+   * await loses the user-gesture context and Chrome blocks it as a popup.
+   *
+   * awaitRefresh=1 tells the workspace not to compute until we post
+   * aces:refresh-complete. Otherwise it computes from partially-staged data and
+   * offers "Commit to disclosure" while sites are still being brought in.
    */
   const refreshAndOpen = async () => {
+    const base = progradeWorkspaceUrl(activeSlug);
+    const url = `${base}${base.includes("?") ? "&" : "?"}awaitRefresh=1`;
+    const win = window.open(url, "_blank");
+    if (!win) {
+      window.alert(
+        "Your browser blocked the new tab. Allow pop-ups for this site, then try again.",
+      );
+      return;
+    }
+    let ok = true;
     try {
       await onSync();
-    } finally {
-      window.open(progradeWorkspaceUrl(activeSlug), "_blank", "noopener,noreferrer");
+    } catch {
+      ok = false;
     }
+    let origin = "*";
+    try {
+      origin = new URL(base).origin;
+    } catch {
+      /* fall back to "*" */
+    }
+    const notify = (attempt: number) => {
+      if (win.closed) return;
+      try {
+        win.postMessage({ type: "aces:refresh-complete", ok }, origin);
+      } catch {
+        /* cross-origin timing — the retry below covers it */
+      }
+      if (attempt < 10) setTimeout(() => notify(attempt + 1), 1000);
+    };
+    notify(0);
   };
 
   return (
