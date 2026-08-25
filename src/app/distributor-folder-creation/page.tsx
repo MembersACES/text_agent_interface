@@ -12,6 +12,7 @@ import {
   appendDistributorMasterListFromBrowser,
   type DistributorExtractResult,
 } from "@/lib/member-folder-api";
+import { isGoogleReauthError, reauthWithGoogle } from "@/lib/google-reauth";
 
 const FIELD_LABELS: { key: keyof DistributorExtractResult; label: string }[] = [
   { key: "distributor_business", label: "Distributor Business" },
@@ -225,7 +226,14 @@ export default function DistributorFolderCreationPage() {
             </div>
           )}
 
-          {error ? <p className="text-sm text-red-600 whitespace-pre-wrap">{error}</p> : null}
+          {error ? (
+            <div className="space-y-2">
+              <p className="text-sm text-red-600 whitespace-pre-wrap">{error}</p>
+              {isGoogleReauthError(error) ? (
+                <Button onClick={() => void reauthWithGoogle()}>Re-auth with Google</Button>
+              ) : null}
+            </div>
+          ) : null}
         </CardContent>
       </Card>
     </div>

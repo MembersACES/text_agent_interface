@@ -16,6 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { isGoogleReauthError, reauthWithGoogle } from "@/lib/google-reauth";
 import {
   fetchDistributorMasterList,
   type DistributorMasterList,
@@ -146,9 +147,15 @@ export default function DistributorsPage() {
       ) : error ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200">
           <p className="font-medium">{error}</p>
-          <Button className="mt-2" variant="secondary" onClick={() => void load()}>
-            Retry
-          </Button>
+          {isGoogleReauthError(error) ? (
+            <Button className="mt-2" onClick={() => void reauthWithGoogle()}>
+              Re-auth with Google
+            </Button>
+          ) : (
+            <Button className="mt-2" variant="secondary" onClick={() => void load()}>
+              Retry
+            </Button>
+          )}
         </div>
       ) : filtered.length === 0 ? (
         <p className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600 dark:border-dark-3 dark:bg-dark-2 dark:text-gray-400">
