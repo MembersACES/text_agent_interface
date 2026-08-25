@@ -6,6 +6,7 @@ import { SessionProvider, useSession, signIn } from "next-auth/react";
 import { useEffect } from "react";
 import { ToastProvider } from "@/components/ui/toast";
 import { CommandPaletteProvider } from "@/components/CommandPaletteContext";
+import { UnsavedChangesProvider } from "@/components/unsaved-changes/nav-guard-context";
 import { AppCopyright } from "@/components/Layouts/AppCopyright";
 import {
   formatAllowedDomainsLabel,
@@ -113,9 +114,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <ThemeProvider defaultTheme="light" attribute="class">
         <SidebarProvider>
           <ToastProvider>
-            <CommandPaletteProvider>
-              <AuthGate>{children}</AuthGate>
-            </CommandPaletteProvider>
+            <UnsavedChangesProvider>
+              <CommandPaletteProvider>
+                <AuthGate>{children}</AuthGate>
+              </CommandPaletteProvider>
+            </UnsavedChangesProvider>
           </ToastProvider>
         </SidebarProvider>
       </ThemeProvider>

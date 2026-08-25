@@ -121,3 +121,14 @@ export const OFFER_ACTIVITY_LABELS: Record<OfferActivityType, string> = {
   member_document_upload: "Member document uploaded",
 };
 
+export const TESTIMONIAL_STATUSES = [
+  "Draft",
+  "Sent for approval",
+  "Approved",
+] as const;
+
+export type TestimonialStatus = (typeof TESTIMONIAL_STATUSES)[number];
+
+export const DEFAULT_TESTIMONIAL_STATUS: TestimonialStatus = "Draft";
+
+

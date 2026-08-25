@@ -17,6 +17,7 @@ import {
   SOLUTION_TYPE_LABELS,
   SOLAR_PANEL_CLEANING_SOLUTION_TYPE_ID,
 } from "@/lib/testimonial-solution-content";
+import { DEFAULT_TESTIMONIAL_STATUS, TESTIMONIAL_STATUSES } from "@/constants/crm";
 import {
   canGenerateInvoiceFromTestimonial,
   parseTestimonialSavingsAmount,
@@ -166,7 +167,7 @@ export function TestimonialsTab({ businessInfo, clientId }: TestimonialsTabProps
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const uploadFileInputRef = useRef<HTMLInputElement>(null);
   const [uploadInvoiceNumber, setUploadInvoiceNumber] = useState<string>("");
-  const [uploadStatus, setUploadStatus] = useState<string>("Draft");
+  const [uploadStatus, setUploadStatus] = useState<string>(DEFAULT_TESTIMONIAL_STATUS);
   const [uploading, setUploading] = useState(false);
   const [uploadResult, setUploadResult] = useState<string>("");
   const [invoices, setInvoices] = useState<SavingsInvoiceSummary[]>([]);
@@ -298,7 +299,7 @@ export function TestimonialsTab({ businessInfo, clientId }: TestimonialsTabProps
         setShowModal(false);
         setUploadFile(null);
         setUploadInvoiceNumber("");
-        setUploadStatus("Draft");
+        setUploadStatus(DEFAULT_TESTIMONIAL_STATUS);
         setUploadResult("");
         setUploadSolutionTypeId("");
         setUploadCustomType("");
@@ -650,7 +651,7 @@ export function TestimonialsTab({ businessInfo, clientId }: TestimonialsTabProps
                   setShowModal(true);
                   setUploadFile(null);
                   setUploadInvoiceNumber("");
-                  setUploadStatus("Draft");
+                  setUploadStatus(DEFAULT_TESTIMONIAL_STATUS);
                   setUploadResult("");
                   setUploadSolutionTypeId("");
                   setUploadCustomType("");
@@ -726,9 +727,11 @@ export function TestimonialsTab({ businessInfo, clientId }: TestimonialsTabProps
                         onChange={(e) => handleStatusChange(t.id, e.target.value)}
                         className="text-[11px] border border-gray-300 dark:border-gray-600 rounded px-2 py-0.5 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200"
                       >
-                        <option value="Draft">Draft</option>
-                        <option value="Sent for approval">Sent for approval</option>
-                        <option value="Approved">Approved</option>
+                        {TESTIMONIAL_STATUSES.map((status) => (
+                          <option key={status} value={status}>
+                            {status}
+                          </option>
+                        ))}
                       </select>
                     )}
                     <a
@@ -1083,7 +1086,7 @@ export function TestimonialsTab({ businessInfo, clientId }: TestimonialsTabProps
               setShowModal(false);
               setUploadFile(null);
               setUploadInvoiceNumber("");
-              setUploadStatus("Draft");
+              setUploadStatus(DEFAULT_TESTIMONIAL_STATUS);
               setUploadResult("");
               setUploadSolutionTypeId("");
               setUploadCustomType("");
@@ -1139,9 +1142,11 @@ export function TestimonialsTab({ businessInfo, clientId }: TestimonialsTabProps
                   onChange={(e) => setUploadStatus(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100"
                 >
-                  <option value="Draft">Draft</option>
-                  <option value="Sent for approval">Sent for approval</option>
-                  <option value="Approved">Approved</option>
+                  {TESTIMONIAL_STATUSES.map((status) => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div>
@@ -1208,7 +1213,7 @@ export function TestimonialsTab({ businessInfo, clientId }: TestimonialsTabProps
                     setShowModal(false);
                     setUploadFile(null);
                     setUploadInvoiceNumber("");
-                    setUploadStatus("Draft");
+                    setUploadStatus(DEFAULT_TESTIMONIAL_STATUS);
                     setUploadResult("");
                     setUploadSolutionTypeId("");
                     setUploadCustomType("");
