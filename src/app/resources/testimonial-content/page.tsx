@@ -2,12 +2,13 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
-import { ChevronDown, Search } from "lucide-react";
+import { ChevronDown, Plus, Search } from "lucide-react";
 import { Breadcrumb } from "@/components/ui/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   DEFAULT_TESTIMONIAL_SOLUTION_CONTENT,
   SOLUTION_TYPE_LABELS,
+  emptyItem,
   type TestimonialSolutionContentItem,
 } from "@/lib/testimonial-solution-content";
 import { useToast } from "@/components/ui/toast";
@@ -38,12 +39,19 @@ const DROPDOWN_ORDER = [
   "dma",
   "automated_cleaning_robot",
   "solar_panel_cleaning",
+  "client_endorsement",
+  "ghg_roadmap",
+  "solar_review",
+  "gas_discrepancy",
+  "electricity_discrepancy",
+  "demand_reset",
+  "cds",
 ];
 
 const INPUT_CLASS =
   "w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary/20 focus:border-primary";
 
-const ALLOWED_UPLOAD_EXT = [".pdf", ".docx", ".doc"];
+const ALLOWED_UPLOAD_EXT = [".pdf", ".docx", ".doc", ".png", ".jpg", ".jpeg"];
 
 type ExampleItem = {
   id: number;
@@ -155,6 +163,153 @@ function MemberSearchSelect({
   );
 }
 
+function CreateTypeModal({
+  open,
+  onClose,
+  onCreated,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onCreated: (item: TestimonialSolutionContentItem) => void;
+}) {
+  const { showToast } = useToast();
+  const [form, setForm] = useState<TestimonialSolutionContentItem>(() => emptyItem("", ""));
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (open) setForm(emptyItem("", ""));
+  }, [open]);
+
+  if (!open) return null;
+
+  const setField = (key: keyof TestimonialSolutionContentItem, value: string) => {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const handleCreate = async () => {
+    const label = form.solution_type_label.trim();
+    if (!label) {
+      showToast("Enter a solution type name.", "error");
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch("/api/testimonials/solution-content", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          solution_type_label: label,
+          key_outcome_metrics: form.key_outcome_metrics,
+          key_challenge_of_solution: form.key_challenge_of_solution,
+          key_approach_of_solution: form.key_approach_of_solution,
+          key_outcome_of_solution: form.key_outcome_of_solution,
+          key_outcome_dotpoints_1: form.key_outcome_dotpoints_1,
+          key_outcome_dotpoints_2: form.key_outcome_dotpoints_2,
+          key_outcome_dotpoints_3: form.key_outcome_dotpoints_3,
+          key_outcome_dotpoints_4: form.key_outcome_dotpoints_4,
+          key_outcome_dotpoints_5: form.key_outcome_dotpoints_5,
+          conclusion: form.conclusion,
+          esg_scope_for_solution: form.esg_scope_for_solution,
+          sdg_impact_for_solution: form.sdg_impact_for_solution,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(data.error || "Failed to create type", "error");
+        return;
+      }
+      onCreated(data as TestimonialSolutionContentItem);
+      showToast(`Created ${label}.`, "success");
+      onClose();
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : "Failed to create type", "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 pt-16">
+      <div className="w-full max-w-2xl rounded-xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900">
+        <div className="flex items-start justify-between gap-4 border-b border-gray-100 px-5 py-4 dark:border-gray-800">
+          <div>
+            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Create solution type</h2>
+            <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+              Name the type and fill the same copy fields used when generating a testimonial. You can edit these later.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-sm text-gray-500 hover:text-gray-800 dark:hover:text-gray-200"
+          >
+            Close
+          </button>
+        </div>
+        <div className="max-h-[min(70vh,36rem)] space-y-4 overflow-y-auto px-5 py-4">
+          <div>
+            <label htmlFor="create-type-name" className="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500">
+              Solution type name
+            </label>
+            <input
+              id="create-type-name"
+              type="text"
+              value={form.solution_type_label}
+              onChange={(e) => setField("solution_type_label", e.target.value)}
+              placeholder="e.g. LED Upgrade"
+              className={INPUT_CLASS}
+            />
+          </div>
+          {FIELDS.map((field) => (
+            <div key={field.key}>
+              <label
+                htmlFor={`create-${field.key}`}
+                className="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500"
+              >
+                {field.label}
+              </label>
+              {field.multiline ? (
+                <textarea
+                  id={`create-${field.key}`}
+                  value={(form[field.key] as string) ?? ""}
+                  onChange={(e) => setField(field.key, e.target.value)}
+                  rows={3}
+                  className={INPUT_CLASS}
+                />
+              ) : (
+                <input
+                  id={`create-${field.key}`}
+                  type="text"
+                  value={(form[field.key] as string) ?? ""}
+                  onChange={(e) => setField(field.key, e.target.value)}
+                  className={INPUT_CLASS}
+                />
+              )}
+            </div>
+          ))}
+        </div>
+        <div className="flex justify-end gap-2 border-t border-gray-100 px-5 py-3 dark:border-gray-800">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleCreate}
+            disabled={saving}
+            className="inline-flex items-center rounded-full bg-primary px-3 py-1.5 text-sm text-white hover:bg-primary/90 disabled:opacity-50"
+          >
+            {saving ? "Creating…" : "Create type"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function TestimonialContentPage() {
   const { data: session } = useSession();
   const token =
@@ -173,10 +328,29 @@ export default function TestimonialContentPage() {
   const [uploadSavings, setUploadSavings] = useState("");
   const [uploadStatus, setUploadStatus] = useState("Approved");
   const [uploading, setUploading] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { showToast } = useToast();
 
-  const selectedLabel = SOLUTION_TYPE_LABELS[selectedSolutionType] ?? selectedSolutionType;
+  const selectedItem = list.find((item) => item.solution_type === selectedSolutionType);
+  const selectedLabel = selectedItem?.solution_type_label ?? SOLUTION_TYPE_LABELS[selectedSolutionType] ?? selectedSolutionType;
+
+  const typeOptions = useMemo(() => {
+    const byId = new Map(
+      list.map((item) => [item.solution_type, item.solution_type_label || item.solution_type])
+    );
+    const ordered = DROPDOWN_ORDER.map((id) => ({
+      id,
+      label: byId.get(id) || SOLUTION_TYPE_LABELS[id] || id,
+    }));
+    const extras = list
+      .filter((item) => !DROPDOWN_ORDER.includes(item.solution_type))
+      .map((item) => ({
+        id: item.solution_type,
+        label: item.solution_type_label || item.solution_type,
+      }));
+    return [...ordered, ...extras];
+  }, [list]);
 
   const fetchContent = useCallback(async () => {
     setLoading(true);
@@ -318,12 +492,12 @@ export default function TestimonialContentPage() {
   const handleUpload = async () => {
     const file = uploadFile ?? fileInputRef.current?.files?.[0] ?? null;
     if (!file) {
-      showToast("Choose a PDF or Word file to upload.", "error");
+      showToast("Choose a PDF, Word, PNG, or JPEG file to upload.", "error");
       return;
     }
     const name = file.name.toLowerCase();
     if (!ALLOWED_UPLOAD_EXT.some((ext) => name.endsWith(ext))) {
-      showToast("File must be a PDF or Word document (.pdf, .docx, .doc).", "error");
+      showToast("File must be a PDF, Word, PNG, or JPEG.", "error");
       return;
     }
     if (!selectedMember?.business_name) {
@@ -366,8 +540,6 @@ export default function TestimonialContentPage() {
     }
   };
 
-  const selectedItem = list.find((item) => item.solution_type === selectedSolutionType);
-
   return (
     <div className="space-y-6">
       <Breadcrumb />
@@ -384,25 +556,35 @@ export default function TestimonialContentPage() {
         <p className="text-sm text-gray-500 dark:text-gray-400">Loading...</p>
       ) : (
         <div className="space-y-6">
-          <div>
-            <label
-              htmlFor="solution-type-select"
-              className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5"
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="min-w-[16rem] max-w-md flex-1">
+              <label
+                htmlFor="solution-type-select"
+                className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400"
+              >
+                Solution type
+              </label>
+              <select
+                id="solution-type-select"
+                value={selectedSolutionType}
+                onChange={(e) => setSelectedSolutionType(e.target.value)}
+                className={INPUT_CLASS}
+              >
+                {typeOptions.map((opt) => (
+                  <option key={opt.id} value={opt.id}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button
+              type="button"
+              onClick={() => setCreateOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/5 px-3 py-2 text-sm font-medium text-primary hover:bg-primary/10"
             >
-              Solution type
-            </label>
-            <select
-              id="solution-type-select"
-              value={selectedSolutionType}
-              onChange={(e) => setSelectedSolutionType(e.target.value)}
-              className={`${INPUT_CLASS} max-w-md`}
-            >
-              {DROPDOWN_ORDER.map((id) => (
-                <option key={id} value={id}>
-                  {SOLUTION_TYPE_LABELS[id] ?? id}
-                </option>
-              ))}
-            </select>
+              <Plus className="size-3.5" />
+              Create type
+            </button>
           </div>
 
           {selectedItem ? (
@@ -423,7 +605,7 @@ export default function TestimonialContentPage() {
                   <CardContent className="space-y-4">
                     <div className="rounded-lg border border-dashed border-gray-300 dark:border-gray-600 bg-gray-50/80 dark:bg-gray-800/40 p-3 space-y-3">
                       <p className="text-xs font-semibold text-gray-700 dark:text-gray-200">
-                        Upload an existing PDF or Word file
+                        Upload an existing PDF, Word, PNG, or JPEG file. Images are converted to PDF on upload.
                       </p>
                       <div>
                         <label className="block text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1">
@@ -432,7 +614,7 @@ export default function TestimonialContentPage() {
                         <input
                           ref={fileInputRef}
                           type="file"
-                          accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                          accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                           onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
                           className="block w-full text-xs text-gray-500 file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-medium file:bg-white dark:file:bg-gray-800 file:text-gray-700 dark:file:text-gray-200 file:border file:border-gray-200 dark:file:border-gray-600"
                         />
@@ -501,7 +683,7 @@ export default function TestimonialContentPage() {
                       <p className="text-sm text-gray-500 dark:text-gray-400">Loading testimonials...</p>
                     ) : examples.length === 0 ? (
                       <p className="text-sm text-gray-500 dark:text-gray-400">
-                        None recorded yet for this solution type. Upload a previous PDF or Word file above.
+                        None recorded yet for this solution type. Upload a previous PDF, Word, or image file above.
                       </p>
                     ) : (
                       <ul className="space-y-2 text-sm max-h-[min(52vh,28rem)] overflow-y-auto pr-1">
@@ -602,6 +784,17 @@ export default function TestimonialContentPage() {
           )}
         </div>
       )}
+      <CreateTypeModal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreated={(item) => {
+          setList((prev) => {
+            if (prev.some((existing) => existing.solution_type === item.solution_type)) return prev;
+            return [...prev, item];
+          });
+          setSelectedSolutionType(item.solution_type);
+        }}
+      />
     </div>
   );
 }

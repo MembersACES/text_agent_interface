@@ -188,6 +188,9 @@ export function TestimonialsTab({ businessInfo, clientId }: TestimonialsTabProps
   const [editFileId, setEditFileId] = useState("");
   const [editFileName, setEditFileName] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
+  const [typeOptions, setTypeOptions] = useState<{ id: string; label: string }[]>(() =>
+    Object.entries(SOLUTION_TYPE_LABELS).map(([id, label]) => ({ id, label }))
+  );
   const { showToast } = useToast();
 
   const fetchTestimonials = useCallback(async () => {
@@ -216,6 +219,25 @@ export function TestimonialsTab({ businessInfo, clientId }: TestimonialsTabProps
   }, [businessName, fetchTestimonials]);
 
   useEffect(() => {
+    let cancelled = false;
+    fetch("/api/testimonials/solution-content")
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        if (cancelled || !Array.isArray(data) || data.length === 0) return;
+        setTypeOptions(
+          data.map((item: { solution_type?: string; solution_type_label?: string }) => ({
+            id: String(item.solution_type || ""),
+            label: String(item.solution_type_label || item.solution_type || ""),
+          })).filter((opt: { id: string }) => opt.id)
+        );
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!businessName || !showModal) return;
     setInvoicesLoading(true);
     fetch("/api/one-month-savings/history", {
@@ -236,8 +258,8 @@ export function TestimonialsTab({ businessInfo, clientId }: TestimonialsTabProps
       return;
     }
     const fn = file.name.toLowerCase();
-    if (![".pdf", ".docx", ".doc"].some((e) => fn.endsWith(e))) {
-      setUploadResult("Please upload a PDF or Word file.");
+    if (![".pdf", ".docx", ".doc", ".png", ".jpg", ".jpeg"].some((e) => fn.endsWith(e))) {
+      setUploadResult("Please upload a PDF, Word, PNG, or JPEG file.");
       return;
     }
     setUploading(true);
@@ -251,7 +273,10 @@ export function TestimonialsTab({ businessInfo, clientId }: TestimonialsTabProps
       if (driveUrl?.trim()) form.append("gdrive_folder_url", driveUrl.trim());
       if (uploadSolutionTypeId && uploadSolutionTypeId !== "custom") {
         form.append("testimonial_solution_type_id", uploadSolutionTypeId);
-        const label = SOLUTION_TYPE_LABELS[uploadSolutionTypeId] ?? uploadSolutionTypeId;
+        const label =
+          typeOptions.find((opt) => opt.id === uploadSolutionTypeId)?.label ??
+          SOLUTION_TYPE_LABELS[uploadSolutionTypeId] ??
+          uploadSolutionTypeId;
         form.append("testimonial_type", label);
       } else if (uploadSolutionTypeId === "custom" && uploadCustomType.trim()) {
         form.append("testimonial_type", uploadCustomType.trim());
@@ -929,9 +954,9 @@ export function TestimonialsTab({ businessInfo, clientId }: TestimonialsTabProps
                   className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100"
                 >
                   <option value="">Select testimonial type</option>
-                  {Object.entries(SOLUTION_TYPE_LABELS).map(([id, label]) => (
-                    <option key={id} value={id}>
-                      {label}
+                  {typeOptions.map((opt) => (
+                    <option key={opt.id} value={opt.id}>
+                      {opt.label}
                     </option>
                   ))}
                 </select>
@@ -1075,11 +1100,13 @@ export function TestimonialsTab({ businessInfo, clientId }: TestimonialsTabProps
             </div>
             <div className="px-6 py-5 space-y-4">
               <div>
-                <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">File (PDF or Word)</p>
+                <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
+                  File (PDF, Word, PNG, or JPEG — images convert to PDF)
+                </p>
                 <input
                   ref={uploadFileInputRef}
                   type="file"
-                  accept=".pdf,.docx,.doc"
+                  accept=".pdf,.docx,.doc,.png,.jpg,.jpeg,image/png,image/jpeg,application/pdf"
                   onChange={(e) => {
                     const chosen = e.target.files?.[0];
                     setUploadFile(chosen ?? null);
@@ -1127,9 +1154,9 @@ export function TestimonialsTab({ businessInfo, clientId }: TestimonialsTabProps
                   className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100"
                 >
                   <option value="">Select testimonial type (optional)</option>
-                  {Object.entries(SOLUTION_TYPE_LABELS).map(([id, label]) => (
-                    <option key={id} value={id}>
-                      {label}
+                  {typeOptions.map((opt) => (
+                    <option key={opt.id} value={opt.id}>
+                      {opt.label}
                     </option>
                   ))}
                   <option value="custom">Other / non-match testimonial (custom)</option>
