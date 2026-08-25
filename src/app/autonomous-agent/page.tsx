@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { getAutonomousApiBaseUrl, cn } from "@/lib/utils";
 import { dispatchRunNowFromList } from "@/lib/autonomous-dispatch";
 import { PageHeader } from "@/components/Layouts/PageHeader";
@@ -140,10 +140,16 @@ function ProgressBar({ done, total }: { done: number; total: number }) {
 export default function AutonomousAgentPage() {
   const { data: session } = useSession();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const token = (session as any)?.id_token || (session as any)?.accessToken;
   const { showToast } = useToast();
 
-  const [tab, setTab] = useState<AgentTab>("running");
+  const tabFromUrl = searchParams.get("tab");
+  const initialTab: AgentTab =
+    tabFromUrl === "templates" || tabFromUrl === "finished" || tabFromUrl === "resources" || tabFromUrl === "running"
+      ? tabFromUrl
+      : "running";
+  const [tab, setTab] = useState<AgentTab>(initialTab);
   const [runs, setRuns] = useState<AutonomousRunRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -264,6 +270,20 @@ export default function AutonomousAgentPage() {
   }, [token]);
 
   useEffect(() => {
+    const t = searchParams.get("tab");
+    if (t === "templates" || t === "finished" || t === "resources" || t === "running") {
+      setTab(t);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    const type = searchParams.get("type");
+    if (!type || templates.length === 0) return;
+    const match = templates.find((row) => row.sequence_type === type);
+    if (match) setSelectedTemplateId(match.id);
+  }, [searchParams, templates]);
+
+  useEffect(() => {
     if (!token || tab !== "templates") return;
     const fetchAgents = async () => {
       try {
@@ -312,6 +332,7 @@ export default function AutonomousAgentPage() {
             is_restartable: template.is_restartable,
             signature_html: template.signature_html ?? "",
             extra_context: template.extra_context ?? "",
+            sequence_type: template.sequence_type,
           }),
         },
       );

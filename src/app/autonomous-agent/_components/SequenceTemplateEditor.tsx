@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
+import { isWiredSequenceType, sequenceTypeLooksValid, WIRED_SEQUENCE_TYPE_LABELS } from "@/lib/autonomous-sequence-keys";
 import SignatureHtmlEditor from "./SignatureHtmlEditor";
 import StartTestRunPanel from "./StartTestRunPanel";
 import RetellVoicePromptPanel, {
@@ -140,10 +141,25 @@ export default function SequenceTemplateEditor({
   showToast,
 }: SequenceTemplateEditorProps) {
   const [tab, setTab] = useState<EditorTab>("setup");
-  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [savingVoice, setSavingVoice] = useState(false);
   const [savingCadence, setSavingCadence] = useState(false);
   const voiceSaveRef = useRef<(() => Promise<boolean>) | null>(null);
+  const originalSequenceTypeRef = useRef(template.sequence_type);
+  const wasSavingTemplate = useRef(false);
+  useEffect(() => {
+    originalSequenceTypeRef.current = template.sequence_type;
+    wasSavingTemplate.current = false;
+  }, [template.id]);
+  useEffect(() => {
+    if (savingTemplateId === template.id) {
+      wasSavingTemplate.current = true;
+      return;
+    }
+    if (wasSavingTemplate.current) {
+      originalSequenceTypeRef.current = template.sequence_type;
+      wasSavingTemplate.current = false;
+    }
+  }, [savingTemplateId, template.id, template.sequence_type]);
 
   const orderedSteps = [...template.steps].sort((a, b) => a.step_index - b.step_index);
   const savingTemplate = savingTemplateId === template.id;
@@ -286,7 +302,43 @@ export default function SequenceTemplateEditor({
                 onChange={(e) => updateTemplateLocal(template.id, { display_name: e.target.value })}
                 className={inputCls}
               />
+              <span className="mt-1 block text-[11px] font-normal normal-case tracking-normal text-gray-400">
+                Shown in the template list and on Base 2.
+              </span>
             </label>
+            <label className={labelCls}>
+              Call key
+              <input
+                type="text"
+                value={template.sequence_type}
+                onChange={(e) => updateTemplateLocal(template.id, { sequence_type: e.target.value })}
+                className={cn(inputCls, "font-mono")}
+                spellCheck={false}
+              />
+              <span className="mt-1 block text-[11px] font-normal normal-case tracking-normal text-gray-400">
+                How the app starts this sequence. Letters, numbers, dots, underscores, hyphens.
+              </span>
+            </label>
+            {isWiredSequenceType(template.sequence_type) &&
+              template.sequence_type.trim() === originalSequenceTypeRef.current && (
+              <p className="md:col-span-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                This call key is wired to <strong>{WIRED_SEQUENCE_TYPE_LABELS[template.sequence_type]}</strong>.
+                Change the display name if you only want a clearer label. Changing the key will stop that page from finding this template.
+              </p>
+            )}
+            {isWiredSequenceType(originalSequenceTypeRef.current) &&
+              template.sequence_type.trim() !== originalSequenceTypeRef.current && (
+              <p className="md:col-span-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                Saving will disconnect <strong>{WIRED_SEQUENCE_TYPE_LABELS[originalSequenceTypeRef.current]}</strong> from this template.
+                Existing runs keep the new key; that page will look for <span className="font-mono">{originalSequenceTypeRef.current}</span> and miss it.
+              </p>
+            )}
+            {!sequenceTypeLooksValid(template.sequence_type) && (
+              <p className="md:col-span-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                This placeholder key will not save until you replace it with a slug such as{" "}
+                <span className="font-mono">ci_electricity_offer_draft</span>.
+              </p>
+            )}
             <label className={labelCls}>
               Timezone
               <input type="text" value="AEST (Australia/Brisbane)" readOnly className={cn(inputCls, "bg-gray-50 dark:bg-gray-900 text-gray-500")} />
@@ -320,16 +372,6 @@ export default function SequenceTemplateEditor({
               placeholder="Talking points injected into every email, SMS, and voice call as {{extra_context}}. Add {{extra_context}} to the Retell prompt if the agent should say this."
             />
           </label>
-          <details
-            open={advancedOpen}
-            onToggle={(e) => setAdvancedOpen((e.target as HTMLDetailsElement).open)}
-            className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2"
-          >
-            <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-gray-400">
-              Advanced
-            </summary>
-            <p className="mt-2 text-[11px] font-mono text-gray-500">{template.sequence_type}</p>
-          </details>
           <button
             type="button"
             onClick={() => onDeleteTemplate(template.id)}
