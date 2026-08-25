@@ -124,7 +124,7 @@ export async function createMemberFolder(
     const raw = data as { detail?: MemberFolderCreateResult | string };
     const detail = raw.detail;
     if (detail && typeof detail === "object") {
-      return { ok: false, ...detail };
+      return { ...detail, ok: false };
     }
     return { ok: false, error: String(detail || "Multiple LOA records matched") };
   }
