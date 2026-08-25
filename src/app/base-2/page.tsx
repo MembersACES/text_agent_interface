@@ -15,6 +15,13 @@ import {
   ciGasBenchmarkForAnnualGJ,
 } from "@/lib/base2-defaults";
 import { applyRslTenderOfferIfMatched, lookupRslTenderOffer } from "@/lib/rsl-tender-rates";
+import {
+  AUTONOMOUS_SEQUENCE_BNE_GAS,
+  AUTONOMOUS_SEQUENCE_CI_ELECTRICITY,
+  AUTONOMOUS_SEQUENCE_CI_GAS,
+  BASE2_SEQUENCE_LINKS,
+} from "@/lib/autonomous-sequence-keys";
+import Link from "next/link";
 
 /** SME Gas → C&I comparison: how current SME bill is interpreted in the UI */
 type SmeGasComparisonMode = "invoice_blocks" | "ci_offer" | "sme_benchmark_stub";
@@ -84,6 +91,8 @@ interface UtilityComparison {
   cleaningUsage?: number;
   demandQuantity?: number;
   estimatedAnnualUsage?: number;
+  /** Electricity bill length in days; used to annualise period kWh instead of assuming a month. */
+  elecInvoiceReviewDays?: number;
   smeGasComparisonMode?: SmeGasComparisonMode;
   smeGasPostcode?: string;
   smeGasTotalExGst?: number;
@@ -324,6 +333,71 @@ function ciGasBillPeriodUsageFromAnnual(
   return (annualGJ / 365) * invoiceDays;
 }
 
+function parseInvoiceReviewDays(raw: unknown): number | undefined {
+  const n = parseFloat(String(raw ?? "").replace(/[^\d.]/g, "") || "");
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
+function annualisePeriodUsage(periodUsage: number | undefined, days: number | undefined): number | undefined {
+  if (periodUsage == null || !(periodUsage > 0) || !Number.isFinite(periodUsage)) return undefined;
+  if (days == null || !(days > 0) || !Number.isFinite(days)) return undefined;
+  return (periodUsage / days) * 365;
+}
+
+function periodToAnnualMultiplier(days: number | undefined): number {
+  if (days != null && days > 0 && Number.isFinite(days)) return 365 / days;
+  return 12;
+}
+
+function resolveGasInvoiceDays(comparison: UtilityComparison): number | undefined {
+  if (comparison.utilityType === "C&I Gas") {
+    return comparison.ciGasInvoiceReviewDays != null && comparison.ciGasInvoiceReviewDays > 0
+      ? comparison.ciGasInvoiceReviewDays
+      : undefined;
+  }
+  if (comparison.utilityType.includes("Gas")) {
+    return comparison.smeGasInvoiceReviewDays != null && comparison.smeGasInvoiceReviewDays > 0
+      ? comparison.smeGasInvoiceReviewDays
+      : undefined;
+  }
+  return undefined;
+}
+
+/** Annual GJ for savings / comms: user override → Airtable → period ÷ bill days × 365. Never treat a multi-month bill as "monthly × 12". */
+function resolveGasAnnualUsageGJ(comparison: UtilityComparison): number | undefined {
+  const userAnnual =
+    comparison.utilityType === "C&I Gas"
+      ? comparison.ciGasAnnualConsumptionGJ
+      : comparison.smeGasAnnualConsumptionGJ;
+  if (userAnnual != null && userAnnual > 0 && Number.isFinite(userAnnual)) return userAnnual;
+
+  if (
+    comparison.utilityType === "SME Gas" &&
+    comparison.smeAirtableAnnualBillDaysGJ != null &&
+    comparison.smeAirtableAnnualBillDaysGJ > 0 &&
+    Number.isFinite(comparison.smeAirtableAnnualBillDaysGJ)
+  ) {
+    return comparison.smeAirtableAnnualBillDaysGJ;
+  }
+
+  const days = resolveGasInvoiceDays(comparison);
+  const period =
+    comparison.smeGasInvoicePeriodGJ != null && comparison.smeGasInvoicePeriodGJ > 0
+      ? comparison.smeGasInvoicePeriodGJ
+      : comparison.gasUsage || comparison.monthlyUsage;
+  const fromDays = annualisePeriodUsage(period, days);
+  if (fromDays != null) return fromDays;
+
+  if (
+    comparison.estimatedAnnualUsage != null &&
+    comparison.estimatedAnnualUsage > 0 &&
+    Number.isFinite(comparison.estimatedAnnualUsage)
+  ) {
+    return comparison.estimatedAnnualUsage;
+  }
+  return undefined;
+}
+
 function oilAnnualMultiplier(freq: string | undefined): number {
   // Annualise an oil billing period: weekly x52 (default), fortnightly x26, monthly x12.
   return freq === 'monthly' ? 12 : freq === 'fortnightly' ? 26 : 52;
@@ -496,6 +570,51 @@ function getSmeCiFallbackExplanation(comparison: UtilityComparison): string | nu
 function formatAud(value: number | undefined, empty = "—"): string {
   if (value == null || !Number.isFinite(value)) return empty;
   return value.toLocaleString("en-AU", { style: "currency", currency: "AUD" });
+}
+
+function RateUsageTotalHint({
+  rate,
+  annualUsage,
+  usageUnit,
+  cents,
+}: {
+  rate: number | undefined;
+  annualUsage: number | undefined;
+  usageUnit: string;
+  cents?: boolean;
+}) {
+  if (
+    rate == null ||
+    annualUsage == null ||
+    !(rate > 0) ||
+    !(annualUsage > 0) ||
+    !Number.isFinite(rate) ||
+    !Number.isFinite(annualUsage)
+  ) {
+    return null;
+  }
+  const total = cents ? (rate / 100) * annualUsage : rate * annualUsage;
+  const rateText = cents
+    ? `${rate.toLocaleString("en-AU", { maximumFractionDigits: 2 })}c`
+    : `$${rate.toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
+  const usageText = annualUsage.toLocaleString("en-AU", { maximumFractionDigits: 2 });
+  return (
+    <div className="mt-1 text-right text-[10px] leading-snug text-gray-500 tabular-nums">
+      <div>
+        {rateText} × {usageText} {usageUnit}
+      </div>
+      <div className="font-semibold text-gray-700">{formatAud(total)}/yr</div>
+    </div>
+  );
+}
+
+function EstAnnualCommsHint({ amount }: { amount: number | undefined }) {
+  if (amount == null || !Number.isFinite(amount) || amount <= 0) return null;
+  return (
+    <div className="mt-1 text-right text-[10px] font-semibold leading-snug text-violet-700 tabular-nums">
+      Est. comms {formatAud(amount)}/yr
+    </div>
+  );
 }
 
 const AU_GST_DIVISOR = 1.1;
@@ -741,9 +860,6 @@ function offerComparisonButtonLabel(c: UtilityComparison): string {
   return `Generate ${offerComparisonKindLabel(c)}`;
 }
 
-const AUTONOMOUS_SEQUENCE_CI_GAS = 'gas_base2_followup_v1';
-const AUTONOMOUS_SEQUENCE_CI_ELECTRICITY = 'ci_electricity_base2_followup_v1';
-const AUTONOMOUS_SEQUENCE_BNE_GAS = 'bne_gas_base2_followup_v1';
 const BNE_GAS_WEBHOOK_URL = 'https://membersaces.app.n8n.cloud/webhook/generate-gas-ci-comparaison-b%26e';
 
 function sequenceTypeForLane(lane: AutonomousCiLane): string {
@@ -802,8 +918,49 @@ export default function Base2Page() {
     open: false,
     comparison: null,
   });
+  const [linkedTemplates, setLinkedTemplates] = useState<
+    { sequence_type: string; display_name: string; is_active: boolean }[]
+  >([]);
+  const [linkedTemplatesLoading, setLinkedTemplatesLoading] = useState(false);
+  const [linkedTemplatesError, setLinkedTemplatesError] = useState<string | null>(null);
 
   const token = (session as any)?.id_token;
+
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    const load = async () => {
+      setLinkedTemplatesLoading(true);
+      setLinkedTemplatesError(null);
+      try {
+        const res = await fetch(`${getAutonomousApiBaseUrl()}/api/autonomous/sequences/templates`, {
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        });
+        const data = await res.json().catch(() => []);
+        if (!res.ok) throw new Error(typeof data?.detail === "string" ? data.detail : "Failed to load templates");
+        if (!cancelled && Array.isArray(data)) {
+          setLinkedTemplates(
+            data.map((t: { sequence_type?: string; display_name?: string; is_active?: boolean }) => ({
+              sequence_type: String(t.sequence_type || ""),
+              display_name: String(t.display_name || t.sequence_type || ""),
+              is_active: t.is_active !== false,
+            })),
+          );
+        }
+      } catch (e: unknown) {
+        if (!cancelled) {
+          setLinkedTemplates([]);
+          setLinkedTemplatesError(e instanceof Error ? e.message : "Failed to load templates");
+        }
+      } finally {
+        if (!cancelled) setLinkedTemplatesLoading(false);
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
 
   // Next.js can hydrate search params after the first paint; state from useState(initial) does not re-run.
   // Sync CRM context (businessName / businessInfo) when the URL updates so offers & activities still post.
@@ -1164,6 +1321,10 @@ export default function Base2Page() {
         rates.currentVasAnnual = vasRate * 365;
       }
       rates.currentDailySupply = parseFloat(fullData['Daily Supply Charge'] || details?.daily_supply || '0');
+      const elecDays = parseInvoiceReviewDays(
+        fullData['Invoice Review Number of Days'] ?? details?.invoice_review_days ?? fullData['invoice_review_days'] ?? details?.invoice_period_days
+      );
+      if (elecDays != null) rates.elecInvoiceReviewDays = elecDays;
       const demandRateStr = fullData['DUOS - Network Demand Charge Rate ($/KVA)'] || fullData['DUOS - Network Demand Charge Rate'] || details?.demand_charge_rate || '0';
       rates.currentDemandCharge = parseFloat(String(demandRateStr)) || undefined;
       console.log('Demand charge extraction:', { utilityType, demandRateStr, parsed: rates.currentDemandCharge, fullDataKey: fullData['DUOS - Network Demand Charge Rate ($/KVA)'], demandQuantity: rates.demandQuantity });
@@ -1304,13 +1465,12 @@ export default function Base2Page() {
         const dailySupply = parseFloat(fullData['Daily Supply Charge'] || '0') || parseFloat(details?.daily_supply || '0') || 0;
         rates.currentDailySupply = dailySupply > 0 ? dailySupply : undefined;
         const _ciGasDaysRaw = fullData["Invoice Review Number of Days"] ?? details.invoice_review_days ?? fullData["invoice_review_days"] ?? details.invoice_period_days;
-        const _ciGasDays = parseFloat(String(_ciGasDaysRaw ?? "").replace(/[^\d.]/g, "") || "");
-        const _ciGasAnnualGJ = (gasQuantity > 0 && Number.isFinite(_ciGasDays) && _ciGasDays > 0) ? (gasQuantity / _ciGasDays) * 365 : undefined;
+        const _ciGasDays = parseInvoiceReviewDays(_ciGasDaysRaw);
+        const _ciGasAnnualGJ = annualisePeriodUsage(gasQuantity > 0 ? gasQuantity : undefined, _ciGasDays);
         rates.comparisonGasRate = ciGasBenchmarkForAnnualGJ(_ciGasAnnualGJ, activeBase2Defaults.gas.tiers);
         rates.comparisonDailySupply = rates.currentDailySupply && rates.currentDailySupply > 0 ? parseFloat((rates.currentDailySupply * activeBase2Defaults.gas.discountFactor).toFixed(2)) : activeBase2Defaults.gas.dailySupplyDefault;
-        const daysRaw = fullData["Invoice Review Number of Days"] ?? details.invoice_review_days ?? fullData["invoice_review_days"] ?? details.invoice_period_days;
-        const ciInvoiceDays = parseFloat(String(daysRaw ?? "").replace(/[^\d.]/g, "") || "");
-        if (Number.isFinite(ciInvoiceDays) && ciInvoiceDays > 0) rates.ciGasInvoiceReviewDays = ciInvoiceDays;
+        if (_ciGasDays != null) rates.ciGasInvoiceReviewDays = _ciGasDays;
+        if (_ciGasAnnualGJ != null) rates.estimatedAnnualUsage = _ciGasAnnualGJ;
       }
     } else if (utilityType === 'Oil') {
       const details = invoiceData?.oil_invoice_details || invoiceData || {};
@@ -1672,14 +1832,27 @@ export default function Base2Page() {
       const shoulderUsage = (comparison.shoulderUsage && comparison.shoulderUsage > 0)
         ? comparison.shoulderUsage
         : (comparison.monthlyUsage && totalUsage < comparison.monthlyUsage ? (comparison.monthlyUsage - totalUsage) : (comparison.monthlyUsage ? comparison.monthlyUsage * 0.3 : 0));
+      const elecMult = periodToAnnualMultiplier(comparison.elecInvoiceReviewDays);
       const currentPeak = comparison.currentPeakRate || 0; const currentOffPeak = comparison.currentOffPeakRate || 0; const currentShoulder = comparison.currentShoulderRate || 0;
       const compPeak = comparison.comparisonPeakRate || 0; const compOffPeak = comparison.comparisonOffPeakRate || 0; const compShoulder = comparison.comparisonShoulderRate || 0;
-      if (currentPeak > 0 && compPeak > 0 && peakUsage > 0) { const c = (peakUsage * currentPeak / 100); const cp = (peakUsage * compPeak / 100); savings.peakSavings = c - cp; savings.peakSavingsPercent = c > 0 ? ((savings.peakSavings / c) * 100) : 0; savings.peakAnnualSavings = savings.peakSavings * 12; }
-      if (currentOffPeak > 0 && compOffPeak > 0 && offPeakUsage > 0) { const c = (offPeakUsage * currentOffPeak / 100); const cp = (offPeakUsage * compOffPeak / 100); savings.offPeakSavings = c - cp; savings.offPeakSavingsPercent = c > 0 ? ((savings.offPeakSavings / c) * 100) : 0; savings.offPeakAnnualSavings = savings.offPeakSavings * 12; }
-      const currentMonthlyUsageCost = (peakUsage * currentPeak / 100) + (offPeakUsage * currentOffPeak / 100) + (shoulderUsage * (currentShoulder || currentOffPeak) / 100);
-      const comparisonMonthlyUsageCost = (peakUsage * compPeak / 100) + (offPeakUsage * compOffPeak / 100) + (shoulderUsage * (compShoulder || compOffPeak) / 100);
-      savings.usageSavings = currentMonthlyUsageCost - comparisonMonthlyUsageCost;
-      savings.usageSavingsPercent = currentMonthlyUsageCost > 0 ? ((savings.usageSavings / currentMonthlyUsageCost) * 100) : 0;
+      if (peakUsage > 0) savings.peakAnnualKwh = peakUsage * elecMult;
+      if (offPeakUsage > 0) savings.offPeakAnnualKwh = offPeakUsage * elecMult;
+      if (shoulderUsage > 0) savings.shoulderAnnualKwh = shoulderUsage * elecMult;
+      if (currentPeak > 0 && compPeak > 0 && peakUsage > 0) {
+        const c = (peakUsage * currentPeak / 100); const cp = (peakUsage * compPeak / 100);
+        savings.peakSavings = c - cp; savings.peakSavingsPercent = c > 0 ? ((savings.peakSavings / c) * 100) : 0;
+        savings.peakAnnualSavings = savings.peakSavings * elecMult;
+      }
+      if (currentOffPeak > 0 && compOffPeak > 0 && offPeakUsage > 0) {
+        const c = (offPeakUsage * currentOffPeak / 100); const cp = (offPeakUsage * compOffPeak / 100);
+        savings.offPeakSavings = c - cp; savings.offPeakSavingsPercent = c > 0 ? ((savings.offPeakSavings / c) * 100) : 0;
+        savings.offPeakAnnualSavings = savings.offPeakSavings * elecMult;
+      }
+      const currentPeriodUsageCost = (peakUsage * currentPeak / 100) + (offPeakUsage * currentOffPeak / 100) + (shoulderUsage * (currentShoulder || currentOffPeak) / 100);
+      const comparisonPeriodUsageCost = (peakUsage * compPeak / 100) + (offPeakUsage * compOffPeak / 100) + (shoulderUsage * (compShoulder || compOffPeak) / 100);
+      savings.usageSavings = currentPeriodUsageCost - comparisonPeriodUsageCost;
+      savings.usageSavingsPercent = currentPeriodUsageCost > 0 ? ((savings.usageSavings / currentPeriodUsageCost) * 100) : 0;
+      savings.usageAnnualMultiplier = elecMult;
       savings.meteringSavings = 0;
       if (comparison.utilityType === 'C&I Electricity' && comparison.currentMeteringAnnual != null && comparison.comparisonMeteringAnnual != null) savings.meteringSavings = comparison.currentMeteringAnnual - comparison.comparisonMeteringAnnual;
       savings.supplySavings = 0;
@@ -1687,66 +1860,69 @@ export default function Base2Page() {
       savings.demandSavings = 0;
       if (comparison.currentDemandCharge && comparison.comparisonDemandCharge && comparison.demandQuantity) { const ca = (comparison.currentDemandCharge * comparison.demandQuantity * 12); const cpa = (comparison.comparisonDemandCharge * comparison.demandQuantity * 12); savings.demandSavings = ca - cpa; }
       const currentMetering = comparison.utilityType === 'C&I Electricity' ? (comparison.currentMeteringAnnual || 0) : 0;
-      const comparisonMetering = comparison.utilityType === 'C&I Electricity' ? (comparison.comparisonMeteringAnnual || 0) : 0;
-      const totalCurrentAnnual = (currentMonthlyUsageCost * 12) + currentMetering + ((comparison.currentDailySupply || 0) * 365) + (comparison.currentDemandCharge && comparison.demandQuantity ? (comparison.currentDemandCharge * comparison.demandQuantity * 12) : 0);
-      savings.totalAnnualSavings = (savings.usageSavings * 12) + savings.meteringSavings + savings.supplySavings + savings.demandSavings;
+      const totalCurrentAnnual = (currentPeriodUsageCost * elecMult) + currentMetering + ((comparison.currentDailySupply || 0) * 365) + (comparison.currentDemandCharge && comparison.demandQuantity ? (comparison.currentDemandCharge * comparison.demandQuantity * 12) : 0);
+      savings.totalAnnualSavings = (savings.usageSavings * elecMult) + savings.meteringSavings + savings.supplySavings + savings.demandSavings;
       savings.totalAnnualSavingsPercent = totalCurrentAnnual > 0 ? ((savings.totalAnnualSavings / totalCurrentAnnual) * 100) : 0;
+      const annualKwh = (peakUsage + offPeakUsage + (shoulderUsage || 0)) * elecMult;
+      savings.elecAnnualKwh = annualKwh;
+      const elecComm = comparison.ciElectricityCommissionAudPerMwh;
+      if (elecComm != null && elecComm > 0 && Number.isFinite(elecComm) && annualKwh > 0) {
+        savings.estimatedAnnualCommission = (annualKwh / 1000) * elecComm;
+      }
     } else if (comparison.utilityType.includes('Gas')) {
       if (comparison.utilityType === "SME Gas" && comparison.smeGasComparisonMode === "sme_benchmark_stub") return savings;
       const currentRate = comparison.currentGasRate || 0; const compRate = comparison.comparisonGasRate || 0;
-      const usage = comparison.utilityType === "C&I Gas" ? getCiGasEffectiveUsageGJ(comparison) : comparison.utilityType === "SME Gas" && comparison.smeGasComparisonMode === "ci_offer" ? getSmeCiGasEffectiveUsageGJ(comparison) : comparison.gasUsage || comparison.monthlyUsage || 0;
-      const smeAirtableBillDayAnnual =
-        comparison.utilityType === "SME Gas" &&
-        comparison.smeGasComparisonMode === "ci_offer" &&
-        comparison.smeAirtableAnnualBillDaysGJ != null &&
-        comparison.smeAirtableAnnualBillDaysGJ > 0 &&
-        Number.isFinite(comparison.smeAirtableAnnualBillDaysGJ);
-      const annualOverride =
-        (comparison.utilityType === "C&I Gas" &&
-          comparison.ciGasAnnualConsumptionGJ != null &&
-          comparison.ciGasAnnualConsumptionGJ > 0 &&
-          comparison.ciGasInvoiceReviewDays != null &&
-          comparison.ciGasInvoiceReviewDays > 0) ||
-        (comparison.utilityType === "SME Gas" &&
-          comparison.smeGasComparisonMode === "ci_offer" &&
-          smeAirtableBillDayAnnual) ||
-        (comparison.utilityType === "SME Gas" &&
-          comparison.smeGasComparisonMode === "ci_offer" &&
-          comparison.smeGasAnnualConsumptionGJ != null &&
-          comparison.smeGasAnnualConsumptionGJ > 0 &&
-          comparison.smeGasInvoiceReviewDays != null &&
-          comparison.smeGasInvoiceReviewDays > 0);
-      if (currentRate > 0 && compRate > 0 && usage > 0) {
-        const currentMonthlyCost = usage * currentRate; const comparisonMonthlyCost = usage * compRate;
-        savings.usageSavings = currentMonthlyCost - comparisonMonthlyCost; savings.usageSavingsPercent = currentMonthlyCost > 0 ? ((savings.usageSavings / currentMonthlyCost) * 100) : 0;
-        const annualGJForGas =
-          comparison.utilityType === "C&I Gas"
-            ? comparison.ciGasAnnualConsumptionGJ
-            : smeAirtableBillDayAnnual
-              ? comparison.smeAirtableAnnualBillDaysGJ
-              : comparison.smeGasAnnualConsumptionGJ;
-        if (annualOverride && annualGJForGas != null) savings.gasUsageSavingsAnnual = annualGJForGas * (currentRate - compRate);
+      const periodUsage = comparison.utilityType === "C&I Gas" ? getCiGasEffectiveUsageGJ(comparison) : comparison.utilityType === "SME Gas" && comparison.smeGasComparisonMode === "ci_offer" ? getSmeCiGasEffectiveUsageGJ(comparison) : comparison.gasUsage || comparison.monthlyUsage || 0;
+      const annualGJ = resolveGasAnnualUsageGJ(comparison) ?? (periodUsage > 0 ? periodUsage * 12 : undefined);
+      if (annualGJ != null && annualGJ > 0) {
+        savings.annualUsageGJ = annualGJ;
+        const gasComm = comparison.ciGasCommissionAudPerGj;
+        if (gasComm != null && gasComm > 0 && Number.isFinite(gasComm)) {
+          savings.estimatedAnnualCommission = annualGJ * gasComm;
+        }
+      }
+      if (currentRate > 0 && compRate > 0 && annualGJ != null && annualGJ > 0) {
+        const currentAnnualCost = annualGJ * currentRate;
+        const offerAnnualCost = annualGJ * compRate;
+        savings.usageSavings = currentAnnualCost - offerAnnualCost;
+        savings.usageSavingsPercent = currentAnnualCost > 0 ? (savings.usageSavings / currentAnnualCost) * 100 : 0;
+        savings.gasUsageSavingsAnnual = savings.usageSavings;
+        savings.currentEnergyAnnualCost = currentAnnualCost;
+        savings.offerEnergyAnnualCost = offerAnnualCost;
         savings.supplySavings = 0;
         if (comparison.currentDailySupply && comparison.comparisonDailySupply) savings.supplySavings = (comparison.currentDailySupply - comparison.comparisonDailySupply) * 365;
-        if (annualOverride && annualGJForGas != null) {
-          const totalCurrentAnnual = annualGJForGas * currentRate + (comparison.currentDailySupply || 0) * 365;
-          savings.totalAnnualSavings = annualGJForGas * (currentRate - compRate) + savings.supplySavings;
-          savings.totalAnnualSavingsPercent = totalCurrentAnnual > 0 ? (savings.totalAnnualSavings / totalCurrentAnnual) * 100 : 0;
-        } else {
-          const totalCurrentAnnual = currentMonthlyCost * 12 + (comparison.currentDailySupply || 0) * 365;
-          savings.totalAnnualSavings = savings.usageSavings * 12 + savings.supplySavings;
-          savings.totalAnnualSavingsPercent = totalCurrentAnnual > 0 ? (savings.totalAnnualSavings / totalCurrentAnnual) * 100 : 0;
-        }
+        const totalCurrentAnnual = currentAnnualCost + (comparison.currentDailySupply || 0) * 365;
+        savings.totalAnnualSavings = savings.gasUsageSavingsAnnual + savings.supplySavings;
+        savings.totalAnnualSavingsPercent = totalCurrentAnnual > 0 ? (savings.totalAnnualSavings / totalCurrentAnnual) * 100 : 0;
       }
     } else if (comparison.utilityType === 'Oil') {
       const currentRate = comparison.currentOilRate || 0; const compRate = comparison.comparisonOilRate || 0; const usage = comparison.oilUsage || comparison.monthlyUsage || 0;
-      if (currentRate > 0 && compRate > 0 && usage > 0) { const c = usage * currentRate; const cp = usage * compRate; savings.usageSavings = c - cp; savings.usageSavingsPercent = c > 0 ? ((savings.usageSavings / c) * 100) : 0; savings.totalAnnualSavings = savings.usageSavings * oilAnnualMultiplier(comparison.oilFrequency); savings.totalAnnualSavingsPercent = savings.usageSavingsPercent; }
+      const oilMult = oilAnnualMultiplier(comparison.oilFrequency);
+      if (usage > 0) savings.annualUsage = usage * oilMult;
+      if (currentRate > 0 && compRate > 0 && usage > 0) {
+        const c = usage * currentRate; const cp = usage * compRate;
+        savings.usageSavings = c - cp; savings.usageSavingsPercent = c > 0 ? ((savings.usageSavings / c) * 100) : 0;
+        savings.totalAnnualSavings = savings.usageSavings * oilMult; savings.totalAnnualSavingsPercent = savings.usageSavingsPercent;
+        savings.annualUsage = usage * oilMult;
+      }
     } else if (comparison.utilityType === 'Waste') {
       const currentRate = comparison.currentWasteRate || 0; const compRate = comparison.comparisonWasteRate || 0; const frequency = comparison.wasteUsage || comparison.monthlyUsage || 0;
-      if (currentRate > 0 && compRate > 0 && frequency > 0) { const c = frequency * currentRate; const cp = frequency * compRate; savings.usageSavings = c - cp; savings.usageSavingsPercent = c > 0 ? ((savings.usageSavings / c) * 100) : 0; savings.totalAnnualSavings = savings.usageSavings * 12; savings.totalAnnualSavingsPercent = savings.usageSavingsPercent; }
+      if (frequency > 0) savings.annualUsage = frequency * 12;
+      if (currentRate > 0 && compRate > 0 && frequency > 0) {
+        const c = frequency * currentRate; const cp = frequency * compRate;
+        savings.usageSavings = c - cp; savings.usageSavingsPercent = c > 0 ? ((savings.usageSavings / c) * 100) : 0;
+        savings.totalAnnualSavings = savings.usageSavings * 12; savings.totalAnnualSavingsPercent = savings.usageSavingsPercent;
+        savings.annualUsage = frequency * 12;
+      }
     } else if (comparison.utilityType === 'Cleaning') {
       const currentRate = comparison.currentCleaningRate || 0; const compRate = comparison.comparisonCleaningRate || 0; const frequency = comparison.cleaningUsage || comparison.monthlyUsage || 0;
-      if (currentRate > 0 && compRate > 0 && frequency > 0) { const c = frequency * currentRate; const cp = frequency * compRate; savings.usageSavings = c - cp; savings.usageSavingsPercent = c > 0 ? ((savings.usageSavings / c) * 100) : 0; savings.totalAnnualSavings = savings.usageSavings * 12; savings.totalAnnualSavingsPercent = savings.usageSavingsPercent; }
+      if (frequency > 0) savings.annualUsage = frequency * 12;
+      if (currentRate > 0 && compRate > 0 && frequency > 0) {
+        const c = frequency * currentRate; const cp = frequency * compRate;
+        savings.usageSavings = c - cp; savings.usageSavingsPercent = c > 0 ? ((savings.usageSavings / c) * 100) : 0;
+        savings.totalAnnualSavings = savings.usageSavings * 12; savings.totalAnnualSavingsPercent = savings.usageSavingsPercent;
+        savings.annualUsage = frequency * 12;
+      }
     }
     return savings;
   };
@@ -1953,6 +2129,17 @@ export default function Base2Page() {
           payload.current_daily_supply = _raw(util.currentDailySupply); payload.comparison_daily_supply = _raw(util.comparisonDailySupply); payload.current_demand_charge = _raw(util.currentDemandCharge); payload.comparison_demand_charge = _raw(util.comparisonDemandCharge); payload.demand_quantity = _raw(util.demandQuantity);
           payload.commission_aud_per_mwh = util.ciElectricityCommissionAudPerMwh!.toFixed(4);
           payload.commission_unit_electricity = "$/MWh";
+          if (util.elecInvoiceReviewDays != null) payload.invoice_review_days = String(util.elecInvoiceReviewDays);
+          {
+            const peakU = util.peakUsage || 0;
+            const offU = util.offPeakUsage || 0;
+            const shU = util.shoulderUsage || 0;
+            const annualKwh = (peakU + offU + shU) * periodToAnnualMultiplier(util.elecInvoiceReviewDays);
+            if (annualKwh > 0) payload.annual_usage_kwh = annualKwh.toFixed(2);
+            if (annualKwh > 0 && util.ciElectricityCommissionAudPerMwh != null) {
+              payload.estimated_comms = ((annualKwh / 1000) * util.ciElectricityCommissionAudPerMwh).toFixed(2);
+            }
+          }
         } else if (util.utilityType === 'C&I Gas') {
           webhookUrl = isBneGas
             ? BNE_GAS_WEBHOOK_URL
@@ -1968,16 +2155,14 @@ export default function Base2Page() {
           payload.commission_unit_gas = "$/GJ";
           if (util.ciGasContractEndDate) payload.contract_end_date = util.ciGasContractEndDate;
           if (util.ciGasInvoiceReviewDays != null) payload.invoice_review_days = String(util.ciGasInvoiceReviewDays);
-          if (util.ciGasAnnualConsumptionGJ != null && Number.isFinite(util.ciGasAnnualConsumptionGJ)) {
-            payload.annual_usage_gj = util.ciGasAnnualConsumptionGJ.toFixed(2);
-          }
-          if (
-            util.ciGasAnnualConsumptionGJ != null &&
-            util.ciGasCommissionAudPerGj != null &&
-            Number.isFinite(util.ciGasAnnualConsumptionGJ) &&
-            Number.isFinite(util.ciGasCommissionAudPerGj)
-          ) {
-            payload.estimated_comms = (util.ciGasAnnualConsumptionGJ * util.ciGasCommissionAudPerGj).toFixed(2);
+          {
+            const ciAnnualGJ = resolveGasAnnualUsageGJ(util);
+            if (ciAnnualGJ != null && Number.isFinite(ciAnnualGJ)) {
+              payload.annual_usage_gj = ciAnnualGJ.toFixed(2);
+              if (util.ciGasCommissionAudPerGj != null && Number.isFinite(util.ciGasCommissionAudPerGj)) {
+                payload.estimated_comms = (ciAnnualGJ * util.ciGasCommissionAudPerGj).toFixed(2);
+              }
+            }
           }
           if (isBneGas) {
             payload.bne_gas = true;
@@ -2039,6 +2224,16 @@ export default function Base2Page() {
             pcCal != null && Number.isFinite(pcCal) ? pcCal.toFixed(2) : "";
           payload.commission_aud_per_gj = util.ciGasCommissionAudPerGj!.toFixed(4);
           payload.commission_unit_gas = "$/GJ";
+          if (util.smeGasInvoiceReviewDays != null) payload.invoice_review_days = String(util.smeGasInvoiceReviewDays);
+          {
+            const smeAnnualGJ = resolveGasAnnualUsageGJ(util);
+            if (smeAnnualGJ != null && Number.isFinite(smeAnnualGJ)) {
+              payload.annual_usage_gj = smeAnnualGJ.toFixed(2);
+              if (util.ciGasCommissionAudPerGj != null && Number.isFinite(util.ciGasCommissionAudPerGj)) {
+                payload.estimated_comms = (smeAnnualGJ * util.ciGasCommissionAudPerGj).toFixed(2);
+              }
+            }
+          }
         } else if (util.utilityType === "Oil") {
           webhookUrl = "https://membersaces.app.n8n.cloud/webhook/generate-oil-comparaison-review-b2";
           const details = util.invoiceData?.oil_invoice_details || util.invoiceData || {};
@@ -2370,11 +2565,23 @@ export default function Base2Page() {
       rows.push(
         <tr key="peak" className="hover:bg-gray-50/50">
           <td className={labelTd}>Peak Rate <span className="text-gray-400">(c/kWh)</span></td>
-          <td className={tdBase}><input type="number" step="0.01" value={comparison.currentPeakRate || ''} onChange={(e) => updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentPeakRate', e.target.value)} className={inputCls} placeholder="c/kWh" /></td>
-          <td className={tdBase}><input type="number" step="0.01" value={comparison.peakUsage || ''} onChange={(e) => updateUsage(comparison.utilityType, comparison.identifier, 'peakUsage', e.target.value)} className={inputCls} placeholder="kWh" /></td>
+          <td className={tdBase}>
+            <input type="number" step="0.01" value={comparison.currentPeakRate || ''} onChange={(e) => updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentPeakRate', e.target.value)} className={inputCls} placeholder="c/kWh" />
+            <RateUsageTotalHint rate={comparison.currentPeakRate} annualUsage={savings?.peakAnnualKwh} usageUnit="kWh" cents />
+          </td>
+          <td className={tdBase}>
+            <input type="number" step="0.01" value={comparison.peakUsage || ''} onChange={(e) => updateUsage(comparison.utilityType, comparison.identifier, 'peakUsage', e.target.value)} className={inputCls} placeholder="kWh" />
+            {savings?.peakAnnualKwh != null && (
+              <div className="text-[10px] text-gray-400 text-right mt-1">
+                Est. annual: {Number(savings.peakAnnualKwh).toLocaleString("en-AU", { maximumFractionDigits: 0 })} kWh
+                {comparison.elecInvoiceReviewDays != null ? ` (${comparison.elecInvoiceReviewDays} d)` : " (×12)"}
+              </div>
+            )}
+          </td>
           <td className={tdBase}>
             <input type="number" step="0.01" value={comparison.comparisonPeakRate || ''} onChange={(e) => updateComparisonRate(comparison.utilityType, comparison.identifier, 'comparisonPeakRate', e.target.value)} className={inputCls} placeholder="24.50" />
             {offerRateLabel && <div className="text-[10px] text-gray-400 text-right mt-0.5">{offerRateLabel}</div>}
+            <RateUsageTotalHint rate={comparison.comparisonPeakRate} annualUsage={savings?.peakAnnualKwh} usageUnit="kWh" cents />
           </td>
           <td className={`${tdBase} text-right`}>{savingsPill(savings?.peakAnnualSavings)}{savings?.peakAnnualSavings != null && <div className="text-[10px] text-gray-400 text-right mt-0.5">/yr</div>}</td>
           <td className={`${tdBase} text-right`}>{savingsPct(savings?.peakSavingsPercent)}</td>
@@ -2383,11 +2590,23 @@ export default function Base2Page() {
       rows.push(
         <tr key="offpeak" className="hover:bg-gray-50/50">
           <td className={labelTd}>Off-Peak Rate <span className="text-gray-400">(c/kWh)</span></td>
-          <td className={tdBase}><input type="number" step="0.01" value={comparison.currentOffPeakRate || ''} onChange={(e) => updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentOffPeakRate', e.target.value)} className={inputCls} placeholder="c/kWh" /></td>
-          <td className={tdBase}><input type="number" step="0.01" value={comparison.offPeakUsage || ''} onChange={(e) => updateUsage(comparison.utilityType, comparison.identifier, 'offPeakUsage', e.target.value)} className={inputCls} placeholder="kWh" /></td>
+          <td className={tdBase}>
+            <input type="number" step="0.01" value={comparison.currentOffPeakRate || ''} onChange={(e) => updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentOffPeakRate', e.target.value)} className={inputCls} placeholder="c/kWh" />
+            <RateUsageTotalHint rate={comparison.currentOffPeakRate} annualUsage={savings?.offPeakAnnualKwh} usageUnit="kWh" cents />
+          </td>
+          <td className={tdBase}>
+            <input type="number" step="0.01" value={comparison.offPeakUsage || ''} onChange={(e) => updateUsage(comparison.utilityType, comparison.identifier, 'offPeakUsage', e.target.value)} className={inputCls} placeholder="kWh" />
+            {savings?.offPeakAnnualKwh != null && (
+              <div className="text-[10px] text-gray-400 text-right mt-1">
+                Est. annual: {Number(savings.offPeakAnnualKwh).toLocaleString("en-AU", { maximumFractionDigits: 0 })} kWh
+                {comparison.elecInvoiceReviewDays != null ? ` (${comparison.elecInvoiceReviewDays} d)` : " (×12)"}
+              </div>
+            )}
+          </td>
           <td className={tdBase}>
             <input type="number" step="0.01" value={comparison.comparisonOffPeakRate || ''} onChange={(e) => updateComparisonRate(comparison.utilityType, comparison.identifier, 'comparisonOffPeakRate', e.target.value)} className={inputCls} placeholder="18.00" />
             {offerRateLabel && <div className="text-[10px] text-gray-400 text-right mt-0.5">{offerRateLabel}</div>}
+            <RateUsageTotalHint rate={comparison.comparisonOffPeakRate} annualUsage={savings?.offPeakAnnualKwh} usageUnit="kWh" cents />
           </td>
           <td className={`${tdBase} text-right`}>{savingsPill(savings?.offPeakAnnualSavings)}{savings?.offPeakAnnualSavings != null && <div className="text-[10px] text-gray-400 text-right mt-0.5">/yr</div>}</td>
           <td className={`${tdBase} text-right`}>{savingsPct(savings?.offPeakSavingsPercent)}</td>
@@ -2397,11 +2616,23 @@ export default function Base2Page() {
         rows.push(
           <tr key="shoulder" className="hover:bg-gray-50/50">
             <td className={labelTd}>Shoulder Rate <span className="text-gray-400">(c/kWh)</span></td>
-            <td className={tdBase}><input type="number" step="0.01" value={comparison.currentShoulderRate || ''} onChange={(e) => updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentShoulderRate', e.target.value)} className={inputCls} /></td>
-            <td className={tdBase}><input type="number" step="0.01" value={comparison.shoulderUsage || ''} onChange={(e) => updateUsage(comparison.utilityType, comparison.identifier, 'shoulderUsage', e.target.value)} className={inputCls} placeholder="kWh" /></td>
+            <td className={tdBase}>
+              <input type="number" step="0.01" value={comparison.currentShoulderRate || ''} onChange={(e) => updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentShoulderRate', e.target.value)} className={inputCls} />
+              <RateUsageTotalHint rate={comparison.currentShoulderRate} annualUsage={savings?.shoulderAnnualKwh} usageUnit="kWh" cents />
+            </td>
+            <td className={tdBase}>
+              <input type="number" step="0.01" value={comparison.shoulderUsage || ''} onChange={(e) => updateUsage(comparison.utilityType, comparison.identifier, 'shoulderUsage', e.target.value)} className={inputCls} placeholder="kWh" />
+              {savings?.shoulderAnnualKwh != null && (
+                <div className="text-[10px] text-gray-400 text-right mt-1">
+                  Est. annual: {Number(savings.shoulderAnnualKwh).toLocaleString("en-AU", { maximumFractionDigits: 0 })} kWh
+                  {comparison.elecInvoiceReviewDays != null ? ` (${comparison.elecInvoiceReviewDays} d)` : " (×12)"}
+                </div>
+              )}
+            </td>
             <td className={tdBase}>
               <input type="number" step="0.01" value={comparison.comparisonShoulderRate || ''} onChange={(e) => updateComparisonRate(comparison.utilityType, comparison.identifier, 'comparisonShoulderRate', e.target.value)} className={inputCls} placeholder="20.00" />
               {offerRateLabel && <div className="text-[10px] text-gray-400 text-right mt-0.5">{offerRateLabel}</div>}
+              <RateUsageTotalHint rate={comparison.comparisonShoulderRate || comparison.comparisonOffPeakRate} annualUsage={savings?.shoulderAnnualKwh} usageUnit="kWh" cents />
             </td>
             <td className={`${tdBase} text-center text-gray-300 text-xs`}>—</td>
             <td className={`${tdBase} text-center text-gray-300 text-xs`}>—</td>
@@ -2514,8 +2745,18 @@ export default function Base2Page() {
                 className={inputCls}
                 placeholder="Required"
               />
+              <EstAnnualCommsHint amount={savings?.estimatedAnnualCommission} />
             </td>
-            <td className={`${tdBase} text-center text-gray-300 text-xs`}>—</td>
+            <td className={`${tdBase} text-right text-xs text-violet-700 font-semibold tabular-nums`}>
+              {savings?.estimatedAnnualCommission != null ? (
+                <>
+                  {formatAud(savings.estimatedAnnualCommission)}
+                  <div className="text-[10px] font-normal text-gray-400 mt-0.5">/yr</div>
+                </>
+              ) : (
+                <span className="text-gray-300">—</span>
+              )}
+            </td>
             <td className={`${tdBase} text-center text-gray-300 text-xs`}>—</td>
           </tr>,
         );
@@ -2526,7 +2767,10 @@ export default function Base2Page() {
       rows.push(
         <tr key="gas-rate" className="hover:bg-gray-50/50">
           <td className={`${labelTd} font-semibold`}>Gas Rate <span className="font-normal text-gray-400">($/GJ)</span></td>
-          <td className={tdBase}><input type="number" step="0.0001" value={comparison.currentGasRate || ''} onChange={(e) => updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentGasRate', e.target.value)} className={inputCls} placeholder="$/GJ" /></td>
+          <td className={tdBase}>
+            <input type="number" step="0.0001" value={comparison.currentGasRate || ''} onChange={(e) => updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentGasRate', e.target.value)} className={inputCls} placeholder="$/GJ" />
+            <RateUsageTotalHint rate={comparison.currentGasRate} annualUsage={savings?.annualUsageGJ} usageUnit="GJ" />
+          </td>
           <td className={tdBase}>
             <input
               type="number"
@@ -2577,10 +2821,20 @@ export default function Base2Page() {
                 {(() => { const derived = ciGasBillPeriodUsageFromAnnual(comparison.smeGasAnnualConsumptionGJ, comparison.smeGasInvoiceReviewDays); if (derived != null && derived > 0) return <div className="text-[10px] text-gray-400 text-right">Bill-period: {derived.toFixed(3)} GJ{comparison.smeGasInvoiceReviewDays != null ? ` (${comparison.smeGasInvoiceReviewDays} d)` : ""}</div>; return null; })()}
               </div>
             )}
-            {comparison.estimatedAnnualUsage && comparison.estimatedAnnualUsage > 0 && <div className="text-[10px] text-gray-400 text-right mt-1">Est. annual: {comparison.estimatedAnnualUsage.toFixed(2)} GJ</div>}
+            {savings?.annualUsageGJ != null && savings.annualUsageGJ > 0 && (
+              <div className="text-[10px] text-gray-500 text-right mt-1 tabular-nums">
+                Used for savings: {Number(savings.annualUsageGJ).toLocaleString("en-AU", { maximumFractionDigits: 2 })} GJ/yr
+              </div>
+            )}
+            {comparison.estimatedAnnualUsage && comparison.estimatedAnnualUsage > 0 && savings?.annualUsageGJ == null && (
+              <div className="text-[10px] text-gray-400 text-right mt-1">Est. annual: {comparison.estimatedAnnualUsage.toFixed(2)} GJ</div>
+            )}
           </td>
-          <td className={tdBase}><input type="number" step="0.01" value={comparison.comparisonGasRate || ''} onChange={(e) => updateComparisonRate(comparison.utilityType, comparison.identifier, 'comparisonGasRate', e.target.value)} className={inputCls} placeholder="17.8" /></td>
-          <td className={`${tdBase} text-right`}>{savingsPill(savings?.usageSavings != null ? (savings.gasUsageSavingsAnnual ?? savings.usageSavings * 12) : undefined)}{savings?.usageSavings != null && <div className="text-[10px] text-gray-400 text-right mt-0.5">/yr</div>}</td>
+          <td className={tdBase}>
+            <input type="number" step="0.01" value={comparison.comparisonGasRate || ''} onChange={(e) => updateComparisonRate(comparison.utilityType, comparison.identifier, 'comparisonGasRate', e.target.value)} className={inputCls} placeholder="17.8" />
+            <RateUsageTotalHint rate={comparison.comparisonGasRate} annualUsage={savings?.annualUsageGJ} usageUnit="GJ" />
+          </td>
+          <td className={`${tdBase} text-right`}>{savingsPill(savings?.gasUsageSavingsAnnual ?? savings?.usageSavings)}{savings?.usageSavings != null && <div className="text-[10px] text-gray-400 text-right mt-0.5">/yr</div>}</td>
           <td className={`${tdBase} text-right`}>{savingsPct(savings?.usageSavingsPercent)}</td>
         </tr>
       );
@@ -2621,8 +2875,18 @@ export default function Base2Page() {
                 className={inputCls}
                 placeholder="3.00"
               />
+              <EstAnnualCommsHint amount={savings?.estimatedAnnualCommission} />
             </td>
-            <td className={`${tdBase} text-center text-gray-300 text-xs`}>—</td>
+            <td className={`${tdBase} text-right text-xs text-violet-700 font-semibold tabular-nums`}>
+              {savings?.estimatedAnnualCommission != null ? (
+                <>
+                  {formatAud(savings.estimatedAnnualCommission)}
+                  <div className="text-[10px] font-normal text-gray-400 mt-0.5">/yr</div>
+                </>
+              ) : (
+                <span className="text-gray-300">—</span>
+              )}
+            </td>
             <td className={`${tdBase} text-center text-gray-300 text-xs`}>—</td>
           </tr>,
         );
@@ -2646,9 +2910,15 @@ export default function Base2Page() {
       rows.push(
         <tr key="oil-rate" className="hover:bg-gray-50/50">
           <td className={`${labelTd} font-semibold`}>Oil Rate <span className="font-normal text-gray-400">($/L)</span></td>
-          <td className={tdBase}><input type="number" step="0.0001" value={comparison.currentOilRate || ''} onChange={(e) => updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentOilRate', e.target.value)} className={inputCls} placeholder="$/L" /></td>
+          <td className={tdBase}>
+            <input type="number" step="0.0001" value={comparison.currentOilRate || ''} onChange={(e) => updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentOilRate', e.target.value)} className={inputCls} placeholder="$/L" />
+            <RateUsageTotalHint rate={comparison.currentOilRate} annualUsage={savings?.annualUsage} usageUnit="L" />
+          </td>
           <td className={tdBase}><input type="number" step="0.01" value={comparison.oilUsage || ''} onChange={(e) => updateUsage(comparison.utilityType, comparison.identifier, 'oilUsage', e.target.value)} className={inputCls} placeholder="Litres" /></td>
-          <td className={tdBase}><input type="number" step="0.01" value={comparison.comparisonOilRate || ''} onChange={(e) => updateComparisonRate(comparison.utilityType, comparison.identifier, 'comparisonOilRate', e.target.value)} className={inputCls} placeholder="$/L" /></td>
+          <td className={tdBase}>
+            <input type="number" step="0.01" value={comparison.comparisonOilRate || ''} onChange={(e) => updateComparisonRate(comparison.utilityType, comparison.identifier, 'comparisonOilRate', e.target.value)} className={inputCls} placeholder="$/L" />
+            <RateUsageTotalHint rate={comparison.comparisonOilRate} annualUsage={savings?.annualUsage} usageUnit="L" />
+          </td>
           <td className={`${tdBase} text-right`}>{savingsPill(savings?.usageSavings != null ? savings.usageSavings * oilAnnualMultiplier(comparison.oilFrequency) : undefined)}{savings?.usageSavings != null && <div className="text-[10px] text-gray-400 text-right mt-0.5">/yr</div>}</td>
           <td className={`${tdBase} text-right`}>{savingsPct(savings?.usageSavingsPercent)}</td>
         </tr>
@@ -2675,9 +2945,15 @@ export default function Base2Page() {
       rows.push(
         <tr key="waste-rate" className="hover:bg-gray-50/50">
           <td className={`${labelTd} font-semibold`}>Waste Rate <span className="font-normal text-gray-400">($/service)</span></td>
-          <td className={tdBase}><input type="number" step="0.01" value={comparison.currentWasteRate || ''} onChange={(e) => updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentWasteRate', e.target.value)} className={inputCls} /></td>
+          <td className={tdBase}>
+            <input type="number" step="0.01" value={comparison.currentWasteRate || ''} onChange={(e) => updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentWasteRate', e.target.value)} className={inputCls} />
+            <RateUsageTotalHint rate={comparison.currentWasteRate} annualUsage={savings?.annualUsage} usageUnit="svcs" />
+          </td>
           <td className={tdBase}><input type="number" step="0.01" value={comparison.wasteUsage || ''} onChange={(e) => updateUsage(comparison.utilityType, comparison.identifier, 'wasteUsage', e.target.value)} className={inputCls} placeholder="Per month" /></td>
-          <td className={tdBase}><input type="number" step="0.01" value={comparison.comparisonWasteRate || ''} onChange={(e) => updateComparisonRate(comparison.utilityType, comparison.identifier, 'comparisonWasteRate', e.target.value)} className={inputCls} placeholder="50.00" /></td>
+          <td className={tdBase}>
+            <input type="number" step="0.01" value={comparison.comparisonWasteRate || ''} onChange={(e) => updateComparisonRate(comparison.utilityType, comparison.identifier, 'comparisonWasteRate', e.target.value)} className={inputCls} placeholder="50.00" />
+            <RateUsageTotalHint rate={comparison.comparisonWasteRate} annualUsage={savings?.annualUsage} usageUnit="svcs" />
+          </td>
           <td className={`${tdBase} text-right`}>{savingsPill(savings?.usageSavings != null ? savings.usageSavings * 12 : undefined)}</td>
           <td className={`${tdBase} text-right`}>{savingsPct(savings?.usageSavingsPercent)}</td>
         </tr>
@@ -2688,9 +2964,15 @@ export default function Base2Page() {
       rows.push(
         <tr key="cleaning-rate" className="hover:bg-gray-50/50">
           <td className={`${labelTd} font-semibold`}>Cleaning Rate <span className="font-normal text-gray-400">($/visit)</span></td>
-          <td className={tdBase}><input type="number" step="0.01" value={comparison.currentCleaningRate || ''} onChange={(e) => updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentCleaningRate', e.target.value)} className={inputCls} /></td>
+          <td className={tdBase}>
+            <input type="number" step="0.01" value={comparison.currentCleaningRate || ''} onChange={(e) => updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentCleaningRate', e.target.value)} className={inputCls} />
+            <RateUsageTotalHint rate={comparison.currentCleaningRate} annualUsage={savings?.annualUsage} usageUnit="visits" />
+          </td>
           <td className={tdBase}><input type="number" step="0.01" value={comparison.cleaningUsage || ''} onChange={(e) => updateUsage(comparison.utilityType, comparison.identifier, 'cleaningUsage', e.target.value)} className={inputCls} placeholder="Per month" /></td>
-          <td className={tdBase}><input type="number" step="0.01" value={comparison.comparisonCleaningRate || ''} onChange={(e) => updateComparisonRate(comparison.utilityType, comparison.identifier, 'comparisonCleaningRate', e.target.value)} className={inputCls} placeholder="100.00" /></td>
+          <td className={tdBase}>
+            <input type="number" step="0.01" value={comparison.comparisonCleaningRate || ''} onChange={(e) => updateComparisonRate(comparison.utilityType, comparison.identifier, 'comparisonCleaningRate', e.target.value)} className={inputCls} placeholder="100.00" />
+            <RateUsageTotalHint rate={comparison.comparisonCleaningRate} annualUsage={savings?.annualUsage} usageUnit="visits" />
+          </td>
           <td className={`${tdBase} text-right`}>{savingsPill(savings?.usageSavings != null ? savings.usageSavings * 12 : undefined)}</td>
           <td className={`${tdBase} text-right`}>{savingsPct(savings?.usageSavingsPercent)}</td>
         </tr>
@@ -2795,6 +3077,77 @@ export default function Base2Page() {
             <Base2ComparisonDefaultsEditor onSaved={applyBase2Defaults} />
           </div>
         </details>
+
+        <div className="mb-5 rounded-xl border border-indigo-100 bg-white shadow-sm dark:border-indigo-900/40 dark:bg-gray-dark">
+          <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 border-b border-indigo-50 dark:border-indigo-900/40">
+            <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">Linked autonomous follow-ups</h2>
+            <Link
+              href="/autonomous-agent?tab=templates"
+              className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 dark:text-indigo-400"
+            >
+              Edit templates →
+            </Link>
+          </div>
+          <div className="px-5 py-3">
+            {linkedTemplatesLoading ? (
+              <p className="text-xs text-gray-400">Loading templates…</p>
+            ) : linkedTemplatesError ? (
+              <p className="text-xs text-amber-700">{linkedTemplatesError}</p>
+            ) : (
+              <ul className="divide-y divide-gray-50 dark:divide-gray-800">
+                {BASE2_SEQUENCE_LINKS.map((link) => {
+                  const tpl = linkedTemplates.find((t) => t.sequence_type === link.sequence_type);
+                  return (
+                    <li key={link.sequence_type} className="flex flex-wrap items-start justify-between gap-2 py-2.5 first:pt-0 last:pb-0">
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">{link.label}</div>
+                        <div className="text-[11px] text-gray-500 mt-0.5">{link.startsWhen}</div>
+                        {tpl ? (
+                          <div className="mt-1 text-sm text-gray-700 dark:text-gray-300">
+                            {tpl.display_name}
+                            <span className="ml-2 font-mono text-[11px] text-gray-400">{tpl.sequence_type}</span>
+                          </div>
+                        ) : (
+                          <div className="mt-1 text-xs text-amber-700">
+                            No template with call key <span className="font-mono">{link.sequence_type}</span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {tpl ? (
+                          <>
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                                tpl.is_active
+                                  ? "bg-emerald-100 text-emerald-700"
+                                  : "bg-gray-100 text-gray-500"
+                              }`}
+                            >
+                              {tpl.is_active ? "Active" : "Inactive"}
+                            </span>
+                            <Link
+                              href={`/autonomous-agent?tab=templates&type=${encodeURIComponent(link.sequence_type)}`}
+                              className="text-xs font-semibold text-indigo-600 hover:text-indigo-800"
+                            >
+                              Edit
+                            </Link>
+                          </>
+                        ) : (
+                          <Link
+                            href="/autonomous-agent?tab=templates"
+                            className="text-xs font-semibold text-indigo-600 hover:text-indigo-800"
+                          >
+                            Create
+                          </Link>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        </div>
 
         {/* Business Information Card */}
         {businessInfo && (
