@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Carbon Zero Australasia Text Agent Interface — a Next.js 15 dashboard frontend for Carbon Zero Australasia. The app provides tools for utility invoice management, client CRM, document generation, and an AI-powered Base 1 Review agent for analysing utility bills. It communicates with a separate FastAPI backend (`text_agent_backend`) via REST APIs. Brand constants live in `src/lib/brand.ts` (copyright: Prograde IP Holdings).
+Carbon Zero Australasia Text Agent Interface — a Next.js 16 dashboard frontend for Carbon Zero Australasia. The app provides tools for utility invoice management, client CRM, document generation, and an AI-powered Base 1 Review agent for analysing utility bills. It communicates with a separate FastAPI backend (`text_agent_backend`) via REST APIs. Brand constants live in `src/lib/brand.ts` (copyright: Prograde IP Holdings).
 
 ## Commands
 
@@ -24,7 +24,7 @@ No test framework is configured — there are no test commands.
 ## Architecture
 
 ### Stack
-- **Next.js 15** (App Router) with React 19, TypeScript, Tailwind CSS 3
+- **Next.js 16** (App Router) with React 19, TypeScript, Tailwind CSS 3
 - **Auth**: NextAuth v4 with Google OAuth (JWT strategy). Domain-restricted to `acesolutions.com.au` (enforced in `src/app/providers.tsx` AuthGate)
 - **Styling**: Tailwind CSS with custom theme (Satoshi font, `primary: #5750F1`). Dark mode via `next-themes` (class strategy). Prettier plugin sorts Tailwind classes.
 - **Backend**: Separate FastAPI server. URL resolved dynamically in `src/lib/utils.ts` (`getApiBaseUrl`) — dev defaults to `localhost:8000`, prod/preview uses Cloud Run URLs. Autonomous sequence reads (`/api/autonomous/*`) use `getAutonomousApiBaseUrl()`. **Runner triggers** (`/api/autonomous/trigger-flows/...`) use `getAutonomousRunnerApiBaseUrl()` and only call `POST /run/run/*` / `POST /run/step/*` on that host — configure `AUTONOMOUS_RUNNER_API_URL` (or `AUTONOMOUS_API_URL` / `NEXT_PUBLIC_AUTONOMOUS_API_BASE_URL`) to the Cloud Run service that implements those routes, not the CRM monolith.
@@ -34,7 +34,7 @@ No test framework is configured — there are no test commands.
 - `src/app/api/` — Next.js API routes (auth, PDF merging, quote requests, floating agent, one-month-savings, Canva/Google integrations)
 - `src/components/` — Shared components. `Layouts/` contains Sidebar, Header, PageHeader. `ui/` has reusable primitives (card, toast, breadcrumb, dropdown, skeleton, table, empty-state)
 - `src/lib/` — Core utilities: `auth.ts` (NextAuth config + token refresh), `utils.ts` (`cn()` helper + `getApiBaseUrl`), `route-titles.ts` (pathname→title map), `floatingagent/`
-- `src/constants/crm.ts` — CRM stage/status enums (`CLIENT_STAGES`, `OFFER_STATUSES`, `OFFER_ACTIVITY_TYPES`) — must match backend enums
+- `src/constants/crm.ts` — CRM stage/status enums (`CLIENT_STAGES`, `OFFER_STATUSES`, `OFFER_ACTIVITY_TYPES`, `TESTIMONIAL_STATUSES`) — must match backend enums
 - `types/next-auth.d.ts` — NextAuth session type augmentation (accessToken, id_token, refreshToken)
 
 ### App Layout

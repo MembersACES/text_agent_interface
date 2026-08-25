@@ -3,12 +3,19 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getApiBaseUrl } from "@/lib/utils";
 import { DEFAULT_TESTIMONIAL_SOLUTION_CONTENT } from "@/lib/testimonial-solution-content";
+import {
+  TESTIMONIAL_CONTENT_SOURCE_HEADER,
+  type TestimonialContentSource,
+} from "@/lib/testimonial-content-source";
 
-/**
- * GET: List testimonial solution content (merged defaults + overrides from backend).
- * Falls back to frontend defaults if backend fails.
- * Query: solution_type (optional) to get one solution type.
- */
+function jsonWithSource(data: unknown, source: TestimonialContentSource, status = 200) {
+  return NextResponse.json(data, {
+    status,
+    headers: { [TESTIMONIAL_CONTENT_SOURCE_HEADER]: source },
+  });
+}
+
+/** GET: bare array. `X-Content-Source` is `backend` or `defaults` (fallback still 200). */
 export async function GET(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
@@ -34,7 +41,7 @@ export async function GET(req: NextRequest) {
 
     if (backendResponse.ok) {
       const data = await backendResponse.json();
-      return NextResponse.json(data);
+      return jsonWithSource(data, "backend");
     }
 
     // Fallback to frontend defaults (e.g. backend down or 404)
@@ -42,12 +49,12 @@ export async function GET(req: NextRequest) {
       const one = DEFAULT_TESTIMONIAL_SOLUTION_CONTENT.find(
         (c) => c.solution_type === solutionType
       );
-      return NextResponse.json(one ? [one] : DEFAULT_TESTIMONIAL_SOLUTION_CONTENT);
+      return jsonWithSource(one ? [one] : DEFAULT_TESTIMONIAL_SOLUTION_CONTENT, "defaults");
     }
-    return NextResponse.json(DEFAULT_TESTIMONIAL_SOLUTION_CONTENT);
+    return jsonWithSource(DEFAULT_TESTIMONIAL_SOLUTION_CONTENT, "defaults");
   } catch (error: any) {
     console.error("Error fetching testimonial solution content:", error);
-    return NextResponse.json(DEFAULT_TESTIMONIAL_SOLUTION_CONTENT);
+    return jsonWithSource(DEFAULT_TESTIMONIAL_SOLUTION_CONTENT, "defaults");
   }
 }
 

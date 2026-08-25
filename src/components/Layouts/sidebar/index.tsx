@@ -22,6 +22,7 @@ import {
 import { MenuItem } from "./menu-item";
 import { navMatchesQuery } from "./nav-utils";
 import { useSidebarContext } from "./sidebar-context";
+import { useUnsavedLinkHandler } from "@/components/unsaved-changes/nav-guard-context";
 
 const SECTION_COLLAPSED_KEY_PREFIX = "cza-sidebar-section-";
 const JOB_GROUP_COLLAPSED_KEY_PREFIX = "cza-sidebar-job-";
@@ -63,6 +64,7 @@ export function Sidebar() {
   const { data: session, status } = useSession();
   const { setIsOpen, isOpen, isMobile, toggleSidebar, isCollapsed, toggleCollapse } =
     useSidebarContext();
+  const unsavedLinkHandler = useUnsavedLinkHandler();
 
   const [jumpQuery, setJumpQuery] = useState("");
   const [invoicingAllowed, setInvoicingAllowed] = useState<boolean | null>(null);
@@ -518,6 +520,7 @@ export function Sidebar() {
             <Link
               href="/"
               onClick={() => isMobile && toggleSidebar()}
+              onNavigate={unsavedLinkHandler("/")}
               className={cn(
                 "flex min-w-0 items-center gap-2.5",
                 isCollapsed ? "justify-center" : "",
