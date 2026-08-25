@@ -10,6 +10,7 @@ import {
   FileUp,
   GitBranch,
   HandCoins,
+  Handshake,
   Home,
   KeyRound,
   LayoutDashboard,
@@ -61,6 +62,7 @@ export const MAIN_NAV: NavLinkItem[] = [
   { title: "Dashboard", url: "/crm", icon: LayoutDashboard },
   { title: "Solution Range", url: "/solution-range", icon: LayoutGrid },
   { title: "Base 1 Hub", url: "/base-1", icon: BarChart3 },
+  { title: "Distributors", url: "/distributors", icon: Handshake },
   { title: "Plus ES DMA", url: "/plus-es-dma", icon: FileText },
 ];
 

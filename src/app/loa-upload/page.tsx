@@ -13,6 +13,7 @@ import {
   type UtilityInvoiceUploadKey,
   postLoaDocument,
 } from '@/lib/invoice-api-endpoints';
+import { createMemberFolder, type LoaCandidate } from '@/lib/member-folder-api';
 import { MemberAcesSheetPreview } from '@/components/MemberAcesSheetPreview';
 import { UtilityInvoiceUploadBar } from '@/components/UtilityInvoiceUploadBar';
 import {
@@ -36,15 +37,6 @@ const UTILITY_OPTIONS = {
   GREASE_TRAP: "GREASE TRAP",
   WATER: "WATER",
 };
-
-const INDUSTRY_OPTIONS = [
-  '003-Clubs',
-  '003-Hardware',
-  '003-Health Care',
-  '003-Hotels',
-  '003-Others',
-  '003-Supermarkets',
-];
 
 function LoaStepShell({
   title,
@@ -72,6 +64,7 @@ export default function LoaUploadPage() {
   const token = (session as { id_token?: string; accessToken?: string } | null)?.id_token
     ?? (session as { accessToken?: string } | null)?.accessToken
     ?? '';
+  const accessToken = (session as { accessToken?: string } | null)?.accessToken ?? '';
 
   const [step, setStep] = useState(1);
   const [file, setFile] = useState<File | null>(null);
@@ -80,7 +73,11 @@ export default function LoaUploadPage() {
   const [showFolderPrompt, setShowFolderPrompt] = useState(false);
   const [businessDetails, setBusinessDetails] = useState<any>(null);
   const [industry, setIndustry] = useState('');
+  const [industryFolderId, setIndustryFolderId] = useState('');
   const [subfolder, setSubfolder] = useState('');
+  const [subfolderFolderId, setSubfolderFolderId] = useState('');
+  const [loaCandidates, setLoaCandidates] = useState<LoaCandidate[]>([]);
+  const [selectedLoaRecordId, setSelectedLoaRecordId] = useState('');
   const [folderResult, setFolderResult] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -250,59 +247,73 @@ export default function LoaUploadPage() {
   };
 
   // Step 5: Industry selection
-  const handleIndustrySelect = (value: string) => {
+  const handleIndustrySelect = (value: string, folderId: string) => {
+    if (!value) return;
     setIndustry(value);
+    setIndustryFolderId(folderId);
     setStep(5);
   };
 
-  // Step 6: Subfolder selection
-  const handleSubfolderSelect = async (value: string) => {
-    setSubfolder(value);
+  const runMemberFolderCreate = async (stateName: string, stateId: string, loaRecordId?: string) => {
     setStep(6);
     setLoading(true);
     setAuthError(false);
-    
-    const n8nPayload = {
-      'Business Name': businessDetails?.['Business Name'] || '',
-      // Ensure Trading As is never empty – use "N/A" fallback
-      'Trading As': businessDetails?.['Trading As']?.trim() || 'N/A',
-      'Industry Classification Folder': industry,
-      'Industry Classification SubFolder': value,
-    };
-    
+    setLoaCandidates([]);
     try {
-      // n8n will now handle both the Airtable update AND the Google Apps Script trigger
-      const n8nRes = await fetch('https://membersaces.app.n8n.cloud/webhook/update_airtable_call_script_function', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(n8nPayload),
-      });
-      
-      const n8nData = await n8nRes.json();
-      if (n8nData.message && /invalid token|token expired|expired token/i.test(n8nData.message)) {
+      const result = await createMemberFolder(token, {
+        business_name: businessDetails?.['Business Name'] || '',
+        trading_as: businessDetails?.['Trading As']?.trim() || 'N/A',
+        classification: industry,
+        state: stateName,
+        classification_folder_id: industryFolderId || undefined,
+        state_folder_id: stateId || undefined,
+        loa_record_id: loaRecordId || undefined,
+      }, accessToken);
+      if (result.loa_candidates?.length) {
+        setLoaCandidates(result.loa_candidates);
+        setFolderResult('Multiple Airtable LOA records matched this business. Select the correct one.');
+        return;
+      }
+      if (!result.ok) {
+        setFolderResult(`❌ Folder creation failed: ${result.error || 'Unknown error'}`);
+        return;
+      }
+      const extra = result.n8n_fallback_used
+        ? ' (created via n8n fallback because Drive create failed)'
+        : result.folder_url
+          ? ` ${result.folder_url}`
+          : '';
+      const loaNote = result.loa_file?.id
+        ? `\nLOA moved: ${result.loa_file.name || result.loa_file.id}`
+        : '';
+      const wipNote = result.wip_file?.id
+        ? `\nWIP: ${result.wip_file.url || result.wip_file.id}`
+        : '';
+      const warn = result.warnings?.length ? `\n${result.warnings.join('\n')}` : '';
+      setFolderResult(
+        `✅ Member folder created${result.folder_created ? '' : ' (existing folder reused)'}.${extra}${loaNote}${wipNote}${warn}`,
+      );
+      setTimeout(() => {
+        setShowUtilityPrompt(true);
+      }, 1500);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (message.includes('REAUTHENTICATION_REQUIRED')) {
         setAuthError(true);
         setFolderResult(null);
         return;
       }
-      
-      if (!n8nRes.ok) {
-        setFolderResult(`❌ Folder creation failed: ${n8nRes.status} ${n8nRes.statusText}`);
-        setLoading(false);
-        return;
-      }
-      
-      setFolderResult('✅ Member folder creation details have been sent and processed! Google Drive folder creation has been triggered successfully!');
-      
-      // After successful folder creation, show utility prompt after a brief delay
-      setTimeout(() => {
-        setShowUtilityPrompt(true);
-      }, 1500);
-      
-    } catch (err) {
-      setFolderResult('❌ Error processing folder creation.');
+      setFolderResult(`❌ Error processing folder creation: ${message}`);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSubfolderSelect = async (value: string, folderId: string) => {
+    if (!value) return;
+    setSubfolder(value);
+    setSubfolderFolderId(folderId);
+    await runMemberFolderCreate(value, folderId, selectedLoaRecordId || undefined);
   };
 
   // NEW: Utility linking functions
@@ -546,7 +557,9 @@ export default function LoaUploadPage() {
     return (
       <LoaStepShell title="Select industry classification">
         <IndustrySubfolderSelector
+          token={token}
           industry={industry}
+          industryFolderId={industryFolderId}
           setIndustry={handleIndustrySelect}
           subfolder={subfolder}
           setSubfolder={() => {}}
@@ -560,7 +573,9 @@ export default function LoaUploadPage() {
     return (
       <LoaStepShell title="Select state/subfolder">
         <IndustrySubfolderSelector
+          token={token}
           industry={industry}
+          industryFolderId={industryFolderId}
           setIndustry={() => {}}
           subfolder={subfolder}
           setSubfolder={handleSubfolderSelect}
@@ -573,7 +588,31 @@ export default function LoaUploadPage() {
   if (step === 6) {
     return (
       <LoaStepShell title="Folder creation result">
-        {loading ? <div>Processing...</div> : <div>{folderResult}</div>}
+        {loading ? <div>Processing...</div> : <div className="whitespace-pre-wrap">{folderResult}</div>}
+
+        {loaCandidates.length > 0 && (
+          <div className="mt-4 space-y-3">
+            <label className="block font-medium">Matching LOA records</label>
+            <select
+              className="w-full border rounded p-2 dark:border-dark-3 dark:bg-dark-2"
+              value={selectedLoaRecordId}
+              onChange={(e) => setSelectedLoaRecordId(e.target.value)}
+            >
+              <option value="">Select record...</option>
+              {loaCandidates.map((c) => (
+                <option key={c.record_id} value={c.record_id}>
+                  {(c.trading_name || c.record_id) + (c.site_address ? ` — ${c.site_address}` : "")}
+                </option>
+              ))}
+            </select>
+            <Button
+              disabled={!selectedLoaRecordId || loading}
+              onClick={() => runMemberFolderCreate(subfolder, subfolderFolderId, selectedLoaRecordId)}
+            >
+              Create folder for selected LOA
+            </Button>
+          </div>
+        )}
         
         {showUtilityPrompt && (
           <div className="mt-6 rounded-xl border border-stroke bg-primary/5 p-4 dark:border-dark-3">

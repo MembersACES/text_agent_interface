@@ -1,45 +1,102 @@
-import React from 'react';
+"use client";
 
-const INDUSTRY_OPTIONS = [
-  '003-Clubs',
-  '003-Hardware',
-  '003-Health Care',
-  '003-Hotels',
-  '003-Others',
-  '003-Supermarkets',
-];
-
-const SUBFOLDER_OPTIONS: Record<string, string[]> = {
-  '003-Clubs': ['NSW', 'QLD', 'TAS', 'WA', 'ACT', 'SA', 'A - RSL', 'A - AFL', 'VIC'],
-  '003-Hardware': ['SA', 'QLD', 'TAS', 'ACT', 'NSW', 'WA', 'VIC'],
-  '003-Health Care': ['SA', 'TAS', 'QLD', 'NSW', 'WA', 'ACT', 'VIC'],
-  '003-Hotels': ['WA', 'TAS', 'QLD', 'SA', 'VIC', 'ACT', 'NSW'],
-  '003-Others': ['QLD', 'ACT', 'TAS', 'NT', 'SA', 'NSW', 'WA', 'VIC'],
-  '003-Supermarkets': ['WA', 'SA', 'QLD', 'NSW', 'VIC', 'TAS', 'A - Reddrop', 'A - Sercon', 'ACT', 'A - Ben Ryan'],
-};
+import React, { useEffect, useState } from "react";
+import {
+  fetchIndustryFolders,
+  fetchSubfolders,
+  type DriveFolderOption,
+} from "@/lib/member-folder-api";
 
 interface Props {
+  token: string;
   industry: string;
-  setIndustry: (value: string) => void;
+  industryFolderId: string;
+  setIndustry: (name: string, folderId: string) => void;
   subfolder: string;
-  setSubfolder: (value: string) => void;
+  setSubfolder: (name: string, folderId: string) => void;
   step: number;
 }
 
-const IndustrySubfolderSelector: React.FC<Props> = ({ industry, setIndustry, subfolder, setSubfolder, step }) => {
+const IndustrySubfolderSelector: React.FC<Props> = ({
+  token,
+  industry,
+  industryFolderId,
+  setIndustry,
+  subfolder,
+  setSubfolder,
+  step,
+}) => {
+  const [industries, setIndustries] = useState<DriveFolderOption[]>([]);
+  const [subfolders, setSubfolders] = useState<DriveFolderOption[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!token || step !== 4) return;
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    fetchIndustryFolders(token)
+      .then((folders) => {
+        if (!cancelled) setIndustries(folders);
+      })
+      .catch((err: Error) => {
+        if (!cancelled) setError(err.message);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token, step]);
+
+  useEffect(() => {
+    if (!token || step !== 5 || !industryFolderId) return;
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    fetchSubfolders(token, industryFolderId)
+      .then((folders) => {
+        if (!cancelled) setSubfolders(folders);
+      })
+      .catch((err: Error) => {
+        if (!cancelled) setError(err.message);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token, step, industryFolderId]);
+
+  const handleIndustryChange = (name: string) => {
+    const match = industries.find((f) => f.name === name);
+    setIndustry(name, match?.id ?? "");
+  };
+
+  const handleSubfolderChange = (name: string) => {
+    const match = subfolders.find((f) => f.name === name);
+    setSubfolder(name, match?.id ?? "");
+  };
+
   return (
     <div className="space-y-4">
       {step === 4 && (
         <div>
           <label className="block font-medium mb-1">Industry Classification</label>
           <select
-            className="w-full border rounded p-2"
+            className="w-full border rounded p-2 dark:border-dark-3 dark:bg-dark-2"
             value={industry}
-            onChange={e => setIndustry(e.target.value)}
+            onChange={(e) => handleIndustryChange(e.target.value)}
+            disabled={loading}
           >
-            <option value="">Select industry...</option>
-            {INDUSTRY_OPTIONS.map(opt => (
-              <option key={opt} value={opt}>{opt}</option>
+            <option value="">{loading ? "Loading folders…" : "Select industry..."}</option>
+            {industries.map((opt) => (
+              <option key={opt.id} value={opt.name}>
+                {opt.name}
+              </option>
             ))}
           </select>
         </div>
@@ -48,19 +105,23 @@ const IndustrySubfolderSelector: React.FC<Props> = ({ industry, setIndustry, sub
         <div>
           <label className="block font-medium mb-1">Subfolder (State/Classification)</label>
           <select
-            className="w-full border rounded p-2"
+            className="w-full border rounded p-2 dark:border-dark-3 dark:bg-dark-2"
             value={subfolder}
-            onChange={e => setSubfolder(e.target.value)}
+            onChange={(e) => handleSubfolderChange(e.target.value)}
+            disabled={loading}
           >
-            <option value="">Select subfolder...</option>
-            {SUBFOLDER_OPTIONS[industry]?.map(opt => (
-              <option key={opt} value={opt}>{opt}</option>
+            <option value="">{loading ? "Loading subfolders…" : "Select subfolder..."}</option>
+            {subfolders.map((opt) => (
+              <option key={opt.id} value={opt.name}>
+                {opt.name}
+              </option>
             ))}
           </select>
         </div>
       )}
+      {error ? <p className="text-sm text-red-600">{error}</p> : null}
     </div>
   );
 };
 
-export default IndustrySubfolderSelector; 
+export default IndustrySubfolderSelector;
