@@ -90,6 +90,7 @@ export const JOB_GROUPS: NavGroupItem[] = [
     icon: Leaf,
     items: [
       { title: "Linked entities", url: "/ghg-reporting/entities" },
+      { title: "Data disclosure", url: "/ghg-reporting/data-disclosure" },
       { title: "WIP review", url: "/ghg-reporting" },
     ],
   },
