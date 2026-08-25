@@ -53,7 +53,7 @@ export interface TestimonialSolutionContentItem {
   sdg_impact_for_solution: string;
 }
 
-const emptyItem = (solution_type: string, solution_type_label: string): TestimonialSolutionContentItem => ({
+export const emptyItem = (solution_type: string, solution_type_label: string): TestimonialSolutionContentItem => ({
   solution_type,
   solution_type_label,
   key_outcome_metrics: "Cost Savings and Efficiency",

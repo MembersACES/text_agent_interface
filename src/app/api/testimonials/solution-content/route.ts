@@ -95,3 +95,48 @@ export async function PUT(req: NextRequest) {
     );
   }
 }
+
+/**
+ * POST: Create a staff-defined solution type. Body: { solution_type_label, ...fields }.
+ */
+export async function POST(req: NextRequest) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const body = await req.json();
+    const requestHost = req.headers.get("x-forwarded-host") || req.headers.get("host") || "";
+    const backendUrl = getApiBaseUrl(requestHost);
+    const token = (session as any)?.id_token || (session as any)?.accessToken;
+    const apiKey = process.env.BACKEND_API_KEY || "test-key";
+    const authToken =
+      token && token !== "undefined" && typeof token === "string" ? token : apiKey;
+
+    const backendResponse = await fetch(`${backendUrl}/api/testimonials/solution-content`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${authToken}`,
+      },
+      body: JSON.stringify(body),
+    });
+
+    const data = await backendResponse.json().catch(() => ({}));
+    if (!backendResponse.ok) {
+      const detail = data.detail || data.error || "Failed to create type";
+      return NextResponse.json(
+        { error: typeof detail === "string" ? detail : "Failed to create type" },
+        { status: backendResponse.status }
+      );
+    }
+    return NextResponse.json(data);
+  } catch (error: any) {
+    console.error("Error creating testimonial solution type:", error);
+    return NextResponse.json(
+      { error: error.message || "Failed to create type" },
+      { status: 500 }
+    );
+  }
+}

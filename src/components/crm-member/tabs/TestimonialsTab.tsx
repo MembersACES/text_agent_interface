@@ -188,6 +188,9 @@ export function TestimonialsTab({ businessInfo, clientId }: TestimonialsTabProps
   const [editFileId, setEditFileId] = useState("");
   const [editFileName, setEditFileName] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
+  const [typeOptions, setTypeOptions] = useState<{ id: string; label: string }[]>(() =>
+    Object.entries(SOLUTION_TYPE_LABELS).map(([id, label]) => ({ id, label }))
+  );
   const { showToast } = useToast();
 
   const fetchTestimonials = useCallback(async () => {
@@ -214,6 +217,25 @@ export function TestimonialsTab({ businessInfo, clientId }: TestimonialsTabProps
     if (!businessName) return;
     fetchTestimonials();
   }, [businessName, fetchTestimonials]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/testimonials/solution-content")
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        if (cancelled || !Array.isArray(data) || data.length === 0) return;
+        setTypeOptions(
+          data.map((item: { solution_type?: string; solution_type_label?: string }) => ({
+            id: String(item.solution_type || ""),
+            label: String(item.solution_type_label || item.solution_type || ""),
+          })).filter((opt: { id: string }) => opt.id)
+        );
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!businessName || !showModal) return;
@@ -251,7 +273,10 @@ export function TestimonialsTab({ businessInfo, clientId }: TestimonialsTabProps
       if (driveUrl?.trim()) form.append("gdrive_folder_url", driveUrl.trim());
       if (uploadSolutionTypeId && uploadSolutionTypeId !== "custom") {
         form.append("testimonial_solution_type_id", uploadSolutionTypeId);
-        const label = SOLUTION_TYPE_LABELS[uploadSolutionTypeId] ?? uploadSolutionTypeId;
+        const label =
+          typeOptions.find((opt) => opt.id === uploadSolutionTypeId)?.label ??
+          SOLUTION_TYPE_LABELS[uploadSolutionTypeId] ??
+          uploadSolutionTypeId;
         form.append("testimonial_type", label);
       } else if (uploadSolutionTypeId === "custom" && uploadCustomType.trim()) {
         form.append("testimonial_type", uploadCustomType.trim());
@@ -929,9 +954,9 @@ export function TestimonialsTab({ businessInfo, clientId }: TestimonialsTabProps
                   className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100"
                 >
                   <option value="">Select testimonial type</option>
-                  {Object.entries(SOLUTION_TYPE_LABELS).map(([id, label]) => (
-                    <option key={id} value={id}>
-                      {label}
+                  {typeOptions.map((opt) => (
+                    <option key={opt.id} value={opt.id}>
+                      {opt.label}
                     </option>
                   ))}
                 </select>
@@ -1129,9 +1154,9 @@ export function TestimonialsTab({ businessInfo, clientId }: TestimonialsTabProps
                   className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100"
                 >
                   <option value="">Select testimonial type (optional)</option>
-                  {Object.entries(SOLUTION_TYPE_LABELS).map(([id, label]) => (
-                    <option key={id} value={id}>
-                      {label}
+                  {typeOptions.map((opt) => (
+                    <option key={opt.id} value={opt.id}>
+                      {opt.label}
                     </option>
                   ))}
                   <option value="custom">Other / non-match testimonial (custom)</option>
