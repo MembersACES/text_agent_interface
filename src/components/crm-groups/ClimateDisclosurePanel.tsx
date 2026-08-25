@@ -115,7 +115,12 @@ interface ClimateDisclosureModalProps {
   saving: boolean;
   /** Active (saved) slug — drives the actions + rollup section. */
   activeSlug: string;
-  onSync: () => void;
+  /**
+   * Refresh every member's invoice data. Awaited before the workspace opens so the
+   * workspace computes from current data. Phase 1 of ONE_CLICK_REFRESH_SPEC: this
+   * is no longer a button of its own — see the footer.
+   */
+  onSync: () => Promise<void> | void;
   syncing: boolean;
   syncProgress?: string | null;
   membersInRollup?: number | null;
@@ -149,6 +154,20 @@ export function ClimateDisclosureModal({
 }: ClimateDisclosureModalProps) {
   const hasSlug = activeSlug.length > 0;
 
+  /**
+   * The single action for a group: refresh every member's data, then open the
+   * workspace — which computes and commits on load. Replaces the old pairing of a
+   * "Sync all in rollup" button next to a plain "Open Prograde" link, where the
+   * two had to be pressed in the right order and nothing said so.
+   */
+  const refreshAndOpen = async () => {
+    try {
+      await onSync();
+    } finally {
+      window.open(progradeWorkspaceUrl(activeSlug), "_blank", "noopener,noreferrer");
+    }
+  };
+
   return (
     <Modal
       open={open}
@@ -163,42 +182,41 @@ export function ClimateDisclosureModal({
       }
       footer={
         <div className="flex items-center justify-between gap-3">
-          {hasSlug ? (
-            <a
-              href={progradeWorkspaceUrl(activeSlug)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-            >
-              <ExternalLink className="size-3.5" aria-hidden />
-              Open Prograde
-            </a>
+          {syncing ? (
+            <span className="inline-flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+              <RefreshCw className="size-3.5 animate-spin" aria-hidden />
+              {syncProgress ? `Bringing in data… ${syncProgress}` : "Bringing in data…"}
+            </span>
           ) : (
-            <span />
+            <span className="text-xs text-gray-500 dark:text-gray-400">
+              {hasSlug
+                ? "Refreshes every site in the rollup, then opens the workspace."
+                : "Save a slug to enable the workspace."}
+            </span>
           )}
           <div className="flex items-center gap-2">
-            {hasSlug ? (
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                loading={syncing}
-                disabled={syncing}
-                onClick={onSync}
-              >
-                <RefreshCw className="size-3.5" aria-hidden />
-                {syncProgress ? `Syncing… ${syncProgress}` : "Sync all in rollup"}
-              </Button>
-            ) : null}
             <Button
               type="button"
               size="sm"
               loading={saving}
               disabled={saving}
+              variant={hasSlug ? "secondary" : "primary"}
               onClick={onSave}
             >
               Save slug
             </Button>
+            {hasSlug ? (
+              <Button
+                type="button"
+                size="sm"
+                loading={syncing}
+                disabled={syncing}
+                onClick={() => void refreshAndOpen()}
+              >
+                <ExternalLink className="size-3.5" aria-hidden />
+                Open Prograde workspace
+              </Button>
+            ) : null}
           </div>
         </div>
       }

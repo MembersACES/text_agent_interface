@@ -635,7 +635,7 @@ export default function CrmGroupHubPage() {
         onSave={() => void saveGroupReportingEntity()}
         saving={savingReportingEntity}
         activeSlug={climateRollupSlug}
-        onSync={() => void runGroupSyncAll()}
+        onSync={runGroupSyncAll}
         syncing={syncAllLoading}
         syncProgress={syncAllProgress}
         membersInRollup={summary.members_in_climate_rollup}
