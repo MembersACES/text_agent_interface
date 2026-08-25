@@ -7,6 +7,7 @@ import {
   ClipboardList,
   FileText,
   FolderPlus,
+  Handshake,
   LayoutDashboard,
   Leaf,
   ListTodo,
@@ -42,6 +43,8 @@ interface SearchResult {
 const QUICK_ACTIONS = [
   { href: "/crm-members?openAdd=1", label: "Add new member", icon: UserPlus, section: "Actions" },
   { href: "/loa-upload", label: "Google Drive — New Member", icon: FolderPlus, section: "Actions" },
+  { href: "/distributors", label: "Distributors", icon: Handshake, section: "Navigate" },
+  { href: "/distributor-folder-creation", label: "Distributor folder from agreement", icon: FolderPlus, section: "Actions" },
   { href: "/tasks", label: "View all tasks", icon: ClipboardList, section: "Actions" },
   { href: "/crm", label: "CRM dashboard", icon: LayoutDashboard, section: "Navigate" },
   { href: "/crm-members", label: "Browse members", icon: Users, section: "Navigate" },

@@ -10,7 +10,8 @@ import { cn } from "@/lib/utils";
 import Image from "next/image";
 import { useState, useEffect } from "react";
 import { LogOutIcon } from "./icons";
-import { useSession, signOut, signIn } from "next-auth/react";
+import { useSession, signOut } from "next-auth/react";
+import { reauthWithGoogle } from "@/lib/google-reauth";
 
 function getInitials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -35,10 +36,7 @@ export function UserInfo() {
     setIsReauthenticating(true);
 
     try {
-      await signIn("google", {
-        callbackUrl: window.location.href,
-        prompt: "consent",
-      });
+      await reauthWithGoogle(window.location.href);
     } catch (error) {
       console.error("Reauthentication failed:", error);
     } finally {
@@ -112,6 +110,14 @@ export function UserInfo() {
         <hr className="border-[#E8E8E8] dark:border-dark-3" />
 
         <div className="p-2 text-base text-gray-600 dark:text-dark-6">
+          <button
+            type="button"
+            className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[9px] hover:bg-gray-2 hover:text-dark dark:hover:bg-dark-3 dark:hover:text-white"
+            onClick={() => void handleAutoReauth()}
+            disabled={isReauthenticating}
+          >
+            <span className="text-base font-medium">Re-auth with Google</span>
+          </button>
           <button
             type="button"
             className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[9px] hover:bg-gray-2 hover:text-dark dark:hover:bg-dark-3 dark:hover:text-white"

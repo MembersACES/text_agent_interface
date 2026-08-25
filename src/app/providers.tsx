@@ -4,6 +4,7 @@ import { SidebarProvider } from "@/components/Layouts/sidebar/sidebar-context";
 import { ThemeProvider } from "next-themes";
 import { SessionProvider, useSession, signIn } from "next-auth/react";
 import { useEffect } from "react";
+import { usePathname } from "next/navigation";
 import { ToastProvider } from "@/components/ui/toast";
 import { CommandPaletteProvider } from "@/components/CommandPaletteContext";
 import { UnsavedChangesProvider } from "@/components/unsaved-changes/nav-guard-context";
@@ -16,26 +17,26 @@ import { BRAND } from "@/lib/brand";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 
+function isDedicatedAuthPath(pathname: string): boolean {
+  return pathname.startsWith("/auth/") || pathname.startsWith("/api/auth/");
+}
+
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { data: session, status } = useSession();
+  const pathname = usePathname() || "";
+  const onAuthPage = isDedicatedAuthPath(pathname);
 
   useEffect(() => {
-    if (status === "unauthenticated") {
-      // Preserve the current URL when redirecting to sign in
-      const currentUrl = window.location.pathname + window.location.search;
-      signIn("google", { callbackUrl: currentUrl });
-    }
-  }, [status]);
+    if (status !== "unauthenticated" || onAuthPage) return;
+    const currentUrl = pathname + window.location.search;
+    signIn("google", { callbackUrl: currentUrl });
+  }, [status, onAuthPage, pathname]);
 
-  // Handle token refresh errors
   useEffect(() => {
-    if (session?.error === "RefreshAccessTokenError") {
-      console.log("Token refresh failed, redirecting to sign in...");
-      // Preserve the current URL when redirecting to sign in
-      const currentUrl = window.location.pathname + window.location.search;
-      signIn("google", { callbackUrl: currentUrl }); // Force re-authentication
-    }
-  }, [session]);
+    if (session?.error !== "RefreshAccessTokenError" || onAuthPage) return;
+    const currentUrl = pathname + window.location.search;
+    signIn("google", { callbackUrl: currentUrl, prompt: "consent" });
+  }, [session, onAuthPage, pathname]);
 
   const allowedDomainsLabel = formatAllowedDomainsLabel();
   const userEmail = session?.user?.email || "";
@@ -55,6 +56,9 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   }
 
   if (status === "unauthenticated") {
+    if (onAuthPage) {
+      return <>{children}</>;
+    }
     return (
       <div className="flex min-h-screen items-center justify-center bg-canvas dark:bg-canvas-dark">
         <div className="max-w-sm rounded-2xl border border-stroke bg-white p-8 text-center shadow-lg dark:border-dark-3 dark:bg-gray-dark">
