@@ -452,7 +452,10 @@ export function ClimateTab({
           utility_type: site.utilityType,
           identifier: site.identifier.trim(),
           reporting_period_label: period,
-          max_records: 100,
+          // Staging is no longer FY-scoped, so pull the site's full invoice history
+          // in one go. 500 is the backend/Airtable ceiling; the response's
+          // diagnostics.total_count reveals any truncation beyond that.
+          max_records: 500,
           dry_run: dryRun,
         }),
       });
