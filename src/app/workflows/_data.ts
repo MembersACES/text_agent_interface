@@ -63,6 +63,7 @@ export const WORKFLOW_CARD_GROUPS: { label: string; cards: WorkflowCard[] }[] = 
       { title: "Document Generation", description: "Create and manage member documents", href: "/document-generation", icon: FileCheck, color: "from-orange-500 to-amber-600" },
       { title: "Signed Agreement Lodgement", description: "Lodge signed agreements", href: "/signed-agreement-lodgement", icon: FileUp, color: "from-emerald-500 to-teal-600" },
       { title: "1st Month Savings Invoice", description: "First month savings invoicing", href: "/one-month-savings", icon: Receipt, color: "from-cyan-500 to-blue-600" },
+      { title: "Unsigned pipeline", description: "Load by state and invoice PDFs for unsigned sites", href: "/unsigned-pipeline", icon: FolderPlus, color: "from-orange-600 to-amber-700" },
     ],
   },
   {

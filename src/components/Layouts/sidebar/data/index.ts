@@ -73,6 +73,7 @@ export const JOB_GROUPS: NavGroupItem[] = [
     icon: Wallet,
     items: [
       { title: "Invoice & Data Lodgement", url: "/document-lodgement" },
+      { title: "Unsigned pipeline", url: "/unsigned-pipeline" },
       { title: "Invoicing", url: "/invoicing" },
     ],
   },
