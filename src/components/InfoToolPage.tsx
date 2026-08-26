@@ -12,6 +12,11 @@ import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { InsightCallout } from "@/components/dashboard";
 import { AlertCircle } from "lucide-react";
+import { LinkedAutonomousFollowupBar } from "@/components/autonomous/LinkedAutonomousFollowupBar";
+import {
+  AUTONOMOUS_SEQUENCE_CI_ELECTRICITY_OFFER as AUTONOMOUS_SEQUENCE_CI_ELECTRICITY,
+  SEQUENCE_LINK_CI_ELECTRICITY_OFFER,
+} from "@/lib/autonomous-sequence-keys";
 
 // Normalize document link before sending to API: strip leading =, fix https:/ → https://.
 function normalizeDocumentLink(link: string | undefined): string | undefined {
@@ -276,9 +281,6 @@ interface ElectricityInvoiceData {
   };
 }
 
-
-/** Utility Invoice Info → C&I Electricity Offer template (not Base 2). */
-const AUTONOMOUS_SEQUENCE_CI_ELECTRICITY = "ci_electricity_offer";
 
 /** Matches the n8n C&I electricity comparison outbound footer (team signature). */
 const ACES_ELECTRICITY_FOLLOWUP_SIGNATURE_HTML = `<p style="margin-bottom:0;">Kind regards,</p>
@@ -1894,6 +1896,10 @@ function CIElectricityOfferModal({
               </tr>
             </tbody>
           </table>
+        </div>
+
+        <div style={{ marginBottom: 12, padding: "8px 10px", background: "#eef2ff", borderRadius: 8, border: "1px solid #e0e7ff" }}>
+          <LinkedAutonomousFollowupBar links={[SEQUENCE_LINK_CI_ELECTRICITY_OFFER]} />
         </div>
 
         <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
