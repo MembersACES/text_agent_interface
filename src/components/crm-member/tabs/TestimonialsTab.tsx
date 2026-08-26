@@ -173,7 +173,6 @@ export function TestimonialsTab({ businessInfo, clientId }: TestimonialsTabProps
   const [invoices, setInvoices] = useState<SavingsInvoiceSummary[]>([]);
   const [invoicesLoading, setInvoicesLoading] = useState(false);
   const [uploadSolutionTypeId, setUploadSolutionTypeId] = useState<string>("");
-  const [uploadCustomType, setUploadCustomType] = useState<string>("");
   const [uploadSavingsText, setUploadSavingsText] = useState<string>("");
   const [showQuickGenerate, setShowQuickGenerate] = useState(false);
   const [quickSolutionTypeId, setQuickSolutionTypeId] = useState<string>("");
@@ -272,15 +271,13 @@ export function TestimonialsTab({ businessInfo, clientId }: TestimonialsTabProps
       form.append("status", uploadStatus);
       if (uploadInvoiceNumber.trim()) form.append("invoice_number", uploadInvoiceNumber.trim());
       if (driveUrl?.trim()) form.append("gdrive_folder_url", driveUrl.trim());
-      if (uploadSolutionTypeId && uploadSolutionTypeId !== "custom") {
+      if (uploadSolutionTypeId) {
         form.append("testimonial_solution_type_id", uploadSolutionTypeId);
         const label =
           typeOptions.find((opt) => opt.id === uploadSolutionTypeId)?.label ??
           SOLUTION_TYPE_LABELS[uploadSolutionTypeId] ??
           uploadSolutionTypeId;
         form.append("testimonial_type", label);
-      } else if (uploadSolutionTypeId === "custom" && uploadCustomType.trim()) {
-        form.append("testimonial_type", uploadCustomType.trim());
       }
       if (uploadSavingsText.trim()) {
         form.append("testimonial_savings", uploadSavingsText.trim());
@@ -302,7 +299,6 @@ export function TestimonialsTab({ businessInfo, clientId }: TestimonialsTabProps
         setUploadStatus(DEFAULT_TESTIMONIAL_STATUS);
         setUploadResult("");
         setUploadSolutionTypeId("");
-        setUploadCustomType("");
         setUploadSavingsText("");
       }, 1500);
     } catch (e: any) {
@@ -654,7 +650,6 @@ export function TestimonialsTab({ businessInfo, clientId }: TestimonialsTabProps
                   setUploadStatus(DEFAULT_TESTIMONIAL_STATUS);
                   setUploadResult("");
                   setUploadSolutionTypeId("");
-                  setUploadCustomType("");
                   setUploadSavingsText("");
                 }}
                 className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
@@ -1089,7 +1084,6 @@ export function TestimonialsTab({ businessInfo, clientId }: TestimonialsTabProps
               setUploadStatus(DEFAULT_TESTIMONIAL_STATUS);
               setUploadResult("");
               setUploadSolutionTypeId("");
-              setUploadCustomType("");
               setUploadSavingsText("");
             }
           }}
@@ -1164,17 +1158,7 @@ export function TestimonialsTab({ businessInfo, clientId }: TestimonialsTabProps
                       {opt.label}
                     </option>
                   ))}
-                  <option value="custom">Other / non-match testimonial (custom)</option>
                 </select>
-                {uploadSolutionTypeId === "custom" && (
-                  <input
-                    type="text"
-                    value={uploadCustomType}
-                    onChange={(e) => setUploadCustomType(e.target.value)}
-                    placeholder="Describe the testimonial type (e.g. LED upgrade case study)"
-                    className="mt-2 w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100"
-                  />
-                )}
               </div>
               <div>
                 <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
@@ -1216,7 +1200,6 @@ export function TestimonialsTab({ businessInfo, clientId }: TestimonialsTabProps
                     setUploadStatus(DEFAULT_TESTIMONIAL_STATUS);
                     setUploadResult("");
                     setUploadSolutionTypeId("");
-                    setUploadCustomType("");
                     setUploadSavingsText("");
                   }
                 }}
