@@ -4,6 +4,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { getApiBaseUrl, getAutonomousApiBaseUrl } from "@/lib/utils";
+import { LinkedAutonomousFollowupBar } from "@/components/autonomous/LinkedAutonomousFollowupBar";
+import { SEQUENCE_LINK_SOLAR_FOLLOWUP } from "@/lib/autonomous-sequence-keys";
 
 type StaffUser = { id: number; email: string; name?: string; full_name?: string };
 
@@ -1074,6 +1076,9 @@ export default function SolarCleaningQuotePage() {
 
         {/* ── Full-width action footer ── */}
         <div className="space-y-3 pt-1">
+          <div className="rounded-xl border border-indigo-100 bg-indigo-50/80 px-3 py-2 dark:border-indigo-900/40 dark:bg-indigo-950/25">
+            <LinkedAutonomousFollowupBar links={[SEQUENCE_LINK_SOLAR_FOLLOWUP]} />
+          </div>
           <button
             type="button"
             onClick={handleGenerate}

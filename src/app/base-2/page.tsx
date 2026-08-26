@@ -19,9 +19,9 @@ import {
   AUTONOMOUS_SEQUENCE_BNE_GAS,
   AUTONOMOUS_SEQUENCE_CI_ELECTRICITY,
   AUTONOMOUS_SEQUENCE_CI_GAS,
-  BASE2_SEQUENCE_LINKS,
+  sequenceLinksForBase2Comparison,
 } from "@/lib/autonomous-sequence-keys";
-import Link from "next/link";
+import { LinkedAutonomousFollowupBar } from "@/components/autonomous/LinkedAutonomousFollowupBar";
 
 /** SME Gas → C&I comparison: how current SME bill is interpreted in the UI */
 type SmeGasComparisonMode = "invoice_blocks" | "ci_offer" | "sme_benchmark_stub";
@@ -918,49 +918,8 @@ export default function Base2Page() {
     open: false,
     comparison: null,
   });
-  const [linkedTemplates, setLinkedTemplates] = useState<
-    { sequence_type: string; display_name: string; is_active: boolean }[]
-  >([]);
-  const [linkedTemplatesLoading, setLinkedTemplatesLoading] = useState(false);
-  const [linkedTemplatesError, setLinkedTemplatesError] = useState<string | null>(null);
 
   const token = (session as any)?.id_token;
-
-  useEffect(() => {
-    if (!token) return;
-    let cancelled = false;
-    const load = async () => {
-      setLinkedTemplatesLoading(true);
-      setLinkedTemplatesError(null);
-      try {
-        const res = await fetch(`${getAutonomousApiBaseUrl()}/api/autonomous/sequences/templates`, {
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        });
-        const data = await res.json().catch(() => []);
-        if (!res.ok) throw new Error(typeof data?.detail === "string" ? data.detail : "Failed to load templates");
-        if (!cancelled && Array.isArray(data)) {
-          setLinkedTemplates(
-            data.map((t: { sequence_type?: string; display_name?: string; is_active?: boolean }) => ({
-              sequence_type: String(t.sequence_type || ""),
-              display_name: String(t.display_name || t.sequence_type || ""),
-              is_active: t.is_active !== false,
-            })),
-          );
-        }
-      } catch (e: unknown) {
-        if (!cancelled) {
-          setLinkedTemplates([]);
-          setLinkedTemplatesError(e instanceof Error ? e.message : "Failed to load templates");
-        }
-      } finally {
-        if (!cancelled) setLinkedTemplatesLoading(false);
-      }
-    };
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, [token]);
 
   // Next.js can hydrate search params after the first paint; state from useState(initial) does not re-run.
   // Sync CRM context (businessName / businessInfo) when the URL updates so offers & activities still post.
@@ -2999,6 +2958,17 @@ export default function Base2Page() {
       );
     }
 
+    const followupLinks = sequenceLinksForBase2Comparison(comparison);
+    if (followupLinks.length > 0) {
+      rows.push(
+        <tr key="linked-followup">
+          <td colSpan={6} className="bg-indigo-50/80 px-3 py-2 dark:bg-indigo-950/25">
+            <LinkedAutonomousFollowupBar links={followupLinks} />
+          </td>
+        </tr>
+      );
+    }
+
     return rows;
   };
 
@@ -3077,77 +3047,6 @@ export default function Base2Page() {
             <Base2ComparisonDefaultsEditor onSaved={applyBase2Defaults} />
           </div>
         </details>
-
-        <div className="mb-5 rounded-xl border border-indigo-100 bg-white shadow-sm dark:border-indigo-900/40 dark:bg-gray-dark">
-          <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 border-b border-indigo-50 dark:border-indigo-900/40">
-            <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">Linked autonomous follow-ups</h2>
-            <Link
-              href="/autonomous-agent?tab=templates"
-              className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 dark:text-indigo-400"
-            >
-              Edit templates →
-            </Link>
-          </div>
-          <div className="px-5 py-3">
-            {linkedTemplatesLoading ? (
-              <p className="text-xs text-gray-400">Loading templates…</p>
-            ) : linkedTemplatesError ? (
-              <p className="text-xs text-amber-700">{linkedTemplatesError}</p>
-            ) : (
-              <ul className="divide-y divide-gray-50 dark:divide-gray-800">
-                {BASE2_SEQUENCE_LINKS.map((link) => {
-                  const tpl = linkedTemplates.find((t) => t.sequence_type === link.sequence_type);
-                  return (
-                    <li key={link.sequence_type} className="flex flex-wrap items-start justify-between gap-2 py-2.5 first:pt-0 last:pb-0">
-                      <div className="min-w-0">
-                        <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">{link.label}</div>
-                        <div className="text-[11px] text-gray-500 mt-0.5">{link.startsWhen}</div>
-                        {tpl ? (
-                          <div className="mt-1 text-sm text-gray-700 dark:text-gray-300">
-                            {tpl.display_name}
-                            <span className="ml-2 font-mono text-[11px] text-gray-400">{tpl.sequence_type}</span>
-                          </div>
-                        ) : (
-                          <div className="mt-1 text-xs text-amber-700">
-                            No template with call key <span className="font-mono">{link.sequence_type}</span>
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        {tpl ? (
-                          <>
-                            <span
-                              className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                                tpl.is_active
-                                  ? "bg-emerald-100 text-emerald-700"
-                                  : "bg-gray-100 text-gray-500"
-                              }`}
-                            >
-                              {tpl.is_active ? "Active" : "Inactive"}
-                            </span>
-                            <Link
-                              href={`/autonomous-agent?tab=templates&type=${encodeURIComponent(link.sequence_type)}`}
-                              className="text-xs font-semibold text-indigo-600 hover:text-indigo-800"
-                            >
-                              Edit
-                            </Link>
-                          </>
-                        ) : (
-                          <Link
-                            href="/autonomous-agent?tab=templates"
-                            className="text-xs font-semibold text-indigo-600 hover:text-indigo-800"
-                          >
-                            Create
-                          </Link>
-                        )}
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </div>
-        </div>
 
         {/* Business Information Card */}
         {businessInfo && (

@@ -14,6 +14,8 @@ import { ToolPageLayout } from "@/components/Layouts/ToolPageLayout";
 import { BusinessSearchBar, WorkflowSection } from "@/components/workflow";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
+import { LinkedAutonomousFollowupBar } from "@/components/autonomous/LinkedAutonomousFollowupBar";
+import { SEQUENCE_LINK_SOLAR_ENGAGEMENT } from "@/lib/autonomous-sequence-keys";
 
 interface BusinessInfo {
   business_name: string;
@@ -1177,7 +1179,13 @@ export default function DocumentGenerationPage() {
             }}
           />
           {lastClientDocSendContext && (
-            <div className="mt-4 flex flex-wrap items-center gap-3">
+            <div className="mt-4 space-y-3">
+              {canSendClientDocViaN8n(lastClientDocSendContext) && (
+                <div className="rounded-xl border border-indigo-100 bg-indigo-50/80 px-3 py-2 dark:border-indigo-900/40 dark:bg-indigo-950/25">
+                  <LinkedAutonomousFollowupBar links={[SEQUENCE_LINK_SOLAR_ENGAGEMENT]} />
+                </div>
+              )}
+              <div className="flex flex-wrap items-center gap-3">
               {canSendClientDocViaN8n(lastClientDocSendContext) && (
                 <button
                   type="button"
@@ -1201,6 +1209,7 @@ export default function DocumentGenerationPage() {
                   </>
                 )}
               </p>
+            </div>
             </div>
           )}
         </div>
