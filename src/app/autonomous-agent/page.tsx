@@ -333,6 +333,8 @@ export default function AutonomousAgentPage() {
             signature_html: template.signature_html ?? "",
             extra_context: template.extra_context ?? "",
             sequence_type: template.sequence_type,
+            validity_mode: template.validity_mode ?? "fixed_days",
+            validity_days: template.validity_days ?? 7,
           }),
         },
       );

@@ -739,11 +739,20 @@ type AutonomousCiLane = "ci_gas" | "ci_electricity" | "bne_gas";
 function buildComparisonSnapshot(
   lane: AutonomousCiLane,
   laneSuccess: { util: UtilityComparison; result: Record<string, unknown> }[],
+  // The gas/B&E n8n webhook does not return annual_savings, so the snapshot stored
+  // null and the autonomous follow-up had no figure to quote (it then invented one
+  // -- Frankston RSL, 24/08/2026). The savings number is already computed in the UI
+  // and rendered on screen; pass it in so the same figure reaches the email.
+  fallbackAnnualSavings?: number | null,
 ): Record<string, unknown> | undefined {
   if (!laneSuccess.length) return undefined;
   const { util, result } = laneSuccess[0];
   const fin = {
-    annual_savings: normalizeMoneyToNumber(result.annual_savings) ?? null,
+    annual_savings:
+      normalizeMoneyToNumber(result.annual_savings)
+      ?? (fallbackAnnualSavings != null && Number.isFinite(fallbackAnnualSavings)
+        ? Number(fallbackAnnualSavings.toFixed(2))
+        : null),
     current_cost: normalizeMoneyToNumber(result.current_cost) ?? null,
     new_cost: normalizeMoneyToNumber(result.new_cost) ?? null,
   };
@@ -2304,7 +2313,10 @@ export default function Base2Page() {
               if (slug) {
                 const comparisonDocLink = (result.pdf_document_link ?? result.pdf_DMA_link ?? result.spreadsheet_document_link) || undefined; const utilityType = simpleUtilityType(util); const identifierKey = util.utilityType.includes('Electricity') ? 'nmi' : util.utilityType.includes('Gas') ? 'mrin' : util.utilityType === 'Waste' ? 'account_number' : util.utilityType === 'Oil' ? 'account_name' : 'identifier';
                 const metadata: Record<string, any> = { utility_type: utilityType, [identifierKey]: util.identifier, comparison_type: slug, source: 'base2_page' };
-                const normAnnual = normalizeMoneyToNumber((result as any).annual_savings); if (normAnnual != null) metadata.annual_savings = normAnnual;
+                const uiAnnual = calculateSavings(util)?.totalAnnualSavings;
+                const normAnnual = normalizeMoneyToNumber((result as any).annual_savings)
+                  ?? (typeof uiAnnual === "number" && Number.isFinite(uiAnnual) ? Number(uiAnnual.toFixed(2)) : null);
+                if (normAnnual != null) metadata.annual_savings = normAnnual;
                 const normCurrent = normalizeMoneyToNumber((result as any).current_cost); if (normCurrent != null) metadata.current_cost = normCurrent;
                 const normNew = normalizeMoneyToNumber((result as any).new_cost); if (normNew != null) metadata.new_cost = normNew;
                 const normAnnualUsage = normalizeMoneyToNumber((result as any).annual_usage_gj); if (normAnnualUsage != null) metadata.annual_usage_gj = normAnnualUsage;
@@ -2994,7 +3006,13 @@ export default function Base2Page() {
             if (!firstEmailId) firstEmailId = eid;
           }
         }
-        const comparison_snapshot = buildComparisonSnapshot(lp.lane, lp.laneSuccess);
+        const snapshotUtil = lp.laneSuccess[0]?.util;
+        const uiAnnualSavings = snapshotUtil ? calculateSavings(snapshotUtil)?.totalAnnualSavings : undefined;
+        const comparison_snapshot = buildComparisonSnapshot(
+          lp.lane,
+          lp.laneSuccess,
+          typeof uiAnnualSavings === "number" && Number.isFinite(uiAnnualSavings) ? uiAnnualSavings : null,
+        );
         const sequenceContext: Record<string, unknown> = { ...a.ctxBase, utility_lane: lp.lane, site_identifiers: identifiers };
         if (comparison_snapshot) sequenceContext.comparison_snapshot = comparison_snapshot;
         if (firstEmailId) sequenceContext.email_ID = firstEmailId;

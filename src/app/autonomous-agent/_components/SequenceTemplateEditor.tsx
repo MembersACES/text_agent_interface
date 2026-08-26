@@ -32,6 +32,10 @@ export interface SequenceTemplate {
   is_restartable: boolean;
   signature_html: string | null;
   extra_context?: string | null;
+  /** "none" | "retailer_date" | "fixed_days" - how the offer validity date is decided. */
+  validity_mode?: string;
+  /** Days from send, used only when validity_mode is "fixed_days". */
+  validity_days?: number;
   steps: SequenceTemplateStep[];
 }
 
@@ -361,6 +365,56 @@ export default function SequenceTemplateEditor({
               />
               Restartable
             </label>
+            <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={(template.validity_mode ?? "fixed_days") !== "none"}
+                onChange={(e) =>
+                  updateTemplateLocal(template.id, {
+                    validity_mode: e.target.checked ? "fixed_days" : "none",
+                  })
+                }
+                className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+              />
+              Offer has a validity date
+            </label>
+            {(template.validity_mode ?? "fixed_days") !== "none" && (
+              <>
+                <label className={labelCls}>
+                  Validity source
+                  <select
+                    value={template.validity_mode ?? "fixed_days"}
+                    onChange={(e) => updateTemplateLocal(template.id, { validity_mode: e.target.value })}
+                    className={inputCls}
+                  >
+                    <option value="fixed_days">Fixed window from send</option>
+                    <option value="retailer_date">Retailer&apos;s expiry date (entered per offer)</option>
+                  </select>
+                </label>
+                {(template.validity_mode ?? "fixed_days") === "fixed_days" && (
+                  <label className={labelCls}>
+                    Validity period (days)
+                    <input
+                      type="number"
+                      min={1}
+                      max={365}
+                      value={template.validity_days ?? 7}
+                      onChange={(e) =>
+                        updateTemplateLocal(template.id, {
+                          validity_days: Math.min(365, Math.max(1, Number(e.target.value) || 7)),
+                        })
+                      }
+                      className={inputCls}
+                    />
+                  </label>
+                )}
+                <p className="md:col-span-2 text-xs text-gray-500 dark:text-gray-400">
+                  {(template.validity_mode ?? "fixed_days") === "retailer_date"
+                    ? "The agent quotes only a date supplied with the offer. If none is supplied it says nothing about validity rather than inventing a deadline."
+                    : `The agent asks for a response within ${template.validity_days ?? 7} day(s) of sending. This is our review window, not the retailer's expiry.`}
+                </p>
+              </>
+            )}
           </div>
           <label className={labelCls}>
             Extra context
