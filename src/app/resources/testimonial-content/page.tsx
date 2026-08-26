@@ -4,12 +4,11 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { ChevronDown, FileText, Plus, Search, Trash2 } from "lucide-react";
+import { ChevronDown, Plus, Search, Trash2 } from "lucide-react";
 import { Breadcrumb } from "@/components/ui/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
-import { EmptyState } from "@/components/ui/empty-state";
 import {
   DEFAULT_TESTIMONIAL_SOLUTION_CONTENT,
   SOLUTION_TYPE_LABELS,
@@ -17,9 +16,9 @@ import {
   type TestimonialSolutionContentItem,
 } from "@/lib/testimonial-solution-content";
 import { TESTIMONIAL_CONTENT_SOURCE_HEADER, type TestimonialContentSource } from "@/lib/testimonial-content-source";
-import { DEFAULT_TESTIMONIAL_STATUS, TESTIMONIAL_STATUSES } from "@/constants/crm";
+import { DEFAULT_TESTIMONIAL_STATUS, TESTIMONIAL_STATUSES, type TestimonialStatus } from "@/constants/crm";
 import { useToast } from "@/components/ui/toast";
-import { cn, formatDateAustralian, getApiBaseUrl } from "@/lib/utils";
+import { cn, getApiBaseUrl } from "@/lib/utils";
 import { useDirtyRecord } from "@/hooks/useDirtyRecord";
 import { useRegisterUnsavedGuard } from "@/components/unsaved-changes/nav-guard-context";
 import {
@@ -35,27 +34,71 @@ import {
   snapshotCopy,
   type CopyFieldDef,
 } from "./copy-fields";
+import {
+  TestimonialRecordsPanel,
+  driveInvoiceUrl,
+  extractDriveFileId,
+  invoiceState,
+  matchesInvoiceFilter,
+  NO_INVOICE_RECORDED,
+  rowSolutionTypeId,
+  typeLabel,
+  UNCATEGORISED_FILTER,
+  type ExampleItem,
+  type InvoiceFilter,
+} from "./records-panel";
 
 const INPUT_CLASS =
   "w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary/20 focus:border-primary";
 
 const ALLOWED_UPLOAD_EXT = [".pdf", ".docx", ".doc", ".png", ".jpg", ".jpeg"];
-const EXAMPLES_LIMIT = 20;
+const ALL_EXAMPLES_LIMIT = 500;
 
-type ExampleItem = {
-  id: number;
-  business_name: string;
-  file_name: string;
-  file_id: string;
-  file_link?: string | null;
-  testimonial_savings?: string | null;
-  status?: string | null;
-  created_at?: string | null;
+function fileToBase64(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || "");
+      const comma = result.indexOf(",");
+      resolve(comma >= 0 ? result.slice(comma + 1) : result);
+    };
+    reader.onerror = () => reject(new Error("Could not read that file."));
+    reader.readAsDataURL(file);
+  });
+}
+
+type SavingsInvoice = {
+  invoice_number: string;
+  due_date?: string;
+  total_amount?: number;
+  status?: string;
+  invoice_file_id?: string;
+  pdf_url?: string;
 };
 
-function driveFileUrl(ex: ExampleItem): string {
-  if (ex.file_link) return ex.file_link;
-  return `https://drive.google.com/file/d/${ex.file_id}/view`;
+function invoiceMatchKey(value: string): string {
+  return value.trim().toLowerCase().replace(/[\s-]+/g, "");
+}
+
+function fileIdFromInvoice(inv: SavingsInvoice): string | null {
+  return extractDriveFileId(inv.invoice_file_id) || extractDriveFileId(inv.pdf_url);
+}
+
+function mapExample(t: Record<string, unknown>): ExampleItem {
+  return {
+    id: Number(t.id),
+    business_name: String(t.business_name ?? ""),
+    file_name: String(t.file_name ?? ""),
+    file_id: String(t.file_id ?? ""),
+    file_link: (t.file_link as string | null) ?? null,
+    testimonial_savings: (t.testimonial_savings as string | null) ?? null,
+    testimonial_type: (t.testimonial_type as string | null) ?? null,
+    testimonial_solution_type_id: (t.testimonial_solution_type_id as string | null) ?? null,
+    invoice_number: (t.invoice_number as string | null) ?? null,
+    status: (t.status as string | null) ?? null,
+    source: (t.source as string | null) ?? null,
+    created_at: typeof t.created_at === "string" ? t.created_at : null,
+  };
 }
 
 type CrmMember = {
@@ -117,12 +160,14 @@ function MemberSearchSelect({
   error,
   value,
   onChange,
+  inputId = "upload-business-name",
 }: {
   members: CrmMember[];
   loading: boolean;
   error: string | null;
   value: CrmMember | null;
   onChange: (member: CrmMember | null) => void;
+  inputId?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -151,12 +196,12 @@ function MemberSearchSelect({
       <Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-gray-400" />
       <input
         ref={inputRef}
-        id="upload-business-name"
+        id={inputId}
         type="search"
         autoComplete="off"
         role="combobox"
         aria-expanded={open}
-        aria-controls="upload-member-list"
+        aria-controls={`${inputId}-list`}
         value={displayValue}
         placeholder={loading ? "Loading members…" : error ? "Members unavailable" : "Search CRM members…"}
         disabled={loading || Boolean(error)}
@@ -174,7 +219,7 @@ function MemberSearchSelect({
       <ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-3.5 -translate-y-1/2 text-gray-400" />
       {open && !loading && !error ? (
         <ul
-          id="upload-member-list"
+          id={`${inputId}-list`}
           role="listbox"
           className="absolute z-20 mt-1 max-h-52 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-900"
         >
@@ -218,6 +263,246 @@ function MemberSearchSelect({
           ) : null}
         </ul>
       ) : null}
+    </div>
+  );
+}
+
+function AddTestimonialForm({
+  idPrefix,
+  typeOptions,
+  showTypeSelect,
+  typeId,
+  onTypeChange,
+  members,
+  membersLoading,
+  membersError,
+  onRetryMembers,
+  selectedMember,
+  onMemberChange,
+  file,
+  onFileChange,
+  savings,
+  onSavingsChange,
+  invoiceNumber,
+  onInvoiceNumberChange,
+  invoices,
+  invoicesLoading,
+  invoiceFile,
+  onInvoiceFileChange,
+  status,
+  onStatusChange,
+}: {
+  idPrefix: string;
+  typeOptions: { id: string; label: string }[];
+  showTypeSelect: boolean;
+  typeId: string;
+  onTypeChange: (value: string) => void;
+  members: CrmMember[];
+  membersLoading: boolean;
+  membersError: string | null;
+  onRetryMembers: () => void;
+  selectedMember: CrmMember | null;
+  onMemberChange: (member: CrmMember | null) => void;
+  file: File | null;
+  onFileChange: (file: File | null) => void;
+  savings: string;
+  onSavingsChange: (value: string) => void;
+  invoiceNumber: string;
+  onInvoiceNumberChange: (value: string) => void;
+  invoices: SavingsInvoice[];
+  invoicesLoading: boolean;
+  invoiceFile: File | null;
+  onInvoiceFileChange: (file: File | null) => void;
+  status: TestimonialStatus;
+  onStatusChange: (value: TestimonialStatus) => void;
+}) {
+  const { showToast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const invoiceFileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!file && fileInputRef.current) fileInputRef.current.value = "";
+  }, [file]);
+
+  useEffect(() => {
+    if (!invoiceFile && invoiceFileRef.current) invoiceFileRef.current.value = "";
+  }, [invoiceFile]);
+
+  const acceptFile = (next: File | null) => {
+    if (!next) {
+      onFileChange(null);
+      return;
+    }
+    if (!ALLOWED_UPLOAD_EXT.some((ext) => next.name.toLowerCase().endsWith(ext))) {
+      showToast("That file type isn’t supported — use PDF, Word, PNG or JPEG.", "error");
+      return;
+    }
+    onFileChange(next);
+  };
+
+  return (
+    <div className="space-y-3">
+      <div
+        className={cn(
+          "rounded-xl border border-dashed border-gray-300 bg-gray-50/80 p-4 text-center dark:border-gray-600 dark:bg-gray-800/40",
+          file && "border-solid border-primary bg-primary/5"
+        )}
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={(e) => {
+          e.preventDefault();
+          acceptFile(e.dataTransfer.files[0] ?? null);
+        }}
+      >
+        <p className="text-sm font-semibold">Drop the testimonial file here</p>
+        <p className="mb-2 mt-1 text-xs text-gray-500">
+          PDF, Word, PNG or JPEG · images become a PDF automatically
+        </p>
+        <label htmlFor={`${idPrefix}-file`} className="sr-only">
+          Testimonial file
+        </label>
+        <input
+          ref={fileInputRef}
+          id={`${idPrefix}-file`}
+          type="file"
+          accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          onChange={(e) => acceptFile(e.target.files?.[0] ?? null)}
+          className="mx-auto block w-full max-w-xs text-xs text-gray-500 file:mr-3 file:rounded-md file:border file:border-gray-200 file:bg-white file:px-3 file:py-1 file:text-xs file:font-medium dark:file:border-gray-600 dark:file:bg-gray-800"
+        />
+        {file ? <p className="mt-2 truncate text-xs text-gray-600">{file.name}</p> : null}
+      </div>
+
+      {showTypeSelect ? (
+        <div>
+          <label htmlFor={`${idPrefix}-type`} className="mb-1 block text-sm font-semibold">
+            Solution
+          </label>
+          <p className="mb-1.5 text-xs text-gray-500">What this testimonial is for.</p>
+          <select
+            id={`${idPrefix}-type`}
+            value={typeId}
+            onChange={(e) => onTypeChange(e.target.value)}
+            className={INPUT_CLASS}
+          >
+            {typeOptions.map((opt) => (
+              <option key={opt.id} value={opt.id}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
+
+      <div>
+        <label htmlFor={`${idPrefix}-member`} className="mb-1 block text-sm font-semibold">
+          Member
+        </label>
+        <p className="mb-1.5 text-xs text-gray-500">The CRM record this testimonial belongs to.</p>
+        {membersError ? (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
+            {membersError}{" "}
+            <button type="button" className="font-semibold underline" onClick={onRetryMembers}>
+              Retry
+            </button>
+          </div>
+        ) : (
+          <MemberSearchSelect
+            inputId={`${idPrefix}-member`}
+            members={members}
+            loading={membersLoading}
+            error={membersError}
+            value={selectedMember}
+            onChange={onMemberChange}
+          />
+        )}
+        {selectedMember && !selectedMember.gdrive_folder_url ? (
+          <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+            This member has no Google Drive folder. The file will be filed in the general testimonials
+            folder —{" "}
+            <Link href={`/crm-members/${selectedMember.id}`} className="font-semibold underline">
+              add a folder to their CRM record
+            </Link>{" "}
+            first if you want it stored with their other documents.
+          </p>
+        ) : null}
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div>
+          <label htmlFor={`${idPrefix}-savings`} className="mb-1 block text-sm font-semibold">
+            Savings shown <span className="font-normal text-gray-400">(optional)</span>
+          </label>
+          <input
+            id={`${idPrefix}-savings`}
+            type="text"
+            value={savings}
+            onChange={(e) => onSavingsChange(e.target.value)}
+            placeholder="e.g. $3,200 per month"
+            className={INPUT_CLASS}
+          />
+        </div>
+        <div>
+          <label htmlFor={`${idPrefix}-invoice`} className="mb-1 block text-sm font-semibold">
+            Linked invoice <span className="font-normal text-gray-400">(optional)</span>
+          </label>
+          <input
+            id={`${idPrefix}-invoice`}
+            type="text"
+            list={`${idPrefix}-invoice-options`}
+            value={invoiceNumber}
+            onChange={(e) => onInvoiceNumberChange(e.target.value)}
+            placeholder={invoicesLoading ? "Loading invoices…" : "e.g. RA5713"}
+            className={INPUT_CLASS}
+            disabled={!selectedMember}
+          />
+          <datalist id={`${idPrefix}-invoice-options`}>
+            {invoices.map((inv) => (
+              <option key={inv.invoice_number} value={inv.invoice_number}>
+                {inv.due_date ? `${inv.invoice_number} · ${inv.due_date}` : inv.invoice_number}
+              </option>
+            ))}
+          </datalist>
+          <p className="mt-1 text-[11px] text-gray-400">
+            Pick a 1st Month Savings invoice for this member, or type the number.
+          </p>
+        </div>
+        <div className="sm:col-span-2">
+          <label htmlFor={`${idPrefix}-invoice-file`} className="mb-1 block text-sm font-semibold">
+            Invoice PDF <span className="font-normal text-gray-400">(optional)</span>
+          </label>
+          <input
+            ref={invoiceFileRef}
+            id={`${idPrefix}-invoice-file`}
+            type="file"
+            accept=".pdf,application/pdf"
+            onChange={(e) => onInvoiceFileChange(e.target.files?.[0] ?? null)}
+            className="block w-full text-xs text-gray-500 file:mr-3 file:rounded-md file:border file:border-gray-200 file:bg-white file:px-3 file:py-1 file:text-xs file:font-medium dark:file:border-gray-600 dark:file:bg-gray-800"
+          />
+          {invoiceFile ? <p className="mt-1 truncate text-xs text-gray-600">{invoiceFile.name}</p> : null}
+          <p className="mt-1 text-[11px] text-gray-400">
+            Needs an invoice number above. Stored in the member’s Drive folder like a 1st Month Savings invoice.
+          </p>
+        </div>
+        <div className="sm:col-span-2">
+          <label htmlFor={`${idPrefix}-status`} className="mb-1 block text-sm font-semibold">
+            Status
+          </label>
+          <select
+            id={`${idPrefix}-status`}
+            value={status}
+            onChange={(e) => onStatusChange(e.target.value as TestimonialStatus)}
+            className={INPUT_CLASS}
+          >
+            {TESTIMONIAL_STATUSES.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-[11px] text-gray-400">
+            Only <strong>Approved</strong> testimonials can be used in member-facing material.
+          </p>
+        </div>
+      </div>
     </div>
   );
 }
@@ -290,7 +575,7 @@ export default function TestimonialContentPage() {
   const [contentSource, setContentSource] = useState<TestimonialContentSource>("backend");
   const [saving, setSaving] = useState(false);
   const [selectedSolutionType, setSelectedSolutionType] = useState("ci_electricity");
-  const [tab, setTab] = useState<"copy" | "files">("copy");
+  const [tab, setTab] = useState<"all" | "copy" | "files">("all");
   const [justCreated, setJustCreated] = useState(false);
 
   const [examples, setExamples] = useState<ExampleItem[]>([]);
@@ -304,9 +589,15 @@ export default function TestimonialContentPage() {
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [selectedMember, setSelectedMember] = useState<CrmMember | null>(null);
   const [uploadSavings, setUploadSavings] = useState("");
+  const [uploadInvoiceNumber, setUploadInvoiceNumber] = useState("");
+  const [uploadInvoiceFile, setUploadInvoiceFile] = useState<File | null>(null);
+  const [uploadInvoices, setUploadInvoices] = useState<SavingsInvoice[]>([]);
+  const [uploadInvoicesLoading, setUploadInvoicesLoading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState(DEFAULT_TESTIMONIAL_STATUS);
+  const [uploadTypeId, setUploadTypeId] = useState("ci_electricity");
   const [uploading, setUploading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [addOpen, setAddOpen] = useState(false);
+  const invoiceHistoryCache = useRef<Map<string, SavingsInvoice[]>>(new Map());
 
   const [createOpen, setCreateOpen] = useState(false);
   const [newTypeName, setNewTypeName] = useState("");
@@ -322,6 +613,17 @@ export default function TestimonialContentPage() {
 
   const [recSearch, setRecSearch] = useState("");
   const [recFilter, setRecFilter] = useState<"all" | (typeof TESTIMONIAL_STATUSES)[number]>("all");
+  const [invoiceFilter, setInvoiceFilter] = useState<InvoiceFilter>("all");
+  const [allTypeFilter, setAllTypeFilter] = useState("all");
+  const [bulkMoveTypeId, setBulkMoveTypeId] = useState("ci_gas");
+  const [bulkMoving, setBulkMoving] = useState(false);
+
+  const [linkTarget, setLinkTarget] = useState<ExampleItem | null>(null);
+  const [linkInvoiceNumber, setLinkInvoiceNumber] = useState("");
+  const [linkInvoiceFile, setLinkInvoiceFile] = useState<File | null>(null);
+  const [linkInvoices, setLinkInvoices] = useState<SavingsInvoice[]>([]);
+  const [linkInvoicesLoading, setLinkInvoicesLoading] = useState(false);
+  const [linking, setLinking] = useState(false);
 
   const selectedItem = list.find((item) => item.solution_type === selectedSolutionType);
   const selectedLabel =
@@ -434,18 +736,35 @@ export default function TestimonialContentPage() {
     fetchMembers();
   }, [fetchMembers]);
 
-  const fetchExamples = useCallback(async (solutionType: string) => {
-    if (!solutionType) {
-      setExamples([]);
-      setExamplesError(null);
-      return;
-    }
+  const fetchInvoicesForBusiness = useCallback(
+    async (businessName: string, bypassCache = false): Promise<SavingsInvoice[]> => {
+      const key = businessName.trim().toLowerCase();
+      if (!bypassCache) {
+        const cached = invoiceHistoryCache.current.get(key);
+        if (cached && cached.length > 0) return cached;
+      }
+      const res = await fetch("/api/one-month-savings/history", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ business_name: businessName }),
+      });
+      const data = await res.json().catch(() => ({}));
+      const invoices: SavingsInvoice[] = Array.isArray(data?.invoices) ? data.invoices : [];
+      if (invoices.length > 0) {
+        invoiceHistoryCache.current.set(key, invoices);
+      } else {
+        invoiceHistoryCache.current.delete(key);
+      }
+      return invoices;
+    },
+    []
+  );
+
+  const fetchExamples = useCallback(async () => {
     setExamplesLoading(true);
     setExamplesError(null);
     try {
-      const res = await fetch(
-        `/api/testimonials/examples?solution_type=${encodeURIComponent(solutionType)}&limit=${EXAMPLES_LIMIT}`
-      );
+      const res = await fetch(`/api/testimonials/examples?limit=${ALL_EXAMPLES_LIMIT}`);
       const data = await res.json().catch(() => []);
       if (!res.ok) {
         setExamples([]);
@@ -457,19 +776,11 @@ export default function TestimonialContentPage() {
         setExamplesError("Couldn't load testimonials.");
         return;
       }
-      const mapped: ExampleItem[] = data.map((t: Record<string, unknown>) => ({
-        id: Number(t.id),
-        business_name: String(t.business_name ?? ""),
-        file_name: String(t.file_name ?? ""),
-        file_id: String(t.file_id ?? ""),
-        file_link: (t.file_link as string | null) ?? null,
-        testimonial_savings: (t.testimonial_savings as string | null) ?? null,
-        status: (t.status as string | null) ?? null,
-        created_at: typeof t.created_at === "string" ? t.created_at : null,
-      }));
+      const mapped = data.map((t: Record<string, unknown>) => mapExample(t));
       mapped.sort((a, b) => {
-        if (a.created_at && b.created_at) return b.created_at.localeCompare(a.created_at);
-        return 0;
+        const name = a.business_name.localeCompare(b.business_name, "en", { sensitivity: "base" });
+        if (name !== 0) return name;
+        return typeLabel(a).localeCompare(typeLabel(b), "en", { sensitivity: "base" });
       });
       setExamples(mapped);
     } catch {
@@ -481,8 +792,31 @@ export default function TestimonialContentPage() {
   }, []);
 
   useEffect(() => {
-    fetchExamples(selectedSolutionType);
-  }, [selectedSolutionType, fetchExamples]);
+    fetchExamples();
+  }, [fetchExamples]);
+
+  useEffect(() => {
+    if (!selectedMember?.business_name) {
+      setUploadInvoices([]);
+      setUploadInvoiceNumber("");
+      return;
+    }
+    let cancelled = false;
+    setUploadInvoicesLoading(true);
+    fetchInvoicesForBusiness(selectedMember.business_name)
+      .then((invoices) => {
+        if (!cancelled) setUploadInvoices(invoices);
+      })
+      .catch(() => {
+        if (!cancelled) setUploadInvoices([]);
+      })
+      .finally(() => {
+        if (!cancelled) setUploadInvoicesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedMember, fetchInvoicesForBusiness]);
 
   const updateLocal = (key: keyof TestimonialSolutionContentItem, value: string) => {
     setList((prev) =>
@@ -549,6 +883,10 @@ export default function TestimonialContentPage() {
 
   const onBlockedNavigate = useCallback((href: string) => setPendingNav(href), []);
   useRegisterUnsavedGuard(isDirty, onBlockedNavigate);
+
+  useEffect(() => {
+    if (tab !== "all") setAddOpen(false);
+  }, [tab]);
 
   const dirtyDialogOpen = pendingSwitch != null || pendingNav != null;
 
@@ -656,7 +994,7 @@ export default function TestimonialContentPage() {
   };
 
   const handleUpload = async () => {
-    const file = uploadFile ?? fileInputRef.current?.files?.[0] ?? null;
+    const file = uploadFile;
     if (!file) {
       showToast("Choose a PDF, Word, PNG, or JPEG file to upload.", "error");
       return;
@@ -670,6 +1008,14 @@ export default function TestimonialContentPage() {
       showToast("Pick the member this testimonial belongs to.", "error");
       return;
     }
+    const typeId = tab === "files" ? selectedSolutionType : uploadTypeId;
+    const typeName =
+      typeOptions.find((opt) => opt.id === typeId)?.label ?? SOLUTION_TYPE_LABELS[typeId] ?? typeId;
+    const invoiceNum = uploadInvoiceNumber.trim();
+    if (uploadInvoiceFile && !invoiceNum) {
+      showToast("Add the invoice number so we know what to attach the PDF to.", "error");
+      return;
+    }
 
     setUploading(true);
     try {
@@ -677,9 +1023,10 @@ export default function TestimonialContentPage() {
       form.append("file", file);
       form.append("business_name", selectedMember.business_name);
       form.append("status", uploadStatus);
-      form.append("testimonial_solution_type_id", selectedSolutionType);
-      form.append("testimonial_type", selectedLabel);
+      form.append("testimonial_solution_type_id", typeId);
+      form.append("testimonial_type", typeName);
       if (uploadSavings.trim()) form.append("testimonial_savings", uploadSavings.trim());
+      if (invoiceNum) form.append("invoice_number", invoiceNum);
       if (selectedMember.gdrive_folder_url) {
         form.append("gdrive_folder_url", selectedMember.gdrive_folder_url);
       }
@@ -689,18 +1036,60 @@ export default function TestimonialContentPage() {
         showToast(data.error || "Upload failed", "error");
         return;
       }
-      showToast(`Filed against ${selectedLabel}.`, "success");
+
+      if (uploadInvoiceFile && invoiceNum) {
+        try {
+          const pdf_base64 = await fileToBase64(uploadInvoiceFile);
+          const uploadRes = await fetch("/api/one-month-savings/upload-pdf", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              pdf_base64,
+              filename: uploadInvoiceFile.name,
+              invoice_number: invoiceNum,
+              business_name: selectedMember.business_name,
+              client_folder_url: selectedMember.gdrive_folder_url || "",
+            }),
+          });
+          if (!uploadRes.ok) {
+            showToast(
+              `Filed against ${typeName}. The invoice PDF did not upload — attach it with Link invoice.`,
+              "error"
+            );
+          } else {
+            invoiceHistoryCache.current.delete(selectedMember.business_name.trim().toLowerCase());
+            showToast(`Filed against ${typeName} and linked ${invoiceNum}.`, "success");
+          }
+        } catch {
+          showToast(
+            `Filed against ${typeName}. The invoice PDF did not upload — attach it with Link invoice.`,
+            "error"
+          );
+        }
+      } else {
+        showToast(`Filed against ${typeName}.`, "success");
+      }
+
       setUploadFile(null);
       setSelectedMember(null);
       setUploadSavings("");
+      setUploadInvoiceNumber("");
+      setUploadInvoiceFile(null);
       setUploadStatus(DEFAULT_TESTIMONIAL_STATUS);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-      await fetchExamples(selectedSolutionType);
+      setAddOpen(false);
+      await fetchExamples();
     } catch (e: unknown) {
       showToast(e instanceof Error ? e.message : "Upload failed", "error");
     } finally {
       setUploading(false);
     }
+  };
+
+  const applyPatchedRow = (oldId: number, data: Record<string, unknown>) => {
+    const mapped = mapExample(data);
+    if (!mapped.source) mapped.source = "crm";
+    setExamples((prev) => prev.map((item) => (item.id === oldId ? mapped : item)));
+    return mapped;
   };
 
   const handleStatusChange = async (id: number, status: string) => {
@@ -710,15 +1099,189 @@ export default function TestimonialContentPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
       });
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        showToast("Failed to update status.", "error");
+        showToast(data.error || "Failed to update status.", "error");
         return;
       }
-      setExamples((prev) => prev.map((row) => (row.id === id ? { ...row, status } : row)));
+      applyPatchedRow(id, data as Record<string, unknown>);
       showToast("Status updated.", "success");
     } catch {
       showToast("Failed to update status.", "error");
     }
+  };
+
+  const patchType = async (id: number, typeId: string) => {
+    const label =
+      typeOptions.find((opt) => opt.id === typeId)?.label ?? SOLUTION_TYPE_LABELS[typeId] ?? typeId;
+    const res = await fetch(`/api/testimonials/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        testimonial_solution_type_id: typeId,
+        testimonial_type: label,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(typeof data.error === "string" ? data.error : "Failed to update type.");
+    }
+    return applyPatchedRow(id, data as Record<string, unknown>);
+  };
+
+  const handleTypeChange = async (id: number, typeId: string) => {
+    try {
+      const mapped = await patchType(id, typeId);
+      showToast(`Moved to ${mapped.testimonial_type || typeId}.`, "success");
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : "Failed to update type.", "error");
+    }
+  };
+
+  const handleBulkRecategorise = async (rows: ExampleItem[]) => {
+    if (!bulkMoveTypeId || rows.length === 0) return;
+    setBulkMoving(true);
+    let ok = 0;
+    let failed = 0;
+    try {
+      for (const row of rows) {
+        try {
+          await patchType(row.id, bulkMoveTypeId);
+          ok += 1;
+        } catch {
+          failed += 1;
+        }
+      }
+      const label =
+        typeOptions.find((opt) => opt.id === bulkMoveTypeId)?.label ?? bulkMoveTypeId;
+      if (failed) {
+        showToast(`Moved ${ok} to ${label}. ${failed} did not save.`, "error");
+      } else {
+        showToast(`Moved ${ok} to ${label}.`, "success");
+        setAllTypeFilter(bulkMoveTypeId);
+      }
+    } finally {
+      setBulkMoving(false);
+    }
+  };
+
+  const handleOpenInvoice = async (row: ExampleItem) => {
+    const invoice = row.invoice_number?.trim();
+    if (!invoice || invoiceState(row) !== "linked") return;
+    const tab = window.open("about:blank", "_blank");
+    try {
+      const invoices = await fetchInvoicesForBusiness(row.business_name, true);
+      const wanted = invoiceMatchKey(invoice);
+      const match = invoices.find((inv) => invoiceMatchKey(inv.invoice_number) === wanted);
+      const fileId = match ? fileIdFromInvoice(match) : null;
+      if (fileId) {
+        const url = driveInvoiceUrl(fileId);
+        if (tab) {
+          tab.opener = null;
+          tab.location.replace(url);
+        } else {
+          window.open(url, "_blank", "noopener,noreferrer");
+        }
+        return;
+      }
+      tab?.close();
+      showToast(`No PDF on file for ${invoice}.`, "error");
+    } catch {
+      tab?.close();
+      showToast("Couldn't open that invoice PDF.", "error");
+    }
+  };
+
+  const openLinkInvoice = async (row: ExampleItem) => {
+    setLinkTarget(row);
+    setLinkInvoiceNumber(invoiceState(row) === "linked" ? row.invoice_number ?? "" : "");
+    setLinkInvoiceFile(null);
+    setLinkInvoices([]);
+    setLinkInvoicesLoading(true);
+    try {
+      const invoices = await fetchInvoicesForBusiness(row.business_name);
+      setLinkInvoices(invoices);
+    } catch {
+      setLinkInvoices([]);
+    } finally {
+      setLinkInvoicesLoading(false);
+    }
+  };
+
+  const handleSaveInvoiceLink = async (value?: string) => {
+    if (!linkTarget) return;
+    await patchInvoiceNumber(linkTarget, value !== undefined ? value : linkInvoiceNumber);
+  };
+
+  const patchInvoiceNumber = async (row: ExampleItem, raw: string) => {
+    const next = raw.trim();
+    setLinking(true);
+    try {
+      if (linkInvoiceFile && next && invoiceState({ ...row, invoice_number: next }) === "linked") {
+        const member = members.find(
+          (m) => m.business_name.trim().toLowerCase() === row.business_name.trim().toLowerCase()
+        );
+        try {
+          const pdf_base64 = await fileToBase64(linkInvoiceFile);
+          const uploadRes = await fetch("/api/one-month-savings/upload-pdf", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              pdf_base64,
+              filename: linkInvoiceFile.name,
+              invoice_number: next,
+              business_name: row.business_name,
+              client_folder_url: member?.gdrive_folder_url || "",
+            }),
+          });
+          if (!uploadRes.ok) {
+            const err = await uploadRes.json().catch(() => ({}));
+            showToast(
+              err.message || err.error || "Invoice number will still be saved. The PDF did not upload to Drive.",
+              "error"
+            );
+          } else {
+            invoiceHistoryCache.current.delete(row.business_name.trim().toLowerCase());
+          }
+        } catch {
+          showToast("Invoice number will still be saved. The PDF did not upload to Drive.", "error");
+        }
+      }
+      const res = await fetch(`/api/testimonials/${row.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ invoice_number: next }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(data.error || "Failed to update invoice link.", "error");
+        return;
+      }
+      const mapped = applyPatchedRow(row.id, data as Record<string, unknown>);
+      const state = invoiceState(mapped);
+      showToast(
+        state === "linked"
+          ? `Linked ${mapped.invoice_number}.`
+          : state === "none"
+            ? "Marked as no invoice recorded."
+            : "Invoice unlinked.",
+        "success"
+      );
+      setLinkTarget(null);
+      setLinkInvoiceFile(null);
+    } catch {
+      showToast("Failed to update invoice link.", "error");
+    } finally {
+      setLinking(false);
+    }
+  };
+
+  const handleUnlinkInvoice = (row: ExampleItem) => {
+    void patchInvoiceNumber(row, "");
+  };
+
+  const handleMarkNoInvoice = (row: ExampleItem) => {
+    void patchInvoiceNumber(row, NO_INVOICE_RECORDED);
   };
 
   const handleDeleteType = async () => {
@@ -770,16 +1333,111 @@ export default function TestimonialContentPage() {
     }
   };
 
-  const filteredRecords = useMemo(() => {
-    const q = recSearch.trim().toLowerCase();
-    return examples.filter((row) => {
-      if (recFilter !== "all" && row.status !== recFilter) return false;
-      if (!q) return true;
-      return row.business_name.toLowerCase().includes(q) || row.file_name.toLowerCase().includes(q);
-    });
-  }, [examples, recFilter, recSearch]);
+  const collectedForType = useMemo(
+    () =>
+      examples.filter((row) => {
+        if (row.testimonial_solution_type_id === selectedSolutionType) return true;
+        const label = SOLUTION_TYPE_LABELS[selectedSolutionType];
+        return Boolean(label && row.testimonial_type === label);
+      }),
+    [examples, selectedSolutionType]
+  );
 
-  const hasCreatedAt = examples.some((row) => row.created_at);
+  const uncategorisedRows = useMemo(
+    () => examples.filter((row) => !rowSolutionTypeId(row, typeOptions)),
+    [examples, typeOptions]
+  );
+
+  const allTypeOptions = useMemo(() => {
+    const used = new Set<string>();
+    for (const row of examples) {
+      const id = rowSolutionTypeId(row, typeOptions);
+      if (id) used.add(id);
+    }
+    const fromWording = typeOptions
+      .filter((opt) => used.has(opt.id))
+      .map((opt) => ({ id: opt.id, label: opt.label }));
+    if (uncategorisedRows.length > 0) {
+      fromWording.push({
+        id: UNCATEGORISED_FILTER,
+        label: `Needs a real type (${uncategorisedRows.length})`,
+      });
+    }
+    return fromWording;
+  }, [examples, typeOptions, uncategorisedRows.length]);
+
+  const allCountSource = useMemo(() => {
+    if (allTypeFilter === "all") return examples;
+    if (allTypeFilter === UNCATEGORISED_FILTER) return uncategorisedRows;
+    return examples.filter((row) => rowSolutionTypeId(row, typeOptions) === allTypeFilter);
+  }, [examples, allTypeFilter, typeOptions, uncategorisedRows]);
+
+  const filterRows = useCallback(
+    (list: ExampleItem[]) => {
+      const q = recSearch.trim().toLowerCase();
+      return list.filter((row) => {
+        if (recFilter !== "all" && row.status !== recFilter) return false;
+        if (!matchesInvoiceFilter(row, invoiceFilter)) return false;
+        if (!q) return true;
+        const haystack = [
+          row.business_name,
+          row.file_name,
+          typeLabel(row),
+          row.invoice_number ?? "",
+        ]
+          .join(" ")
+          .toLowerCase();
+        return haystack.includes(q);
+      });
+    },
+    [recFilter, recSearch, invoiceFilter]
+  );
+
+  const filteredAll = useMemo(() => filterRows(allCountSource), [filterRows, allCountSource]);
+  const filteredCollected = useMemo(() => filterRows(collectedForType), [filterRows, collectedForType]);
+
+  const openAddModal = () => {
+    setUploadFile(null);
+    setSelectedMember(null);
+    setUploadSavings("");
+    setUploadInvoiceNumber("");
+    setUploadInvoiceFile(null);
+    setUploadStatus(DEFAULT_TESTIMONIAL_STATUS);
+    const fromFilter =
+      allTypeFilter !== "all" && typeOptions.some((opt) => opt.id === allTypeFilter)
+        ? allTypeFilter
+        : selectedSolutionType;
+    setUploadTypeId(fromFilter);
+    setAddOpen(true);
+  };
+
+  const renderAddForm = () => (
+    <AddTestimonialForm
+      idPrefix={tab === "all" ? "add-all" : "add-files"}
+      typeOptions={typeOptions}
+      showTypeSelect={tab === "all"}
+      typeId={tab === "files" ? selectedSolutionType : uploadTypeId}
+      onTypeChange={setUploadTypeId}
+      members={members}
+      membersLoading={membersLoading}
+      membersError={membersError}
+      onRetryMembers={() => fetchMembers()}
+      selectedMember={selectedMember}
+      onMemberChange={setSelectedMember}
+      file={uploadFile}
+      onFileChange={setUploadFile}
+      savings={uploadSavings}
+      onSavingsChange={setUploadSavings}
+      invoiceNumber={uploadInvoiceNumber}
+      onInvoiceNumberChange={setUploadInvoiceNumber}
+      invoices={uploadInvoices}
+      invoicesLoading={uploadInvoicesLoading}
+      invoiceFile={uploadInvoiceFile}
+      onInvoiceFileChange={setUploadInvoiceFile}
+      status={uploadStatus}
+      onStatusChange={setUploadStatus}
+    />
+  );
 
   return (
     <div className={cn("space-y-6", tab === "copy" && "pb-24")}>
@@ -788,35 +1446,88 @@ export default function TestimonialContentPage() {
       <div className="space-y-3">
         <h1 className="text-heading-3 font-bold text-dark dark:text-white">Testimonial content</h1>
         <p className="max-w-[70ch] text-body-sm text-gray-600 dark:text-gray-400">
-          Set the wording ACES reuses every time a testimonial is generated for a solution, and keep the file
-          record of testimonials already collected from members.
+          Check every testimonial on file, see which invoice it is linked to, and edit the wording ACES reuses
+          when a new one is generated.
         </p>
         <div className="flex flex-wrap gap-2">
-          {["Pick a solution", "Edit the wording it reuses", "File testimonials you already have"].map((label, i) => (
-            <span
-              key={label}
-              className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1 text-xs text-gray-600 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
-            >
-              <span className="grid size-5 place-items-center rounded-full bg-primary/10 text-[11px] font-bold text-primary">
-                {i + 1}
+          {["See every testimonial", "Edit the wording a solution reuses", "File ones you already have"].map(
+            (label, i) => (
+              <span
+                key={label}
+                className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1 text-xs text-gray-600 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
+              >
+                <span className="grid size-5 place-items-center rounded-full bg-primary/10 text-[11px] font-bold text-primary">
+                  {i + 1}
+                </span>
+                {label}
               </span>
-              {label}
-            </span>
-          ))}
+            )
+          )}
         </div>
       </div>
 
-      {loading ? (
-        <p className="text-sm text-gray-500 dark:text-gray-400">Loading wording…</p>
-      ) : (
-        <>
+      <div className="flex flex-wrap gap-1 border-b border-gray-200 dark:border-gray-700" role="tablist">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === "all"}
+              onClick={() => setTab("all")}
+              className={cn(
+                "inline-flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-semibold",
+                tab === "all"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-gray-500 hover:text-gray-800 dark:hover:text-gray-200"
+              )}
+            >
+              All testimonials
+              <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[11px] font-bold text-gray-500 dark:bg-gray-800">
+                {examples.length}
+              </span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === "copy"}
+              onClick={() => setTab("copy")}
+              className={cn(
+                "inline-flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-semibold",
+                tab === "copy"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-gray-500 hover:text-gray-800 dark:hover:text-gray-200"
+              )}
+            >
+              Wording
+              {isDirty ? <span className="size-1.5 rounded-full bg-amber-500" title="Unsaved changes" /> : null}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === "files"}
+              onClick={() => setTab("files")}
+              className={cn(
+                "inline-flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-semibold",
+                tab === "files"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-gray-500 hover:text-gray-800 dark:hover:text-gray-200"
+              )}
+            >
+              Collected
+              <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[11px] font-bold text-gray-500 dark:bg-gray-800">
+                {collectedForType.length}
+              </span>
+            </button>
+          </div>
+
+          {tab !== "all" ? (
           <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-dark">
             <div className="flex flex-wrap items-end gap-3">
               <div className="min-w-[16rem] max-w-md flex-1">
                 <label htmlFor="solution-type-select" className="mb-1 block text-sm font-semibold text-gray-900 dark:text-gray-100">
                   Solution
                 </label>
-                <p className="mb-1.5 text-xs text-gray-500">Everything below belongs to this solution.</p>
+                <p className="mb-1.5 text-xs text-gray-500">
+                  {tab === "copy" ? "Wording below belongs to this solution." : "Files below belong to this solution."}
+                </p>
                 <select
                   id="solution-type-select"
                   value={selectedSolutionType}
@@ -857,8 +1568,9 @@ export default function TestimonialContentPage() {
               shown to members.
             </p>
           </div>
+          ) : null}
 
-          {saveBlocked ? (
+          {saveBlocked && tab === "copy" ? (
             <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200">
               <p>
                 Showing standard wording — couldn’t reach the server. Save is disabled until Retry succeeds.
@@ -869,40 +1581,76 @@ export default function TestimonialContentPage() {
             </div>
           ) : null}
 
-          <div className="flex gap-1 border-b border-gray-200 dark:border-gray-700" role="tablist">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={tab === "copy"}
-              onClick={() => setTab("copy")}
-              className={cn(
-                "inline-flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-semibold",
-                tab === "copy"
-                  ? "border-primary text-primary"
-                  : "border-transparent text-gray-500 hover:text-gray-800 dark:hover:text-gray-200"
-              )}
-            >
-              Wording
-              {isDirty ? <span className="size-1.5 rounded-full bg-amber-500" title="Unsaved changes" /> : null}
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={tab === "files"}
-              onClick={() => setTab("files")}
-              className={cn(
-                "inline-flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-semibold",
-                tab === "files"
-                  ? "border-primary text-primary"
-                  : "border-transparent text-gray-500 hover:text-gray-800 dark:hover:text-gray-200"
-              )}
-            >
-              Collected testimonials
-              <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[11px] font-bold text-gray-500 dark:bg-gray-800">
-                {examples.length}
-              </span>
-            </button>
-          </div>
+          {tab === "all" ? (
+            <div className="space-y-3">
+              {allTypeFilter === UNCATEGORISED_FILTER && filteredAll.length > 0 ? (
+                <div className="flex flex-wrap items-end gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200">
+                  <p className="min-w-[16rem] flex-1">
+                    These rows used a document title as the type (old sheet). That is not a solution
+                    category. Move them onto a real one — then the junk type is gone.
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <select
+                      value={bulkMoveTypeId}
+                      onChange={(e) => setBulkMoveTypeId(e.target.value)}
+                      className={cn(INPUT_CLASS, "w-56")}
+                      aria-label="Move uncategorised rows to"
+                    >
+                      {typeOptions.map((opt) => (
+                        <option key={opt.id} value={opt.id}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => handleBulkRecategorise(filteredAll)}
+                      loading={bulkMoving}
+                      disabled={bulkMoving}
+                    >
+                      Move all shown
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+              <TestimonialRecordsPanel
+                rows={filteredAll}
+                countSource={allCountSource}
+                loading={examplesLoading}
+                error={examplesError}
+                onRetry={() => fetchExamples()}
+                emptyTitle="No testimonials on file"
+                emptyDescription="Search another name, or add one with Add testimonial."
+                showType
+                showAdded={false}
+                search={recSearch}
+                onSearch={setRecSearch}
+                statusFilter={recFilter}
+                onStatusFilter={setRecFilter}
+                invoiceFilter={invoiceFilter}
+                onInvoiceFilter={setInvoiceFilter}
+                typeFilter={allTypeFilter}
+                typeOptions={allTypeOptions}
+                onTypeFilter={setAllTypeFilter}
+                solutionTypes={typeOptions}
+                onTypeChange={handleTypeChange}
+                onStatusChange={handleStatusChange}
+                onDelete={setDeleteTarget}
+                onLinkInvoice={openLinkInvoice}
+                onUnlinkInvoice={handleUnlinkInvoice}
+                onOpenInvoice={handleOpenInvoice}
+                onMarkNoInvoice={handleMarkNoInvoice}
+                headerAction={
+                  <Button type="button" size="sm" onClick={openAddModal}>
+                    <Plus className="size-3.5" />
+                    Add testimonial
+                  </Button>
+                }
+                footerNote={`Showing ${filteredAll.length} of ${allCountSource.length}. Change type on a row to recategorise it. Junk sheet titles are under Needs a real type.`}
+              />
+            </div>
+          ) : null}
 
           {tab === "copy" && selectedItem ? (
             <div className="space-y-4">
@@ -1019,135 +1767,30 @@ export default function TestimonialContentPage() {
           {tab === "files" ? (
             <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,380px)]">
               <div>
-                <div className="mb-3 flex flex-wrap items-center gap-2">
-                  <input
-                    type="search"
-                    value={recSearch}
-                    onChange={(e) => setRecSearch(e.target.value)}
-                    placeholder="Search business or file…"
-                    className={cn(INPUT_CLASS, "max-w-xs")}
-                  />
-                  <button
-                    type="button"
-                    aria-pressed={recFilter === "all"}
-                    onClick={() => setRecFilter("all")}
-                    className={cn(
-                      "rounded-full border px-3 py-1 text-xs font-semibold",
-                      recFilter === "all"
-                        ? "border-transparent bg-primary/10 text-primary"
-                        : "border-gray-200 text-gray-600 dark:border-gray-700"
-                    )}
-                  >
-                    All {examples.length}
-                  </button>
-                  {TESTIMONIAL_STATUSES.map((status) => {
-                    const n = examples.filter((row) => row.status === status).length;
-                    return (
-                      <button
-                        key={status}
-                        type="button"
-                        aria-pressed={recFilter === status}
-                        onClick={() => setRecFilter(status)}
-                        className={cn(
-                          "rounded-full border px-3 py-1 text-xs font-semibold",
-                          recFilter === status
-                            ? "border-transparent bg-primary/10 text-primary"
-                            : "border-gray-200 text-gray-600 dark:border-gray-700"
-                        )}
-                      >
-                        {status} {n}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {examplesLoading ? (
-                  <p className="text-sm text-gray-500">Loading testimonials…</p>
-                ) : examplesError ? (
-                  <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
-                    <p>{examplesError}</p>
-                    <Button type="button" variant="secondary" size="sm" className="mt-2" onClick={() => fetchExamples(selectedSolutionType)}>
-                      Retry
-                    </Button>
-                  </div>
-                ) : filteredRecords.length === 0 ? (
-                  <EmptyState
-                    icon={<FileText className="size-10" />}
-                    title={`No testimonials filed for ${selectedLabel} yet`}
-                    description="Add one on the right — a PDF, Word doc or a photo of a signed letter."
-                  />
-                ) : (
-                  <>
-                    <div className="mb-1 hidden grid-cols-[minmax(0,1fr)_140px_108px_92px_auto] gap-2 px-3 text-[10.5px] font-bold uppercase tracking-wider text-gray-400 lg:grid">
-                      <span>Member &amp; file</span>
-                      <span>Status</span>
-                      <span>Savings</span>
-                      <span>{hasCreatedAt ? "Added" : ""}</span>
-                      <span />
-                    </div>
-                    <ul className="space-y-2">
-                      {filteredRecords.map((ex) => {
-                        const known = (TESTIMONIAL_STATUSES as readonly string[]).includes(ex.status ?? "");
-                        const statusOptions = known
-                          ? TESTIMONIAL_STATUSES
-                          : ex.status
-                            ? [ex.status, ...TESTIMONIAL_STATUSES]
-                            : [...TESTIMONIAL_STATUSES];
-                        return (
-                          <li
-                            key={ex.id}
-                            className="grid items-center gap-2 rounded-xl border border-gray-200 px-3 py-2 dark:border-gray-700 lg:grid-cols-[minmax(0,1fr)_140px_108px_92px_auto]"
-                          >
-                            <div className="min-w-0">
-                              <p className="truncate font-medium text-gray-900 dark:text-gray-100" title={ex.business_name}>
-                                {ex.business_name}
-                              </p>
-                              <p className="truncate text-xs text-gray-500" title={ex.file_name}>
-                                {ex.file_name}
-                              </p>
-                            </div>
-                            <select
-                              value={ex.status ?? ""}
-                              onChange={(e) => handleStatusChange(ex.id, e.target.value)}
-                              className="rounded-full border border-gray-200 bg-white px-2 py-1 text-xs dark:border-gray-600 dark:bg-gray-800"
-                            >
-                              {statusOptions.map((status) => (
-                                <option key={status} value={status}>
-                                  {status}
-                                </option>
-                              ))}
-                            </select>
-                            <p className="text-xs text-gray-600 dark:text-gray-400">{ex.testimonial_savings || "—"}</p>
-                            <p className="text-xs text-gray-400">
-                              {hasCreatedAt ? formatDateAustralian(ex.created_at) || "—" : ""}
-                            </p>
-                            <div className="flex flex-wrap gap-1">
-                              <a
-                                href={driveFileUrl(ex)}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="rounded-full px-2 py-1 text-xs font-semibold text-primary hover:underline"
-                              >
-                                Open
-                              </a>
-                              <button
-                                type="button"
-                                onClick={() => setDeleteTarget(ex)}
-                                className="rounded-full px-2 py-1 text-xs text-gray-500 hover:text-red-600"
-                              >
-                                Delete
-                              </button>
-                            </div>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                    <p className="mt-2 text-[11px] text-gray-400">
-                      Showing {filteredRecords.length} of {examples.length} filed for {selectedLabel}
-                      {examples.length >= EXAMPLES_LIMIT ? ` (newest ${EXAMPLES_LIMIT})` : ""}. Files open in Google Drive.
-                    </p>
-                  </>
-                )}
+                <TestimonialRecordsPanel
+                  rows={filteredCollected}
+                  countSource={collectedForType}
+                  loading={examplesLoading}
+                  error={examplesError}
+                  onRetry={() => fetchExamples()}
+                  emptyTitle={`No testimonials filed for ${selectedLabel} yet`}
+                  emptyDescription="Add one on the right — a PDF, Word doc or a photo of a signed letter."
+                  showType={false}
+                  showAdded
+                  search={recSearch}
+                  onSearch={setRecSearch}
+                  statusFilter={recFilter}
+                  onStatusFilter={setRecFilter}
+                  invoiceFilter={invoiceFilter}
+                  onInvoiceFilter={setInvoiceFilter}
+                  onStatusChange={handleStatusChange}
+                  onDelete={setDeleteTarget}
+                  onLinkInvoice={openLinkInvoice}
+                  onUnlinkInvoice={handleUnlinkInvoice}
+                  onOpenInvoice={handleOpenInvoice}
+                  onMarkNoInvoice={handleMarkNoInvoice}
+                  footerNote={`Showing ${filteredCollected.length} of ${collectedForType.length} filed for ${selectedLabel}. Files open in Google Drive.`}
+                />
               </div>
 
               <div className="lg:sticky lg:top-24">
@@ -1159,110 +1802,7 @@ export default function TestimonialContentPage() {
                     </p>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    <div
-                      className={cn(
-                        "rounded-xl border border-dashed border-gray-300 bg-gray-50/80 p-4 text-center dark:border-gray-600 dark:bg-gray-800/40",
-                        uploadFile && "border-solid border-primary bg-primary/5"
-                      )}
-                      onDragOver={(e) => e.preventDefault()}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        const file = e.dataTransfer.files[0];
-                        if (!file) return;
-                        if (!ALLOWED_UPLOAD_EXT.some((ext) => file.name.toLowerCase().endsWith(ext))) {
-                          showToast("That file type isn’t supported — use PDF, Word, PNG or JPEG.", "error");
-                          return;
-                        }
-                        setUploadFile(file);
-                      }}
-                    >
-                      <p className="text-sm font-semibold">Drop a file here</p>
-                      <p className="mb-2 mt-1 text-xs text-gray-500">
-                        PDF, Word, PNG or JPEG · images become a PDF automatically
-                      </p>
-                      <label htmlFor="testimonial-upload-file" className="sr-only">
-                        File
-                      </label>
-                      <input
-                        ref={fileInputRef}
-                        id="testimonial-upload-file"
-                        type="file"
-                        accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                        onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
-                        className="mx-auto block w-full max-w-xs text-xs text-gray-500 file:mr-3 file:rounded-md file:border file:border-gray-200 file:bg-white file:px-3 file:py-1 file:text-xs file:font-medium dark:file:border-gray-600 dark:file:bg-gray-800"
-                      />
-                      {uploadFile ? <p className="mt-2 truncate text-xs text-gray-600">{uploadFile.name}</p> : null}
-                    </div>
-
-                    <div>
-                      <label htmlFor="upload-business-name" className="mb-1 block text-sm font-semibold">
-                        Member
-                      </label>
-                      <p className="mb-1.5 text-xs text-gray-500">The CRM record this testimonial belongs to.</p>
-                      {membersError ? (
-                        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
-                          {membersError}{" "}
-                          <button type="button" className="font-semibold underline" onClick={() => fetchMembers()}>
-                            Retry
-                          </button>
-                        </div>
-                      ) : (
-                        <MemberSearchSelect
-                          members={members}
-                          loading={membersLoading}
-                          error={membersError}
-                          value={selectedMember}
-                          onChange={setSelectedMember}
-                        />
-                      )}
-                      {selectedMember && !selectedMember.gdrive_folder_url ? (
-                        <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
-                          This member has no Google Drive folder. The file will be filed in the general testimonials
-                          folder —{" "}
-                          <Link href={`/crm-members/${selectedMember.id}`} className="font-semibold underline">
-                            add a folder to their CRM record
-                          </Link>{" "}
-                          first if you want it stored with their other documents.
-                        </p>
-                      ) : null}
-                    </div>
-
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div>
-                        <label htmlFor="upload-savings" className="mb-1 block text-sm font-semibold">
-                          Savings shown <span className="font-normal text-gray-400">(optional)</span>
-                        </label>
-                        <input
-                          id="upload-savings"
-                          type="text"
-                          value={uploadSavings}
-                          onChange={(e) => setUploadSavings(e.target.value)}
-                          placeholder="e.g. $3,200 per month"
-                          className={INPUT_CLASS}
-                        />
-                      </div>
-                      <div>
-                        <label htmlFor="upload-status" className="mb-1 block text-sm font-semibold">
-                          Status
-                        </label>
-                        <select
-                          id="upload-status"
-                          value={uploadStatus}
-                          onChange={(e) => setUploadStatus(e.target.value as typeof uploadStatus)}
-                          className={INPUT_CLASS}
-                        >
-                          {TESTIMONIAL_STATUSES.map((status) => (
-                            <option key={status} value={status}>
-                              {status}
-                            </option>
-                          ))}
-                        </select>
-                        <p className="mt-1 text-[11px] text-gray-400">
-                          Only <strong>Approved</strong> testimonials can be used in member-facing material.
-                        </p>
-                      </div>
-                    </div>
-
+                    {renderAddForm()}
                     <Button type="button" className="w-full" onClick={handleUpload} disabled={uploading} loading={uploading}>
                       {uploading ? "Uploading…" : `Add to ${selectedLabel}`}
                     </Button>
@@ -1271,8 +1811,6 @@ export default function TestimonialContentPage() {
               </div>
             </div>
           ) : null}
-        </>
-      )}
 
       {tab === "copy" && selectedItem && !loading ? (
         <div className="fixed inset-x-0 bottom-0 z-40 flex flex-wrap items-center gap-3 border-t border-gray-200 bg-white px-4 py-3 shadow-[0_-6px_20px_rgba(16,24,40,0.07)] dark:border-gray-700 dark:bg-gray-dark md:px-6">
@@ -1427,8 +1965,142 @@ export default function TestimonialContentPage() {
       >
         <p className="text-sm text-gray-600 dark:text-gray-400">
           This removes the wording template for {selectedLabel}. Filed testimonials stay on member
-          records. Built-in types (Electricity, Waste, DMA, and so on) cannot be deleted.
+          records and can be recategorised on All testimonials. Built-in types (Electricity, Waste, DMA, and so on) cannot be deleted.
         </p>
+      </Modal>
+
+      <Modal
+        open={linkTarget != null}
+        onClose={() => {
+          setLinkTarget(null);
+          setLinkInvoiceFile(null);
+        }}
+        title="Link invoice"
+        footer={
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => {
+                setLinkTarget(null);
+                setLinkInvoiceFile(null);
+              }}
+            >
+              Cancel
+            </Button>
+            {linkTarget?.invoice_number ? (
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => handleSaveInvoiceLink("")}
+                disabled={linking}
+              >
+                Unlink
+              </Button>
+            ) : null}
+            <Button
+              type="button"
+              onClick={() => handleSaveInvoiceLink()}
+              loading={linking}
+              disabled={linking || !linkInvoiceNumber.trim()}
+            >
+              Save link
+            </Button>
+          </div>
+        }
+      >
+        <p className="mb-3 text-sm text-gray-600 dark:text-gray-400">
+          {linkTarget ? (
+            <>
+              <strong>{linkTarget.business_name}</strong>
+              <span className="text-gray-400"> · {typeLabel(linkTarget)}</span>
+            </>
+          ) : null}
+        </p>
+        <label htmlFor="link-invoice" className="mb-1 block text-sm font-semibold">
+          Invoice number
+        </label>
+        <p className="mb-1.5 text-xs text-gray-500">
+          Type any number — including invoices raised before this system. It does not have to exist in 1st Month
+          Savings yet.
+        </p>
+        <input
+          id="link-invoice"
+          type="text"
+          list="link-invoice-options"
+          value={linkInvoiceNumber}
+          onChange={(e) => setLinkInvoiceNumber(e.target.value)}
+          placeholder="e.g. RA5713"
+          className={INPUT_CLASS}
+        />
+        <datalist id="link-invoice-options">
+          {linkInvoices.map((inv) => (
+            <option key={inv.invoice_number} value={inv.invoice_number}>
+              {inv.due_date ? `${inv.invoice_number} · ${inv.due_date}` : inv.invoice_number}
+            </option>
+          ))}
+        </datalist>
+        {linkInvoices.length > 0 ? (
+          <div className="mt-3">
+            <label htmlFor="link-invoice-pick" className="mb-1 block text-xs font-semibold text-gray-500">
+              Or pick one already on file for this member
+            </label>
+            <select
+              id="link-invoice-pick"
+              value={linkInvoices.some((inv) => inv.invoice_number === linkInvoiceNumber) ? linkInvoiceNumber : ""}
+              onChange={(e) => setLinkInvoiceNumber(e.target.value)}
+              className={INPUT_CLASS}
+            >
+              <option value="">Choose…</option>
+              {linkInvoices.map((inv) => (
+                <option key={inv.invoice_number} value={inv.invoice_number}>
+                  {inv.invoice_number}
+                  {inv.due_date ? ` · ${inv.due_date}` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : linkInvoicesLoading ? (
+          <p className="mt-2 text-[11px] text-gray-400">Checking 1st Month Savings for this member…</p>
+        ) : null}
+        <div className="mt-4">
+          <label htmlFor="link-invoice-pdf" className="mb-1 block text-sm font-semibold">
+            Invoice PDF <span className="font-normal text-gray-400">(optional)</span>
+          </label>
+          <p className="mb-1.5 text-xs text-gray-500">
+            If you have the old invoice file, attach it. The number above is what gets linked either way.
+          </p>
+          <input
+            id="link-invoice-pdf"
+            type="file"
+            accept=".pdf,application/pdf"
+            onChange={(e) => setLinkInvoiceFile(e.target.files?.[0] ?? null)}
+            className="block w-full text-xs text-gray-500 file:mr-3 file:rounded-md file:border file:border-gray-200 file:bg-white file:px-3 file:py-1 file:text-xs file:font-medium dark:file:border-gray-600 dark:file:bg-gray-800"
+          />
+          {linkInvoiceFile ? <p className="mt-1 truncate text-xs text-gray-600">{linkInvoiceFile.name}</p> : null}
+        </div>
+      </Modal>
+
+      <Modal
+        open={addOpen}
+        onClose={() => !uploading && setAddOpen(false)}
+        title="Add a testimonial"
+        size="lg"
+        footer={
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button type="button" variant="ghost" onClick={() => setAddOpen(false)} disabled={uploading}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={handleUpload} loading={uploading} disabled={uploading}>
+              {uploading ? "Uploading…" : "Add testimonial"}
+            </Button>
+          </div>
+        }
+      >
+        <p className="mb-3 text-xs text-gray-500">
+          Files the document against the member’s CRM record and this solution. Invoice number and PDF are optional.
+        </p>
+        {addOpen ? renderAddForm() : null}
       </Modal>
     </div>
   );

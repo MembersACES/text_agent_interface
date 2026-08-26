@@ -9,6 +9,7 @@ const ROUTE_TITLES: Record<string, string> = {
   "/utility-invoice-info": "Utility invoice info",
   "/business-info": "Member profile",
   "/document-lodgement": "Invoice & Data Lodgement",
+  "/unsigned-pipeline": "Unsigned pipeline",
   "/base-1": "Base 1 Review Agent",
   "/distributors": "Distributors",
   "/plus-es-dma": "Plus ES DMA",

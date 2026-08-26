@@ -4,8 +4,8 @@ import { authOptions } from "@/lib/auth";
 import { getApiBaseUrl } from "@/lib/utils";
 
 /**
- * GET: Recent testimonials for a given testimonial solution type.
- * Query: solution_type (required), limit? (default 5)
+ * GET: Testimonials for the content page register.
+ * Query: solution_type? (omit for all types), limit? (default 20, max 500)
  */
 export async function GET(req: NextRequest) {
   try {
@@ -15,10 +15,7 @@ export async function GET(req: NextRequest) {
     }
 
     const solutionType = req.nextUrl.searchParams.get("solution_type");
-    const limit = req.nextUrl.searchParams.get("limit") || "5";
-    if (!solutionType) {
-      return NextResponse.json({ error: "solution_type is required" }, { status: 400 });
-    }
+    const limit = req.nextUrl.searchParams.get("limit") || (solutionType ? "20" : "500");
 
     const requestHost = req.headers.get("x-forwarded-host") || req.headers.get("host") || "";
     const backendUrl = getApiBaseUrl(requestHost);
@@ -27,10 +24,10 @@ export async function GET(req: NextRequest) {
     const authToken =
       token && token !== "undefined" && typeof token === "string" ? token : apiKey;
 
-    const url = `${backendUrl}/api/testimonials/examples?solution_type=${encodeURIComponent(
-      solutionType
-    )}&limit=${encodeURIComponent(limit)}`;
-    const backendResponse = await fetch(url, {
+    const params = new URLSearchParams({ limit });
+    if (solutionType) params.set("solution_type", solutionType);
+
+    const backendResponse = await fetch(`${backendUrl}/api/testimonials/examples?${params}`, {
       method: "GET",
       headers: { Authorization: `Bearer ${authToken}` },
     });
@@ -51,4 +48,3 @@ export async function GET(req: NextRequest) {
     );
   }
 }
-
