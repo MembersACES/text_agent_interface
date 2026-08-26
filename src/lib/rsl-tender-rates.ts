@@ -2,7 +2,8 @@
  * RSL tender C&I electricity offer rates by NMI group.
  *
  * Sheet rates are $/MWh (Peak / Off Peak) + commission $/MWh.
- * Base 2 offer UI uses c/kWh → cPerKwh = audPerMwh / 10.
+ * Base 2 offer UI uses c/kWh for energy (cPerKwh = audPerMwh / 10) and
+ * $/kWh for commission (audPerKwh = audPerMwh / 1000, Origin sheet units).
  *
  * Applied as an overlay on Base 2 when a loaded NMI matches a group
  * (does not replace global Comparison rates defaults).
@@ -33,7 +34,8 @@ export interface RslTenderCardPatch {
   ciOfferPricingType: "stepped";
   ciOfferStartDate: string;
   ciOfferSteppedRates: { peak?: number; offPeak?: number; shoulder?: number }[];
-  ciElectricityCommissionAudPerMwh: number;
+  /** Origin-style commission ($/kWh). $1/MWh = $0.001/kWh. */
+  ciElectricityCommissionAudPerKwh: number;
   ciOfferTenderMatched: true;
   ciOfferTenderGroupId: string;
   ciOfferTenderGroupLabel: string;
@@ -43,6 +45,15 @@ export interface RslTenderCardPatch {
 /** $/MWh → c/kWh (same $/kWh×100 scale used on Base 2 offer rates). */
 export function audPerMwhToCPerKwh(audPerMwh: number): number {
   return parseFloat((audPerMwh / 10).toFixed(4));
+}
+
+/** $1/MWh = $0.001/kWh. Do not use /10 (that is c/kWh, 10× too large). */
+export function audPerMwhToAudPerKwh(audPerMwh: number): number {
+  return parseFloat((audPerMwh / 1000).toFixed(6));
+}
+
+export function audPerKwhToAudPerMwh(audPerKwh: number): number {
+  return parseFloat((audPerKwh * 1000).toFixed(4));
 }
 
 export function normalizeNmi(raw: string): string {
@@ -218,7 +229,7 @@ export function rslTenderGroupToCardPatch(group: RslTenderGroup): RslTenderCardP
         offPeak: audPerMwhToCPerKwh(y3.offPeakAudPerMwh),
       },
     ],
-    ciElectricityCommissionAudPerMwh: group.commissionAudPerMwh,
+    ciElectricityCommissionAudPerKwh: audPerMwhToAudPerKwh(group.commissionAudPerMwh),
     ciOfferTenderMatched: true,
     ciOfferTenderGroupId: group.id,
     ciOfferTenderGroupLabel: group.label,
