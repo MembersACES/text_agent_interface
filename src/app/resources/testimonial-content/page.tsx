@@ -36,7 +36,11 @@ import {
 } from "./copy-fields";
 import {
   TestimonialRecordsPanel,
-  hasLinkedInvoice,
+  driveInvoiceUrl,
+  extractDriveFileId,
+  invoiceState,
+  matchesInvoiceFilter,
+  NO_INVOICE_RECORDED,
   rowSolutionTypeId,
   typeLabel,
   UNCATEGORISED_FILTER,
@@ -68,7 +72,17 @@ type SavingsInvoice = {
   due_date?: string;
   total_amount?: number;
   status?: string;
+  invoice_file_id?: string;
+  pdf_url?: string;
 };
+
+function invoiceMatchKey(value: string): string {
+  return value.trim().toLowerCase().replace(/[\s-]+/g, "");
+}
+
+function fileIdFromInvoice(inv: SavingsInvoice): string | null {
+  return extractDriveFileId(inv.invoice_file_id) || extractDriveFileId(inv.pdf_url);
+}
 
 function mapExample(t: Record<string, unknown>): ExampleItem {
   return {
@@ -583,6 +597,7 @@ export default function TestimonialContentPage() {
   const [uploadTypeId, setUploadTypeId] = useState("ci_electricity");
   const [uploading, setUploading] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
+  const invoiceHistoryCache = useRef<Map<string, SavingsInvoice[]>>(new Map());
 
   const [createOpen, setCreateOpen] = useState(false);
   const [newTypeName, setNewTypeName] = useState("");
@@ -721,15 +736,29 @@ export default function TestimonialContentPage() {
     fetchMembers();
   }, [fetchMembers]);
 
-  const fetchInvoicesForBusiness = useCallback(async (businessName: string): Promise<SavingsInvoice[]> => {
-    const res = await fetch("/api/one-month-savings/history", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ business_name: businessName }),
-    });
-    const data = await res.json().catch(() => ({}));
-    return Array.isArray(data?.invoices) ? data.invoices : [];
-  }, []);
+  const fetchInvoicesForBusiness = useCallback(
+    async (businessName: string, bypassCache = false): Promise<SavingsInvoice[]> => {
+      const key = businessName.trim().toLowerCase();
+      if (!bypassCache) {
+        const cached = invoiceHistoryCache.current.get(key);
+        if (cached && cached.length > 0) return cached;
+      }
+      const res = await fetch("/api/one-month-savings/history", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ business_name: businessName }),
+      });
+      const data = await res.json().catch(() => ({}));
+      const invoices: SavingsInvoice[] = Array.isArray(data?.invoices) ? data.invoices : [];
+      if (invoices.length > 0) {
+        invoiceHistoryCache.current.set(key, invoices);
+      } else {
+        invoiceHistoryCache.current.delete(key);
+      }
+      return invoices;
+    },
+    []
+  );
 
   const fetchExamples = useCallback(async () => {
     setExamplesLoading(true);
@@ -1028,6 +1057,7 @@ export default function TestimonialContentPage() {
               "error"
             );
           } else {
+            invoiceHistoryCache.current.delete(selectedMember.business_name.trim().toLowerCase());
             showToast(`Filed against ${typeName} and linked ${invoiceNum}.`, "success");
           }
         } catch {
@@ -1135,9 +1165,36 @@ export default function TestimonialContentPage() {
     }
   };
 
+  const handleOpenInvoice = async (row: ExampleItem) => {
+    const invoice = row.invoice_number?.trim();
+    if (!invoice || invoiceState(row) !== "linked") return;
+    const tab = window.open("about:blank", "_blank");
+    try {
+      const invoices = await fetchInvoicesForBusiness(row.business_name, true);
+      const wanted = invoiceMatchKey(invoice);
+      const match = invoices.find((inv) => invoiceMatchKey(inv.invoice_number) === wanted);
+      const fileId = match ? fileIdFromInvoice(match) : null;
+      if (fileId) {
+        const url = driveInvoiceUrl(fileId);
+        if (tab) {
+          tab.opener = null;
+          tab.location.replace(url);
+        } else {
+          window.open(url, "_blank", "noopener,noreferrer");
+        }
+        return;
+      }
+      tab?.close();
+      showToast(`No PDF on file for ${invoice}.`, "error");
+    } catch {
+      tab?.close();
+      showToast("Couldn't open that invoice PDF.", "error");
+    }
+  };
+
   const openLinkInvoice = async (row: ExampleItem) => {
     setLinkTarget(row);
-    setLinkInvoiceNumber(row.invoice_number ?? "");
+    setLinkInvoiceNumber(invoiceState(row) === "linked" ? row.invoice_number ?? "" : "");
     setLinkInvoiceFile(null);
     setLinkInvoices([]);
     setLinkInvoicesLoading(true);
@@ -1160,7 +1217,7 @@ export default function TestimonialContentPage() {
     const next = raw.trim();
     setLinking(true);
     try {
-      if (linkInvoiceFile && next) {
+      if (linkInvoiceFile && next && invoiceState({ ...row, invoice_number: next }) === "linked") {
         const member = members.find(
           (m) => m.business_name.trim().toLowerCase() === row.business_name.trim().toLowerCase()
         );
@@ -1183,6 +1240,8 @@ export default function TestimonialContentPage() {
               err.message || err.error || "Invoice number will still be saved. The PDF did not upload to Drive.",
               "error"
             );
+          } else {
+            invoiceHistoryCache.current.delete(row.business_name.trim().toLowerCase());
           }
         } catch {
           showToast("Invoice number will still be saved. The PDF did not upload to Drive.", "error");
@@ -1199,7 +1258,15 @@ export default function TestimonialContentPage() {
         return;
       }
       const mapped = applyPatchedRow(row.id, data as Record<string, unknown>);
-      showToast(mapped.invoice_number ? `Linked ${mapped.invoice_number}.` : "Invoice unlinked.", "success");
+      const state = invoiceState(mapped);
+      showToast(
+        state === "linked"
+          ? `Linked ${mapped.invoice_number}.`
+          : state === "none"
+            ? "Marked as no invoice recorded."
+            : "Invoice unlinked.",
+        "success"
+      );
       setLinkTarget(null);
       setLinkInvoiceFile(null);
     } catch {
@@ -1211,6 +1278,10 @@ export default function TestimonialContentPage() {
 
   const handleUnlinkInvoice = (row: ExampleItem) => {
     void patchInvoiceNumber(row, "");
+  };
+
+  const handleMarkNoInvoice = (row: ExampleItem) => {
+    void patchInvoiceNumber(row, NO_INVOICE_RECORDED);
   };
 
   const handleDeleteType = async () => {
@@ -1306,8 +1377,7 @@ export default function TestimonialContentPage() {
       const q = recSearch.trim().toLowerCase();
       return list.filter((row) => {
         if (recFilter !== "all" && row.status !== recFilter) return false;
-        if (invoiceFilter === "with" && !hasLinkedInvoice(row)) return false;
-        if (invoiceFilter === "without" && hasLinkedInvoice(row)) return false;
+        if (!matchesInvoiceFilter(row, invoiceFilter)) return false;
         if (!q) return true;
         const haystack = [
           row.business_name,
@@ -1569,6 +1639,8 @@ export default function TestimonialContentPage() {
                 onDelete={setDeleteTarget}
                 onLinkInvoice={openLinkInvoice}
                 onUnlinkInvoice={handleUnlinkInvoice}
+                onOpenInvoice={handleOpenInvoice}
+                onMarkNoInvoice={handleMarkNoInvoice}
                 headerAction={
                   <Button type="button" size="sm" onClick={openAddModal}>
                     <Plus className="size-3.5" />
@@ -1715,6 +1787,8 @@ export default function TestimonialContentPage() {
                   onDelete={setDeleteTarget}
                   onLinkInvoice={openLinkInvoice}
                   onUnlinkInvoice={handleUnlinkInvoice}
+                  onOpenInvoice={handleOpenInvoice}
+                  onMarkNoInvoice={handleMarkNoInvoice}
                   footerNote={`Showing ${filteredCollected.length} of ${collectedForType.length} filed for ${selectedLabel}. Files open in Google Drive.`}
                 />
               </div>

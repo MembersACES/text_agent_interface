@@ -26,8 +26,61 @@ export type ExampleItem = {
   created_at?: string | null;
 };
 
-export type InvoiceFilter = "all" | "with" | "without";
+export type InvoiceFilter = "all" | "with" | "without" | "none";
+export type InvoiceState = "linked" | "missing" | "none";
 export type TypeOption = { id: string; label: string };
+
+/** Stored in invoice_number when this testimonial has no invoice by design. */
+export const NO_INVOICE_RECORDED = "No invoice recorded";
+
+/** Types that do not get a 1st Month Savings invoice. */
+export const NO_INVOICE_TYPE_IDS = new Set([
+  "client_endorsement",
+  "ghg_roadmap",
+  "solar_panel_cleaning",
+  "solar_review",
+]);
+
+function isNoInvoiceSentinel(value: string | null | undefined): boolean {
+  const raw = (value || "").trim();
+  if (!raw) return false;
+  return raw.toLowerCase() === NO_INVOICE_RECORDED.toLowerCase() || raw.toLowerCase() === "n/a";
+}
+
+export function isMarkedNoInvoice(row: ExampleItem): boolean {
+  return isNoInvoiceSentinel(row.invoice_number);
+}
+
+export function hasLinkedInvoice(row: ExampleItem): boolean {
+  const raw = row.invoice_number?.trim();
+  return Boolean(raw) && !isNoInvoiceSentinel(raw);
+}
+
+export function typeExpectsNoInvoice(row: ExampleItem): boolean {
+  const id = (row.testimonial_solution_type_id || "").trim();
+  if (id && NO_INVOICE_TYPE_IDS.has(id)) return true;
+  const label = (row.testimonial_type || "").trim().toLowerCase();
+  if (!label) return false;
+  for (const typeId of NO_INVOICE_TYPE_IDS) {
+    const known = SOLUTION_TYPE_LABELS[typeId];
+    if (known && known.toLowerCase() === label) return true;
+  }
+  return false;
+}
+
+export function invoiceState(row: ExampleItem): InvoiceState {
+  if (hasLinkedInvoice(row)) return "linked";
+  if (isNoInvoiceSentinel(row.invoice_number) || typeExpectsNoInvoice(row)) return "none";
+  return "missing";
+}
+
+export function matchesInvoiceFilter(row: ExampleItem, filter: InvoiceFilter): boolean {
+  if (filter === "all") return true;
+  const state = invoiceState(row);
+  if (filter === "with") return state === "linked";
+  if (filter === "without") return state === "missing";
+  return state === "none";
+}
 
 export function driveFileUrl(ex: ExampleItem): string {
   if (ex.file_link) return ex.file_link;
@@ -36,10 +89,6 @@ export function driveFileUrl(ex: ExampleItem): string {
 
 export function isSheetSourced(row: ExampleItem): boolean {
   return row.source === "sheet" || row.id < 0;
-}
-
-export function hasLinkedInvoice(row: ExampleItem): boolean {
-  return Boolean(row.invoice_number?.trim());
 }
 
 export function typeLabel(row: ExampleItem): string {
@@ -60,12 +109,19 @@ export function rowSolutionTypeId(row: ExampleItem, solutionTypes: TypeOption[])
   return null;
 }
 
-export function invoicePageUrl(businessName: string, invoiceNumber: string): string {
-  const params = new URLSearchParams({
-    businessName,
-    linkedInvoice: invoiceNumber,
-  });
-  return `/one-month-savings?${params.toString()}`;
+export function driveInvoiceUrl(fileId: string): string {
+  return `https://drive.google.com/file/d/${fileId}/view`;
+}
+
+export function extractDriveFileId(value: string | null | undefined): string | null {
+  const raw = (value || "").trim();
+  if (!raw) return null;
+  const fromPath = raw.match(/\/d\/([a-zA-Z0-9_-]{10,})/);
+  if (fromPath) return fromPath[1];
+  const fromQuery = raw.match(/[?&]id=([a-zA-Z0-9_-]{10,})/);
+  if (fromQuery) return fromQuery[1];
+  if (/^[a-zA-Z0-9_-]{20,}$/.test(raw)) return raw;
+  return null;
 }
 
 function FilterChip({
@@ -119,6 +175,8 @@ export function TestimonialRecordsPanel({
   onDelete,
   onLinkInvoice,
   onUnlinkInvoice,
+  onOpenInvoice,
+  onMarkNoInvoice,
   headerAction,
   footerNote,
 }: {
@@ -146,19 +204,18 @@ export function TestimonialRecordsPanel({
   onDelete: (row: ExampleItem) => void;
   onLinkInvoice: (row: ExampleItem) => void;
   onUnlinkInvoice: (row: ExampleItem) => void;
+  onOpenInvoice?: (row: ExampleItem) => void;
+  onMarkNoInvoice?: (row: ExampleItem) => void;
   headerAction?: ReactNode;
   footerNote: string;
 }) {
   const afterInvoice =
-    invoiceFilter === "all"
-      ? countSource
-      : countSource.filter((row) =>
-          invoiceFilter === "with" ? hasLinkedInvoice(row) : !hasLinkedInvoice(row)
-        );
+    invoiceFilter === "all" ? countSource : countSource.filter((row) => matchesInvoiceFilter(row, invoiceFilter));
   const afterStatus =
     statusFilter === "all" ? countSource : countSource.filter((row) => row.status === statusFilter);
-  const withCount = afterStatus.filter(hasLinkedInvoice).length;
-  const withoutCount = afterStatus.length - withCount;
+  const withCount = afterStatus.filter((row) => invoiceState(row) === "linked").length;
+  const withoutCount = afterStatus.filter((row) => invoiceState(row) === "missing").length;
+  const noneCount = afterStatus.filter((row) => invoiceState(row) === "none").length;
 
   const filteredEmpty = !loading && !error && countSource.length > 0 && rows.length === 0;
 
@@ -215,6 +272,12 @@ export function TestimonialRecordsPanel({
           >
             Without invoice {withoutCount}
           </FilterChip>
+          <FilterChip
+            pressed={invoiceFilter === "none"}
+            onClick={() => onInvoiceFilter(invoiceFilter === "none" ? "all" : "none")}
+          >
+            No invoice recorded {noneCount}
+          </FilterChip>
         </div>
       </div>
 
@@ -234,7 +297,9 @@ export function TestimonialRecordsPanel({
             filteredEmpty
               ? invoiceFilter === "without"
                 ? "Nothing left to hunt down"
-                : "No testimonials match these filters"
+                : invoiceFilter === "none"
+                  ? "No testimonials marked as no invoice recorded"
+                  : "No testimonials match these filters"
               : emptyTitle
           }
           description={
@@ -277,6 +342,7 @@ export function TestimonialRecordsPanel({
                       ? [ex.status, ...TESTIMONIAL_STATUSES]
                       : [...TESTIMONIAL_STATUSES];
                   const invoice = ex.invoice_number?.trim() || "";
+                  const invState = invoiceState(ex);
                   return (
                     <tr key={ex.id} className="align-middle">
                       <td className="px-3 py-2.5">
@@ -347,17 +413,16 @@ export function TestimonialRecordsPanel({
                         {ex.testimonial_savings || "—"}
                       </td>
                       <td className="px-3 py-2.5">
-                        {invoice ? (
+                        {invState === "linked" ? (
                           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                            <a
-                              href={invoicePageUrl(ex.business_name, invoice)}
-                              target="_blank"
-                              rel="noopener noreferrer"
+                            <button
+                              type="button"
                               className="truncate text-xs font-semibold text-primary hover:underline"
-                              title={invoice}
+                              title={`Open invoice ${invoice} PDF`}
+                              onClick={() => onOpenInvoice?.(ex)}
                             >
                               {invoice}
-                            </a>
+                            </button>
                             <button
                               type="button"
                               onClick={() => onLinkInvoice(ex)}
@@ -374,13 +439,26 @@ export function TestimonialRecordsPanel({
                             </button>
                           </div>
                         ) : (
-                          <button
-                            type="button"
-                            onClick={() => onLinkInvoice(ex)}
-                            className="text-xs font-semibold text-primary hover:underline"
-                          >
-                            Link invoice
-                          </button>
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                            <button
+                              type="button"
+                              onClick={() => onLinkInvoice(ex)}
+                              className="text-xs font-semibold text-primary hover:underline"
+                            >
+                              Link invoice
+                            </button>
+                            {isMarkedNoInvoice(ex) ? (
+                              <span className="text-[11px] text-gray-500">No invoice recorded</span>
+                            ) : onMarkNoInvoice ? (
+                              <button
+                                type="button"
+                                onClick={() => onMarkNoInvoice(ex)}
+                                className="text-[11px] font-semibold text-gray-500 hover:text-primary"
+                              >
+                                No invoice recorded
+                              </button>
+                            ) : null}
+                          </div>
                         )}
                       </td>
                       {showAdded ? (
