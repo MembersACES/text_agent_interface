@@ -2,7 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import { isWiredSequenceType, sequenceTypeLooksValid, WIRED_SEQUENCE_TYPE_LABELS } from "@/lib/autonomous-sequence-keys";
+import {
+  COMPARISON_TRIGGERS,
+  isWiredSequenceType,
+  sequenceTypeLooksValid,
+  templateCoversFlow,
+  WIRED_SEQUENCE_TYPE_LABELS,
+} from "@/lib/autonomous-sequence-keys";
 import SignatureHtmlEditor from "./SignatureHtmlEditor";
 import StartTestRunPanel from "./StartTestRunPanel";
 import RetellVoicePromptPanel, {
@@ -36,6 +42,7 @@ export interface SequenceTemplate {
   validity_mode?: string;
   /** Days from send, used only when validity_mode is "fixed_days". */
   validity_days?: number;
+  linked_flow_keys?: string[];
   steps: SequenceTemplateStep[];
 }
 
@@ -89,8 +96,24 @@ function channelMeta(channel: string) {
   return CHANNELS.find((c) => c.value === channel) ?? { value: channel, label: channel.replace(/_/g, " "), icon: "📨" };
 }
 
+function uniqueCallKey(base: string, templates: SequenceTemplate[], excludeId: number): string {
+  const slug =
+    base
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, 60) || "sequence";
+  const used = new Set(templates.filter((t) => t.id !== excludeId).map((t) => t.sequence_type));
+  if (!used.has(slug)) return slug;
+  let i = 2;
+  while (used.has(`${slug}_${i}`)) i += 1;
+  return `${slug}_${i}`;
+}
+
 interface SequenceTemplateEditorProps {
   template: SequenceTemplate;
+  templates: SequenceTemplate[];
   token: string;
   typePrompts: SequenceTypePromptConfig | null;
   typePromptsLoading: boolean;
@@ -119,6 +142,7 @@ interface SequenceTemplateEditorProps {
 
 export default function SequenceTemplateEditor({
   template,
+  templates,
   token,
   typePrompts,
   typePromptsLoading,
@@ -167,6 +191,28 @@ export default function SequenceTemplateEditor({
 
   const orderedSteps = [...template.steps].sort((a, b) => a.step_index - b.step_index);
   const savingTemplate = savingTemplateId === template.id;
+  const linkedKeys = template.linked_flow_keys ?? [];
+
+  const toggleComparisonLink = (flowKey: string) => {
+    const linked = templateCoversFlow(template, flowKey);
+    if (linked) {
+      if (template.sequence_type === flowKey) {
+        updateTemplateLocal(template.id, {
+          sequence_type: uniqueCallKey(`${template.display_name}_unlinked`, templates, template.id),
+          linked_flow_keys: linkedKeys.filter((k) => k !== flowKey),
+        });
+        return;
+      }
+      updateTemplateLocal(template.id, { linked_flow_keys: linkedKeys.filter((k) => k !== flowKey) });
+      return;
+    }
+    const owner = templates.find((t) => t.id !== template.id && templateCoversFlow(t, flowKey));
+    if (owner) {
+      showToast(`Already linked on “${owner.display_name}”. Unlink it there first.`, "error");
+      return;
+    }
+    updateTemplateLocal(template.id, { linked_flow_keys: [...linkedKeys, flowKey] });
+  };
 
   const saveSetup = () => {
     void saveTemplate({
@@ -343,6 +389,42 @@ export default function SequenceTemplateEditor({
                 <span className="font-mono">ci_electricity_offer_draft</span>.
               </p>
             )}
+            <div className="md:col-span-2 rounded-lg border border-indigo-100 bg-indigo-50/50 px-3 py-3 dark:border-indigo-900/40 dark:bg-indigo-950/20">
+              <div className="text-xs font-semibold uppercase tracking-wide text-indigo-800 dark:text-indigo-300">
+                Linked comparison types
+              </div>
+              <p className="mt-1 text-[11px] font-normal normal-case tracking-normal text-gray-500">
+                Which product pages start this sequence. Save after changing. A type can only be linked to one template.
+              </p>
+              <div className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                {COMPARISON_TRIGGERS.map((flow) => {
+                  const checked = templateCoversFlow(template, flow.sequence_type);
+                  const owner = templates.find(
+                    (t) => t.id !== template.id && templateCoversFlow(t, flow.sequence_type),
+                  );
+                  return (
+                    <label
+                      key={flow.sequence_type}
+                      className="flex items-start gap-2 rounded-md px-1 py-1 text-sm font-medium text-gray-700 dark:text-gray-200 cursor-pointer select-none"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={!checked && owner != null}
+                        onChange={() => toggleComparisonLink(flow.sequence_type)}
+                        className="mt-0.5 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 disabled:opacity-40"
+                      />
+                      <span className="min-w-0">
+                        <span className="block leading-snug">{flow.label}</span>
+                        <span className="block text-[11px] font-normal text-gray-400">
+                          {owner ? `Linked on ${owner.display_name}` : flow.startsWhen}
+                        </span>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
             <label className={labelCls}>
               Timezone
               <input type="text" value="AEST (Australia/Brisbane)" readOnly className={cn(inputCls, "bg-gray-50 dark:bg-gray-900 text-gray-500")} />

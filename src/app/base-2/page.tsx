@@ -14,7 +14,12 @@ import {
   mergeBase2Defaults,
   ciGasBenchmarkForAnnualGJ,
 } from "@/lib/base2-defaults";
-import { applyRslTenderOfferIfMatched, lookupRslTenderOffer } from "@/lib/rsl-tender-rates";
+import {
+  applyRslTenderOfferIfMatched,
+  audPerKwhToAudPerMwh,
+  audPerMwhToAudPerKwh,
+  lookupRslTenderOffer,
+} from "@/lib/rsl-tender-rates";
 import {
   AUTONOMOUS_SEQUENCE_BNE_GAS,
   AUTONOMOUS_SEQUENCE_CI_ELECTRICITY,
@@ -136,8 +141,8 @@ interface UtilityComparison {
   /** B&E offer period (YYYY-MM-DD). Start defaults to 1st of next month. */
   ciGasBneStartDate?: string;
   ciGasBneEndDate?: string;
-  /** Required for C&I electricity comparison / DMA ($/MWh). */
-  ciElectricityCommissionAudPerMwh?: number;
+  /** Required for C&I electricity comparison / DMA ($/kWh, Origin sheet units). */
+  ciElectricityCommissionAudPerKwh?: number;
   /** Required for C&I gas and SME → C&I gas (`ci_offer`) comparison ($/GJ). */
   ciGasCommissionAudPerGj?: number;
   /** C&I Electricity offer term — set on the comparison card, used by Generate + RSL. */
@@ -178,6 +183,8 @@ interface UtilityComparison {
     peakSavingsPercent?: number;
     offPeakAnnualSavings?: number;
     offPeakSavingsPercent?: number;
+    shoulderAnnualSavings?: number;
+    shoulderSavingsPercent?: number;
     meteringSavings?: number;
     supplySavings?: number;
     demandSavings?: number;
@@ -577,11 +584,13 @@ function RateUsageTotalHint({
   annualUsage,
   usageUnit,
   cents,
+  rateFractionDigits,
 }: {
   rate: number | undefined;
   annualUsage: number | undefined;
   usageUnit: string;
   cents?: boolean;
+  rateFractionDigits?: { min?: number; max?: number };
 }) {
   if (
     rate == null ||
@@ -596,7 +605,10 @@ function RateUsageTotalHint({
   const total = cents ? (rate / 100) * annualUsage : rate * annualUsage;
   const rateText = cents
     ? `${rate.toLocaleString("en-AU", { maximumFractionDigits: 2 })}c`
-    : `$${rate.toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
+    : `$${rate.toLocaleString("en-AU", {
+        minimumFractionDigits: rateFractionDigits?.min ?? 2,
+        maximumFractionDigits: rateFractionDigits?.max ?? 4,
+      })}`;
   const usageText = annualUsage.toLocaleString("en-AU", { maximumFractionDigits: 2 });
   return (
     <div className="mt-1 text-right text-[10px] leading-snug text-gray-500 tabular-nums">
@@ -604,15 +616,6 @@ function RateUsageTotalHint({
         {rateText} × {usageText} {usageUnit}
       </div>
       <div className="font-semibold text-gray-700">{formatAud(total)}/yr</div>
-    </div>
-  );
-}
-
-function EstAnnualCommsHint({ amount }: { amount: number | undefined }) {
-  if (amount == null || !Number.isFinite(amount) || amount <= 0) return null;
-  return (
-    <div className="mt-1 text-right text-[10px] font-semibold leading-snug text-violet-700 tabular-nums">
-      Est. comms {formatAud(amount)}/yr
     </div>
   );
 }
@@ -783,9 +786,13 @@ function buildComparisonSnapshot(
     current_offpeak_cpkwh: util.currentOffPeakRate ?? normalizeMoneyToNumber(result.off_peak_rate_invoice) ?? null,
     offer_peak_cpkwh: util.comparisonPeakRate ?? normalizeMoneyToNumber(result.offer1PeakRate) ?? null,
     offer_offpeak_cpkwh: util.comparisonOffPeakRate ?? normalizeMoneyToNumber(result.offer1OffPeakRate) ?? null,
+    commission_aud_per_kwh:
+      util.ciElectricityCommissionAudPerKwh != null && Number.isFinite(util.ciElectricityCommissionAudPerKwh)
+        ? util.ciElectricityCommissionAudPerKwh
+        : null,
     commission_aud_per_mwh:
-      util.ciElectricityCommissionAudPerMwh != null && Number.isFinite(util.ciElectricityCommissionAudPerMwh)
-        ? util.ciElectricityCommissionAudPerMwh
+      util.ciElectricityCommissionAudPerKwh != null && Number.isFinite(util.ciElectricityCommissionAudPerKwh)
+        ? audPerKwhToAudPerMwh(util.ciElectricityCommissionAudPerKwh)
         : null,
   };
 }
@@ -1636,7 +1643,7 @@ export default function Base2Page() {
   const updateOptionalCommission = (
     utilityType: string,
     identifier: string,
-    field: "ciElectricityCommissionAudPerMwh" | "ciGasCommissionAudPerGj",
+    field: "ciElectricityCommissionAudPerKwh" | "ciGasCommissionAudPerGj",
     value: string,
   ) => {
     setUtilityComparisons((prev) =>
@@ -1646,6 +1653,25 @@ export default function Base2Page() {
         if (t === "") return { ...u, [field]: undefined };
         const n = parseFloat(t);
         return { ...u, [field]: Number.isFinite(n) ? n : undefined };
+      }),
+    );
+  };
+
+  const updateElecCommissionLinked = (
+    utilityType: string,
+    identifier: string,
+    unit: "kwh" | "mwh",
+    value: string,
+  ) => {
+    setUtilityComparisons((prev) =>
+      prev.map((u) => {
+        if (u.utilityType !== utilityType || u.identifier !== identifier) return u;
+        const t = value.trim();
+        if (t === "") return { ...u, ciElectricityCommissionAudPerKwh: undefined };
+        const n = parseFloat(t);
+        if (!Number.isFinite(n) || n <= 0) return u;
+        const kwh = unit === "kwh" ? n : audPerMwhToAudPerKwh(n);
+        return { ...u, ciElectricityCommissionAudPerKwh: kwh };
       }),
     );
   };
@@ -1796,10 +1822,7 @@ export default function Base2Page() {
     if (comparison.utilityType.includes('Electricity')) {
       const peakUsage = comparison.peakUsage || (comparison.monthlyUsage ? comparison.monthlyUsage * 0.4 : 0);
       const offPeakUsage = comparison.offPeakUsage || (comparison.monthlyUsage ? comparison.monthlyUsage * 0.3 : 0);
-      const totalUsage = peakUsage + offPeakUsage;
-      const shoulderUsage = (comparison.shoulderUsage && comparison.shoulderUsage > 0)
-        ? comparison.shoulderUsage
-        : (comparison.monthlyUsage && totalUsage < comparison.monthlyUsage ? (comparison.monthlyUsage - totalUsage) : (comparison.monthlyUsage ? comparison.monthlyUsage * 0.3 : 0));
+      const shoulderUsage = comparison.shoulderUsage && comparison.shoulderUsage > 0 ? comparison.shoulderUsage : 0;
       const elecMult = periodToAnnualMultiplier(comparison.elecInvoiceReviewDays);
       const currentPeak = comparison.currentPeakRate || 0; const currentOffPeak = comparison.currentOffPeakRate || 0; const currentShoulder = comparison.currentShoulderRate || 0;
       const compPeak = comparison.comparisonPeakRate || 0; const compOffPeak = comparison.comparisonOffPeakRate || 0; const compShoulder = comparison.comparisonShoulderRate || 0;
@@ -1815,6 +1838,12 @@ export default function Base2Page() {
         const c = (offPeakUsage * currentOffPeak / 100); const cp = (offPeakUsage * compOffPeak / 100);
         savings.offPeakSavings = c - cp; savings.offPeakSavingsPercent = c > 0 ? ((savings.offPeakSavings / c) * 100) : 0;
         savings.offPeakAnnualSavings = savings.offPeakSavings * elecMult;
+      }
+      const offerShoulder = compShoulder || compOffPeak;
+      if (currentShoulder > 0 && offerShoulder > 0 && shoulderUsage > 0) {
+        const c = (shoulderUsage * currentShoulder / 100); const cp = (shoulderUsage * offerShoulder / 100);
+        savings.shoulderSavings = c - cp; savings.shoulderSavingsPercent = c > 0 ? ((savings.shoulderSavings / c) * 100) : 0;
+        savings.shoulderAnnualSavings = savings.shoulderSavings * elecMult;
       }
       const currentPeriodUsageCost = (peakUsage * currentPeak / 100) + (offPeakUsage * currentOffPeak / 100) + (shoulderUsage * (currentShoulder || currentOffPeak) / 100);
       const comparisonPeriodUsageCost = (peakUsage * compPeak / 100) + (offPeakUsage * compOffPeak / 100) + (shoulderUsage * (compShoulder || compOffPeak) / 100);
@@ -1833,9 +1862,9 @@ export default function Base2Page() {
       savings.totalAnnualSavingsPercent = totalCurrentAnnual > 0 ? ((savings.totalAnnualSavings / totalCurrentAnnual) * 100) : 0;
       const annualKwh = (peakUsage + offPeakUsage + (shoulderUsage || 0)) * elecMult;
       savings.elecAnnualKwh = annualKwh;
-      const elecComm = comparison.ciElectricityCommissionAudPerMwh;
-      if (elecComm != null && elecComm > 0 && Number.isFinite(elecComm) && annualKwh > 0) {
-        savings.estimatedAnnualCommission = (annualKwh / 1000) * elecComm;
+      const elecCommKwh = comparison.ciElectricityCommissionAudPerKwh;
+      if (elecCommKwh != null && elecCommKwh > 0 && Number.isFinite(elecCommKwh) && annualKwh > 0) {
+        savings.estimatedAnnualCommission = annualKwh * elecCommKwh;
       }
     } else if (comparison.utilityType.includes('Gas')) {
       if (comparison.utilityType === "SME Gas" && comparison.smeGasComparisonMode === "sme_benchmark_stub") return savings;
@@ -2010,9 +2039,9 @@ export default function Base2Page() {
     if (utilitiesToProcess.length === 0) { alert('No utilities available to generate'); return; }
     for (const u of utilitiesToProcess) {
       if (u.utilityType === "C&I Electricity") {
-        const c = u.ciElectricityCommissionAudPerMwh;
+        const c = u.ciElectricityCommissionAudPerKwh;
         if (c == null || !Number.isFinite(c) || c <= 0) {
-          alert(`C&I electricity: commission ($/MWh) is required for NMI ${u.identifier}.`);
+          alert(`C&I electricity: commission ($/kWh) is required for NMI ${u.identifier}.`);
           return;
         }
       }
@@ -2056,7 +2085,8 @@ export default function Base2Page() {
           payload.metering_rate = (util.currentMeterDaily ?? util.currentMeteringDaily ?? 0).toFixed(2); payload.metering_rate_annual = (util.currentMeterAnnual ?? util.currentMeteringAnnual ?? 0).toFixed(2); payload.vas_rate = (util.currentVasDaily ?? 0).toFixed(2); payload.vas_rate_annual = (util.currentVasAnnual ?? 0).toFixed(2); payload.combined_annual_cost = (util.currentMeteringAnnual ?? 0).toFixed(2);
           payload.comparison_meter_annual = (util.comparisonMeterAnnual ?? 600).toFixed(2); payload.comparison_vas_annual = (util.comparisonVasAnnual ?? 300).toFixed(2); payload.comparison_meter_daily = (util.comparisonMeterDaily ?? 600 / 365).toFixed(4); payload.comparison_vas_daily = (util.comparisonVasDaily ?? 300 / 365).toFixed(4); payload.dma_price = (util.comparisonMeterAnnual ?? 600).toFixed(2); payload.vas_price = (util.comparisonVasAnnual ?? 300).toFixed(2); payload.proposed_annual_cost = (util.comparisonMeteringAnnual ?? 900).toFixed(2);
           if (util.currentMeteringAnnual != null && util.comparisonMeteringAnnual != null) payload.annual_savings = (util.currentMeteringAnnual - util.comparisonMeteringAnnual).toFixed(2);
-          payload.commission_aud_per_mwh = util.ciElectricityCommissionAudPerMwh!.toFixed(4);
+          payload.commission_aud_per_kwh = util.ciElectricityCommissionAudPerKwh!.toFixed(6);
+          payload.commission_aud_per_mwh = audPerKwhToAudPerMwh(util.ciElectricityCommissionAudPerKwh!).toFixed(4);
           payload.commission_unit_electricity = "$/MWh";
         } else if (util.utilityType === 'C&I Electricity') {
           webhookUrl = isRsl
@@ -2095,7 +2125,8 @@ export default function Base2Page() {
             }
           }
           payload.current_daily_supply = _raw(util.currentDailySupply); payload.comparison_daily_supply = _raw(util.comparisonDailySupply); payload.current_demand_charge = _raw(util.currentDemandCharge); payload.comparison_demand_charge = _raw(util.comparisonDemandCharge); payload.demand_quantity = _raw(util.demandQuantity);
-          payload.commission_aud_per_mwh = util.ciElectricityCommissionAudPerMwh!.toFixed(4);
+          payload.commission_aud_per_kwh = util.ciElectricityCommissionAudPerKwh!.toFixed(6);
+          payload.commission_aud_per_mwh = audPerKwhToAudPerMwh(util.ciElectricityCommissionAudPerKwh!).toFixed(4);
           payload.commission_unit_electricity = "$/MWh";
           if (util.elecInvoiceReviewDays != null) payload.invoice_review_days = String(util.elecInvoiceReviewDays);
           {
@@ -2104,8 +2135,8 @@ export default function Base2Page() {
             const shU = util.shoulderUsage || 0;
             const annualKwh = (peakU + offU + shU) * periodToAnnualMultiplier(util.elecInvoiceReviewDays);
             if (annualKwh > 0) payload.annual_usage_kwh = annualKwh.toFixed(2);
-            if (annualKwh > 0 && util.ciElectricityCommissionAudPerMwh != null) {
-              payload.estimated_comms = ((annualKwh / 1000) * util.ciElectricityCommissionAudPerMwh).toFixed(2);
+            if (annualKwh > 0 && util.ciElectricityCommissionAudPerKwh != null) {
+              payload.estimated_comms = (annualKwh * util.ciElectricityCommissionAudPerKwh).toFixed(2);
             }
           }
         } else if (util.utilityType === 'C&I Gas') {
@@ -2605,8 +2636,8 @@ export default function Base2Page() {
               {offerRateLabel && <div className="text-[10px] text-gray-400 text-right mt-0.5">{offerRateLabel}</div>}
               <RateUsageTotalHint rate={comparison.comparisonShoulderRate || comparison.comparisonOffPeakRate} annualUsage={savings?.shoulderAnnualKwh} usageUnit="kWh" cents />
             </td>
-            <td className={`${tdBase} text-center text-gray-300 text-xs`}>—</td>
-            <td className={`${tdBase} text-center text-gray-300 text-xs`}>—</td>
+            <td className={`${tdBase} text-right`}>{savingsPill(savings?.shoulderAnnualSavings)}{savings?.shoulderAnnualSavings != null && <div className="text-[10px] text-gray-400 text-right mt-0.5">/yr</div>}</td>
+            <td className={`${tdBase} text-right`}>{savingsPct(savings?.shoulderSavingsPercent)}</td>
           </tr>
         );
       }
@@ -2683,51 +2714,136 @@ export default function Base2Page() {
             <td className={`${tdBase} text-right`}>{savingsPct(comparison.comparisonDemandCharge && comparison.comparisonDemandCharge > 0 && currentDemand > 0 && currentDemandAnnual > 0 ? (demandSavings / currentDemandAnnual) * 100 : undefined)}</td>
           </tr>
         );
+        const elecCommKwh = comparison.ciElectricityCommissionAudPerKwh;
+        const elecCommMwh =
+          elecCommKwh != null && Number.isFinite(elecCommKwh) && elecCommKwh > 0
+            ? audPerKwhToAudPerMwh(elecCommKwh)
+            : undefined;
+        const elecAnnualMwh =
+          savings?.elecAnnualKwh != null && savings.elecAnnualKwh > 0 ? savings.elecAnnualKwh / 1000 : undefined;
+        const renderCommsTotalCell = () => (
+          <td className={`${tdBase} text-right text-xs text-violet-700 font-semibold tabular-nums`}>
+            {savings?.estimatedAnnualCommission != null ? (
+              <>
+                {formatAud(savings.estimatedAnnualCommission)}
+                <div className="text-[10px] font-normal text-gray-400 mt-0.5">/yr</div>
+              </>
+            ) : (
+              <span className="text-gray-300">—</span>
+            )}
+          </td>
+        );
         rows.push(
-          <tr key="commission-mwh" className="hover:bg-gray-50/50">
+          <tr key="commission-kwh" className="hover:bg-gray-50/50">
             <td className={labelTd}>
-              Commission <span className="text-gray-400">($/MWh)</span>
+              Commission <span className="text-gray-400">($/kWh)</span>
               <span className="ml-1 text-rose-600 font-semibold" title="Required before generating comparison or DMA">
                 *
               </span>
             </td>
             <td className={`${tdBase} text-center text-gray-300 text-xs`}>—</td>
+            <td className={tdBase}>
+              {savings?.elecAnnualKwh != null && savings.elecAnnualKwh > 0 ? (
+                <>
+                  <div className="text-xs tabular-nums text-gray-700">
+                    {Number(savings.elecAnnualKwh).toLocaleString("en-AU", { maximumFractionDigits: 2 })}
+                  </div>
+                  <div className="mt-1 text-right text-[10px] text-gray-400">
+                    Est. annual: {Number(savings.elecAnnualKwh).toLocaleString("en-AU", { maximumFractionDigits: 0 })} kWh
+                    {comparison.elecInvoiceReviewDays != null ? ` (${comparison.elecInvoiceReviewDays} d)` : " (×12)"}
+                  </div>
+                  <div className="text-right text-[10px] text-gray-400">
+                    {[
+                      savings.peakAnnualKwh != null && savings.peakAnnualKwh > 0
+                        ? `${Number(savings.peakAnnualKwh).toLocaleString("en-AU", { maximumFractionDigits: 0 })} peak`
+                        : null,
+                      savings.offPeakAnnualKwh != null && savings.offPeakAnnualKwh > 0
+                        ? `${Number(savings.offPeakAnnualKwh).toLocaleString("en-AU", { maximumFractionDigits: 0 })} off-peak`
+                        : null,
+                      savings.shoulderAnnualKwh != null && savings.shoulderAnnualKwh > 0
+                        ? `${Number(savings.shoulderAnnualKwh).toLocaleString("en-AU", { maximumFractionDigits: 0 })} shoulder`
+                        : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" + ")}
+                  </div>
+                </>
+              ) : (
+                <span className="text-xs text-gray-300">—</span>
+              )}
+            </td>
+            <td className={tdBase}>
+              <input
+                type="number"
+                step="0.000001"
+                min={0.000001}
+                required
+                value={elecCommKwh != null && Number.isFinite(elecCommKwh) ? elecCommKwh : ""}
+                onChange={(e) =>
+                  updateElecCommissionLinked(
+                    comparison.utilityType,
+                    comparison.identifier,
+                    "kwh",
+                    e.target.value,
+                  )
+                }
+                className={inputCls}
+                placeholder="0.003"
+              />
+              <RateUsageTotalHint
+                rate={elecCommKwh}
+                annualUsage={savings?.elecAnnualKwh}
+                usageUnit="kWh"
+                rateFractionDigits={{ min: 3, max: 6 }}
+              />
+            </td>
+            {renderCommsTotalCell()}
             <td className={`${tdBase} text-center text-gray-300 text-xs`}>—</td>
+          </tr>,
+        );
+        rows.push(
+          <tr key="commission-mwh" className="hover:bg-gray-50/50">
+            <td className={labelTd}>
+              Commission <span className="text-gray-400">($/MWh)</span>
+            </td>
+            <td className={`${tdBase} text-center text-gray-300 text-xs`}>—</td>
+            <td className={tdBase}>
+              {elecAnnualMwh != null ? (
+                <>
+                  <div className="text-xs tabular-nums text-gray-700">
+                    {elecAnnualMwh.toLocaleString("en-AU", { maximumFractionDigits: 4 })}
+                  </div>
+                  <div className="mt-1 text-right text-[10px] text-gray-400">Est. annual MWh (kWh ÷ 1000)</div>
+                </>
+              ) : (
+                <span className="text-xs text-gray-300">—</span>
+              )}
+            </td>
             <td className={tdBase}>
               <input
                 type="number"
                 step="0.0001"
                 min={0.0001}
-                required
-                value={
-                  comparison.ciElectricityCommissionAudPerMwh != null &&
-                  Number.isFinite(comparison.ciElectricityCommissionAudPerMwh)
-                    ? comparison.ciElectricityCommissionAudPerMwh
-                    : ""
-                }
+                value={elecCommMwh != null ? elecCommMwh : ""}
                 onChange={(e) =>
-                  updateOptionalCommission(
+                  updateElecCommissionLinked(
                     comparison.utilityType,
                     comparison.identifier,
-                    "ciElectricityCommissionAudPerMwh",
+                    "mwh",
                     e.target.value,
                   )
                 }
                 className={inputCls}
-                placeholder="Required"
+                placeholder="3.00"
               />
-              <EstAnnualCommsHint amount={savings?.estimatedAnnualCommission} />
+              <RateUsageTotalHint
+                rate={elecCommMwh}
+                annualUsage={elecAnnualMwh}
+                usageUnit="MWh"
+                rateFractionDigits={{ min: 2, max: 4 }}
+              />
             </td>
-            <td className={`${tdBase} text-right text-xs text-violet-700 font-semibold tabular-nums`}>
-              {savings?.estimatedAnnualCommission != null ? (
-                <>
-                  {formatAud(savings.estimatedAnnualCommission)}
-                  <div className="text-[10px] font-normal text-gray-400 mt-0.5">/yr</div>
-                </>
-              ) : (
-                <span className="text-gray-300">—</span>
-              )}
-            </td>
+            {renderCommsTotalCell()}
             <td className={`${tdBase} text-center text-gray-300 text-xs`}>—</td>
           </tr>,
         );
@@ -2823,7 +2939,20 @@ export default function Base2Page() {
               </span>
             </td>
             <td className={`${tdBase} text-center text-gray-300 text-xs`}>—</td>
-            <td className={`${tdBase} text-center text-gray-300 text-xs`}>—</td>
+            <td className={tdBase}>
+              {savings?.annualUsageGJ != null && savings.annualUsageGJ > 0 ? (
+                <>
+                  <div className="text-xs tabular-nums text-gray-700">
+                    {Number(savings.annualUsageGJ).toLocaleString("en-AU", { maximumFractionDigits: 2 })}
+                  </div>
+                  <div className="mt-1 text-right text-[10px] text-gray-400">
+                    Used for comms: {Number(savings.annualUsageGJ).toLocaleString("en-AU", { maximumFractionDigits: 2 })} GJ/yr
+                  </div>
+                </>
+              ) : (
+                <span className="text-xs text-gray-300">—</span>
+              )}
+            </td>
             <td className={tdBase}>
               <input
                 type="number"
@@ -2846,7 +2975,11 @@ export default function Base2Page() {
                 className={inputCls}
                 placeholder="3.00"
               />
-              <EstAnnualCommsHint amount={savings?.estimatedAnnualCommission} />
+              <RateUsageTotalHint
+                rate={comparison.ciGasCommissionAudPerGj}
+                annualUsage={savings?.annualUsageGJ}
+                usageUnit="GJ"
+              />
             </td>
             <td className={`${tdBase} text-right text-xs text-violet-700 font-semibold tabular-nums`}>
               {savings?.estimatedAnnualCommission != null ? (
@@ -3521,10 +3654,10 @@ export default function Base2Page() {
                                 {comparison.ciOfferTenderGroupNmiCount != null
                                   ? ` · ${comparison.ciOfferTenderGroupNmiCount} NMI${comparison.ciOfferTenderGroupNmiCount === 1 ? "" : "s"} in group`
                                   : ""}
-                                {comparison.ciElectricityCommissionAudPerMwh != null
-                                  ? ` · commission $${comparison.ciElectricityCommissionAudPerMwh.toFixed(2)}/MWh`
+                                {comparison.ciElectricityCommissionAudPerKwh != null
+                                  ? ` · commission $${comparison.ciElectricityCommissionAudPerKwh.toFixed(6)}/kWh ($${audPerKwhToAudPerMwh(comparison.ciElectricityCommissionAudPerKwh).toFixed(2)}/MWh)`
                                   : ""}
-                                {" · $/MWh sheet → c/kWh on card"}
+                                {" · energy $/MWh sheet → c/kWh on card"}
                               </div>
                             </div>
                             <button
