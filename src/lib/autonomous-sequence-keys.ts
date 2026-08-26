@@ -82,3 +82,21 @@ export function isWiredSequenceType(sequenceType: string): boolean {
 export function sequenceTypeLooksValid(value: string): boolean {
   return /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(value.trim());
 }
+
+/** Product pages that can start an autonomous sequence. */
+export const COMPARISON_TRIGGERS: AutonomousSequenceLink[] = [
+  SEQUENCE_LINK_CI_GAS,
+  SEQUENCE_LINK_CI_ELECTRICITY,
+  SEQUENCE_LINK_BNE_GAS,
+  SEQUENCE_LINK_CI_ELECTRICITY_OFFER,
+  SEQUENCE_LINK_SOLAR_FOLLOWUP,
+  SEQUENCE_LINK_SOLAR_ENGAGEMENT,
+];
+
+export function templateCoversFlow(
+  template: { sequence_type: string; linked_flow_keys?: string[] | null },
+  flowKey: string,
+): boolean {
+  if (template.sequence_type === flowKey) return true;
+  return (template.linked_flow_keys ?? []).includes(flowKey);
+}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -17,6 +17,7 @@ import SequenceTemplateEditor, {
 import { type RetellAgentListItem, type SequenceTypePromptRow } from "./_components/RetellVoicePromptPanel";
 import NewSequenceTemplateWizard from "./_components/NewSequenceTemplateWizard";
 import { resolvedSignatureHtml } from "@/lib/autonomous-signature";
+import { templateCoversFlow } from "@/lib/autonomous-sequence-keys";
 import DeleteSequenceTemplateModal, {
   type TemplateDeletePreview,
   deleteSequenceTemplate,
@@ -276,12 +277,26 @@ export default function AutonomousAgentPage() {
     }
   }, [searchParams]);
 
+  const typeParam = searchParams.get("type");
+  const appliedUrlTypeRef = useRef<string | null>(null);
   useEffect(() => {
-    const type = searchParams.get("type");
-    if (!type || templates.length === 0) return;
-    const match = templates.find((row) => row.sequence_type === type);
-    if (match) setSelectedTemplateId(match.id);
-  }, [searchParams, templates]);
+    if (!typeParam || templates.length === 0) return;
+    if (appliedUrlTypeRef.current === typeParam) return;
+    const match = templates.find((row) => templateCoversFlow(row, typeParam));
+    if (match) {
+      setSelectedTemplateId(match.id);
+      appliedUrlTypeRef.current = typeParam;
+    }
+  }, [typeParam, templates]);
+
+  const selectTemplate = (row: SequenceTemplate) => {
+    setSelectedTemplateId(row.id);
+    appliedUrlTypeRef.current = row.sequence_type;
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("tab", "templates");
+    params.set("type", row.sequence_type);
+    router.replace(`/autonomous-agent?${params.toString()}`, { scroll: false });
+  };
 
   useEffect(() => {
     if (!token || tab !== "templates") return;
@@ -333,6 +348,7 @@ export default function AutonomousAgentPage() {
             signature_html: template.signature_html ?? "",
             extra_context: template.extra_context ?? "",
             sequence_type: template.sequence_type,
+            linked_flow_keys: template.linked_flow_keys ?? [],
             validity_mode: template.validity_mode ?? "fixed_days",
             validity_days: template.validity_days ?? 7,
           }),
@@ -492,13 +508,14 @@ export default function AutonomousAgentPage() {
     }
   };
 
+  const selectedSequenceType =
+    templates.find((t) => t.id === selectedTemplateId)?.sequence_type?.trim() ?? "";
+
   useEffect(() => {
-    if (!token || tab !== "templates" || !selectedTemplateId) {
+    if (!token || tab !== "templates" || !selectedTemplateId || !selectedSequenceType) {
       setTypePrompts(null); setTypePromptsError(null); return;
     }
-    const selected = templates.find((t) => t.id === selectedTemplateId);
-    const sequenceType = selected?.sequence_type?.trim();
-    if (!sequenceType) { setTypePrompts(null); setTypePromptsError(null); return; }
+    const sequenceType = selectedSequenceType;
     const fetchTypePrompts = async () => {
       try {
         setTypePromptsLoading(true); setTypePromptsError(null);
@@ -516,7 +533,7 @@ export default function AutonomousAgentPage() {
       } finally { setTypePromptsLoading(false); }
     };
     fetchTypePrompts();
-  }, [token, tab, selectedTemplateId, templates]);
+  }, [token, tab, selectedTemplateId, selectedSequenceType]);
 
   const updateTypePromptsLocal = (patch: Partial<SequenceTypePromptConfig>) =>
     setTypePrompts((prev) => (prev ? { ...prev, ...patch } : prev));
@@ -740,7 +757,7 @@ export default function AutonomousAgentPage() {
                     <button
                       key={t.id}
                       type="button"
-                      onClick={() => setSelectedTemplateId(t.id)}
+                      onClick={() => selectTemplate(t)}
                       className={cn(
                         "w-full text-left px-4 py-3 transition-colors",
                         selectedTemplateId === t.id
@@ -777,7 +794,9 @@ export default function AutonomousAgentPage() {
               ) : (
                 token ? (
                   <SequenceTemplateEditor
+                    key={selectedTemplate.id}
                     template={selectedTemplate}
+                    templates={templates}
                     token={token}
                     typePrompts={typePrompts}
                     typePromptsLoading={typePromptsLoading}
