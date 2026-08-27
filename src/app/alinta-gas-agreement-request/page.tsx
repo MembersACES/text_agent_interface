@@ -89,14 +89,10 @@ function AlintaGasAgreementRequestPageInner() {
     (session as { accessToken?: string } | null)?.accessToken ??
     "";
 
-  const prefillBusiness = searchParams.get("businessName") ?? "";
-  const prefillMirn = searchParams.get("mirn") ?? "";
   const prefillClientId = searchParams.get("clientId") ?? "";
 
   const [step, setStep] = useState(1);
   const [file, setFile] = useState<File | null>(null);
-  const [businessName, setBusinessName] = useState(prefillBusiness);
-  const [mrinHint, setMrinHint] = useState(prefillMirn);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [recipient, setRecipient] = useState("data.quote@fornrg.com");
@@ -161,8 +157,6 @@ function AlintaGasAgreementRequestPageInner() {
     try {
       const fd = new FormData();
       fd.append("file", file);
-      if (businessName.trim()) fd.append("business_name", businessName.trim());
-      if (mrinHint.trim()) fd.append("mrin", mrinHint.trim());
       const res = await fetch(`${getApiBaseUrl()}/api/alinta-gas-agreement/extract`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
@@ -181,9 +175,6 @@ function AlintaGasAgreementRequestPageInner() {
       setDraft(data.draft);
       setWarnings(data.extraction_warnings || []);
       setRecipient(data.recipient || "data.quote@fornrg.com");
-      if (!businessName.trim() && data.draft.fields.company_name?.value) {
-        setBusinessName(data.draft.fields.company_name.value);
-      }
       setStep(2);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
@@ -210,7 +201,7 @@ function AlintaGasAgreementRequestPageInner() {
           request_kind: draft.request_kind,
           loa_file_id: draft.loa_file_id,
           gdrive_folder_url: draft.gdrive_folder_url,
-          business_name: fieldValue(draft, "company_name") || businessName,
+          business_name: fieldValue(draft, "company_name"),
           client_id: prefillClientId || undefined,
         }),
       );
@@ -309,26 +300,6 @@ function AlintaGasAgreementRequestPageInner() {
                   className="w-full text-sm"
                   onChange={(e) => setFile(e.target.files?.[0] ?? null)}
                 />
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div>
-                  <label className="mb-1 block text-sm font-medium">Business name (optional)</label>
-                  <input
-                    className="w-full rounded-md border border-gray-200 p-2 text-sm dark:border-dark-3 dark:bg-dark-2"
-                    value={businessName}
-                    onChange={(e) => setBusinessName(e.target.value)}
-                    placeholder="Used to find the LOA"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium">MIRN (optional)</label>
-                  <input
-                    className="w-full rounded-md border border-gray-200 p-2 text-sm dark:border-dark-3 dark:bg-dark-2"
-                    value={mrinHint}
-                    onChange={(e) => setMrinHint(e.target.value)}
-                    placeholder="If not printed clearly on the EF"
-                  />
-                </div>
               </div>
               <Button type="submit" disabled={loading || !file} loading={loading}>
                 Extract details

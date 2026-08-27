@@ -598,12 +598,8 @@ export function DocumentsTab({
     return { type: null, value: "" };
   };
 
-  const alintaAgreementHref = (explicitMirn?: string) => {
+  const alintaAgreementHref = () => {
     const p = new URLSearchParams();
-    const name = String(business?.name || businessName || "").trim();
-    if (name) p.set("businessName", name);
-    const mirn = (explicitMirn || getIdentifier("C&I Gas").value || "").trim();
-    if (mirn) p.set("mirn", mirn);
     if (clientId != null && Number.isFinite(clientId)) p.set("clientId", String(clientId));
     const qs = p.toString();
     return qs ? `/alinta-gas-agreement-request?${qs}` : "/alinta-gas-agreement-request";
@@ -1321,7 +1317,7 @@ export function DocumentsTab({
                                         <DocSecondaryBtn
                                           onClick={() =>
                                             window.open(
-                                              alintaAgreementHref(getIdentifier("C&I Gas").value),
+                                              alintaAgreementHref(),
                                               "_blank",
                                               "noopener,noreferrer",
                                             )
@@ -1623,7 +1619,7 @@ export function DocumentsTab({
             {driveContractKey === "C&I Gas" && (
               <div className="mt-2">
                 <a
-                  href={alintaAgreementHref(getIdentifier("C&I Gas").value)}
+                  href={alintaAgreementHref()}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-xs font-semibold text-primary hover:underline"
