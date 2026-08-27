@@ -30,6 +30,14 @@ export function getStageChangeEventVisual(): ActivityEventVisual {
 export function getOfferActivityEventVisual(activityType: string): ActivityEventVisual {
   const t = activityType.toLowerCase();
 
+  if (t.includes("alinta") || t.includes("agreement_requested")) {
+    return {
+      icon: Send,
+      dotClass: "bg-amber",
+      borderClass: "border-amber-200 dark:border-amber-700",
+      iconIntent: "amber",
+    };
+  }
   if (t.includes("quote")) {
     return {
       icon: Send,

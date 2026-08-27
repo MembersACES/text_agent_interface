@@ -598,6 +598,17 @@ export function DocumentsTab({
     return { type: null, value: "" };
   };
 
+  const alintaAgreementHref = (explicitMirn?: string) => {
+    const p = new URLSearchParams();
+    const name = String(business?.name || businessName || "").trim();
+    if (name) p.set("businessName", name);
+    const mirn = (explicitMirn || getIdentifier("C&I Gas").value || "").trim();
+    if (mirn) p.set("mirn", mirn);
+    if (clientId != null && Number.isFinite(clientId)) p.set("clientId", String(clientId));
+    const qs = p.toString();
+    return qs ? `/alinta-gas-agreement-request?${qs}` : "/alinta-gas-agreement-request";
+  };
+
   // ── Upload handlers ────────────────────────────────────────────────────────
 
   const resetDrive = () => {
@@ -1163,6 +1174,15 @@ export function DocumentsTab({
             >
               {efLoading && uploadCategory === "engagement" ? "Uploading…" : "Upload"}
             </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              radius="md"
+              onClick={() => window.open(alintaAgreementHref(), "_blank", "noopener,noreferrer")}
+            >
+              Send Alinta gas agreement
+            </Button>
           </div>
         </div>
 
@@ -1221,7 +1241,18 @@ export function DocumentsTab({
                                 status={contractStatusBadge(undefined, false)}
                                 muted
                                 actions={
-                                  <DocSecondaryBtn onClick={openFileModal}>File</DocSecondaryBtn>
+                                  <>
+                                    <DocSecondaryBtn onClick={openFileModal}>File</DocSecondaryBtn>
+                                    {c.key === "C&I Gas" ? (
+                                      <DocSecondaryBtn
+                                        onClick={() =>
+                                          window.open(alintaAgreementHref(), "_blank", "noopener,noreferrer")
+                                        }
+                                      >
+                                        Alinta EF
+                                      </DocSecondaryBtn>
+                                    ) : null}
+                                  </>
                                 }
                               />
                             );
@@ -1284,6 +1315,19 @@ export function DocumentsTab({
                                       {idx === 0 ? (
                                         <DocSecondaryBtn onClick={openFileModal}>
                                           File
+                                        </DocSecondaryBtn>
+                                      ) : null}
+                                      {c.key === "C&I Gas" && idx === 0 ? (
+                                        <DocSecondaryBtn
+                                          onClick={() =>
+                                            window.open(
+                                              alintaAgreementHref(getIdentifier("C&I Gas").value),
+                                              "_blank",
+                                              "noopener,noreferrer",
+                                            )
+                                          }
+                                        >
+                                          Alinta EF
                                         </DocSecondaryBtn>
                                       ) : null}
                                     </>
@@ -1576,6 +1620,18 @@ export function DocumentsTab({
             >
               Lodge Agreement with Retailer →
             </a>
+            {driveContractKey === "C&I Gas" && (
+              <div className="mt-2">
+                <a
+                  href={alintaAgreementHref(getIdentifier("C&I Gas").value)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs font-semibold text-primary hover:underline"
+                >
+                  Send Alinta gas agreement →
+                </a>
+              </div>
+            )}
           </div>
         )}
         <MFooter
