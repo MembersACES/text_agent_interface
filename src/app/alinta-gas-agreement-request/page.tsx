@@ -61,9 +61,6 @@ const CONDITION_FIELDS: { key: string; label: string }[] = [
   { key: "min_cpq_gj", label: "Minimum CPQ (GJ)" },
   { key: "min_cpq_pct", label: "Minimum CPQ (% of CPQ)" },
   { key: "mdq_gj", label: "Maximum Daily Quantity (GJ)" },
-  { key: "retail_service_charge", label: "Retail service charge ($/MIRN/day)" },
-  { key: "overrun_rate", label: "Overrun rate ($/GJ)" },
-  { key: "excess_cpq_price", label: "Excess CPQ price ($/GJ)" },
 ];
 
 function fieldValue(draft: Draft | null, key: string): string {
@@ -443,9 +440,6 @@ function AlintaGasAgreementRequestPageInner() {
                         {"\n"}Minimum Contract Period Quantity (GJ) {fieldValue(draft, "min_cpq_gj")}
                         {"\n"}Minimum Contract Period Quantity (%of CPQ) {fieldValue(draft, "min_cpq_pct")}
                         {"\n"}Contract Maximum Daily Quantity (GJ) {fieldValue(draft, "mdq_gj")}
-                        {"\n"}Retail Service Charge ($/ MIRN/ Day) {fieldValue(draft, "retail_service_charge")}
-                        {"\n"}Overrun Rate ($/GJ) {fieldValue(draft, "overrun_rate")}
-                        {"\n"}Excess CPQ Price ($/GJ) {fieldValue(draft, "excess_cpq_price")}
                       </p>
                       <p>Attached are both the LOA & the signed engagement form.</p>
                       <p>Kind regards,</p>
