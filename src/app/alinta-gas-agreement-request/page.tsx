@@ -61,9 +61,6 @@ const CONDITION_FIELDS: { key: string; label: string }[] = [
   { key: "min_cpq_gj", label: "Minimum CPQ (GJ)" },
   { key: "min_cpq_pct", label: "Minimum CPQ (% of CPQ)" },
   { key: "mdq_gj", label: "Maximum Daily Quantity (GJ)" },
-  { key: "retail_service_charge", label: "Retail service charge ($/MIRN/day)" },
-  { key: "overrun_rate", label: "Overrun rate ($/GJ)" },
-  { key: "excess_cpq_price", label: "Excess CPQ price ($/GJ)" },
 ];
 
 function fieldValue(draft: Draft | null, key: string): string {
@@ -92,14 +89,10 @@ function AlintaGasAgreementRequestPageInner() {
     (session as { accessToken?: string } | null)?.accessToken ??
     "";
 
-  const prefillBusiness = searchParams.get("businessName") ?? "";
-  const prefillMirn = searchParams.get("mirn") ?? "";
   const prefillClientId = searchParams.get("clientId") ?? "";
 
   const [step, setStep] = useState(1);
   const [file, setFile] = useState<File | null>(null);
-  const [businessName, setBusinessName] = useState(prefillBusiness);
-  const [mrinHint, setMrinHint] = useState(prefillMirn);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [recipient, setRecipient] = useState("data.quote@fornrg.com");
@@ -164,8 +157,6 @@ function AlintaGasAgreementRequestPageInner() {
     try {
       const fd = new FormData();
       fd.append("file", file);
-      if (businessName.trim()) fd.append("business_name", businessName.trim());
-      if (mrinHint.trim()) fd.append("mrin", mrinHint.trim());
       const res = await fetch(`${getApiBaseUrl()}/api/alinta-gas-agreement/extract`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
@@ -184,9 +175,6 @@ function AlintaGasAgreementRequestPageInner() {
       setDraft(data.draft);
       setWarnings(data.extraction_warnings || []);
       setRecipient(data.recipient || "data.quote@fornrg.com");
-      if (!businessName.trim() && data.draft.fields.company_name?.value) {
-        setBusinessName(data.draft.fields.company_name.value);
-      }
       setStep(2);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
@@ -213,7 +201,7 @@ function AlintaGasAgreementRequestPageInner() {
           request_kind: draft.request_kind,
           loa_file_id: draft.loa_file_id,
           gdrive_folder_url: draft.gdrive_folder_url,
-          business_name: fieldValue(draft, "company_name") || businessName,
+          business_name: fieldValue(draft, "company_name"),
           client_id: prefillClientId || undefined,
         }),
       );
@@ -312,26 +300,6 @@ function AlintaGasAgreementRequestPageInner() {
                   className="w-full text-sm"
                   onChange={(e) => setFile(e.target.files?.[0] ?? null)}
                 />
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div>
-                  <label className="mb-1 block text-sm font-medium">Business name (optional)</label>
-                  <input
-                    className="w-full rounded-md border border-gray-200 p-2 text-sm dark:border-dark-3 dark:bg-dark-2"
-                    value={businessName}
-                    onChange={(e) => setBusinessName(e.target.value)}
-                    placeholder="Used to find the LOA"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium">MIRN (optional)</label>
-                  <input
-                    className="w-full rounded-md border border-gray-200 p-2 text-sm dark:border-dark-3 dark:bg-dark-2"
-                    value={mrinHint}
-                    onChange={(e) => setMrinHint(e.target.value)}
-                    placeholder="If not printed clearly on the EF"
-                  />
-                </div>
               </div>
               <Button type="submit" disabled={loading || !file} loading={loading}>
                 Extract details
@@ -443,9 +411,6 @@ function AlintaGasAgreementRequestPageInner() {
                         {"\n"}Minimum Contract Period Quantity (GJ) {fieldValue(draft, "min_cpq_gj")}
                         {"\n"}Minimum Contract Period Quantity (%of CPQ) {fieldValue(draft, "min_cpq_pct")}
                         {"\n"}Contract Maximum Daily Quantity (GJ) {fieldValue(draft, "mdq_gj")}
-                        {"\n"}Retail Service Charge ($/ MIRN/ Day) {fieldValue(draft, "retail_service_charge")}
-                        {"\n"}Overrun Rate ($/GJ) {fieldValue(draft, "overrun_rate")}
-                        {"\n"}Excess CPQ Price ($/GJ) {fieldValue(draft, "excess_cpq_price")}
                       </p>
                       <p>Attached are both the LOA & the signed engagement form.</p>
                       <p>Kind regards,</p>
