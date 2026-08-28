@@ -12,6 +12,7 @@ const ROUTE_TITLES: Record<string, string> = {
   "/unsigned-pipeline": "Unsigned pipeline",
   "/base-1": "Base 1 Review Agent",
   "/distributors": "Distributors",
+  "/suppliers": "Suppliers",
   "/plus-es-dma": "Plus ES DMA",
   "/robot-dashboard": "Robot Dashboard",
   "/invoicing": "Invoicing",

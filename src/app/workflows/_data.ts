@@ -1,6 +1,7 @@
 import {
   FolderPlus,
   MapPin,
+  Factory,
   FileSignature,
   Handshake,
   Zap,
@@ -35,6 +36,12 @@ export const WORKFLOW_CARD_GROUPS: { label: string; cards: WorkflowCard[] }[] = 
       { title: "Distributor Folder Creation", description: "Create distributor folder from agreement", href: "/distributor-folder-creation", icon: FolderPlus, color: "from-lime-500 to-green-600" },
       { title: "Site Profiling", description: "Profile and capture site details", href: "/site-profiling", icon: MapPin, color: "from-teal-500 to-cyan-600" },
       { title: "New Member LOA Generation", description: "Generate new LOA and/or SFA documents", href: "/new-client-loa", icon: FileSignature, color: "from-purple-500 to-pink-600" },
+    ],
+  },
+  {
+    label: "Suppliers",
+    cards: [
+      { title: "Suppliers", description: "Energy, waste, and other supplier Drive folders — view forms and upload documents", href: "/suppliers", icon: Factory, color: "from-lime-600 to-teal-600" },
     ],
   },
   {
