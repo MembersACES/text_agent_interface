@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getAutonomousApiBaseUrl, cn } from "@/lib/utils";
+import { Modal } from "@/components/ui/modal";
 
 export interface RetellAgentListItem {
   agent_id: string;
@@ -96,6 +97,10 @@ const inputCls =
 const labelCls = "block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide";
 const btnPrimary =
   "inline-flex items-center gap-1.5 rounded-full bg-gradient-to-br from-primary to-primary/85 text-white text-xs font-semibold px-3 py-1.5 transition hover:-translate-y-0.5 hover:shadow-sm disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:translate-y-0 shadow-sm";
+const btnSelector =
+  "inline-flex items-center rounded-full border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-2.5 py-0.5 text-[11px] font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-40";
+const btnSecondary =
+  "inline-flex items-center gap-1.5 rounded-full border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-300 text-xs font-semibold px-3 py-1.5 transition hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-40";
 
 function numOrEmpty(v: number | null | undefined): string {
   return v === null || v === undefined || Number.isNaN(Number(v)) ? "" : String(v);
@@ -140,10 +145,31 @@ export default function RetellVoicePromptPanel({
   const [promptError, setPromptError] = useState<string | null>(null);
   const [savingAgentId, setSavingAgentId] = useState(false);
   const [savingPrompt, setSavingPrompt] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerQuery, setPickerQuery] = useState("");
+  const [pendingAgentId, setPendingAgentId] = useState("");
 
   const agentId = retellAgentId;
   const listed = agents.find((a) => a.agent_id === agentId);
   const agentLabel = prompt?.agent_name || listed?.agent_name || agentId;
+  const pickerAgents = useMemo(() => {
+    const rows = [...agents];
+    if (agentId && !rows.some((a) => a.agent_id === agentId)) {
+      rows.unshift({
+        agent_id: agentId,
+        agent_name: agentLabel || agentId,
+        channel: listed?.channel || "voice",
+      });
+    }
+    const q = pickerQuery.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter(
+      (a) =>
+        a.agent_name.toLowerCase().includes(q) ||
+        a.agent_id.toLowerCase().includes(q) ||
+        (a.channel || "").toLowerCase().includes(q),
+    );
+  }, [agents, agentId, agentLabel, listed?.channel, pickerQuery]);
 
   useEffect(() => {
     if (!token) return;
@@ -244,6 +270,32 @@ export default function RetellVoicePromptPanel({
         : "",
     );
     setVoicemailAction((row.voicemail_action || "hangup").toLowerCase());
+  };
+
+  const openPicker = () => {
+    setPendingAgentId(agentId);
+    setPickerQuery("");
+    setPickerOpen(true);
+  };
+
+  const persistAgentId = async (nextId: string) => {
+    setSavingAgentId(true);
+    try {
+      const res = await fetch(`${getAutonomousApiBaseUrl()}/api/autonomous/sequences/type-prompts`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ sequence_type: sequenceType, retell_agent_id: nextId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(apiDetail(data, "Failed to save Retell agent"));
+      onTypePromptsUpdated(data as SequenceTypePromptRow);
+      setPickerOpen(false);
+      showToast(nextId ? "Retell agent linked to this sequence." : "Retell agent cleared.", "success");
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : "Failed to save Retell agent", "error");
+    } finally {
+      setSavingAgentId(false);
+    }
   };
 
   const clearCopiedWarning = async () => {
@@ -350,6 +402,9 @@ export default function RetellVoicePromptPanel({
       <div className="space-y-1.5">
         <div className="flex flex-wrap items-center gap-2">
           <span className={labelCls}>Voice agent</span>
+          <button type="button" onClick={openPicker} className={btnSelector}>
+            Selector
+          </button>
           {retellAgentCopied && (
             <span className="inline-flex items-center rounded-full bg-amber-100 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-800 dark:text-amber-200">
               Copied default — update
@@ -360,8 +415,8 @@ export default function RetellVoicePromptPanel({
           <p className="text-xs text-amber-600 dark:text-amber-400">{agentsError}</p>
         ) : !agentId ? (
           <p className="text-xs text-gray-400">
-            No voice agent linked. Use <span className="font-semibold">+ New</span> to duplicate an existing
-            sequence&rsquo;s Retell agent onto a new template.
+            No voice agent linked. Open <span className="font-semibold">Selector</span> to pick one, or use{" "}
+            <span className="font-semibold">+ New</span> to duplicate an existing sequence&rsquo;s Retell agent.
           </p>
         ) : (
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-950 px-2.5 py-2">
@@ -382,6 +437,97 @@ export default function RetellVoicePromptPanel({
           </button>
         )}
       </div>
+
+      <Modal
+        open={pickerOpen}
+        onClose={() => {
+          if (!savingAgentId) setPickerOpen(false);
+        }}
+        title="Choose voice agent"
+        size="lg"
+        footer={
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => setPendingAgentId("")}
+              disabled={savingAgentId}
+              className="text-[11px] font-semibold text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 disabled:opacity-40"
+            >
+              Unlink agent
+            </button>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setPickerOpen(false)}
+                disabled={savingAgentId}
+                className={btnSecondary}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void persistAgentId(pendingAgentId)}
+                disabled={savingAgentId || pendingAgentId === agentId}
+                className={btnPrimary}
+              >
+                {savingAgentId ? "Saving…" : pendingAgentId ? "Use this agent" : "Clear agent"}
+              </button>
+            </div>
+          </div>
+        }
+      >
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+          Linking a different Retell agent changes which script this sequence dials. Sequences that share an
+          agent share the same prompt.
+        </p>
+        <input
+          type="search"
+          value={pickerQuery}
+          onChange={(e) => setPickerQuery(e.target.value)}
+          placeholder="Search by name or id"
+          className={inputCls}
+        />
+        {agentsLoading ? (
+          <p className="mt-3 text-xs text-gray-400">Loading Retell agents…</p>
+        ) : agentsError ? (
+          <p className="mt-3 text-xs text-amber-600 dark:text-amber-400">{agentsError}</p>
+        ) : pickerAgents.length === 0 ? (
+          <p className="mt-3 text-xs text-gray-400">No agents match that search.</p>
+        ) : (
+          <ul className="mt-3 divide-y divide-gray-100 dark:divide-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+            {pickerAgents.map((a) => {
+              const selected = pendingAgentId === a.agent_id;
+              const current = agentId === a.agent_id;
+              return (
+                <li key={a.agent_id}>
+                  <button
+                    type="button"
+                    onClick={() => setPendingAgentId(a.agent_id)}
+                    className={cn(
+                      "w-full text-left px-3 py-2.5 transition-colors",
+                      selected
+                        ? "bg-indigo-50 dark:bg-indigo-950/40"
+                        : "bg-white dark:bg-gray-950 hover:bg-gray-50 dark:hover:bg-gray-900",
+                    )}
+                  >
+                    <span className="flex items-start justify-between gap-2">
+                      <span>
+                        <span className="block text-sm font-medium text-gray-900 dark:text-gray-100">
+                          {a.agent_name || a.agent_id}
+                        </span>
+                        <span className="block text-[11px] font-mono text-gray-400 mt-0.5">{a.agent_id}</span>
+                      </span>
+                      <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-gray-400 pt-0.5">
+                        {current ? "Current" : a.channel && a.channel !== "voice" ? a.channel : ""}
+                      </span>
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </Modal>
 
       {!agentId ? null : promptLoading ? (
         <p className="text-xs text-gray-400">Loading voice settings from Retell…</p>
