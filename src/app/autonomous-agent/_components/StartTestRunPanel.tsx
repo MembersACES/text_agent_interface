@@ -27,17 +27,69 @@ function apiDetail(data: unknown, fallback: string): string {
   return fallback;
 }
 
-/** 0401941385 → +61401941385 so Twilio/Retell can dial the test mobile. */
-function toE164Au(raw: string): string {
+type PhoneCheck =
+  | { ok: true; e164: string; kind: "mobile" | "landline" }
+  | { ok: false; reason: string };
+
+/**
+ * Validate an Australian number and convert it to E.164, or explain why not.
+ *
+ * This used to end in a catch-all `return \`+${digits}\``, so anything
+ * unrecognised got a plus bolted on the front and was sent to Retell as if it
+ * were real. A landline typed without its area code — "8792 4400" — became
+ * "+87924400", which Retell rejected as invalid and which looked on the
+ * dashboard like the call had simply failed. Nothing is guessed here any more.
+ */
+function checkAuPhone(raw: string): PhoneCheck {
   const text = raw.trim();
-  if (!text) return "";
+  if (!text) return { ok: false, reason: "Enter a mobile number." };
+
   const digits = text.replace(/\D/g, "");
-  if (!digits) return "";
-  if (text.startsWith("+")) return `+${digits}`;
-  if (digits.startsWith("61") && digits.length >= 11) return `+${digits}`;
-  if (digits.startsWith("0") && digits.length >= 9) return `+61${digits.slice(1)}`;
-  if (digits.length === 9 && digits.startsWith("4")) return `+61${digits}`;
-  return `+${digits}`;
+  if (!digits) return { ok: false, reason: "That doesn't contain any digits." };
+
+  // Reduce every accepted form to the national 0XXXXXXXXX shape first.
+  let national: string;
+  if (text.startsWith("+") || digits.startsWith("61")) {
+    national = `0${digits.replace(/^61/, "")}`;
+  } else if (digits.length === 9 && digits.startsWith("4")) {
+    national = `0${digits}`; // 401941385 — mobile missing its leading zero
+  } else {
+    national = digits;
+  }
+
+  if (/^04\d{8}$/.test(national)) {
+    return { ok: true, e164: `+61${national.slice(1)}`, kind: "mobile" };
+  }
+  if (/^0[23578]\d{8}$/.test(national)) {
+    return { ok: true, e164: `+61${national.slice(1)}`, kind: "landline" };
+  }
+
+  if (national.replace(/^0/, "").length === 8) {
+    return {
+      ok: false,
+      reason: "Looks like a landline without its area code — put 03, 02, 07 or 08 in front.",
+    };
+  }
+  if (national.length < 10) {
+    return {
+      ok: false,
+      reason: `Only ${digits.length} digits. An Australian mobile has 10, starting 04.`,
+    };
+  }
+  return {
+    ok: false,
+    reason: "Doesn't look like an Australian number. Use 04XX XXX XXX or +61 4XX XXX XXX.",
+  };
+}
+
+/** Permissive on the local part, strict on shape. */
+function checkEmail(raw: string): { ok: true; value: string } | { ok: false; reason: string } {
+  const value = raw.trim();
+  if (!value) return { ok: false, reason: "Enter your email address." };
+  if (!/^[^\s@]+@[^\s@,]+\.[^\s@,]{2,}$/.test(value)) {
+    return { ok: false, reason: "That doesn't look like a valid email address." };
+  }
+  return { ok: true, value };
 }
 
 const COMPARISON_HINT: Record<string, string> = {
@@ -52,6 +104,9 @@ const COMPARISON_HINT: Record<string, string> = {
 const inputCls =
   "mt-1 w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950 px-2.5 py-2 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/40";
 const labelCls = "block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide";
+const errorInputCls = "border-red-400 dark:border-red-600 focus:ring-red-500/40";
+const errorTextCls =
+  "mt-1 block text-[11px] font-normal normal-case text-red-600 dark:text-red-400";
 const btnPrimary =
   "inline-flex items-center gap-1.5 rounded-full bg-gradient-to-br from-primary to-primary/85 text-white text-sm font-semibold px-4 py-2 transition hover:-translate-y-0.5 hover:shadow-sm disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:translate-y-0 shadow-sm";
 
@@ -69,6 +124,8 @@ export default function StartTestRunPanel({
   const [contactEmail, setContactEmail] = useState("");
   const [contactPhone, setContactPhone] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [phoneError, setPhoneError] = useState<string | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -94,18 +151,26 @@ export default function StartTestRunPanel({
   const selected = offers.find((o) => String(o.id) === offerId) ?? null;
   const hint = COMPARISON_HINT[sequenceType];
 
+  const phoneCheck = checkAuPhone(contactPhone);
+
   const submit = async () => {
     const oid = Number(offerId);
     if (!Number.isFinite(oid) || oid <= 0) {
       showToast("Pick an offer to attach this test run to.", "error");
       return;
     }
-    if (!contactEmail.trim() || !contactPhone.trim()) {
-      showToast("Enter your own email and phone so the test does not contact the client.", "error");
-      return;
+
+    const email = checkEmail(contactEmail);
+    const phone = checkAuPhone(contactPhone);
+    setEmailError(email.ok ? null : email.reason);
+    setPhoneError(phone.ok ? null : phone.reason);
+    if (!email.ok || !phone.ok) return;
+
+    if (phone.kind === "landline") {
+      showToast("That's a landline — the voice call will work but the SMS step won't.", "warning");
     }
-    const e164 = toE164Au(contactPhone);
-    setContactPhone(e164);
+
+    const e164 = phone.e164;
     setSubmitting(true);
     try {
       const res = await fetch(`${getAutonomousApiBaseUrl()}/api/autonomous/sequences/start`, {
@@ -121,7 +186,7 @@ export default function StartTestRunPanel({
             dashboard_test: true,
             business_name: selected?.business_name,
             contact_name: contactName.trim(),
-            contact_email: contactEmail.trim(),
+            contact_email: email.value,
             contact_phone: e164,
           },
         }),
@@ -188,24 +253,43 @@ export default function StartTestRunPanel({
           <input
             type="email"
             value={contactEmail}
-            onChange={(e) => setContactEmail(e.target.value)}
-            className={inputCls}
+            onChange={(e) => {
+              setContactEmail(e.target.value);
+              if (emailError) setEmailError(null);
+            }}
+            onBlur={() => {
+              const r = checkEmail(contactEmail);
+              setEmailError(contactEmail.trim() && !r.ok ? r.reason : null);
+            }}
+            className={cn(inputCls, emailError && errorInputCls)}
             placeholder="you@acesolutions.com.au"
           />
+          {emailError && <span className={errorTextCls}>{emailError}</span>}
         </label>
         <label className={labelCls}>
           Your mobile
           <input
             type="tel"
             value={contactPhone}
-            onChange={(e) => setContactPhone(e.target.value)}
-            onBlur={() => {
-              const next = toE164Au(contactPhone);
-              if (next) setContactPhone(next);
+            onChange={(e) => {
+              setContactPhone(e.target.value);
+              if (phoneError) setPhoneError(null);
             }}
-            className={inputCls}
-            placeholder="0401941385"
+            onBlur={() => {
+              const r = checkAuPhone(contactPhone);
+              setPhoneError(contactPhone.trim() && !r.ok ? r.reason : null);
+            }}
+            className={cn(inputCls, phoneError && errorInputCls)}
+            placeholder="0401 941 385"
           />
+          {phoneError ? (
+            <span className={errorTextCls}>{phoneError}</span>
+          ) : phoneCheck.ok ? (
+            <span className="mt-1 block text-[11px] font-normal normal-case text-gray-500 dark:text-gray-400">
+              Will dial {phoneCheck.e164}
+              {phoneCheck.kind === "landline" ? " — landline, so no SMS" : ""}
+            </span>
+          ) : null}
         </label>
       </div>
 
