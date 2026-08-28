@@ -175,7 +175,9 @@ function SuppliersPageInner() {
       return;
     }
     if (selectedId && filtered.some((row) => row.id === selectedId)) return;
-    const fromUrl = urlSupplierId && filtered.find((row) => row.id === urlSupplierId);
+    const fromUrl = urlSupplierId
+      ? filtered.find((row) => row.id === urlSupplierId)
+      : undefined;
     const next = fromUrl?.id ?? filtered[0].id;
     setSelectedId(next);
     setCurrentFolderId(fromUrl && urlFolderId ? urlFolderId : next);
