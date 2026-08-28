@@ -105,6 +105,26 @@ export async function fetchSupplierDocuments(
   };
 }
 
+export async function createSupplierFolder(
+  token: string | undefined,
+  name: string,
+  accessToken?: string,
+): Promise<SupplierFolder & { created: boolean }> {
+  const form = new FormData();
+  form.append("name", name);
+  if (accessToken) form.append("google_access_token", accessToken);
+  const res = await fetch(`${getApiBaseUrl()}/api/suppliers`, {
+    method: "POST",
+    headers: authHeaders(token, accessToken),
+    body: form,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(detailMessage(data, `Failed to create folder (${res.status})`));
+  }
+  return data as SupplierFolder & { created: boolean };
+}
+
 export async function uploadSupplierDocument(
   token: string | undefined,
   folderId: string,

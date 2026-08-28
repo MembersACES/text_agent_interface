@@ -8,6 +8,7 @@ import {
   ExternalLink,
   FileText,
   FolderOpen,
+  FolderPlus,
   Loader2,
   RefreshCw,
   Search,
@@ -21,6 +22,7 @@ import { Modal } from "@/components/ui/modal";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import {
+  createSupplierFolder,
   fetchSupplierDocuments,
   fetchSupplierFolders,
   uploadSupplierDocument,
@@ -126,6 +128,10 @@ function SuppliersPageInner() {
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [uploadName, setUploadName] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createName, setCreateName] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   const loadSuppliers = useCallback(async () => {
     if (!token) return;
@@ -300,6 +306,44 @@ function SuppliersPageInner() {
     setUploadError(null);
   };
 
+  const openCreateModal = () => {
+    setCreateName("");
+    setCreateError(null);
+    setCreateOpen(true);
+  };
+
+  const closeCreateModal = () => {
+    if (creating) return;
+    setCreateOpen(false);
+    setCreateError(null);
+  };
+
+  const confirmCreate = async () => {
+    const name = createName.trim();
+    if (!token || !name) return;
+    setCreating(true);
+    setCreateError(null);
+    try {
+      const created = await createSupplierFolder(token, name, accessToken);
+      setCreateOpen(false);
+      setCreateName("");
+      setCategory("all");
+      setQuery("");
+      await loadSuppliers();
+      setSelectedId(created.id);
+      setCurrentFolderId(created.id);
+      setUploadNotice(
+        created.created
+          ? `Created ${created.name}`
+          : `${created.name} already exists — opened that folder`,
+      );
+    } catch (err: unknown) {
+      setCreateError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCreating(false);
+    }
+  };
+
   const canPreview = canPreviewFile(selectedFile);
   const driveFolderUrl = currentFolder?.folder_url || selectedMeta?.folder_url;
   const nested = Boolean(selectedId && currentFolderId && currentFolderId !== selectedId);
@@ -322,6 +366,13 @@ function SuppliersPageInner() {
               leftIcon={<RefreshCw className="h-4 w-4" />}
             >
               Refresh
+            </Button>
+            <Button
+              onClick={openCreateModal}
+              disabled={!token}
+              leftIcon={<FolderPlus className="h-4 w-4" />}
+            >
+              New supplier
             </Button>
             {parentFolderUrl ? (
               <a
@@ -388,6 +439,13 @@ function SuppliersPageInner() {
             query.trim() || category !== "all"
               ? "Try another search or category."
               : "Share 005-Suppliers → Supplier Folders with the service account, then set SUPPLIER_FOLDERS_PARENT_ID if Drive search cannot find it."
+          }
+          action={
+            query.trim() || category !== "all" ? undefined : (
+              <Button onClick={openCreateModal} leftIcon={<FolderPlus className="h-4 w-4" />}>
+                New supplier
+              </Button>
+            )
           }
         />
       ) : (
@@ -728,6 +786,51 @@ function SuppliersPageInner() {
               </span>
             ) : null}
           </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={createOpen}
+        onClose={closeCreateModal}
+        title="New supplier folder"
+        id="supplier-create-folder"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={closeCreateModal} disabled={creating}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => void confirmCreate()}
+              disabled={!createName.trim() || creating}
+              loading={creating}
+              leftIcon={<FolderPlus className="h-4 w-4" />}
+            >
+              Create folder
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Creates a folder under Supplier Folders in Drive. You can upload documents into it
+            afterwards.
+          </p>
+          <Input
+            label="Supplier name"
+            value={createName}
+            onChange={(e) => setCreateName(e.target.value)}
+            placeholder="e.g. Visy"
+            autoFocus
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                void confirmCreate();
+              }
+            }}
+          />
+          {createError ? (
+            <p className="text-sm text-red-600 dark:text-red-400">{createError}</p>
+          ) : null}
         </div>
       </Modal>
     </div>
