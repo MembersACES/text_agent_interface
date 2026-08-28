@@ -1,23 +1,21 @@
 import { getApiBaseUrl } from "@/lib/utils";
 
-export type SupplierCategory = "energy" | "waste" | "other";
-
-export type SupplierFolder = {
+export type DistributorFolder = {
   id: string;
   name: string;
+  display_name: string;
   folder_id: string;
   folder_url: string;
-  category: SupplierCategory;
   modified_time?: string | null;
 };
 
-export type SupplierFoldersResponse = {
+export type DistributorFoldersResponse = {
   parent_folder_id: string;
   parent_folder_url: string;
-  suppliers: SupplierFolder[];
+  distributors: DistributorFolder[];
 };
 
-export type SupplierFile = {
+export type DistributorFile = {
   id: string;
   name: string;
   mime_type: string;
@@ -29,27 +27,27 @@ export type SupplierFile = {
   size?: string | null;
 };
 
-export type SupplierPathItem = {
+export type DistributorPathItem = {
   id: string;
   name: string;
   folder_url: string;
 };
 
-export type SupplierDocumentsResponse = {
-  supplier: SupplierFolder;
-  current_folder: SupplierPathItem;
-  path: SupplierPathItem[];
-  folders: SupplierFile[];
-  files: SupplierFile[];
+export type DistributorDocumentsResponse = {
+  distributor: DistributorFolder;
+  current_folder: DistributorPathItem;
+  path: DistributorPathItem[];
+  folders: DistributorFile[];
+  files: DistributorFile[];
 };
 
-export type SupplierUploadResult = {
+export type DistributorUploadResult = {
   id: string;
   name: string;
   web_view_link: string;
   folder_id: string;
   folder_url: string;
-  supplier_name: string;
+  distributor_name: string;
 };
 
 function authHeaders(token: string | undefined, accessToken?: string): HeadersInit {
@@ -67,29 +65,29 @@ function detailMessage(data: unknown, fallback: string): string {
   return fallback;
 }
 
-export async function fetchSupplierFolders(
+export async function fetchDistributorFolders(
   token: string | undefined,
-): Promise<SupplierFoldersResponse> {
-  const res = await fetch(`${getApiBaseUrl()}/api/suppliers`, {
+): Promise<DistributorFoldersResponse> {
+  const res = await fetch(`${getApiBaseUrl()}/api/distributors/drive`, {
     headers: authHeaders(token),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new Error(detailMessage(data, `Failed to load suppliers (${res.status})`));
+    throw new Error(detailMessage(data, `Failed to load distributors (${res.status})`));
   }
   return {
     parent_folder_id: data.parent_folder_id ?? "",
     parent_folder_url: data.parent_folder_url ?? "",
-    suppliers: Array.isArray(data.suppliers) ? data.suppliers : [],
+    distributors: Array.isArray(data.distributors) ? data.distributors : [],
   };
 }
 
-export async function fetchSupplierDocuments(
+export async function fetchDistributorDocuments(
   token: string | undefined,
   folderId: string,
-): Promise<SupplierDocumentsResponse> {
+): Promise<DistributorDocumentsResponse> {
   const res = await fetch(
-    `${getApiBaseUrl()}/api/suppliers/${encodeURIComponent(folderId)}/files`,
+    `${getApiBaseUrl()}/api/distributors/drive/${encodeURIComponent(folderId)}/files`,
     { headers: authHeaders(token) },
   );
   const data = await res.json().catch(() => ({}));
@@ -97,7 +95,7 @@ export async function fetchSupplierDocuments(
     throw new Error(detailMessage(data, `Failed to load documents (${res.status})`));
   }
   return {
-    supplier: data.supplier,
+    distributor: data.distributor,
     current_folder: data.current_folder,
     path: Array.isArray(data.path) ? data.path : [],
     folders: Array.isArray(data.folders) ? data.folders : [],
@@ -105,39 +103,19 @@ export async function fetchSupplierDocuments(
   };
 }
 
-export async function createSupplierFolder(
-  token: string | undefined,
-  name: string,
-  accessToken?: string,
-): Promise<SupplierFolder & { created: boolean }> {
-  const form = new FormData();
-  form.append("name", name);
-  if (accessToken) form.append("google_access_token", accessToken);
-  const res = await fetch(`${getApiBaseUrl()}/api/suppliers`, {
-    method: "POST",
-    headers: authHeaders(token, accessToken),
-    body: form,
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(detailMessage(data, `Failed to create folder (${res.status})`));
-  }
-  return data as SupplierFolder & { created: boolean };
-}
-
-export async function uploadSupplierDocument(
+export async function uploadDistributorDocument(
   token: string | undefined,
   folderId: string,
   file: File,
   accessToken?: string,
   displayName?: string,
-): Promise<SupplierUploadResult> {
+): Promise<DistributorUploadResult> {
   const form = new FormData();
   form.append("file", file);
   if (displayName?.trim()) form.append("filename", displayName.trim());
   if (accessToken) form.append("google_access_token", accessToken);
   const res = await fetch(
-    `${getApiBaseUrl()}/api/suppliers/${encodeURIComponent(folderId)}/files`,
+    `${getApiBaseUrl()}/api/distributors/drive/${encodeURIComponent(folderId)}/files`,
     {
       method: "POST",
       headers: authHeaders(token, accessToken),
@@ -148,5 +126,5 @@ export async function uploadSupplierDocument(
   if (!res.ok) {
     throw new Error(detailMessage(data, `Failed to upload (${res.status})`));
   }
-  return data as SupplierUploadResult;
+  return data as DistributorUploadResult;
 }

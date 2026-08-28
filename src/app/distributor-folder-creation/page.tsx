@@ -99,7 +99,9 @@ export default function DistributorFolderCreationPage() {
       const created = await createDistributorFolder(token, file, fields, accessToken);
       setResultUrl(created.folder_url || null);
       let warn = created.warnings?.length ? `\n${created.warnings.join("\n")}` : "";
-      const pdfNote = created.agreement_file_url ? "\nAgreement PDF uploaded." : "";
+      const pdfNote = created.agreement_file_url
+        ? "\nAgreement PDF uploaded into Distributor Documents."
+        : "";
       let sheetNote = created.sheet?.spreadsheet_url ? "\nMaster list row written." : "";
       if (!created.sheet?.spreadsheet_url && accessToken && created.sheet_row?.length) {
         try {
@@ -130,10 +132,10 @@ export default function DistributorFolderCreationPage() {
       <PageHeader
         pageName="Distributor folders"
         title="Distributor Folder Creation"
-        description="Upload a signed Distribution Agreement (scans are fine), confirm the extracted details, then create an empty A - folder under 003-Distributors."
+        description="Upload a signed Distribution Agreement (scans are fine), confirm the extracted details, then create an A - folder under 003-Distributors with a Distributor Documents subfolder for the agreement."
         actions={
           <Link href="/distributors" className="text-sm font-medium text-primary hover:underline">
-            View master list
+            View distributors
           </Link>
         }
       />

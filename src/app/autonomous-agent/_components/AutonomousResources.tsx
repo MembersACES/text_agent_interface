@@ -573,9 +573,18 @@ function Scheduling() {
           ]}
         />
         <P>
-          Granularity is <strong>the minute</strong> (seconds always 00), weekdays only, planned in{" "}
-          <strong>Australia/Brisbane</strong> (AEST, UTC+10, no DST) and stored UTC-naive. The solar
-          engagement-form sequence differs: 3 emails at +2 / +4 / +6 business days, all 09:00.
+          Granularity is <strong>the minute</strong> (seconds always 00), weekdays only, and stored
+          UTC-naive. The solar engagement-form sequence differs: 3 emails at +2 / +4 / +6 business
+          days, all 09:00.
+        </P>
+        <P>
+          Planning uses <Code>run.timezone</Code> first, then the template&rsquo;s timezone, then the
+          <Code>AUTONOMOUS_SCHEDULE_TZ</Code> fallback. The dashboard writes{" "}
+          <strong>Australia/Brisbane</strong> (UTC+10, no DST) onto new runs, so that is what almost
+          everything plans in — but the code fallback is <strong>Australia/Melbourne</strong>, which
+          does observe DST. The two are identical from April to October and an hour apart the rest of
+          the year, so a run created without an explicit timezone will drift from the rest over
+          summer. Worth making the fallback explicit rather than relying on the two agreeing.
         </P>
       </Card>
 
@@ -625,18 +634,20 @@ function Scheduling() {
         />
       </Card>
 
-      <Callout tone="warn" title="Current n8n cron: once a day at 9am — too coarse">
+      <Callout tone="warn" title="Current n8n cron: half-hourly — aligned by luck, not design">
         <p>
-          The Schedule Trigger is set to <Code>Days / every 1 / 09:00</Code>. With steps due at 09:30,
-          10:00, 11:00 and 11:30, a once-a-day run leaves the rest of each day&rsquo;s steps until the{" "}
-          <em>next</em> day. Fix: change it to an interval poll of <strong>every 1–5 minutes</strong>{" "}
-          (the design default is 60s). Empty polls are cheap — a DB query that finds nothing due.
+          Verified from Cloud Run logs on 28 Aug 2026: n8n posts to <Code>/run</Code> at :00 and :30
+          past the hour. An earlier version of this page said &ldquo;once a day at 09:00&rdquo; —
+          that was out of date. With steps due at 09:30, 10:00, 11:00 and 11:30 the half-hourly poll
+          happens to line up, but only because every template currently uses on-the-hour and
+          on-the-half-hour times.
         </p>
         <p>
-          &ldquo;Half-hourly&rdquo; only stays correct if you use a clock-aligned cron{" "}
-          (<Code>*/30 * * * *</Code>, firing at :00/:30 to match today&rsquo;s times) <em>and</em>{" "}
-          nobody edits a template to an off-:30 minute — so 1–5 min is the safer, near-free choice.
-          Once you poll on an interval, the trigger&rsquo;s own timezone (Perth) stops gating anything.
+          That alignment is fragile. Edit one template to an off-:30 minute — 09:15, say — and the
+          step waits up to 29 minutes. The safer fix is an interval poll of{" "}
+          <strong>every 1–5 minutes</strong> (the design default is 60s). Empty polls are cheap — a
+          DB query that finds nothing due. Once you poll on an interval, the trigger&rsquo;s own
+          timezone (Perth) stops gating anything.
         </p>
       </Callout>
     </div>
@@ -987,7 +998,7 @@ function Integrations() {
           rows={[
             [<Code key="v">AUTONOMOUS_SCHEDULER_ENABLED</Code>, "Turns on the in-process 60s dispatcher (default off)"],
             [<Code key="v">AUTONOMOUS_SCHEDULER_INTERVAL_SECONDS</Code>, "Poll interval for that scheduler (default 60, floor 15)"],
-            [<Code key="v">AUTONOMOUS_SCHEDULE_TZ</Code>, "Planning timezone — Australia/Brisbane (AEST)"],
+            [<Code key="v">AUTONOMOUS_SCHEDULE_TZ</Code>, "Planning-timezone fallback, used only when the run and template have none. NOT an env var — a Python constant, currently Australia/Melbourne. New runs from the dashboard carry Australia/Brisbane instead."],
             [<Code key="v">N8N_AUTONOMOUS_EMAIL_WEBHOOK_URL</Code>, "n8n send-email webhook (monolith path)"],
             [<Code key="v">N8N_AUTONOMOUS_SMS_WEBHOOK_URL</Code>, "n8n send-SMS webhook (monolith path)"],
             [<Code key="v">N8N_AUTONOMOUS_ENGAGEMENT_FORM_WEBHOOK_URL</Code>, "n8n engagement-form generation webhook"],
