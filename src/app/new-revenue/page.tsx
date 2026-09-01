@@ -214,7 +214,7 @@ function pdfBytesToBase64(pdfBytes: Uint8Array): string {
   return btoa(binaryString);
 }
 
-export function NewRevenueInvoicePage() {
+function NewRevenueInvoicePage() {
   const { showToast } = useToast();
   const { data: session } = useSession();
   const token = (session as { id_token?: string; accessToken?: string } | null)?.id_token
