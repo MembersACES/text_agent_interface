@@ -1,12 +1,13 @@
 import type { MemberTab } from "./types";
 
-export type CommercialSubTab = "offers" | "savings" | "testimonials";
+export type CommercialSubTab = "offers" | "savings" | "new-revenue" | "testimonials";
 export type ActivitySubTab = "activity" | "notes";
 export type SolutionsSubTab = "solutions" | "strategy";
 
 const TAB_ALIASES: Record<string, MemberTab> = {
   offers: "commercial",
   savings: "commercial",
+  "new-revenue": "commercial",
   testimonials: "commercial",
   notes: "activity",
   strategy: "solutions",
@@ -16,6 +17,7 @@ const TAB_ALIASES: Record<string, MemberTab> = {
 const SUBTAB_FROM_TAB: Record<string, CommercialSubTab | ActivitySubTab | SolutionsSubTab> = {
   offers: "offers",
   savings: "savings",
+  "new-revenue": "new-revenue",
   testimonials: "testimonials",
   notes: "notes",
   strategy: "strategy",

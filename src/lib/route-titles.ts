@@ -60,6 +60,7 @@ const ROUTE_TITLES: Record<string, string> = {
   "/signed-agreement-lodgement": "Signed Agreement Lodgement",
   "/alinta-gas-agreement-request": "Send Alinta gas agreement",
   "/one-month-savings": "1st Month Savings Invoice",
+  "/new-revenue": "Discrepancy / New Revenue Invoice",
   "/solar-cleaning-quote": "Solar Panel Cleaning Quote",
   "/vinyl-robot-wrap": "Vinyl Robot Wrap",
   "/airtable-integration": "Airtable Integration",
