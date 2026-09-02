@@ -444,6 +444,8 @@ export function MemberProfileHeader({
       if (typeof site === "string" && site.trim()) params.set("siteAddress", site.trim());
       const cn = rep.contact_name;
       if (typeof cn === "string" && cn.trim()) params.set("contactName", cn.trim());
+      const tel = contact.telephone;
+      if (typeof tel === "string" && tel.trim()) params.set("phone", tel.trim());
     }
 
     window.open(`/solar-cleaning-quote?${params.toString()}`, "_blank");

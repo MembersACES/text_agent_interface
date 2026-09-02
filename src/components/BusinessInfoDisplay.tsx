@@ -841,6 +841,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
     const params = new URLSearchParams();
     if (business.name) params.set('businessName', business.name);
     if (contact.email) params.set('email', contact.email);
+    if (contact.telephone) params.set('phone', contact.telephone);
     if (contact.site_address) params.set('siteAddress', contact.site_address);
     if (rep.contact_name) params.set('contactName', rep.contact_name);
     if (driveUrl) params.set('clientFolderUrl', driveUrl);
