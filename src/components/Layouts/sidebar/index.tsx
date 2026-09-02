@@ -92,9 +92,10 @@ export function Sidebar() {
     JOB_GROUPS.forEach((group) => {
       try {
         const stored = localStorage.getItem(JOB_GROUP_COLLAPSED_KEY_PREFIX + group.title);
-        initial[group.title] = stored === "true";
+        initial[group.title] =
+          group.title === "CRM" ? stored !== "false" : stored === "true";
       } catch {
-        initial[group.title] = false;
+        initial[group.title] = group.title === "CRM";
       }
     });
     return initial;
@@ -133,6 +134,11 @@ export function Sidebar() {
     [jobGroupOpen],
   );
 
+  function navPathActive(href: string): boolean {
+    if (!href) return false;
+    return pathname === href || pathname.startsWith(`${href}/`);
+  }
+
   useEffect(() => {
     if (filtering) {
       JOB_GROUPS.forEach((group) => {
@@ -165,7 +171,7 @@ export function Sidebar() {
     NAV_DATA.forEach((section) => {
       section.items.forEach((item) => {
         if (isNavGroup(item)) {
-          const hasActive = item.items.some((sub) => sub.url === pathname);
+          const hasActive = item.items.some((sub) => navPathActive(sub.url));
           if (hasActive) {
             setSectionExpanded(section.label, true);
           }
@@ -173,7 +179,7 @@ export function Sidebar() {
       });
     });
     JOB_GROUPS.forEach((group) => {
-      const hasActive = group.items.some((sub) => sub.url === pathname);
+      const hasActive = group.items.some((sub) => navPathActive(sub.url));
       if (hasActive) {
         setJobGroupExpanded(group.title, true);
       }
@@ -307,7 +313,7 @@ export function Sidebar() {
     if (!groupVisible) return null;
 
     const open = isJobGroupOpen(group.title) || filtering;
-    const hasActive = group.items.some((sub) => sub.url === pathname);
+    const hasActive = group.items.some((sub) => navPathActive(sub.url));
 
     return (
       <div key={group.title} className="mb-1">
@@ -342,7 +348,7 @@ export function Sidebar() {
                   <MenuItem
                     as="link"
                     href={sub.url}
-                    isActive={pathname === sub.url}
+                    isActive={navPathActive(sub.url)}
                     isHighlighted={itemHighlight(sub.title)}
                     label={sub.title}
                   >
@@ -359,7 +365,7 @@ export function Sidebar() {
   const renderLink = (item: NavLinkItem, badge?: number) => {
     if (!itemVisible(item.title, item.url)) return null;
     const href = item.url || "/";
-    const active = pathname === href;
+    const active = navPathActive(href);
     const showBadge = badge ?? (item.url === "/tasks" ? pendingTaskCount : 0);
 
     return (
@@ -428,7 +434,7 @@ export function Sidebar() {
           <ul className={cn("space-y-0.5", isCollapsed && "flex flex-col items-center")}>
             {visibleItems.map((item) => {
               if (isNavGroup(item)) {
-                const hasActive = item.items.some((sub) => sub.url === pathname);
+                const hasActive = item.items.some((sub) => navPathActive(sub.url));
                 return (
                   <li key={item.title} className="w-full">
                     {!isCollapsed && (
@@ -459,7 +465,7 @@ export function Sidebar() {
                               <MenuItem
                                 as="link"
                                 href={sub.url}
-                                isActive={pathname === sub.url}
+                                isActive={navPathActive(sub.url)}
                                 isHighlighted={itemHighlight(sub.title)}
                                 label={sub.title}
                               >
@@ -604,7 +610,6 @@ export function Sidebar() {
               {MAIN_NAV.map((item) => renderLink(item))}
             </ul>
 
-            {/* Job groups */}
             {filteredJobGroups.map((group) => renderCollapsibleGroup(group))}
 
             {sections.map(renderSection)}

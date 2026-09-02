@@ -1,16 +1,12 @@
 import {
-  Activity,
   BarChart3,
   Bot,
   Building2,
-  Layers,
   CalendarClock,
   CheckSquare,
-  Factory,
   FileText,
   FileUp,
   GitBranch,
-  HandCoins,
   Handshake,
   Home,
   KeyRound,
@@ -64,12 +60,21 @@ export const MAIN_NAV: NavLinkItem[] = [
   { title: "Solution Range", url: "/solution-range", icon: LayoutGrid },
   { title: "Base 1 Hub", url: "/base-1", icon: BarChart3 },
   { title: "Distributors", url: "/distributors", icon: Handshake },
-  { title: "Suppliers", url: "/suppliers", icon: Factory },
   { title: "Plus ES DMA", url: "/plus-es-dma", icon: FileText },
 ];
 
-/** Collapsible job-to-be-done groups (closed by default) */
+/** Collapsible job-to-be-done groups (closed by default; CRM stays open) */
 export const JOB_GROUPS: NavGroupItem[] = [
+  {
+    title: "CRM",
+    icon: Users,
+    items: [
+      { title: "Members", url: "/crm-members" },
+      { title: "Groups", url: "/crm-groups" },
+      { title: "Offers", url: "/offers" },
+      { title: "Activity Report", url: "/reports/activities" },
+    ],
+  },
   {
     title: "Finance & lodgement",
     icon: Wallet,
@@ -111,15 +116,6 @@ export const JOB_GROUPS: NavGroupItem[] = [
 ];
 
 export const NAV_DATA: NavSection[] = [
-  {
-    label: "CRM",
-    items: [
-      { title: "Members", url: "/crm-members", icon: Users },
-      { title: "Groups", url: "/crm-groups", icon: Layers },
-      { title: "Offers", url: "/offers", icon: HandCoins },
-      { title: "Activity Report", url: "/reports/activities", icon: Activity },
-    ],
-  },
   {
     label: "Resources",
     items: [
