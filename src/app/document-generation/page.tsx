@@ -740,9 +740,14 @@ export default function DocumentGenerationPage() {
       use_html_signature: true,
     };
     if (messageId) {
-      context.email_id = messageId;
-      context.email_ID = messageId;
       context.gmail_message_id = messageId;
+    }
+    // Backend reads only email_ID / email_id and passes it to Gmail threads().get().
+    // Prefer the real thread id; first-message-id === threadId is coincidence, not a contract.
+    const canonicalThreadId = threadId || messageId;
+    if (canonicalThreadId) {
+      context.email_id = canonicalThreadId;
+      context.email_ID = canonicalThreadId;
     }
     if (threadId) {
       context.gmail_thread_id = threadId;
@@ -778,7 +783,7 @@ export default function DocumentGenerationPage() {
         crm_activity_id: null,
         anchor_at: new Date().toISOString(),
         timezone: "Australia/Brisbane",
-        email_id: (gmail.messageId || "").trim() || null,
+        email_id: (gmail.threadId || gmail.messageId || "").trim() || null,
         context,
       }),
     });

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getApiBaseUrl, getAutonomousApiBaseUrl, cn } from "@/lib/utils";
+import { checkAuPhone } from "@/lib/au-phone";
 
 interface OfferLite {
   id: number;
@@ -25,61 +26,6 @@ function apiDetail(data: unknown, fallback: string): string {
     if (typeof d === "string" && d.trim()) return d;
   }
   return fallback;
-}
-
-type PhoneCheck =
-  | { ok: true; e164: string; kind: "mobile" | "landline" }
-  | { ok: false; reason: string };
-
-/**
- * Validate an Australian number and convert it to E.164, or explain why not.
- *
- * This used to end in a catch-all `return \`+${digits}\``, so anything
- * unrecognised got a plus bolted on the front and was sent to Retell as if it
- * were real. A landline typed without its area code — "8792 4400" — became
- * "+87924400", which Retell rejected as invalid and which looked on the
- * dashboard like the call had simply failed. Nothing is guessed here any more.
- */
-function checkAuPhone(raw: string): PhoneCheck {
-  const text = raw.trim();
-  if (!text) return { ok: false, reason: "Enter a mobile number." };
-
-  const digits = text.replace(/\D/g, "");
-  if (!digits) return { ok: false, reason: "That doesn't contain any digits." };
-
-  // Reduce every accepted form to the national 0XXXXXXXXX shape first.
-  let national: string;
-  if (text.startsWith("+") || digits.startsWith("61")) {
-    national = `0${digits.replace(/^61/, "")}`;
-  } else if (digits.length === 9 && digits.startsWith("4")) {
-    national = `0${digits}`; // 401941385 — mobile missing its leading zero
-  } else {
-    national = digits;
-  }
-
-  if (/^04\d{8}$/.test(national)) {
-    return { ok: true, e164: `+61${national.slice(1)}`, kind: "mobile" };
-  }
-  if (/^0[23578]\d{8}$/.test(national)) {
-    return { ok: true, e164: `+61${national.slice(1)}`, kind: "landline" };
-  }
-
-  if (national.replace(/^0/, "").length === 8) {
-    return {
-      ok: false,
-      reason: "Looks like a landline without its area code — put 03, 02, 07 or 08 in front.",
-    };
-  }
-  if (national.length < 10) {
-    return {
-      ok: false,
-      reason: `Only ${digits.length} digits. An Australian mobile has 10, starting 04.`,
-    };
-  }
-  return {
-    ok: false,
-    reason: "Doesn't look like an Australian number. Use 04XX XXX XXX or +61 4XX XXX XXX.",
-  };
 }
 
 /** Permissive on the local part, strict on shape. */

@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { getApiBaseUrl, getAutonomousApiBaseUrl } from "@/lib/utils";
+import { checkAuPhone } from "@/lib/au-phone";
 import { LinkedAutonomousFollowupBar } from "@/components/autonomous/LinkedAutonomousFollowupBar";
 import { SEQUENCE_LINK_SOLAR_FOLLOWUP } from "@/lib/autonomous-sequence-keys";
 
@@ -110,6 +111,8 @@ function extractEmailIdFromWebhookResponse(webhookResponse: unknown): string | n
     const direct =
       (typeof obj.email_id === "string" && obj.email_id.trim()) ||
       (typeof obj.email_ID === "string" && obj.email_ID.trim()) ||
+      (typeof obj.threadId === "string" && obj.threadId.trim()) ||
+      (typeof obj.thread_id === "string" && obj.thread_id.trim()) ||
       null;
     if (direct) return direct;
 
@@ -262,6 +265,7 @@ export default function SolarCleaningQuotePage() {
   const [sending, setSending] = useState(false);
   const [sendName, setSendName] = useState("");
   const [sendEmail, setSendEmail] = useState("");
+  const [sendPhone, setSendPhone] = useState("");
   const [sendSubject, setSendSubject] = useState("");
   const [staffUsers, setStaffUsers] = useState<StaffUser[]>([]);
   const [ccSelected, setCcSelected] = useState<Record<string, boolean>>({});
@@ -271,6 +275,7 @@ export default function SolarCleaningQuotePage() {
     const bn = searchParams.get("businessName") || "";
     const em = searchParams.get("email") || "";
     const cn = searchParams.get("contactName") || "";
+    const ph = searchParams.get("phone") || "";
     const folder = searchParams.get("clientFolderUrl") || "";
     const cid = searchParams.get("clientId") || "";
     const site = searchParams.get("siteAddress") || "";
@@ -292,6 +297,7 @@ export default function SolarCleaningQuotePage() {
     setContactName((prev) => (prev ? prev : cn));
     setSendEmail((prev) => (prev ? prev : em));
     setSendName((prev) => (prev ? prev : cn || bn || ""));
+    setSendPhone((prev) => (prev ? prev : ph));
   }, [searchParams]);
 
   useEffect(() => {
@@ -588,16 +594,25 @@ export default function SolarCleaningQuotePage() {
   /** Solar quote page only — outreach after quote sent (not Document Generation engagement form). */
   const SOLAR_FOLLOWUP_SEQUENCE = "solar_panel_cleaning_followup_v1";
 
+  const sendPhoneTrimmed = sendPhone.trim();
+  const sendPhoneCheck = sendPhoneTrimmed ? checkAuPhone(sendPhone) : null;
+  const sendPhoneInvalid = sendPhoneCheck !== null && !sendPhoneCheck.ok;
+  // Empty → null (voice/SMS steps skip). Valid → E.164. Invalid never written.
+  const sendPhoneE164 =
+    sendPhoneCheck && sendPhoneCheck.ok ? sendPhoneCheck.e164 : null;
+
   const buildSolarAutonomousContext = (emailId?: string | null): Record<string, unknown> => {
     const normalizedEmailId = (emailId || "").trim() || null;
     const context: Record<string, unknown> = {
       source: "solar_cleaning_quote_page",
       contact_name: sendName.trim() || null,
       contact_email: sendEmail.trim() || null,
-      contact_phone: null,
+      contact_phone: sendPhoneE164,
       business_name: (businessName || clientName).trim() || null,
       client_name: clientName.trim() || null,
       quote_number: quoteNumber.trim() || null,
+      site_identifiers: quoteNumber.trim() ? [quoteNumber.trim()] : [],
+      utility_lane: "solar_panel_cleaning",
       site_name: siteName.trim() || null,
       site_contact: contactName.trim() || null,
       site_address: siteAddress.trim() || null,
@@ -606,6 +621,8 @@ export default function SolarCleaningQuotePage() {
       quote_google_doc_id: generateResult?.quote_google_doc_id ?? null,
       quote_pdf_file_id: generateResult?.quote_pdf_file_id ?? null,
       quote_doc_url: generateResult?.quote_doc_url ?? null,
+      panel_count: panelQty.trim() || null,
+      system_size_kw: systemKw.trim() || null,
     };
     if (normalizedEmailId) {
       context.email_id = normalizedEmailId;
@@ -613,6 +630,9 @@ export default function SolarCleaningQuotePage() {
     }
     const p = quotePricing;
     if (p) {
+      const totalIncGstDisplay = formatAudDisplay(p.total);
+      context.total_inc_gst = totalIncGstDisplay;
+      context.quote_price = totalIncGstDisplay;
       context.member_pricing = {
         markup_multiplier: p.mult,
         member_discount_percent: p.discPct,
@@ -779,6 +799,7 @@ export default function SolarCleaningQuotePage() {
 
   const handleSend = async () => {
     if (!sendEmail.trim()) { setResultMsg("Client email is required to send."); return; }
+    if (sendPhoneInvalid) return;
     setSending(true);
     try {
       const cc_emails = Object.entries(ccSelected).filter(([, v]) => v).map(([email]) => email);
@@ -1166,6 +1187,38 @@ export default function SolarCleaningQuotePage() {
                   <label className={labelCls}>Client Email</label>
                   <input type="email" className={inputCls} value={sendEmail} onChange={(e) => setSendEmail(e.target.value)} />
                 </div>
+                <div className="sm:col-span-2">
+                  <label className={labelCls} htmlFor="solar-send-phone">Phone — the voice agent calls this number</label>
+                  <input
+                    id="solar-send-phone"
+                    type="tel"
+                    className={`${inputCls} ${
+                      sendPhoneInvalid
+                        ? "border-red-400 dark:border-red-600 focus:ring-red-500/40 focus:border-red-400"
+                        : ""
+                    }`}
+                    value={sendPhone}
+                    onChange={(e) => setSendPhone(e.target.value)}
+                    placeholder="04XX XXX XXX or 03 XXXX XXXX — or leave blank"
+                    autoComplete="tel"
+                    aria-invalid={sendPhoneInvalid}
+                    aria-describedby={sendPhoneInvalid ? "solar-send-phone-error" : "solar-send-phone-hint"}
+                  />
+                  {sendPhoneInvalid && sendPhoneCheck && !sendPhoneCheck.ok ? (
+                    <p id="solar-send-phone-error" className="mt-1.5 text-xs text-red-600 dark:text-red-400">
+                      {sendPhoneCheck.reason} Clear the field to skip the voice call.
+                    </p>
+                  ) : sendPhoneCheck && sendPhoneCheck.ok ? (
+                    <p id="solar-send-phone-hint" className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      Will dial {sendPhoneCheck.e164}
+                      {sendPhoneCheck.kind === "landline" ? " — landline, so no SMS" : ""}
+                    </p>
+                  ) : (
+                    <p id="solar-send-phone-hint" className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      Leave blank to skip the voice call. Incomplete numbers from the member record (missing area code) cannot be sent.
+                    </p>
+                  )}
+                </div>
               </div>
               <div>
                 <label className={labelCls}>Subject</label>
@@ -1205,7 +1258,7 @@ export default function SolarCleaningQuotePage() {
               <button
                 type="button"
                 onClick={handleSend}
-                disabled={sending}
+                disabled={sending || sendPhoneInvalid}
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold disabled:opacity-50 transition-colors"
               >
                 {sending ? (
