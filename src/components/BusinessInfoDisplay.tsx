@@ -2964,6 +2964,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                                     if (rep.contact_name) url += `&contact_name=${encodeURIComponent(rep.contact_name)}`;
                                     if (rep.position) url += `&contact_position=${encodeURIComponent(rep.position)}`;
                                     if (rep.loa_sign_date) url += `&loa_sign_date=${encodeURIComponent(rep.loa_sign_date)}`;
+                                    if (driveUrl) url += `&client_folder_url=${encodeURIComponent(driveUrl)}`;
                                     
                                     window.open(url, '_blank');
                                   }}

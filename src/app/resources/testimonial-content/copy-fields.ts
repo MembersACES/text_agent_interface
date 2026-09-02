@@ -113,6 +113,7 @@ export const DROPDOWN_ORDER = [
   "automated_cleaning_robot",
   "solar_panel_cleaning",
   "client_endorsement",
+  "association_endorsement",
   "ghg_roadmap",
   "solar_review",
   "gas_discrepancy",

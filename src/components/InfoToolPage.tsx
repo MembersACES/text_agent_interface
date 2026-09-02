@@ -13,6 +13,7 @@ import { Modal } from "@/components/ui/modal";
 import { InsightCallout } from "@/components/dashboard";
 import { AlertCircle } from "lucide-react";
 import { LinkedAutonomousFollowupBar } from "@/components/autonomous/LinkedAutonomousFollowupBar";
+import { fileDmaContractDetails, pickEngagementFormLink } from "@/lib/dma-contract-details";
 import {
   AUTONOMOUS_SEQUENCE_CI_ELECTRICITY_OFFER as AUTONOMOUS_SEQUENCE_CI_ELECTRICITY,
   SEQUENCE_LINK_CI_ELECTRICITY_OFFER,
@@ -106,6 +107,8 @@ interface InfoToolPageProps {
   offerId?: number;
   /** Optional client id for logging utility activities by creating a minimal offer when offerId isn't provided */
   clientId?: number;
+  /** Member Google Drive folder — used to file DMA contract details next to the engagement form */
+  clientFolderUrl?: string;
 }
 
 interface CIElectricityOfferData {
@@ -2297,6 +2300,19 @@ interface DMAModalProps {
   session: any;
   token: string;
   offerId?: number;
+  clientId?: number;
+  clientFolderUrl?: string;
+  contactDefaults?: {
+    businessName?: string;
+    contactName?: string;
+    contactEmail?: string;
+    contactPhone?: string;
+    contactPosition?: string;
+    businessAbn?: string;
+    businessTradingName?: string;
+    postalAddress?: string;
+    clientFolderUrl?: string;
+  };
 }
 
 interface CostCalculations {
@@ -4113,6 +4129,9 @@ function DMAModal({
   session,
   token,
   offerId,
+  clientId,
+  clientFolderUrl,
+  contactDefaults,
 }: DMAModalProps) {
   // State
   const [formData, setFormData] = useState<DMAData>({
@@ -4356,6 +4375,29 @@ Total Savings Over ${formData.periodYears} Years: ${formatCurrency(calculations.
             console.warn('Failed to log DMA email activity:', logErr);
           }
         }
+
+        const invoiceDetails = invoiceData?.electricity_ci_invoice_details;
+        const fullInvoiceData = invoiceDetails?.full_invoice_data || {};
+        void fileDmaContractDetails(token, {
+          nmi: formData.nmi,
+          business: contactDefaults?.businessName || '',
+          abn: contactDefaults?.businessAbn || '',
+          postal_address: contactDefaults?.postalAddress || '',
+          site_address: formData.siteAddress,
+          frmp: fullInvoiceData['Retailer'] || invoiceDetails?.retailer || '',
+          contact: contactDefaults?.contactName || '',
+          position: contactDefaults?.contactPosition || '',
+          telephone: contactDefaults?.contactPhone || '',
+          email: contactDefaults?.contactEmail || '',
+          dma_price: formData.dmaPrice,
+          vas_price: formData.vasPrice,
+          start_date: formData.startDate,
+          end_date: formData.endDate,
+          engagement_form_link: pickEngagementFormLink(responseData),
+          client_folder_url: clientFolderUrl || contactDefaults?.clientFolderUrl || '',
+          offer_id: offerId ?? null,
+          client_id: clientId ?? null,
+        }, (session as { accessToken?: string } | null)?.accessToken);
 
         alert('DMA Review sent successfully!');
         onClose();
@@ -6797,7 +6839,7 @@ const EnhancedSMEGasInvoiceDetails = ({ smeGasData }: { smeGasData: any }) => {
   );
 };
 
-function InvoiceResult({ result, session, token, autoOpenDMA = false, autoExpandDetails = false, offerId, clientId, contactDefaults }: { result: any; session: any; token: string; autoOpenDMA?: boolean; autoExpandDetails?: boolean; offerId?: number; clientId?: number; contactDefaults?: {
+function InvoiceResult({ result, session, token, autoOpenDMA = false, autoExpandDetails = false, offerId, clientId, clientFolderUrl, contactDefaults }: { result: any; session: any; token: string; autoOpenDMA?: boolean; autoExpandDetails?: boolean; offerId?: number; clientId?: number; clientFolderUrl?: string; contactDefaults?: {
   businessName?: string;
   contactName?: string;
   contactEmail?: string;
@@ -6806,6 +6848,7 @@ function InvoiceResult({ result, session, token, autoOpenDMA = false, autoExpand
   businessAbn?: string;
   businessTradingName?: string;
   postalAddress?: string;
+  clientFolderUrl?: string;
 } }) {
   const [showDMAModal, setShowDMAModal] = useState(false);
   const [showCIOfferModal, setShowCIOfferModal] = useState(false);
@@ -7112,6 +7155,9 @@ function InvoiceResult({ result, session, token, autoOpenDMA = false, autoExpand
             session={session}
             token={token}
             offerId={offerId}
+            clientId={clientId}
+            clientFolderUrl={clientFolderUrl || contactDefaults?.clientFolderUrl}
+            contactDefaults={contactDefaults}
           />
         </>
       )}
@@ -7753,7 +7799,7 @@ function IntervalDataSection({
   );
 }
 
-export default function InfoToolPage({ title, description, endpoint, extraFields = [], isFileUpload = false, secondaryField, initialBusinessName = "", initialSecondaryValue = "", autoSubmit = false, formRef, initialExtraFields = {}, autoOpenDMA = false, offerId, clientId }: InfoToolPageProps) {
+export default function InfoToolPage({ title, description, endpoint, extraFields = [], isFileUpload = false, secondaryField, initialBusinessName = "", initialSecondaryValue = "", autoSubmit = false, formRef, initialExtraFields = {}, autoOpenDMA = false, offerId, clientId, clientFolderUrl }: InfoToolPageProps) {
   // ========== PROMINENT LOG - InfoToolPage Component Rendered ==========
   console.log('🔵 ========== InfoToolPage Component Rendered ==========');
   console.log('🔵 Title:', title);
@@ -8105,6 +8151,7 @@ export default function InfoToolPage({ title, description, endpoint, extraFields
                 autoExpandDetails={autoSubmit}
                 offerId={offerId}
                 clientId={clientId}
+                clientFolderUrl={clientFolderUrl}
                 contactDefaults={{
                   businessName: initialBusinessName || businessName || undefined,
                   contactName: fields.contact_name || undefined,
@@ -8114,6 +8161,7 @@ export default function InfoToolPage({ title, description, endpoint, extraFields
                   businessAbn: fields.business_abn || undefined,
                   businessTradingName: fields.business_trading_name || undefined,
                   postalAddress: fields.postal_address || undefined,
+                  clientFolderUrl: clientFolderUrl || undefined,
                 }}
               />
             )}
