@@ -36,6 +36,7 @@ export const NO_INVOICE_RECORDED = "No invoice recorded";
 /** Types that do not get a 1st Month Savings invoice. */
 export const NO_INVOICE_TYPE_IDS = new Set([
   "client_endorsement",
+  "association_endorsement",
   "ghg_roadmap",
   "solar_panel_cleaning",
   "solar_review",

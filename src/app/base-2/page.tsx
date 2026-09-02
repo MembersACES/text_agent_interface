@@ -27,6 +27,7 @@ import {
   sequenceLinksForBase2Comparison,
 } from "@/lib/autonomous-sequence-keys";
 import { LinkedAutonomousFollowupBar } from "@/components/autonomous/LinkedAutonomousFollowupBar";
+import { fileDmaContractDetails, pickEngagementFormLink } from "@/lib/dma-contract-details";
 
 /** SME Gas → C&I comparison: how current SME bill is interpreted in the UI */
 type SmeGasComparisonMode = "invoice_blocks" | "ci_offer" | "sme_benchmark_stub";
@@ -2088,6 +2089,15 @@ export default function Base2Page() {
           payload.commission_aud_per_kwh = util.ciElectricityCommissionAudPerKwh!.toFixed(6);
           payload.commission_aud_per_mwh = audPerKwhToAudPerMwh(util.ciElectricityCommissionAudPerKwh!).toFixed(4);
           payload.commission_unit_electricity = "$/MWh";
+          payload.retailer = fullData['Retailer'] || details?.retailer || '';
+          {
+            const startDate = new Date().toISOString().split('T')[0];
+            const endDate = new Date();
+            endDate.setFullYear(endDate.getFullYear() + 5);
+            payload.start_date = startDate;
+            payload.end_date = endDate.toISOString().split('T')[0];
+            payload.period_years = '5';
+          }
         } else if (util.utilityType === 'C&I Electricity') {
           webhookUrl = isRsl
             ? 'https://membersaces.app.n8n.cloud/webhook/generate-electricity-ci-comparaison-b2-rsl'
@@ -2463,6 +2473,40 @@ export default function Base2Page() {
               }
             }
           } catch (err) { console.warn('Failed to log offer activities:', err); }
+        }
+        if (action === 'dma' && token && successResults.length > 0) {
+          const folderUrl =
+            (typeof businessInfo?.googleDriveLink === 'string' && businessInfo.googleDriveLink) ||
+            (typeof businessInfoData?.gdrive?.folder_url === 'string' && businessInfoData.gdrive.folder_url) ||
+            '';
+          const startDate = new Date().toISOString().split('T')[0];
+          const endDate = new Date();
+          endDate.setFullYear(endDate.getFullYear() + 5);
+          for (const { util, result } of successResults) {
+            if (util.utilityType !== 'C&I Electricity') continue;
+            const details = util.invoiceData?.electricity_ci_invoice_details || {};
+            const fullData = details?.full_invoice_data || {};
+            void fileDmaContractDetails(token, {
+              nmi: util.identifier,
+              business: businessInfo?.name || businessName || '',
+              abn: businessInfo?.abn || '',
+              postal_address: businessInfo?.postal_address || '',
+              site_address: fullData['Site Address'] || details?.site_address || businessInfo?.site_address || '',
+              frmp: fullData['Retailer'] || details?.retailer || '',
+              contact: webhookRecipient?.contactName || businessInfo?.contact_name || '',
+              position: businessInfo?.position || '',
+              telephone: webhookRecipient?.contactPhone || businessInfo?.telephone || '',
+              email: webhookRecipient?.contactEmail || businessInfo?.email || '',
+              dma_price: util.comparisonMeterAnnual ?? 600,
+              vas_price: util.comparisonVasAnnual ?? 300,
+              start_date: startDate,
+              end_date: endDate.toISOString().split('T')[0],
+              engagement_form_link: pickEngagementFormLink(result),
+              client_folder_url: folderUrl,
+              offer_id: offerIdToUse,
+              client_id: hasValidClientId ? clientIdFromUrl : null,
+            }, (session as { accessToken?: string } | null)?.accessToken);
+          }
         }
       }
     }
