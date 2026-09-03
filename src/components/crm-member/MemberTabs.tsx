@@ -68,7 +68,7 @@ function TabLink({
 export function MemberTabs({ basePath, tabs }: MemberTabsProps) {
   const searchParams = useSearchParams();
   const rawTab = searchParams.get("tab");
-  const { tab: current } = resolveMemberTab(rawTab);
+  const { tab: current } = resolveMemberTab(rawTab, searchParams.get("subtab"));
   const [moreOpen, setMoreOpen] = useState(false);
 
   const mobilePrimary = tabs.slice(0, MOBILE_VISIBLE_COUNT);
