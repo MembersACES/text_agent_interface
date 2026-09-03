@@ -66,16 +66,25 @@ export async function uploadSitePhotos(
   businessName: string,
   gdriveUrl: string,
   token: string,
+  accessToken?: string,
+  displayNames?: string[],
 ): Promise<SitePhotosPayload> {
   const fd = new FormData();
   fd.append("business_name", businessName);
   fd.append("gdrive_url", gdriveUrl);
-  for (const file of files) {
-    fd.append("files", file);
+  if (accessToken) {
+    fd.append("google_access_token", accessToken);
   }
+  files.forEach((file, index) => {
+    fd.append("files", file);
+    fd.append("photo_names", displayNames?.[index] ?? "");
+  });
   const res = await fetch(`${getApiBaseUrl()}/api/members/site-photos/upload`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
+    headers: {
+      Authorization: `Bearer ${token}`,
+      ...(accessToken ? { "X-Google-Access-Token": accessToken } : {}),
+    },
     body: fd,
   });
   if (!res.ok) {

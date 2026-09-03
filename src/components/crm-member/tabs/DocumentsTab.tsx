@@ -100,6 +100,15 @@ type UploadCategory = "eoi" | "engagement" | "additional" | "sitePhotos";
 const SITE_PHOTO_BATCH = 10;
 const SITE_PHOTO_ACCEPT =
   ".jpg,.jpeg,.png,.webp,.gif,.heic,.heif,image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif";
+const SITE_PHOTO_NAME_INPUT =
+  "w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-200 dark:focus:ring-gray-700";
+
+function sitePhotoStem(filename: string): string {
+  const base = filename.split(/[/\\]/).pop() || filename;
+  const match = /\.(jpe?g|png|webp|gif|heic|heif)$/i.exec(base);
+  if (!match) return base;
+  return base.slice(0, -match[0].length);
+}
 
 const FILTER_CHIPS: { id: DocFilter; label: string }[] = [
   { id: "all", label: "All" },
@@ -300,6 +309,7 @@ export function DocumentsTab({
 }: DocumentsTabProps) {
   const { data: session } = useSession();
   const token = (session as any)?.id_token ?? (session as any)?.accessToken;
+  const googleAccessToken = ((session as any)?.accessToken as string | undefined) || "";
   const info = businessInfo as any;
   const business = info?.business_details || {};
   const contact = info?.contact_information || {};
@@ -324,6 +334,7 @@ export function DocumentsTab({
   const [sitePhotosLoading, setSitePhotosLoading] = useState(false);
   const [showSitePhotosModal, setShowSitePhotosModal] = useState(false);
   const [sitePhotoFiles, setSitePhotoFiles] = useState<File[]>([]);
+  const [sitePhotoNames, setSitePhotoNames] = useState<string[]>([]);
   const [sitePhotoLoading, setSitePhotoLoading] = useState(false);
   const [sitePhotoProgress, setSitePhotoProgress] = useState("");
   const [sitePhotoResult, setSitePhotoResult] = useState("");
@@ -979,6 +990,8 @@ export function DocumentsTab({
           business?.name || "",
           driveUrl,
           token,
+          googleAccessToken,
+          sitePhotoNames.slice(i, i + slice.length),
         );
         uploaded += result.files.length;
         uploadedNames.push(...result.files.map((f) => f.name));
@@ -1009,6 +1022,7 @@ export function DocumentsTab({
         setTimeout(() => {
           setShowSitePhotosModal(false);
           setSitePhotoFiles([]);
+          setSitePhotoNames([]);
           setSitePhotoResult("");
           setSitePhotoProgress("");
         }, 1500);
@@ -1100,6 +1114,7 @@ export function DocumentsTab({
     if (uploadCategory === "sitePhotos") {
       setShowSitePhotosModal(true);
       setSitePhotoFiles([]);
+      setSitePhotoNames([]);
       setSitePhotoResult("");
       setSitePhotoProgress("");
       return;
@@ -1881,9 +1896,11 @@ export function DocumentsTab({
               type="file"
               accept={SITE_PHOTO_ACCEPT}
               multiple
-              onChange={(e) =>
-                setSitePhotoFiles(e.target.files ? Array.from(e.target.files) : [])
-              }
+              onChange={(e) => {
+                const files = e.target.files ? Array.from(e.target.files) : [];
+                setSitePhotoFiles(files);
+                setSitePhotoNames(files.map((file) => sitePhotoStem(file.name)));
+              }}
               className="block w-full text-xs text-gray-500 file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-medium file:bg-gray-100 dark:file:bg-gray-800 file:text-gray-700 dark:file:text-gray-200 hover:file:bg-gray-200 dark:hover:file:bg-gray-700 file:cursor-pointer file:transition-colors"
             />
             {sitePhotoFiles.length > 0 && (
@@ -1893,6 +1910,41 @@ export function DocumentsTab({
             )}
           </div>
         </MField>
+        {sitePhotoFiles.length === 1 ? (
+          <MField label="Photo name">
+            <input
+              type="text"
+              value={sitePhotoNames[0] ?? ""}
+              onChange={(e) => setSitePhotoNames([e.target.value])}
+              placeholder="e.g. Meter board, roof, switchboard"
+              className={SITE_PHOTO_NAME_INPUT}
+            />
+            <p className="mt-1 text-[11px] text-gray-400">
+              Saved in Drive as {(business?.name || "Member").trim()} - {sitePhotoNames[0]?.trim() || sitePhotoStem(sitePhotoFiles[0].name)}
+            </p>
+          </MField>
+        ) : sitePhotoFiles.length > 1 ? (
+          <MField label="Photo names">
+            <ul className="space-y-2 max-h-56 overflow-auto pr-0.5">
+              {sitePhotoFiles.map((file, index) => (
+                <li key={`${file.name}-${file.size}-${index}`}>
+                  <input
+                    type="text"
+                    value={sitePhotoNames[index] ?? ""}
+                    onChange={(e) => {
+                      const next = [...sitePhotoNames];
+                      next[index] = e.target.value;
+                      setSitePhotoNames(next);
+                    }}
+                    placeholder={sitePhotoStem(file.name)}
+                    className={SITE_PHOTO_NAME_INPUT}
+                  />
+                  <p className="mt-0.5 truncate text-[11px] text-gray-400">{file.name}</p>
+                </li>
+              ))}
+            </ul>
+          </MField>
+        ) : null}
         {sitePhotoProgress ? (
           <p className="text-xs text-gray-500">{sitePhotoProgress}</p>
         ) : null}
