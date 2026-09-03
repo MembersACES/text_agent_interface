@@ -25,13 +25,13 @@ import { UtilitiesTab, getUtilitiesCountFromBusinessInfo } from "@/components/cr
 import { ToolsTab } from "@/components/crm-member/tabs/ToolsTab";
 import { ClimateTab } from "@/components/crm-member/tabs/ClimateTab";
 import { CommercialTabPanel } from "@/components/crm-member/tabs/CommercialTabPanel";
+import { OffersTab } from "@/components/crm-member/tabs/OffersTab";
 import { ActivityTabPanel } from "@/components/crm-member/tabs/ActivityTabPanel";
 import { SolutionsStrategyTabPanel } from "@/components/crm-member/tabs/SolutionsStrategyTabPanel";
 import { resolveMemberTab } from "@/components/crm-member/member-tab-utils";
 import { recordMemberProfileView } from "@/lib/member-profile-recent";
 import type {
   ActivitySubTab,
-  CommercialSubTab,
   SolutionsSubTab,
 } from "@/components/crm-member/member-tab-utils";
 export default function ClientDetailPage() {
@@ -49,7 +49,7 @@ export default function ClientDetailPage() {
   const { data: session } = useSession();
   const rawTab = searchParams.get("tab");
   const rawSubTab = searchParams.get("subtab");
-  const { tab, subTab: aliasSubTab } = resolveMemberTab(rawTab);
+  const { tab, subTab: aliasSubTab } = resolveMemberTab(rawTab, rawSubTab);
   const subTab = rawSubTab ?? aliasSubTab;
 
   const {
@@ -263,17 +263,18 @@ export default function ClientDetailPage() {
         label: "Documents",
         count: businessInfo ? getDocumentsCountFromBusinessInfo(businessInfo) : null,
       },
-      {
-        key: "utilities" as const,
-        label: "Utilities",
-        count: businessInfo ? getUtilitiesCountFromBusinessInfo(businessInfo) : null,
-      },
+      { key: "offers" as const, label: "Offers", count: offers.length },
       {
         key: "activity" as const,
         label: "Activity",
         count: activities.length + notes.length,
       },
-      { key: "commercial" as const, label: "Offers & Savings", count: offers.length },
+      {
+        key: "utilities" as const,
+        label: "Utilities",
+        count: businessInfo ? getUtilitiesCountFromBusinessInfo(businessInfo) : null,
+      },
+      { key: "savings" as const, label: "Savings", count: null },
       { key: "solutions" as const, label: "Solutions & Strategy", count: null },
       { key: "climate" as const, label: "Climate", count: null },
     ],
@@ -390,17 +391,30 @@ export default function ClientDetailPage() {
                   </div>
                 )}
 
-                {tab === "commercial" && (
-                  <div key="commercial" className="pg-fade-up">
-                  <CommercialTabPanel
-                    initialSubTab={(subTab as CommercialSubTab) ?? "offers"}
+                {tab === "offers" && (
+                  <div key="offers" className="pg-fade-up">
+                  <OffersTab
                     offers={offers}
-                    businessInfo={businessInfo}
-                    clientId={clientId}
                     onCreateOfferClick={() => {
                       setCreateOfferOpen(true);
                       setError(null);
                     }}
+                  />
+                  </div>
+                )}
+
+                {tab === "savings" && (
+                  <div key="savings" className="pg-fade-up">
+                  <CommercialTabPanel
+                    initialSubTab={
+                      aliasSubTab === "savings" ||
+                      aliasSubTab === "new-revenue" ||
+                      aliasSubTab === "testimonials"
+                        ? aliasSubTab
+                        : "savings"
+                    }
+                    businessInfo={businessInfo}
+                    clientId={clientId}
                   />
                   </div>
                 )}

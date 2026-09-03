@@ -2,36 +2,29 @@
 
 import { useEffect, useState } from "react";
 import { MemberSubTabs } from "../shared/MemberSubTabs";
-import { OffersTab } from "./OffersTab";
 import { SavingsTab } from "./SavingsTab";
 import { NewRevenueTab } from "./NewRevenueTab";
 import { TestimonialsTab } from "./TestimonialsTab";
-import type { Offer } from "../types";
-import type { CommercialSubTab } from "../member-tab-utils";
+import type { SavingsSubTab } from "../member-tab-utils";
 
 export interface CommercialTabPanelProps {
-  initialSubTab?: CommercialSubTab;
-  offers: Offer[];
-  onCreateOfferClick: () => void;
+  initialSubTab?: SavingsSubTab;
   businessInfo: Record<string, unknown> | null;
   clientId?: number | null;
 }
 
-const COMMERCIAL_SUB_TABS = [
-  { id: "offers", label: "Offers" },
+const SAVINGS_SUB_TABS = [
   { id: "savings", label: "1st Month Savings" },
   { id: "new-revenue", label: "Discrepancy / New Revenue" },
   { id: "testimonials", label: "Testimonials" },
 ] as const;
 
 export function CommercialTabPanel({
-  initialSubTab = "offers",
-  offers,
-  onCreateOfferClick,
+  initialSubTab = "savings",
   businessInfo,
   clientId,
 }: CommercialTabPanelProps) {
-  const [subTab, setSubTab] = useState<CommercialSubTab>(initialSubTab);
+  const [subTab, setSubTab] = useState<SavingsSubTab>(initialSubTab);
 
   useEffect(() => {
     setSubTab(initialSubTab);
@@ -41,14 +34,11 @@ export function CommercialTabPanel({
     <div className="space-y-4">
       <MemberSubTabs
         className="-mx-1 px-1"
-        tabs={[...COMMERCIAL_SUB_TABS]}
+        tabs={[...SAVINGS_SUB_TABS]}
         active={subTab}
-        onChange={(id) => setSubTab(id as CommercialSubTab)}
+        onChange={(id) => setSubTab(id as SavingsSubTab)}
       />
 
-      {subTab === "offers" && (
-        <OffersTab offers={offers} onCreateOfferClick={onCreateOfferClick} />
-      )}
       {subTab === "savings" && <SavingsTab businessInfo={businessInfo} />}
       {subTab === "new-revenue" && <NewRevenueTab businessInfo={businessInfo} />}
       {subTab === "testimonials" && (

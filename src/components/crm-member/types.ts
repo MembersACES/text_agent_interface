@@ -144,7 +144,8 @@ export interface StrategyItem {
 
 export type MemberTab =
   | "overview"
-  | "commercial"
+  | "offers"
+  | "savings"
   | "utilities"
   | "documents"
   | "activity"

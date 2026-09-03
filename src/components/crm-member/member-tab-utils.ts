@@ -1,24 +1,19 @@
 import type { MemberTab } from "./types";
 
-export type CommercialSubTab = "offers" | "savings" | "new-revenue" | "testimonials";
+export type SavingsSubTab = "savings" | "new-revenue" | "testimonials";
+export type CommercialSubTab = SavingsSubTab;
 export type ActivitySubTab = "activity" | "notes";
 export type SolutionsSubTab = "solutions" | "strategy";
 
+const SAVINGS_SUBTABS = new Set<string>(["savings", "new-revenue", "testimonials"]);
+
 const TAB_ALIASES: Record<string, MemberTab> = {
-  offers: "commercial",
-  savings: "commercial",
-  "new-revenue": "commercial",
-  testimonials: "commercial",
   notes: "activity",
   strategy: "solutions",
   tools: "overview",
 };
 
-const SUBTAB_FROM_TAB: Record<string, CommercialSubTab | ActivitySubTab | SolutionsSubTab> = {
-  offers: "offers",
-  savings: "savings",
-  "new-revenue": "new-revenue",
-  testimonials: "testimonials",
+const SUBTAB_FROM_TAB: Record<string, ActivitySubTab | SolutionsSubTab> = {
   notes: "notes",
   strategy: "strategy",
 };
@@ -26,18 +21,45 @@ const SUBTAB_FROM_TAB: Record<string, CommercialSubTab | ActivitySubTab | Soluti
 export const MEMBER_TABS: MemberTab[] = [
   "overview",
   "documents",
-  "utilities",
+  "offers",
   "activity",
-  "commercial",
+  "utilities",
+  "savings",
   "solutions",
   "climate",
 ];
 
-export function resolveMemberTab(raw: string | null): {
+export function resolveMemberTab(
+  raw: string | null,
+  rawSubTab: string | null = null,
+): {
   tab: MemberTab;
-  subTab?: CommercialSubTab | ActivitySubTab | SolutionsSubTab;
+  subTab?: SavingsSubTab | ActivitySubTab | SolutionsSubTab;
 } {
   if (!raw) return { tab: "overview" };
+
+  if (raw === "commercial") {
+    if (rawSubTab && SAVINGS_SUBTABS.has(rawSubTab)) {
+      return { tab: "savings", subTab: rawSubTab as SavingsSubTab };
+    }
+    return { tab: "offers" };
+  }
+
+  if (raw === "new-revenue" || raw === "testimonials") {
+    return { tab: "savings", subTab: raw };
+  }
+
+  if (raw === "savings") {
+    const sub =
+      rawSubTab && SAVINGS_SUBTABS.has(rawSubTab)
+        ? (rawSubTab as SavingsSubTab)
+        : "savings";
+    return { tab: "savings", subTab: sub };
+  }
+
+  if (raw === "offers") {
+    return { tab: "offers" };
+  }
 
   if (TAB_ALIASES[raw]) {
     const tab = TAB_ALIASES[raw];

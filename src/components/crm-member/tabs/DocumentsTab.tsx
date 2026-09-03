@@ -13,6 +13,12 @@ import { useToast } from "@/components/ui/toast";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { FileText } from "lucide-react";
+import {
+  fetchSitePhotos,
+  uploadSitePhotos,
+  type SitePhoto,
+} from "@/lib/site-photos-api";
+import { SitePhotosGallery } from "./SitePhotosGallery";
 import { BRAND, CONTRACT_STATUS_OPTIONS } from "@/lib/brand";
 import { RecordRow, RecordRowOpenAction } from "../shared/RecordRow";
 import { getRecordRowIcon } from "../shared/recordRowIcons";
@@ -87,9 +93,22 @@ export { getDocumentsCountFromBusinessInfo } from "./documentHelpers";
 
 // ─── Sub-tab definitions ──────────────────────────────────────────────────────
 
-type DocTab = "contracts" | "businessDocs" | "eois" | "engagement" | "additional";
+type DocTab = "contracts" | "businessDocs" | "eois" | "engagement" | "additional" | "sitePhotos";
 type DocFilter = DocTab | "all";
-type UploadCategory = "eoi" | "engagement" | "additional";
+type UploadCategory = "eoi" | "engagement" | "additional" | "sitePhotos";
+
+const SITE_PHOTO_BATCH = 10;
+const SITE_PHOTO_ACCEPT =
+  ".jpg,.jpeg,.png,.webp,.gif,.heic,.heif,image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif";
+const SITE_PHOTO_NAME_INPUT =
+  "w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-200 dark:focus:ring-gray-700";
+
+function sitePhotoStem(filename: string): string {
+  const base = filename.split(/[/\\]/).pop() || filename;
+  const match = /\.(jpe?g|png|webp|gif|heic|heif)$/i.exec(base);
+  if (!match) return base;
+  return base.slice(0, -match[0].length);
+}
 
 const FILTER_CHIPS: { id: DocFilter; label: string }[] = [
   { id: "all", label: "All" },
@@ -98,6 +117,7 @@ const FILTER_CHIPS: { id: DocFilter; label: string }[] = [
   { id: "eois", label: "EOIs" },
   { id: "engagement", label: "Engagement" },
   { id: "additional", label: "Additional" },
+  { id: "sitePhotos", label: "Site Photos" },
 ];
 
 const CATEGORY_SECTION_LABELS: Record<DocTab, string> = {
@@ -106,6 +126,7 @@ const CATEGORY_SECTION_LABELS: Record<DocTab, string> = {
   eois: "Signed EOIs",
   engagement: "Signed Engagement Forms",
   additional: "Additional Documents",
+  sitePhotos: "Site Photos",
 };
 
 // ─── Design primitives ────────────────────────────────────────────────────────
@@ -288,6 +309,7 @@ export function DocumentsTab({
 }: DocumentsTabProps) {
   const { data: session } = useSession();
   const token = (session as any)?.id_token ?? (session as any)?.accessToken;
+  const googleAccessToken = ((session as any)?.accessToken as string | undefined) || "";
   const info = businessInfo as any;
   const business = info?.business_details || {};
   const contact = info?.contact_information || {};
@@ -307,6 +329,15 @@ export function DocumentsTab({
   const [additionalDocs, setAdditionalDocs] = useState<MemberSimpleDoc[]>([]);
   const [engagementForms, setEngagementForms] = useState<MemberSimpleDoc[]>([]);
   const [wipLoading, setWipLoading] = useState(false);
+  const [sitePhotos, setSitePhotos] = useState<SitePhoto[]>([]);
+  const [sitePhotosFolderUrl, setSitePhotosFolderUrl] = useState<string | null>(null);
+  const [sitePhotosLoading, setSitePhotosLoading] = useState(false);
+  const [showSitePhotosModal, setShowSitePhotosModal] = useState(false);
+  const [sitePhotoFiles, setSitePhotoFiles] = useState<File[]>([]);
+  const [sitePhotoNames, setSitePhotoNames] = useState<string[]>([]);
+  const [sitePhotoLoading, setSitePhotoLoading] = useState(false);
+  const [sitePhotoProgress, setSitePhotoProgress] = useState("");
+  const [sitePhotoResult, setSitePhotoResult] = useState("");
   const documentFileIds = useMemo(
     () =>
       collectMemberDocumentFileIds(processed, [
@@ -472,9 +503,36 @@ export function DocumentsTab({
     }
   }, [business?.name, token]);
 
+  const fetchSitePhotosList = useCallback(async () => {
+    if (!token) return;
+    if (!driveUrl) {
+      setSitePhotos([]);
+      setSitePhotosFolderUrl(null);
+      return;
+    }
+    setSitePhotosLoading(true);
+    try {
+      const data = await fetchSitePhotos(business?.name || "", driveUrl, token);
+      setSitePhotos(data.files);
+      setSitePhotosFolderUrl(data.folder_url ?? null);
+    } catch {
+      setSitePhotos([]);
+      setSitePhotosFolderUrl(null);
+    } finally {
+      setSitePhotosLoading(false);
+    }
+  }, [business?.name, driveUrl, token]);
+
   useEffect(() => {
-    if (business?.name && token) { fetchEOI(); fetchWIP(); }
+    if (business?.name && token) {
+      fetchEOI();
+      fetchWIP();
+    }
   }, [business?.name, token, fetchEOI, fetchWIP]);
+
+  useEffect(() => {
+    if (token) void fetchSitePhotosList();
+  }, [token, fetchSitePhotosList]);
 
   // ── Contract helpers ───────────────────────────────────────────────────────
 
@@ -889,6 +947,100 @@ export function DocumentsTab({
     finally { setEfLoading(false); }
   };
 
+  const isSitePhotoFile = (file: File) => {
+    const name = file.name.toLowerCase();
+    if (/\.(jpe?g|png|webp|gif|heic|heif)$/.test(name)) return true;
+    return file.type.toLowerCase().startsWith("image/");
+  };
+
+  const uploadSitePhotoFiles = async () => {
+    if (!sitePhotoFiles.length) {
+      setSitePhotoResult("No photos selected.");
+      return;
+    }
+    if (!driveUrl) {
+      setSitePhotoResult("This member has no Google Drive folder.");
+      return;
+    }
+    if (!token) {
+      setSitePhotoResult("Sign in required to upload site photos.");
+      return;
+    }
+    if (!sitePhotoFiles.every(isSitePhotoFile)) {
+      setSitePhotoResult("Please upload only image files (JPG, PNG, WebP, GIF, HEIC).");
+      return;
+    }
+
+    setSitePhotoLoading(true);
+    setSitePhotoResult("");
+    const all = sitePhotoFiles;
+    let uploaded = 0;
+    const uploadedNames: string[] = [];
+    let folderLink: string | undefined;
+    const errorMessages: string[] = [];
+
+    try {
+      for (let i = 0; i < all.length; i += SITE_PHOTO_BATCH) {
+        const slice = all.slice(i, i + SITE_PHOTO_BATCH);
+        setSitePhotoProgress(
+          `Uploading ${Math.min(i + slice.length, all.length)} / ${all.length}…`,
+        );
+        const result = await uploadSitePhotos(
+          slice,
+          business?.name || "",
+          driveUrl,
+          token,
+          googleAccessToken,
+          sitePhotoNames.slice(i, i + slice.length),
+        );
+        uploaded += result.files.length;
+        uploadedNames.push(...result.files.map((f) => f.name));
+        if (result.folder_url) folderLink = result.folder_url;
+        for (const err of result.errors || []) {
+          errorMessages.push(`${err.name}: ${err.error}`);
+        }
+      }
+      if (uploaded > 0) {
+        showToast(
+          uploaded === 1 ? "Site photo uploaded." : `${uploaded} site photos uploaded.`,
+          "success",
+        );
+        void logMemberUpload({
+          upload_kind: "site_photo",
+          filename:
+            uploadedNames.slice(0, 8).join(", ") +
+            (uploadedNames.length > 8 ? "…" : ""),
+          document_link: folderLink,
+          metadata: { count: uploaded },
+        });
+        setSitePhotoResult(
+          errorMessages.length
+            ? `Uploaded ${uploaded}. Some files failed: ${errorMessages.slice(0, 3).join(" ")}`
+            : "Photos uploaded successfully.",
+        );
+        await fetchSitePhotosList();
+        setTimeout(() => {
+          setShowSitePhotosModal(false);
+          setSitePhotoFiles([]);
+          setSitePhotoNames([]);
+          setSitePhotoResult("");
+          setSitePhotoProgress("");
+        }, 1500);
+      } else {
+        const msg = errorMessages[0] || "Upload failed.";
+        setSitePhotoResult(msg);
+        showToast(msg, "error");
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Upload failed.";
+      setSitePhotoResult(`Error: ${msg}`);
+      showToast(msg, "error");
+    } finally {
+      setSitePhotoLoading(false);
+      setSitePhotoProgress("");
+    }
+  };
+
   // ── Derived collections / counts ────────────────────────────────────────────
 
   const eoiEntries = Object.entries(processed).filter(([k]) =>
@@ -920,28 +1072,34 @@ export function DocumentsTab({
       businessDocsCount +
       eoiEntries.length +
       engagementForms.length +
-      additionalDocs.length,
+      additionalDocs.length +
+      sitePhotos.length,
     contracts: contractCount,
     businessDocs: businessDocsCount,
     eois: eoiEntries.length,
     engagement: engagementForms.length,
     additional: additionalDocs.length,
+    sitePhotos: sitePhotos.length,
   };
 
   const listCaption =
     docFilter === "contracts" && contractCategoriesWithFiles > 0
       ? `${contractCategoriesWithFiles} contract${contractCategoriesWithFiles === 1 ? "" : "s"} · ${signedViaAcesCount} signed via ACES`
-      : `${filterCounts[docFilter]} document${filterCounts[docFilter] === 1 ? "" : "s"}`;
+      : docFilter === "sitePhotos"
+        ? `${filterCounts.sitePhotos} photo${filterCounts.sitePhotos === 1 ? "" : "s"}`
+        : `${filterCounts[docFilter]} document${filterCounts[docFilter] === 1 ? "" : "s"}`;
 
   useEffect(() => {
     if (docFilter === "eois") setUploadCategory("eoi");
     else if (docFilter === "engagement") setUploadCategory("engagement");
     else if (docFilter === "additional") setUploadCategory("additional");
+    else if (docFilter === "sitePhotos") setUploadCategory("sitePhotos");
   }, [docFilter]);
 
   const handleRefreshDocuments = () => {
     void fetchEOI();
     void fetchWIP();
+    void fetchSitePhotosList();
   };
 
   const triggerUpload = () => {
@@ -951,6 +1109,14 @@ export function DocumentsTab({
     }
     if (uploadCategory === "engagement") {
       efRef.current?.click();
+      return;
+    }
+    if (uploadCategory === "sitePhotos") {
+      setShowSitePhotosModal(true);
+      setSitePhotoFiles([]);
+      setSitePhotoNames([]);
+      setSitePhotoResult("");
+      setSitePhotoProgress("");
       return;
     }
     setShowAddDocModal(true);
@@ -1020,7 +1186,7 @@ export function DocumentsTab({
 
   const visibleCategories: DocTab[] =
     docFilter === "all"
-      ? ["contracts", "businessDocs", "eois", "engagement", "additional"]
+      ? ["contracts", "businessDocs", "eois", "engagement", "additional", "sitePhotos"]
       : [docFilter];
 
   const categoryHasVisibleItems = (category: DocTab): boolean => {
@@ -1044,6 +1210,9 @@ export function DocumentsTab({
     }
     if (category === "engagement") {
       return engagementForms.some((f) => matchesSearch(f.fileName));
+    }
+    if (category === "sitePhotos") {
+      return sitePhotos.some((photo) => matchesSearch(photo.name));
     }
     return additionalDocs.some((doc) => matchesSearch(doc.fileName));
   };
@@ -1145,11 +1314,22 @@ export function DocumentsTab({
               size="sm"
               radius="md"
               onClick={handleRefreshDocuments}
-              disabled={eoiRefreshing || wipLoading}
-              loading={eoiRefreshing || wipLoading}
+              disabled={eoiRefreshing || wipLoading || sitePhotosLoading}
+              loading={eoiRefreshing || wipLoading || sitePhotosLoading}
             >
-              {eoiRefreshing || wipLoading ? "Refreshing…" : "Refresh"}
+              {eoiRefreshing || wipLoading || sitePhotosLoading ? "Refreshing…" : "Refresh"}
             </Button>
+            {sitePhotosFolderUrl &&
+            (docFilter === "sitePhotos" || uploadCategory === "sitePhotos") ? (
+              <a
+                href={sitePhotosFolderUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs font-medium text-primary hover:underline"
+              >
+                Open folder
+              </a>
+            ) : null}
             <select
               value={uploadCategory}
               onChange={(e) => setUploadCategory(e.target.value as UploadCategory)}
@@ -1158,6 +1338,7 @@ export function DocumentsTab({
               <option value="eoi">Signed EOI</option>
               <option value="engagement">Engagement form</option>
               <option value="additional">Additional document</option>
+              <option value="sitePhotos">Site photos</option>
             </select>
             <Button
               type="button"
@@ -1193,7 +1374,13 @@ export function DocumentsTab({
               title={
                 normalizedSearch
                   ? "No documents match your search."
-                  : "No documents in this category yet."
+                  : docFilter === "sitePhotos"
+                    ? sitePhotosLoading
+                      ? "Loading site photos…"
+                      : !driveUrl
+                        ? "This member has no Google Drive folder."
+                        : "No site photos yet."
+                    : "No documents in this category yet."
               }
               className="py-6 items-start text-left [&_h3]:text-sm [&_h3]:font-normal [&_h3]:text-gray-400 [&_h3]:mb-0"
             />
@@ -1505,6 +1692,14 @@ export function DocumentsTab({
                             />
                           );
                         })}
+
+                      {category === "sitePhotos" && (
+                        <div className="px-4 py-1">
+                          <SitePhotosGallery
+                            photos={sitePhotos.filter((photo) => matchesSearch(photo.name))}
+                          />
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -1688,6 +1883,83 @@ export function DocumentsTab({
         </MField>
         {eoiResult && <Alert msg={eoiResult} successStart="EOI successfully" />}
         <MFooter onCancel={() => setShowEOIModal(false)} onSubmit={uploadEOI} label="Upload" disabled={!eoiFile} loading={eoiLoading} />
+      </Modal>
+
+      <Modal
+        open={showSitePhotosModal}
+        onClose={() => !sitePhotoLoading && setShowSitePhotosModal(false)}
+        title="Upload Site Photos"
+      >
+        <MField label="Photos — JPG, PNG, WebP, GIF, or HEIC">
+          <div className="rounded-lg border-2 border-dashed border-gray-200 dark:border-gray-700 px-3 py-2.5">
+            <input
+              type="file"
+              accept={SITE_PHOTO_ACCEPT}
+              multiple
+              onChange={(e) => {
+                const files = e.target.files ? Array.from(e.target.files) : [];
+                setSitePhotoFiles(files);
+                setSitePhotoNames(files.map((file) => sitePhotoStem(file.name)));
+              }}
+              className="block w-full text-xs text-gray-500 file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-medium file:bg-gray-100 dark:file:bg-gray-800 file:text-gray-700 dark:file:text-gray-200 hover:file:bg-gray-200 dark:hover:file:bg-gray-700 file:cursor-pointer file:transition-colors"
+            />
+            {sitePhotoFiles.length > 0 && (
+              <p className="mt-1.5 text-[11px] text-gray-400">
+                {sitePhotoFiles.length} photo{sitePhotoFiles.length === 1 ? "" : "s"} selected
+              </p>
+            )}
+          </div>
+        </MField>
+        {sitePhotoFiles.length === 1 ? (
+          <MField label="Photo name">
+            <input
+              type="text"
+              value={sitePhotoNames[0] ?? ""}
+              onChange={(e) => setSitePhotoNames([e.target.value])}
+              placeholder="e.g. Meter board, roof, switchboard"
+              className={SITE_PHOTO_NAME_INPUT}
+            />
+            <p className="mt-1 text-[11px] text-gray-400">
+              Saved in Drive as {(business?.name || "Member").trim()} - {sitePhotoNames[0]?.trim() || sitePhotoStem(sitePhotoFiles[0].name)}
+            </p>
+          </MField>
+        ) : sitePhotoFiles.length > 1 ? (
+          <MField label="Photo names">
+            <ul className="space-y-2 max-h-56 overflow-auto pr-0.5">
+              {sitePhotoFiles.map((file, index) => (
+                <li key={`${file.name}-${file.size}-${index}`}>
+                  <input
+                    type="text"
+                    value={sitePhotoNames[index] ?? ""}
+                    onChange={(e) => {
+                      const next = [...sitePhotoNames];
+                      next[index] = e.target.value;
+                      setSitePhotoNames(next);
+                    }}
+                    placeholder={sitePhotoStem(file.name)}
+                    className={SITE_PHOTO_NAME_INPUT}
+                  />
+                  <p className="mt-0.5 truncate text-[11px] text-gray-400">{file.name}</p>
+                </li>
+              ))}
+            </ul>
+          </MField>
+        ) : null}
+        {sitePhotoProgress ? (
+          <p className="text-xs text-gray-500">{sitePhotoProgress}</p>
+        ) : null}
+        {sitePhotoResult && <Alert msg={sitePhotoResult} successStart="Photos uploaded" />}
+        <MFooter
+          onCancel={() => setShowSitePhotosModal(false)}
+          onSubmit={uploadSitePhotoFiles}
+          label={
+            sitePhotoFiles.length > 1
+              ? `Upload ${sitePhotoFiles.length} photos`
+              : "Upload"
+          }
+          disabled={!sitePhotoFiles.length || !driveUrl}
+          loading={sitePhotoLoading}
+        />
       </Modal>
 
       <ShareFolderModal

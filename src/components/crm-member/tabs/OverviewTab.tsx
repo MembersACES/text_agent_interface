@@ -794,7 +794,7 @@ export function OverviewTab({
                 Create offer
               </button>
               <Link
-                href={`/crm-members/${clientId}?tab=commercial`}
+                href={`/crm-members/${clientId}?tab=offers`}
                 className="text-xs font-semibold text-primary hover:underline"
               >
                 View all →
