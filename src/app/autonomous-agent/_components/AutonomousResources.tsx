@@ -334,6 +334,7 @@ function CreateLoop() {
             ["Base 2 C&I Gas / SME→C&I Gas", <Code key="c">gas_base2_followup_v1</Code>, "Yes"],
             ["Base 2 C&I Electricity", <Code key="c">ci_electricity_base2_followup_v1</Code>, "Yes"],
             ["Base 2 B&E Gas", <Code key="c">bne_gas_base2_followup_v1</Code>, "Yes — after you create the template"],
+            ["Base 2 Future Contract", <Code key="c">future_gas_base2_followup_v1</Code>, "Yes — after you create the template"],
             ["Utility Invoice Info C&I Electricity", <Code key="c">ci_electricity_offer</Code>, "Yes"],
             ["Solar cleaning quote", <Code key="c">solar_panel_cleaning_followup_v1</Code>, "Yes"],
             ["Engagement form", <Code key="c">solar_panel_cleaning_engagement_form_v1</Code>, "Yes"],
@@ -345,7 +346,8 @@ function CreateLoop() {
       <Callout tone="warn" title="What still is not automatic">
         <p>
           <strong>+ New</strong> does not by itself hook a comparison. Base 2 B&E is now wired to{" "}
-          <Code>bne_gas_base2_followup_v1</Code> when that template exists. Other catalog ideas (SME
+          <Code>bne_gas_base2_followup_v1</Code> and Future Contract to{" "}
+          <Code>future_gas_base2_followup_v1</Code> when those templates exist. Other catalog ideas (SME
           electricity, oil, waste, cleaning, GHG) still need a product start path before generate will
           enrol them. Until then, test those keys with <strong>Start a test run</strong>.
         </p>
@@ -614,8 +616,9 @@ function Scheduling() {
         <P>
           Five templates ship by default; staff can add more via Sequence templates (+ New copies
           cadence and can duplicate a Retell agent). All but the engagement form use the standard
-          5-step cadence above. Base 2 B&amp;E Gas is not seeded — create{" "}
-          <Code>bne_gas_base2_followup_v1</Code> in the wizard, then generate or Start a test run.
+          5-step cadence above. Base 2 B&amp;E Gas and Future Contract are not seeded — create{" "}
+          <Code>bne_gas_base2_followup_v1</Code> or <Code>future_gas_base2_followup_v1</Code> in the
+          wizard, then generate or Start a test run.
         </P>
         <SimpleTable
           head={["Sequence type", "Steps", "Cadence"]}
@@ -624,6 +627,7 @@ function Scheduling() {
             [<Code key="c">ci_electricity_base2_followup_v1</Code>, "5", "Standard (Day 1–3)"],
             [<Code key="c">ci_electricity_offer</Code>, "5", "Standard (Day 1–3)"],
             [<Code key="c">bne_gas_base2_followup_v1</Code>, "5", "Standard — create via + New, then Base 2 B&E or test run"],
+            [<Code key="c">future_gas_base2_followup_v1</Code>, "5", "Standard — create via + New, then Base 2 Future Contract or test run"],
             [<Code key="c">solar_panel_cleaning_followup_v1</Code>, "5", "Standard (Day 1–3)"],
             [
               <Code key="c">solar_panel_cleaning_engagement_form_v1</Code>,
@@ -1132,9 +1136,10 @@ function Testing() {
             <strong>Start again</strong> on Finished if the template is restartable.
           </li>
           <li>
-            Optional product path: generate the linked comparison (Base 2 B&amp;E Gas now offers Start
-            sequence for <Code>bne_gas_base2_followup_v1</Code>). Put your mobile on the B&amp;E
-            generate form so voice does not dial the member.
+            Optional product path: generate the linked comparison (Base 2 B&amp;E Gas and Future
+            Contract now offer Start sequence for <Code>bne_gas_base2_followup_v1</Code> /{" "}
+            <Code>future_gas_base2_followup_v1</Code>). Put your mobile on the generate form so voice
+            does not dial the member.
           </li>
         </ol>
       </Card>
