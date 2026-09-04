@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
 import timezone from "dayjs/plugin/timezone";
@@ -669,6 +669,12 @@ export default function AutonomousRunDetailPage() {
   const [savingContext, setSavingContext] = useState(false);
   const [startingNow, setStartingNow] = useState(false);
   const [startingStepId, setStartingStepId] = useState<number | null>(null);
+  // John, 04/09/2026: "rapidly pressing the start buttons triggered all of the
+  // steps". setStartingStepId only disabled the ONE button being clicked and only
+  // after React had re-rendered, so clicking along the row fired every step and a
+  // fast double-click fired the same one twice. This latch is synchronous, so the
+  // second click is rejected in the same tick.
+  const stepStartInFlight = useRef(false);
   const [stopping, setStopping] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [scheduleDrafts, setScheduleDrafts] = useState<Record<number, string>>({});
@@ -832,6 +838,10 @@ export default function AutonomousRunDetailPage() {
       return;
     }
     const firstReady = orderedSteps.find((s) => s.step_status === "ready" || s.step_status === "to_start");
+    // Same synchronous latch as handleStartStepNow — the disabled prop alone loses
+    // a double-click, because it only takes effect after the next render.
+    if (stepStartInFlight.current) return;
+    stepStartInFlight.current = true;
     setStartingNow(true);
     try {
       const msg = await dispatchRunNow({
@@ -849,12 +859,15 @@ export default function AutonomousRunDetailPage() {
     } catch (e: unknown) {
       showToast(e instanceof Error ? e.message : "Start failed", "error");
     } finally {
+      stepStartInFlight.current = false;
       setStartingNow(false);
     }
   };
 
   const handleStartStepNow = async (stepId: number) => {
     if (!token || !runId || !run || run.run_status !== "running") return;
+    if (stepStartInFlight.current) return;
+    stepStartInFlight.current = true;
     setStartingStepId(stepId);
     try {
       const msg = await dispatchStepNow({ runId: Number(runId), stepId, token });
@@ -868,6 +881,7 @@ export default function AutonomousRunDetailPage() {
     } catch (e: unknown) {
       showToast(e instanceof Error ? e.message : "Step start failed", "error");
     } finally {
+      stepStartInFlight.current = false;
       setStartingStepId(null);
     }
   };
@@ -1020,7 +1034,7 @@ export default function AutonomousRunDetailPage() {
                   <button
                     type="button"
                     onClick={handleStartSequenceNow}
-                    disabled={startingNow || stopping || deleting}
+                    disabled={startingNow || startingStepId !== null || stopping || deleting}
                     className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 transition shadow-sm"
                   >
                     {startingNow ? <><span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />Starting…</> : <>▶ Start</>}
@@ -1190,7 +1204,7 @@ export default function AutonomousRunDetailPage() {
                                 <button
                                   type="button"
                                   onClick={() => handleStartStepNow(s.id)}
-                                  disabled={startingStepId === s.id || startingNow || stopping || deleting}
+                                  disabled={startingStepId !== null || startingNow || stopping || deleting}
                                   className="inline-flex items-center rounded-md border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-[11px] font-semibold px-2 py-1 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition disabled:opacity-40"
                                 >
                                   {startingStepId === s.id ? "Starting…" : "Start now"}
