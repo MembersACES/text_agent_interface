@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -158,6 +158,11 @@ export default function AutonomousAgentPage() {
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [stoppingId, setStoppingId] = useState<number | null>(null);
   const [startingId, setStartingId] = useState<number | null>(null);
+  // Same fault as the run detail page: setStartingId only takes effect on the next
+  // render, so two clicks in one tick both got through and fired the run twice.
+  // Keyed by run id, because two different runs starting at once is legitimate —
+  // it is the same run twice that is not.
+  const runStartsInFlight = useRef<Set<number>>(new Set());
   const [restartingId, setRestartingId] = useState<number | null>(null);
   const [templates, setTemplates] = useState<SequenceTemplate[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
@@ -567,6 +572,8 @@ export default function AutonomousAgentPage() {
 
   const handleStartRunNow = async (runId: number) => {
     if (!token) return;
+    if (runStartsInFlight.current.has(runId)) return;
+    runStartsInFlight.current.add(runId);
     setStartingId(runId);
     try {
       const msg = await dispatchRunNowFromList({ runId, token });
@@ -574,6 +581,7 @@ export default function AutonomousAgentPage() {
     } catch (e: unknown) {
       showToast(e instanceof Error ? e.message : "Start failed", "error");
     } finally {
+      runStartsInFlight.current.delete(runId);
       setStartingId(null);
     }
   };
@@ -581,6 +589,8 @@ export default function AutonomousAgentPage() {
   const handleRestartRun = async (runId: number) => {
     if (!token) return;
     if (!window.confirm("Start a new sequence for this offer using the same sequence type and saved context? The schedule is anchored from today in AEST; day 1 starts at 9:00 on the next business day.")) return;
+    if (runStartsInFlight.current.has(runId)) return;
+    runStartsInFlight.current.add(runId);
     setRestartingId(runId);
     try {
       const res = await fetch(
@@ -596,7 +606,10 @@ export default function AutonomousAgentPage() {
       }
     } catch (e: unknown) {
       showToast(e instanceof Error ? e.message : "Restart failed", "error");
-    } finally { setRestartingId(null); }
+    } finally {
+      runStartsInFlight.current.delete(runId);
+      setRestartingId(null);
+    }
   };
 
   const handleDeleteRun = async (runId: number) => {
