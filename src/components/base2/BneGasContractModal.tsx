@@ -50,6 +50,12 @@ export interface BneGasPreview {
   commissionPerGj: number | null;
 }
 
+export type CiGasContractModalMode = "bne" | "future";
+
+const FUTURE_DEFAULT_OFFER_RATE = 16.8;
+const FUTURE_DEFAULT_COMMISSION = 3.9;
+const FUTURE_DEFAULT_END_DATE_AU = "31/12/2029";
+
 export interface BneGasGenerateValues {
   currentGasRate: number | null;
   invoiceUsageGj: number | null;
@@ -59,8 +65,8 @@ export interface BneGasGenerateValues {
   annualUsageGj: number | null;
   estimatedComms: number | null;
   contractEndDate: string;
-  bneStartDate: string;
-  bneEndDate: string;
+  periodStartDate: string;
+  periodEndDate: string;
   contactName: string;
   contactEmail: string;
   contactPhone: string;
@@ -138,6 +144,38 @@ function firstOfNextMonthAu(from: Date = new Date()): string {
   return toAuDate(firstOfNextMonthIso(from));
 }
 
+function dayAfterIso(iso: string): string {
+  const d = new Date(`${iso}T00:00:00`);
+  d.setDate(d.getDate() + 1);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function dayAfterAu(raw: string | undefined | null): string {
+  const iso = toIsoDate(raw);
+  if (!iso) return "";
+  return toAuDate(dayAfterIso(iso));
+}
+
+function periodCalendarIso(period: BneGasPeriod): string {
+  return toIsoDate(period.period_end_date) || toIsoDate(period.period_start_date) || "";
+}
+
+function periodsLatestFirst(periods: BneGasPeriod[]): BneGasPeriod[] {
+  return [...periods].sort((a, b) => periodCalendarIso(b).localeCompare(periodCalendarIso(a)));
+}
+
+function lastPeriodContractedRate(contract: BneGasContract | undefined): number | null {
+  const periods = contract?.periods ?? [];
+  for (const period of periodsLatestFirst(periods)) {
+    const rate = period.energy_rate_per_gj;
+    if (rate != null && Number.isFinite(rate)) return rate;
+  }
+  return null;
+}
+
 function matchKindLabel(kind: BneGasMatchKind, invoiceMrin: string, sheetMrin: string): string {
   if (kind === "exact") return `Exact match for invoice MRIN ${invoiceMrin}`;
   if (kind === "checksum") {
@@ -157,6 +195,7 @@ function PreviewField({
   suffix,
   step,
   hint,
+  focusRingClass,
 }: {
   id: string;
   label: string;
@@ -165,6 +204,7 @@ function PreviewField({
   suffix?: string;
   step?: string;
   hint?: string;
+  focusRingClass: string;
 }) {
   return (
     <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-3 py-2.5">
@@ -176,7 +216,7 @@ function PreviewField({
           step={step ?? "0.01"}
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2.5 py-1.5 text-sm font-semibold tabular-nums text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-600"
+          className={`w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2.5 py-1.5 text-sm font-semibold tabular-nums text-gray-900 dark:text-white focus:outline-none focus:ring-2 ${focusRingClass}`}
         />
         {suffix ? <span className="text-xs text-gray-500 whitespace-nowrap">{suffix}</span> : null}
       </div>
@@ -190,6 +230,7 @@ export function BneGasContractModal({
   mrin,
   token,
   preview,
+  mode = "bne",
   defaultContactName,
   defaultContactEmail,
   defaultContactPhone,
@@ -200,12 +241,19 @@ export function BneGasContractModal({
   mrin: string;
   token?: string;
   preview: BneGasPreview | null;
+  mode?: CiGasContractModalMode;
   defaultContactName?: string;
   defaultContactEmail?: string;
   defaultContactPhone?: string;
   onClose: () => void;
   onGenerate: (values: BneGasGenerateValues) => void;
 }) {
+  const isFuture = mode === "future";
+  const accent = isFuture ? "#4338CA" : "#0F766E";
+  const focusRingClass = isFuture ? "focus:ring-indigo-600" : "focus:ring-teal-600";
+  const title = isFuture ? "Future Contract" : "B&E Gas";
+  const comparisonLabel = isFuture ? "Future Contract" : "B&E";
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<BneGasContractResponse | null>(null);
@@ -220,8 +268,10 @@ export function BneGasContractModal({
   const [contactName, setContactName] = useState("");
   const [contactEmail, setContactEmail] = useState("");
   const [contactPhone, setContactPhone] = useState("");
-  const [bneStartDate, setBneStartDate] = useState("");
-  const [bneEndDate, setBneEndDate] = useState("");
+  const [periodStartDate, setPeriodStartDate] = useState("");
+  const [periodEndDate, setPeriodEndDate] = useState("");
+  const [startDateTouched, setStartDateTouched] = useState(false);
+  const [currentRateTouched, setCurrentRateTouched] = useState(false);
 
   useEffect(() => {
     if (!open) {
@@ -231,21 +281,24 @@ export function BneGasContractModal({
       setContractDetailsOpen(false);
       setContractEndDate("");
       setEndDateTouched(false);
-      setBneStartDate("");
-      setBneEndDate("");
+      setPeriodStartDate("");
+      setPeriodEndDate("");
+      setStartDateTouched(false);
+      setCurrentRateTouched(false);
       return;
     }
-    setCurrentGasRate(numToInput(preview?.currentGasRate));
     setInvoiceUsageGj(numToInput(preview?.invoiceUsageGj));
     setInvoiceDays(numToInput(preview?.invoiceDays));
-    setNewGasRate(numToInput(preview?.newGasRate));
-    setCommissionPerGj(numToInput(preview?.commissionPerGj));
+    setNewGasRate(isFuture ? numToInput(FUTURE_DEFAULT_OFFER_RATE) : numToInput(preview?.newGasRate));
+    setCommissionPerGj(isFuture ? numToInput(FUTURE_DEFAULT_COMMISSION) : numToInput(preview?.commissionPerGj));
     setContactName(defaultContactName ?? "");
     setContactEmail(defaultContactEmail ?? "");
     setContactPhone(defaultContactPhone ?? "");
-    setBneStartDate(firstOfNextMonthAu());
-    setBneEndDate("");
-  }, [open, mrin, preview?.currentGasRate, preview?.invoiceUsageGj, preview?.invoiceDays, preview?.newGasRate, preview?.commissionPerGj, defaultContactName, defaultContactEmail, defaultContactPhone]);
+    setStartDateTouched(false);
+    setPeriodStartDate(isFuture ? "" : firstOfNextMonthAu());
+    setPeriodEndDate(isFuture ? FUTURE_DEFAULT_END_DATE_AU : "");
+    setCurrentRateTouched(false);
+  }, [open, mrin, mode, isFuture, preview?.invoiceUsageGj, preview?.invoiceDays, preview?.newGasRate, preview?.commissionPerGj, defaultContactName, defaultContactEmail, defaultContactPhone]);
 
   useEffect(() => {
     if (!open) return;
@@ -282,12 +335,28 @@ export function BneGasContractModal({
   }, [open, mrin, token]);
 
   const firstContract = data?.contracts[0];
+  const contractedRate = lastPeriodContractedRate(firstContract);
+
+  useEffect(() => {
+    if (!open || currentRateTouched) return;
+    if (contractedRate != null) {
+      setCurrentGasRate(numToInput(contractedRate));
+      return;
+    }
+    setCurrentGasRate(numToInput(preview?.currentGasRate));
+  }, [open, currentRateTouched, contractedRate, preview?.currentGasRate]);
 
   useEffect(() => {
     if (endDateTouched) return;
     const iso = toIsoDate(firstContract?.contract_end_date);
     if (iso) setContractEndDate(toAuDate(iso));
   }, [firstContract?.contract_end_date, endDateTouched]);
+
+  useEffect(() => {
+    if (!open || !isFuture || startDateTouched) return;
+    const nextStart = dayAfterAu(contractEndDate);
+    if (nextStart) setPeriodStartDate(nextStart);
+  }, [open, isFuture, contractEndDate, startDateTouched]);
 
   const usageGj = parseNum(invoiceUsageGj);
   const days = parseNum(invoiceDays);
@@ -305,8 +374,8 @@ export function BneGasContractModal({
     annualUsageGj,
     estimatedComms,
     contractEndDate: toIsoDate(contractEndDate),
-    bneStartDate: toIsoDate(bneStartDate),
-    bneEndDate: toIsoDate(bneEndDate),
+    periodStartDate: toIsoDate(periodStartDate),
+    periodEndDate: toIsoDate(periodEndDate),
     contactName: contactName.trim(),
     contactEmail: contactEmail.trim(),
     contactPhone: contactPhone.trim(),
@@ -321,24 +390,55 @@ export function BneGasContractModal({
   const hasContract = (data?.contracts.length ?? 0) > 0;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" aria-modal="true" role="dialog">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" aria-modal="true" role="dialog" aria-busy={loading}>
       <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col border border-gray-200 dark:border-gray-700">
         <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-start justify-between gap-3">
           <div>
-            <h3 className="text-base font-semibold text-gray-900 dark:text-white">B&E Gas</h3>
+            <h3 className="text-base font-semibold text-gray-900 dark:text-white">{title}</h3>
             <p className="text-xs font-mono text-gray-500 mt-0.5">Invoice MRIN {mrin}</p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg px-2 py-1 text-sm text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"
-            aria-label="Close"
-          >
-            ✕
-          </button>
+          <div className="flex items-center gap-2">
+            {loading && (
+              <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium text-white" style={{ backgroundColor: accent }}>
+                <svg className="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                Looking up contract…
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg px-2 py-1 text-sm text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"
+              aria-label="Close"
+            >
+              ✕
+            </button>
+          </div>
         </div>
+        {loading && (
+          <div className="h-0.5 w-full overflow-hidden" style={{ backgroundColor: `${accent}22` }} aria-hidden="true">
+            <div className="h-full w-1/3 animate-pulse" style={{ backgroundColor: accent }} />
+          </div>
+        )}
 
         <div className="p-5 overflow-y-auto flex-1 space-y-4">
+          {loading && (
+            <div
+              className="flex items-center gap-3 rounded-xl border px-4 py-3"
+              style={{ borderColor: `${accent}55`, backgroundColor: `${accent}12` }}
+            >
+              <svg className="animate-spin h-5 w-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" aria-hidden="true" style={{ color: accent }}>
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              <div>
+                <p className="text-sm font-semibold text-gray-900 dark:text-white">Looking up signed contract</p>
+                <p className="text-xs text-gray-500">Checking the C&amp;I Gas sheet for this MRIN. Current rate and end date will fill when it returns.</p>
+              </div>
+            </div>
+          )}
           <div>
             <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Comparison preview</h4>
             <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
@@ -346,9 +446,20 @@ export function BneGasContractModal({
                 id="bne-current-rate"
                 label="Current gas rate"
                 value={currentGasRate}
-                onChange={setCurrentGasRate}
+                onChange={(v) => {
+                  setCurrentRateTouched(true);
+                  setCurrentGasRate(v);
+                }}
                 suffix="$/GJ"
                 step="0.0001"
+                focusRingClass={focusRingClass}
+                hint={
+                  loading
+                    ? "Checking signed contract…"
+                    : contractedRate != null
+                      ? "Last period contracted rate from the sheet — edit if needed"
+                      : "From the invoice — no contracted rate found on the sheet"
+                }
               />
               <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-3 py-2.5">
                 <label htmlFor="bne-invoice-usage" className="text-[11px] uppercase tracking-wide text-gray-400">
@@ -361,7 +472,7 @@ export function BneGasContractModal({
                     step="0.01"
                     value={invoiceUsageGj}
                     onChange={(e) => setInvoiceUsageGj(e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2.5 py-1.5 text-sm font-semibold tabular-nums text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-600"
+                    className={`w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2.5 py-1.5 text-sm font-semibold tabular-nums text-gray-900 dark:text-white focus:outline-none focus:ring-2 ${focusRingClass}`}
                   />
                   <span className="text-xs text-gray-500 whitespace-nowrap">GJ</span>
                 </div>
@@ -374,7 +485,7 @@ export function BneGasContractModal({
                   step="1"
                   value={invoiceDays}
                   onChange={(e) => setInvoiceDays(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2.5 py-1.5 text-sm font-semibold tabular-nums text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-600"
+                  className={`mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2.5 py-1.5 text-sm font-semibold tabular-nums text-gray-900 dark:text-white focus:outline-none focus:ring-2 ${focusRingClass}`}
                 />
               </div>
               <PreviewField
@@ -384,6 +495,7 @@ export function BneGasContractModal({
                 onChange={setNewGasRate}
                 suffix="$/GJ"
                 step="0.01"
+                focusRingClass={focusRingClass}
               />
               <PreviewField
                 id="bne-commission"
@@ -392,6 +504,7 @@ export function BneGasContractModal({
                 onChange={setCommissionPerGj}
                 suffix="$/GJ"
                 step="0.01"
+                focusRingClass={focusRingClass}
               />
               <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-3 py-2.5">
                 <div className="text-[11px] uppercase tracking-wide text-gray-400">Estimated comms</div>
@@ -421,7 +534,7 @@ export function BneGasContractModal({
                     const au = toAuDate(contractEndDate);
                     if (au) setContractEndDate(au);
                   }}
-                  className="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2.5 py-1.5 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-600"
+                  className={`mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2.5 py-1.5 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 ${focusRingClass}`}
                 />
                 <div className="mt-0.5 text-[11px] text-gray-400">
                   {loading
@@ -435,41 +548,50 @@ export function BneGasContractModal({
           </div>
 
           <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-            <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-1">B&E period</h4>
-            <p className="text-xs text-gray-500 mb-3">Start defaults to the 1st of next month. Paste dates like 31/8/2029.</p>
+            <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-1">
+              {isFuture ? "Future contract period" : "B&E period"}
+            </h4>
+            <p className="text-xs text-gray-500 mb-3">
+              {isFuture
+                ? "Start defaults to the day after the current contract ends. End defaults to 31/12/2029. Paste dates like 31/8/2029."
+                : "Start defaults to the 1st of next month. Paste dates like 31/8/2029."}
+            </p>
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
                 <label htmlFor="bne-period-start" className="block text-[11px] uppercase tracking-wide text-gray-400 mb-1">
-                  B&E start date
+                  {isFuture ? "Future start date" : "B&E start date"}
                 </label>
                 <input
                   id="bne-period-start"
                   type="text"
-                  placeholder="1/9/2026"
-                  value={bneStartDate}
-                  onChange={(e) => setBneStartDate(e.target.value)}
-                  onBlur={() => {
-                    const au = toAuDate(bneStartDate);
-                    if (au) setBneStartDate(au);
+                  placeholder={isFuture ? "1/9/2029" : "1/9/2026"}
+                  value={periodStartDate}
+                  onChange={(e) => {
+                    setStartDateTouched(true);
+                    setPeriodStartDate(e.target.value);
                   }}
-                  className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2.5 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-600"
+                  onBlur={() => {
+                    const au = toAuDate(periodStartDate);
+                    if (au) setPeriodStartDate(au);
+                  }}
+                  className={`w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2.5 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 ${focusRingClass}`}
                 />
               </div>
               <div>
                 <label htmlFor="bne-period-end" className="block text-[11px] uppercase tracking-wide text-gray-400 mb-1">
-                  B&E end date
+                  {isFuture ? "Future end date" : "B&E end date"}
                 </label>
                 <input
                   id="bne-period-end"
                   type="text"
-                  placeholder="31/8/2029"
-                  value={bneEndDate}
-                  onChange={(e) => setBneEndDate(e.target.value)}
+                  placeholder={isFuture ? "31/12/2029" : "31/8/2029"}
+                  value={periodEndDate}
+                  onChange={(e) => setPeriodEndDate(e.target.value)}
                   onBlur={() => {
-                    const au = toAuDate(bneEndDate);
-                    if (au) setBneEndDate(au);
+                    const au = toAuDate(periodEndDate);
+                    if (au) setPeriodEndDate(au);
                   }}
-                  className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2.5 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-600"
+                  className={`w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2.5 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 ${focusRingClass}`}
                 />
               </div>
             </div>
@@ -497,6 +619,23 @@ export function BneGasContractModal({
             >
               {matchNote}
               {(data?.contracts.length ?? 0) > 1 ? ` · ${data?.contracts.length} MRINs matched` : ""}
+            </div>
+          )}
+
+          {loading && (
+            <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3">
+                <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">Signed contract details</span>
+                <span className="text-xs font-medium text-gray-400">Loading…</span>
+              </div>
+              <div className="border-t border-gray-200 dark:border-gray-700 p-4 space-y-3 animate-pulse">
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="h-10 rounded-lg bg-gray-100 dark:bg-gray-800" />
+                  <div className="h-10 rounded-lg bg-gray-100 dark:bg-gray-800" />
+                  <div className="h-10 rounded-lg bg-gray-100 dark:bg-gray-800 sm:col-span-2" />
+                </div>
+                <div className="h-24 rounded-xl bg-gray-100 dark:bg-gray-800" />
+              </div>
             </div>
           )}
 
@@ -545,7 +684,7 @@ export function BneGasContractModal({
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-sm font-medium underline"
-                            style={{ color: "#0F766E" }}
+                            style={{ color: accent }}
                           >
                             Open signed contract
                           </a>
@@ -556,7 +695,7 @@ export function BneGasContractModal({
                     <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
                       <table className="w-full text-sm border-collapse">
                         <thead>
-                          <tr style={{ backgroundColor: "#0F766E" }}>
+                          <tr style={{ backgroundColor: accent }}>
                             <th className="px-3 py-2.5 text-left text-xs font-semibold text-white/90 uppercase tracking-wide">Period</th>
                             <th className="px-3 py-2.5 text-left text-xs font-semibold text-white/90 uppercase tracking-wide">Dates</th>
                             <th className="px-3 py-2.5 text-right text-xs font-semibold text-white/90 uppercase tracking-wide">Energy rate</th>
@@ -568,7 +707,7 @@ export function BneGasContractModal({
                           </tr>
                         </thead>
                         <tbody>
-                          {contract.periods.map((period, index) => (
+                          {periodsLatestFirst(contract.periods).map((period, index) => (
                             <tr key={`${period.period_name}-${index}`} className="border-t border-gray-100 dark:border-gray-800">
                               <td className="px-3 py-2.5 font-medium text-gray-900 dark:text-white whitespace-nowrap">
                                 {period.period_name || `Period ${index + 1}`}
@@ -619,7 +758,7 @@ export function BneGasContractModal({
                 type="text"
                 value={contactName}
                 onChange={(e) => setContactName(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2.5 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-600"
+                className={`w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2.5 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 ${focusRingClass}`}
                 placeholder="Contact name"
                 autoComplete="name"
               />
@@ -628,7 +767,7 @@ export function BneGasContractModal({
                 type="email"
                 value={contactEmail}
                 onChange={(e) => setContactEmail(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2.5 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-600"
+                className={`w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2.5 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 ${focusRingClass}`}
                 placeholder="name@example.com"
                 autoComplete="email"
               />
@@ -637,7 +776,7 @@ export function BneGasContractModal({
                 type="tel"
                 value={contactPhone}
                 onChange={(e) => setContactPhone(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2.5 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-600"
+                className={`w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2.5 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 ${focusRingClass}`}
                 placeholder="04…"
                 autoComplete="tel"
               />
@@ -656,17 +795,30 @@ export function BneGasContractModal({
             onClick={() => {
               const values = generateValues();
               if (!values.contactEmail) {
-                alert("Enter a contact email — this is who the B&E comparison is sent to.");
+                alert(`Enter a contact email — this is who the ${comparisonLabel} comparison is sent to.`);
                 return;
               }
               if (!values.contactPhone) {
                 alert("Enter a mobile — this is the number the voice follow-up will call.");
                 return;
               }
+              if (isFuture && !values.periodStartDate) {
+                alert("Enter a future contract start date (after the current contract ends).");
+                return;
+              }
+              if (
+                isFuture &&
+                values.periodStartDate &&
+                values.contractEndDate &&
+                values.periodStartDate <= values.contractEndDate
+              ) {
+                alert("Future contract start must be after the current contract end date.");
+                return;
+              }
               onGenerate(values);
             }}
             className="px-4 py-2.5 rounded-xl text-sm font-semibold text-white"
-            style={{ backgroundColor: "#0F766E" }}
+            style={{ backgroundColor: accent }}
           >
             Generate comparison
           </button>

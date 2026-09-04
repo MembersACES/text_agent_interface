@@ -7,7 +7,7 @@ import { getApiBaseUrl, getAutonomousApiBaseUrl } from "@/lib/utils";
 import { ToolPageLayout } from "@/components/Layouts/ToolPageLayout";
 import { Button } from "@/components/ui/button";
 import { Base2ComparisonDefaultsEditor } from "@/components/base2/Base2ComparisonDefaultsEditor";
-import { BneGasContractModal, BneGasGenerateValues } from "@/components/base2/BneGasContractModal";
+import { BneGasContractModal, BneGasGenerateValues, CiGasContractModalMode } from "@/components/base2/BneGasContractModal";
 import {
   Base2Defaults,
   DEFAULT_BASE2_DEFAULTS,
@@ -24,6 +24,7 @@ import {
   AUTONOMOUS_SEQUENCE_BNE_GAS,
   AUTONOMOUS_SEQUENCE_CI_ELECTRICITY,
   AUTONOMOUS_SEQUENCE_CI_GAS,
+  AUTONOMOUS_SEQUENCE_FUTURE_GAS,
   sequenceLinksForBase2Comparison,
 } from "@/lib/autonomous-sequence-keys";
 import { LinkedAutonomousFollowupBar } from "@/components/autonomous/LinkedAutonomousFollowupBar";
@@ -142,6 +143,9 @@ interface UtilityComparison {
   /** B&E offer period (YYYY-MM-DD). Start defaults to 1st of next month. */
   ciGasBneStartDate?: string;
   ciGasBneEndDate?: string;
+  /** Future contract period (YYYY-MM-DD). Start defaults to the day after current end. */
+  ciGasFutureStartDate?: string;
+  ciGasFutureEndDate?: string;
   /** Required for C&I electricity comparison / DMA ($/kWh, Origin sheet units). */
   ciElectricityCommissionAudPerKwh?: number;
   /** Required for C&I gas and SME → C&I gas (`ci_offer`) comparison ($/GJ). */
@@ -737,7 +741,8 @@ function parseWebhookResult(responseText: string): Record<string, unknown> | nul
   return null;
 }
 
-type AutonomousCiLane = "ci_gas" | "ci_electricity" | "bne_gas";
+type AutonomousCiLane = "ci_gas" | "ci_electricity" | "bne_gas" | "future_gas";
+type CiGasGenerateLane = "standard" | "bne" | "future";
 
 /** Persisted on the autonomous run `context` for the run detail UI (gas vs electricity vs legacy offer-only). */
 function buildComparisonSnapshot(
@@ -760,7 +765,7 @@ function buildComparisonSnapshot(
     current_cost: normalizeMoneyToNumber(result.current_cost) ?? null,
     new_cost: normalizeMoneyToNumber(result.new_cost) ?? null,
   };
-  if (lane === "ci_gas" || lane === "bne_gas") {
+  if (lane === "ci_gas" || lane === "bne_gas" || lane === "future_gas") {
     return {
       lane,
       ...fin,
@@ -878,10 +883,28 @@ function offerComparisonButtonLabel(c: UtilityComparison): string {
 }
 
 const BNE_GAS_WEBHOOK_URL = 'https://membersaces.app.n8n.cloud/webhook/generate-gas-ci-comparaison-b%26e';
+const FUTURE_GAS_WEBHOOK_URL = 'https://membersaces.app.n8n.cloud/webhook/generate-gas-ci-comparaison-future-contract';
+
+function applyCiGasOfferPeriod(
+  payload: Record<string, unknown>,
+  startDate?: string,
+  endDate?: string,
+) {
+  if (startDate) payload.offer1StartDate = startDate;
+  if (endDate) payload.offer1EndDate = endDate;
+  if (!startDate || !endDate) return;
+  const start = new Date(`${startDate}T00:00:00`);
+  const end = new Date(`${endDate}T00:00:00`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) return;
+  const months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+  payload.offer1Validity = `${Math.max(months, 1)} months`;
+  payload.offer1PeriodYears = months >= 12 ? String(Math.round(months / 12)) : "1";
+}
 
 function sequenceTypeForLane(lane: AutonomousCiLane): string {
   if (lane === "ci_gas") return AUTONOMOUS_SEQUENCE_CI_GAS;
   if (lane === "bne_gas") return AUTONOMOUS_SEQUENCE_BNE_GAS;
+  if (lane === "future_gas") return AUTONOMOUS_SEQUENCE_FUTURE_GAS;
   return AUTONOMOUS_SEQUENCE_CI_ELECTRICITY;
 }
 
@@ -931,9 +954,14 @@ export default function Base2Page() {
   });
   const [autonomousSequenceConfirm, setAutonomousSequenceConfirm] = useState<AutonomousSequenceConfirmState | null>(null);
   const [autonomousSequenceStarting, setAutonomousSequenceStarting] = useState(false);
-  const [bneGasModal, setBneGasModal] = useState<{ open: boolean; comparison: UtilityComparison | null }>({
+  const [bneGasModal, setBneGasModal] = useState<{
+    open: boolean;
+    comparison: UtilityComparison | null;
+    mode: CiGasContractModalMode;
+  }>({
     open: false,
     comparison: null,
+    mode: "bne",
   });
 
   const token = (session as any)?.id_token;
@@ -1946,15 +1974,30 @@ export default function Base2Page() {
     openRecipientConfirmModal(comparison, 'comparison', false, true);
   };
 
-  // B&E Gas: look up signed C&I gas contract periods for this MRIN only.
+  // B&E Gas / Future Contract: look up signed C&I gas contract periods for this MRIN only.
   const handleBneGasClick = (comparison: UtilityComparison) => {
-    setBneGasModal({ open: true, comparison });
+    setBneGasModal({ open: true, comparison, mode: "bne" });
+  };
+
+  const handleFutureContractClick = (comparison: UtilityComparison) => {
+    setBneGasModal({ open: true, comparison, mode: "future" });
   };
 
   const handleBneGasGenerate = (values: BneGasGenerateValues) => {
     const comparison = bneGasModal.comparison;
     if (!comparison) return;
+    const mode = bneGasModal.mode;
     const usage = values.invoiceUsageGj ?? undefined;
+    const periodDates =
+      mode === "future"
+        ? {
+            ciGasFutureStartDate: values.periodStartDate || undefined,
+            ciGasFutureEndDate: values.periodEndDate || undefined,
+          }
+        : {
+            ciGasBneStartDate: values.periodStartDate || undefined,
+            ciGasBneEndDate: values.periodEndDate || undefined,
+          };
     const patched: UtilityComparison = {
       ...comparison,
       currentGasRate: values.currentGasRate ?? undefined,
@@ -1965,22 +2008,21 @@ export default function Base2Page() {
       ciGasInvoiceReviewDays: values.invoiceDays ?? undefined,
       ciGasAnnualConsumptionGJ: values.annualUsageGj ?? undefined,
       ciGasContractEndDate: values.contractEndDate || undefined,
-      ciGasBneStartDate: values.bneStartDate || undefined,
-      ciGasBneEndDate: values.bneEndDate || undefined,
+      ...periodDates,
     };
     setUtilityComparisons((prev) =>
       prev.map((u) =>
         u.utilityType === comparison.utilityType && u.identifier === comparison.identifier ? patched : u,
       ),
     );
-    setBneGasModal({ open: false, comparison: null });
+    setBneGasModal({ open: false, comparison: null, mode });
     void generateComparison(
       patched,
       "comparison",
       false,
       { contactName: values.contactName, contactEmail: values.contactEmail, contactPhone: values.contactPhone },
       false,
-      true,
+      mode === "future" ? "future" : "bne",
     );
   };
 
@@ -2033,7 +2075,7 @@ export default function Base2Page() {
     generateAll: boolean = false,
     webhookRecipient?: { contactName: string; contactEmail: string; contactPhone?: string },
     isRsl: boolean = false,
-    isBneGas: boolean = false,
+    ciGasLane: CiGasGenerateLane = "standard",
   ) => {
     if (!token || !session) { alert('Please log in to generate comparisons'); return; }
     const utilitiesToProcess = generateAll ? utilityComparisons.filter((u) => { if (u.utilityType !== comparison.utilityType || u.loading || u.error) return false; if (comparison.utilityType === "SME Gas") { const m = comparison.smeGasComparisonMode ?? "invoice_blocks"; const um = u.smeGasComparisonMode ?? "invoice_blocks"; return m === um; } return true; }) : [comparison];
@@ -2150,9 +2192,11 @@ export default function Base2Page() {
             }
           }
         } else if (util.utilityType === 'C&I Gas') {
-          webhookUrl = isBneGas
+          webhookUrl = ciGasLane === "bne"
             ? BNE_GAS_WEBHOOK_URL
-            : 'https://membersaces.app.n8n.cloud/webhook/generate-gas-ci-comparaison-b2';
+            : ciGasLane === "future"
+              ? FUTURE_GAS_WEBHOOK_URL
+              : 'https://membersaces.app.n8n.cloud/webhook/generate-gas-ci-comparaison-b2';
           const details = util.invoiceData?.gas_ci_invoice_details || {}; const fullData = details?.full_invoice_data || {};
           payload.mrin = util.identifier; payload.invoice_id = fullData['Invoice ID'] || details?.invoice_id || ''; payload.site_address = fullData['Site Address'] || details?.site_address || businessInfo?.site_address || ''; payload.invoice_number = fullData['Invoice Number'] || details?.invoice_number || '';
           payload.gas_rate_invoice = util.currentGasRate?.toFixed(4) || '0';
@@ -2173,26 +2217,16 @@ export default function Base2Page() {
               }
             }
           }
-          if (isBneGas) {
+          if (ciGasLane === "bne") {
             payload.bne_gas = true;
-            if (util.ciGasBneStartDate) {
-              payload.bne_start_date = util.ciGasBneStartDate;
-              payload.offer1StartDate = util.ciGasBneStartDate;
-            }
-            if (util.ciGasBneEndDate) {
-              payload.bne_end_date = util.ciGasBneEndDate;
-              payload.offer1EndDate = util.ciGasBneEndDate;
-            }
-            if (util.ciGasBneStartDate && util.ciGasBneEndDate) {
-              const start = new Date(`${util.ciGasBneStartDate}T00:00:00`);
-              const end = new Date(`${util.ciGasBneEndDate}T00:00:00`);
-              if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()) && end > start) {
-                const months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
-                const years = months >= 12 ? String(Math.round(months / 12)) : "1";
-                payload.offer1Validity = `${Math.max(months, 1)} months`;
-                payload.offer1PeriodYears = years;
-              }
-            }
+            if (util.ciGasBneStartDate) payload.bne_start_date = util.ciGasBneStartDate;
+            if (util.ciGasBneEndDate) payload.bne_end_date = util.ciGasBneEndDate;
+            applyCiGasOfferPeriod(payload, util.ciGasBneStartDate, util.ciGasBneEndDate);
+          } else if (ciGasLane === "future") {
+            payload.future_contract = true;
+            if (util.ciGasFutureStartDate) payload.future_start_date = util.ciGasFutureStartDate;
+            if (util.ciGasFutureEndDate) payload.future_end_date = util.ciGasFutureEndDate;
+            applyCiGasOfferPeriod(payload, util.ciGasFutureStartDate, util.ciGasFutureEndDate);
           }
         } else if (util.utilityType === "SME Gas") {
           if (util.smeGasComparisonMode !== "ci_offer") { errors.push(`${util.identifier}: Select "C&I-style comparison (SME → C&I)" to generate this comparison.`); setSending(null); continue; }
@@ -2367,7 +2401,7 @@ export default function Base2Page() {
                 const activityPayload = { activity_type: action === 'dma' ? 'dma_review_generated' : 'comparison', document_link: normalizeDocumentLink(comparisonDocLink) ?? undefined, metadata, created_by: session?.user?.email || undefined };
                 console.log('[Base2 offer activity] POST to backend', { offerId: offerIdToUse, identifier: util.identifier, activity_type: activityPayload.activity_type, document_link: activityPayload.document_link, metadata_keys: Object.keys(metadata), annual_savings: metadata.annual_savings, current_cost: metadata.current_cost, new_cost: metadata.new_cost });
                 const activityRes = await fetch(`${baseUrl}/api/offers/${offerIdToUse}/activities`, { method: 'POST', headers, body: JSON.stringify(activityPayload) });
-                if (activityRes.ok) { try { const act = (await activityRes.json()) as { id?: number }; if (typeof act.id === 'number') { if (slug === 'gas') { if (isBneGas) activityIdByLane.bne_gas = act.id; else activityIdByLane.ci_gas = act.id; } if (slug === 'electricity_ci') activityIdByLane.ci_electricity = act.id; } } catch { /* ignore */ } }
+                if (activityRes.ok) { try { const act = (await activityRes.json()) as { id?: number }; if (typeof act.id === 'number') { if (slug === 'gas') { if (ciGasLane === "bne") activityIdByLane.bne_gas = act.id; else if (ciGasLane === "future") activityIdByLane.future_gas = act.id; else activityIdByLane.ci_gas = act.id; } if (slug === 'electricity_ci') activityIdByLane.ci_electricity = act.id; } } catch { /* ignore */ } }
                 else { const errBody = await activityRes.text(); console.warn('[Base2 offer activity] Backend responded with error', activityRes.status, errBody); }
                 // ACES: persist C&I electricity time-of-use rates onto the offer row itself, so the
                 // current/new peak·shoulder·off-peak rates live in one SQL place (for the voice agent).
@@ -2393,7 +2427,8 @@ export default function Base2Page() {
             if (action === 'comparison') {
               const lanes = new Set<AutonomousCiLane>();
               for (const { util } of successResults) {
-                if (isBneGas && util.utilityType === 'C&I Gas') lanes.add('bne_gas');
+                if (ciGasLane === "bne" && util.utilityType === 'C&I Gas') lanes.add('bne_gas');
+                else if (ciGasLane === "future" && util.utilityType === 'C&I Gas') lanes.add('future_gas');
                 else if (util.utilityType === 'C&I Gas' || (util.utilityType === 'SME Gas' && util.smeGasComparisonMode === 'ci_offer')) lanes.add('ci_gas');
                 if (util.utilityType === 'C&I Electricity') lanes.add('ci_electricity');
               }
@@ -2410,7 +2445,7 @@ export default function Base2Page() {
                 const lanePayloads: AutonomousSequenceConfirmState['lanePayloads'] = [];
                 for (const lane of lanes) {
                   const laneSuccess = successResults.filter(({ util }) =>
-                    lane === 'ci_gas' || lane === 'bne_gas'
+                    lane === 'ci_gas' || lane === 'bne_gas' || lane === 'future_gas'
                       ? util.utilityType === 'C&I Gas' || (util.utilityType === 'SME Gas' && util.smeGasComparisonMode === 'ci_offer')
                       : util.utilityType === 'C&I Electricity',
                   );
@@ -3844,6 +3879,15 @@ export default function Base2Page() {
                             🔥 B&E Gas
                           </button>
                         )}
+                        {comparison.utilityType === 'C&I Gas' && (
+                          <button
+                            onClick={() => handleFutureContractClick(comparison)}
+                            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white shadow-sm transition-all"
+                            style={{ backgroundColor: '#4338CA' }}
+                          >
+                            Future Contract
+                          </button>
+                        )}
                         {comparison.utilityType === 'C&I Electricity' && (
                           <button
                             onClick={() => handleRslClick(comparison)}
@@ -3905,10 +3949,11 @@ export default function Base2Page() {
             commissionPerGj: comparison.ciGasCommissionAudPerGj ?? null,
           };
         })()}
+        mode={bneGasModal.mode}
         defaultContactName={defaultWebhookRecipient(businessInfo, businessInfoData).contactName}
         defaultContactEmail={defaultWebhookRecipient(businessInfo, businessInfoData).contactEmail}
         defaultContactPhone={businessInfo?.telephone ?? ""}
-        onClose={() => setBneGasModal({ open: false, comparison: null })}
+        onClose={() => setBneGasModal({ open: false, comparison: null, mode: bneGasModal.mode })}
         onGenerate={handleBneGasGenerate}
       />
 
@@ -4065,8 +4110,8 @@ export default function Base2Page() {
             <ul className="mb-5 space-y-2 text-sm text-gray-800 dark:text-gray-200">
               {autonomousSequenceConfirm.lanePayloads.map(({ lane }) => (
                 <li key={lane} className="flex items-center gap-2 rounded-lg border border-gray-100 dark:border-gray-700 px-3 py-2">
-                  <span className="text-lg">{lane === "ci_electricity" ? "⚡" : "🔥"}</span>
-                  <span className="font-medium">{lane === "bne_gas" ? "B&E gas" : lane === "ci_gas" ? "C&I gas" : "C&I electricity"}</span>
+                  <span className="text-lg">{lane === "ci_electricity" ? "⚡" : lane === "future_gas" ? "📅" : "🔥"}</span>
+                  <span className="font-medium">{lane === "bne_gas" ? "B&E gas" : lane === "future_gas" ? "Future contract" : lane === "ci_gas" ? "C&I gas" : "C&I electricity"}</span>
                   <span className="text-xs text-gray-400 font-mono ml-auto">
                     {sequenceTypeForLane(lane)}
                   </span>
