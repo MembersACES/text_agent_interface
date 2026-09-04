@@ -146,8 +146,6 @@ interface UtilityComparison {
   /** Future contract period (YYYY-MM-DD). Start defaults to the day after current end. */
   ciGasFutureStartDate?: string;
   ciGasFutureEndDate?: string;
-  /** Future Contract: send from the RSL mailbox instead of the generic business mailbox. */
-  ciGasRslEmail?: boolean;
   /** Required for C&I electricity comparison / DMA ($/kWh, Origin sheet units). */
   ciElectricityCommissionAudPerKwh?: number;
   /** Required for C&I gas and SME → C&I gas (`ci_offer`) comparison ($/GJ). */
@@ -2011,7 +2009,6 @@ export default function Base2Page() {
       ciGasAnnualConsumptionGJ: values.annualUsageGj ?? undefined,
       ciGasContractEndDate: values.contractEndDate || undefined,
       ...periodDates,
-      ciGasRslEmail: mode === "future" ? values.isRsl : undefined,
     };
     setUtilityComparisons((prev) =>
       prev.map((u) =>
@@ -2227,7 +2224,6 @@ export default function Base2Page() {
             applyCiGasOfferPeriod(payload, util.ciGasBneStartDate, util.ciGasBneEndDate);
           } else if (ciGasLane === "future") {
             payload.future_contract = true;
-            payload.rsl = util.ciGasRslEmail === true;
             if (util.ciGasFutureStartDate) payload.future_start_date = util.ciGasFutureStartDate;
             if (util.ciGasFutureEndDate) payload.future_end_date = util.ciGasFutureEndDate;
             applyCiGasOfferPeriod(payload, util.ciGasFutureStartDate, util.ciGasFutureEndDate);
@@ -3957,7 +3953,6 @@ export default function Base2Page() {
         defaultContactName={defaultWebhookRecipient(businessInfo, businessInfoData).contactName}
         defaultContactEmail={defaultWebhookRecipient(businessInfo, businessInfoData).contactEmail}
         defaultContactPhone={businessInfo?.telephone ?? ""}
-        defaultIsRsl={isRslMember}
         onClose={() => setBneGasModal({ open: false, comparison: null, mode: bneGasModal.mode })}
         onGenerate={handleBneGasGenerate}
       />

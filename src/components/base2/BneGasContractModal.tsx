@@ -70,7 +70,6 @@ export interface BneGasGenerateValues {
   contactName: string;
   contactEmail: string;
   contactPhone: string;
-  isRsl: boolean;
 }
 
 function numToInput(value: number | null | undefined): string {
@@ -235,7 +234,6 @@ export function BneGasContractModal({
   defaultContactName,
   defaultContactEmail,
   defaultContactPhone,
-  defaultIsRsl = false,
   onClose,
   onGenerate,
 }: {
@@ -247,7 +245,6 @@ export function BneGasContractModal({
   defaultContactName?: string;
   defaultContactEmail?: string;
   defaultContactPhone?: string;
-  defaultIsRsl?: boolean;
   onClose: () => void;
   onGenerate: (values: BneGasGenerateValues) => void;
 }) {
@@ -274,7 +271,6 @@ export function BneGasContractModal({
   const [periodStartDate, setPeriodStartDate] = useState("");
   const [periodEndDate, setPeriodEndDate] = useState("");
   const [startDateTouched, setStartDateTouched] = useState(false);
-  const [isRsl, setIsRsl] = useState(false);
   const [currentRateTouched, setCurrentRateTouched] = useState(false);
 
   useEffect(() => {
@@ -288,7 +284,6 @@ export function BneGasContractModal({
       setPeriodStartDate("");
       setPeriodEndDate("");
       setStartDateTouched(false);
-      setIsRsl(false);
       setCurrentRateTouched(false);
       return;
     }
@@ -302,9 +297,8 @@ export function BneGasContractModal({
     setStartDateTouched(false);
     setPeriodStartDate(isFuture ? "" : firstOfNextMonthAu());
     setPeriodEndDate(isFuture ? FUTURE_DEFAULT_END_DATE_AU : "");
-    setIsRsl(isFuture ? defaultIsRsl : false);
     setCurrentRateTouched(false);
-  }, [open, mrin, mode, isFuture, preview?.invoiceUsageGj, preview?.invoiceDays, preview?.newGasRate, preview?.commissionPerGj, defaultContactName, defaultContactEmail, defaultContactPhone, defaultIsRsl]);
+  }, [open, mrin, mode, isFuture, preview?.invoiceUsageGj, preview?.invoiceDays, preview?.newGasRate, preview?.commissionPerGj, defaultContactName, defaultContactEmail, defaultContactPhone]);
 
   useEffect(() => {
     if (!open) return;
@@ -385,7 +379,6 @@ export function BneGasContractModal({
     contactName: contactName.trim(),
     contactEmail: contactEmail.trim(),
     contactPhone: contactPhone.trim(),
-    isRsl: isFuture && isRsl,
   });
 
   if (!open) return null;
@@ -789,23 +782,6 @@ export function BneGasContractModal({
               />
             </div>
           </div>
-          {isFuture && (
-            <label htmlFor="future-rsl" className="flex items-start gap-2.5 cursor-pointer select-none rounded-xl border border-gray-200 dark:border-gray-700 px-3 py-2.5">
-              <input
-                id="future-rsl"
-                type="checkbox"
-                checked={isRsl}
-                onChange={(e) => setIsRsl(e.target.checked)}
-                className="mt-0.5 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600"
-              />
-              <span>
-                <span className="text-sm font-semibold text-gray-900 dark:text-white">RSL</span>
-                <span className="block text-[11px] text-gray-500">
-                  Send from the RSL mailbox instead of the generic business mailbox. Pre-ticked when the business name contains RSL — uncheck if needed.
-                </span>
-              </span>
-            </label>
-          )}
           <div className="flex justify-end gap-2.5">
           <button
             type="button"
