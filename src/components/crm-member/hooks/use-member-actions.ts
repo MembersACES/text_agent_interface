@@ -46,7 +46,8 @@ export interface UseMemberActionsResult {
   handleSaveProfile: (
     e: React.FormEvent,
     form: EditProfileForm
-  ) => Promise<void>;
+  ) => Promise<boolean>;
+  syncPrimaryContactEmail: (email: string) => Promise<boolean>;
   handleCreateOffer: (
     e: React.FormEvent,
     form: CreateOfferForm,
@@ -179,42 +180,80 @@ export function useMemberActions({
     [clientId, token, client, setNotes, setError, showToast]
   );
 
+  const patchClient = useCallback(
+    async (payload: {
+      business_name?: string;
+      primary_contact_email?: string;
+      gdrive_folder_url?: string;
+      owner_email?: string;
+    }): Promise<Client> => {
+      if (!clientId || !token) {
+        throw new Error("Sign in required to update member");
+      }
+      const res = await fetch(`${getApiBaseUrl()}/api/clients/${clientId}`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as { detail?: string }).detail || "Failed to update member");
+      }
+      const updated: Client = await res.json();
+      setClient(updated);
+      return updated;
+    },
+    [clientId, token, setClient]
+  );
+
   const handleSaveProfile = useCallback(
-    async (e: React.FormEvent, form: EditProfileForm) => {
+    async (e: React.FormEvent, form: EditProfileForm): Promise<boolean> => {
       e.preventDefault();
-      if (!clientId || !token || !client) return;
+      if (!clientId || !token || !client) return false;
       setEditProfileSubmitting(true);
       setError(null);
       try {
-        const res = await fetch(`${getApiBaseUrl()}/api/clients/${clientId}`, {
-          method: "PATCH",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            business_name: form.business_name.trim() || undefined,
-            primary_contact_email: form.primary_contact_email.trim() || undefined,
-            gdrive_folder_url: form.gdrive_folder_url.trim() || undefined,
-            owner_email: form.owner_email.trim() || undefined,
-          }),
+        await patchClient({
+          business_name: form.business_name.trim() || undefined,
+          primary_contact_email: form.primary_contact_email.trim() || undefined,
+          gdrive_folder_url: form.gdrive_folder_url.trim() || undefined,
+          owner_email: form.owner_email.trim() || undefined,
         });
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          throw new Error((data as { detail?: string }).detail || "Failed to update member");
-        }
-        const updated: Client = await res.json();
-        setClient(updated);
         showToast("Profile updated", "success");
+        return true;
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : "Failed to update member";
         setError(msg);
         showToast(msg, "error");
+        return false;
       } finally {
         setEditProfileSubmitting(false);
       }
     },
-    [clientId, token, client, setClient, setError, showToast]
+    [clientId, token, client, patchClient, setError, showToast]
+  );
+
+  const syncPrimaryContactEmail = useCallback(
+    async (email: string): Promise<boolean> => {
+      const trimmed = email.trim();
+      if (!trimmed) return true;
+      if (
+        (client?.primary_contact_email ?? "").trim().toLowerCase() ===
+        trimmed.toLowerCase()
+      ) {
+        return true;
+      }
+      try {
+        await patchClient({ primary_contact_email: trimmed });
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [client, patchClient]
   );
 
   const handleCreateOffer = useCallback(
@@ -576,6 +615,7 @@ export function useMemberActions({
     handleStageChange,
     handleCreateNote,
     handleSaveProfile,
+    syncPrimaryContactEmail,
     handleCreateOffer,
     handleUpdateNote,
     handleDeleteNote,
