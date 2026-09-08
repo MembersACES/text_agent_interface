@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { History, ListTodo, Mail, MapPin, Phone, StickyNote, User } from "lucide-react";
+import { History, ListTodo, Mail, MapPin, Pencil, Phone, StickyNote, User } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { SectionHeader } from "./shared/SectionHeader";
@@ -34,6 +34,7 @@ export interface MemberSidebarProps {
   onDeleteTask: (taskId: number) => Promise<void> | void;
   deletingTaskId?: number | null;
   businessInfo?: Record<string, unknown> | null;
+  onEditContact?: () => void;
 }
 
 function SidebarEmpty({
@@ -75,6 +76,7 @@ export function MemberSidebar({
   onDeleteTask,
   deletingTaskId = null,
   businessInfo,
+  onEditContact,
 }: MemberSidebarProps) {
   const sidebarNotes = getSidebarNotes(notes);
   const hasNotes = sidebarNotes.length > 0;
@@ -114,6 +116,19 @@ export function MemberSidebar({
           className={MEMBER_CARD_HEADER}
           title="Contact"
           icon={<User className="size-4" aria-hidden />}
+          actions={
+            onEditContact ? (
+              <button
+                type="button"
+                onClick={onEditContact}
+                aria-label="Edit contact"
+                className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
+              >
+                <Pencil className="size-3.5" aria-hidden />
+                Edit
+              </button>
+            ) : undefined
+          }
         />
         <div className={MEMBER_CARD_BODY}>
           <div className="mb-4 flex items-center gap-3">

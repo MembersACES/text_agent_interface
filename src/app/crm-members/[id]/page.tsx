@@ -234,9 +234,21 @@ export default function ClientDetailPage() {
     }
   };
 
+  const openEditProfile = () => {
+    if (!client) return;
+    setEditProfileForm({
+      business_name: client.business_name ?? "",
+      primary_contact_email: client.primary_contact_email ?? "",
+      gdrive_folder_url: client.gdrive_folder_url ?? "",
+      owner_email: client.owner_email ?? "",
+    });
+    setError(null);
+    setEditProfileOpen(true);
+  };
+
   const handleSaveProfile = (e: FormEvent) => {
-    actions.handleSaveProfile(e, editProfileForm).then(() => {
-      setEditProfileOpen(false);
+    void actions.handleSaveProfile(e, editProfileForm).then((ok) => {
+      if (ok) setEditProfileOpen(false);
     });
   };
 
@@ -325,6 +337,7 @@ export default function ClientDetailPage() {
               businessInfoLoading={businessInfoLoading}
               fetchBusinessInfo={fetchBusinessInfoForBase2}
               onOpenTools={() => setToolsOpen(true)}
+              onEditProfile={openEditProfile}
               onDeleteMember={() => {
                 setDeleteMemberConfirm(false);
                 setDeleteMemberOpen(true);
@@ -364,6 +377,7 @@ export default function ClientDetailPage() {
                       setCreateOfferOpen(true);
                       setError(null);
                     }}
+                    onSyncClientEmail={actions.syncPrimaryContactEmail}
                   />
                   </div>
                 )}
@@ -484,6 +498,7 @@ export default function ClientDetailPage() {
                   }}
                   onDeleteTask={handleDeleteTask}
                   deletingTaskId={deletingTaskId}
+                  onEditContact={openEditProfile}
                 />
               </aside>
             </div>
@@ -547,6 +562,9 @@ export default function ClientDetailPage() {
                     }
                     className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900/60 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary/60 focus:border-primary/60"
                   />
+                  <p className="mt-1 text-[11px] text-gray-400">
+                    Shown on the Contact card. Editing business details also updates this.
+                  </p>
                 </label>
 
                 <label className="block">
