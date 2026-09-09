@@ -40,6 +40,7 @@ const ROUTE_TITLES: Record<string, string> = {
   "/pipeline": "Pipeline",
   "/offers": "Offers",
   "/autonomous-agent": "Autonomous Agent",
+  "/autonomous-agent/campaigns": "Campaigns",
   "/reports": "Reports",
   "/reports/activities": "Activity report",
   "/loa-upload": "Google Drive - New Member Creation",
