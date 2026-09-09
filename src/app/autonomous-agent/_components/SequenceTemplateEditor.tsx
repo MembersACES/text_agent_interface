@@ -43,6 +43,9 @@ export interface SequenceTemplate {
   /** Days from send, used only when validity_mode is "fixed_days". */
   validity_days?: number;
   linked_flow_keys?: string[];
+  stop_on?: string[];
+  ack_template_signed?: { subject: string; html: string } | null;
+  ack_template_invoice?: { subject: string; html: string } | null;
   steps: SequenceTemplateStep[];
 }
 
@@ -508,6 +511,107 @@ export default function SequenceTemplateEditor({
               placeholder="Talking points injected into every email, SMS, and voice call as {{extra_context}}. Add {{extra_context}} to the Retell prompt if the agent should say this."
             />
           </label>
+          <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-3 space-y-3">
+            <p className={labelCls}>Stop when</p>
+            <p className="text-[11px] font-normal normal-case tracking-normal text-gray-400">
+              Negative sentiment always stops the run and never drafts a reply. Other reasons only apply if checked.
+            </p>
+            {([
+              { id: "agreement_signed", label: "Agreement signed" },
+              { id: "invoice_received", label: "Invoice received" },
+            ] as const).map((item) => {
+              const current = template.stop_on ?? ["agreement_signed", "negative_sentiment_stop"];
+              return (
+                <label
+                  key={item.id}
+                  className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer select-none"
+                >
+                  <input
+                    type="checkbox"
+                    checked={current.includes(item.id)}
+                    onChange={(e) => {
+                      const next = new Set(current.filter((v) => v !== "negative_sentiment_stop"));
+                      if (e.target.checked) next.add(item.id);
+                      else next.delete(item.id);
+                      updateTemplateLocal(template.id, {
+                        stop_on: [...next, "negative_sentiment_stop"],
+                      });
+                    }}
+                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  {item.label}
+                </label>
+              );
+            })}
+            <label className="flex items-center gap-2 text-sm font-medium text-gray-400 cursor-not-allowed select-none">
+              <input type="checkbox" checked readOnly className="h-4 w-4 rounded border-gray-300" />
+              Negative sentiment (always on)
+            </label>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <p className={labelCls}>Ack — agreement signed</p>
+              <input
+                type="text"
+                placeholder="Subject"
+                value={template.ack_template_signed?.subject ?? ""}
+                onChange={(e) =>
+                  updateTemplateLocal(template.id, {
+                    ack_template_signed: {
+                      subject: e.target.value,
+                      html: template.ack_template_signed?.html ?? "",
+                    },
+                  })
+                }
+                className={inputCls}
+              />
+              <textarea
+                placeholder="HTML body. Merge tokens like {{first_name}}."
+                value={template.ack_template_signed?.html ?? ""}
+                onChange={(e) =>
+                  updateTemplateLocal(template.id, {
+                    ack_template_signed: {
+                      subject: template.ack_template_signed?.subject ?? "",
+                      html: e.target.value,
+                    },
+                  })
+                }
+                rows={5}
+                className={textareaCls}
+              />
+            </div>
+            <div className="space-y-2">
+              <p className={labelCls}>Ack — invoice received</p>
+              <input
+                type="text"
+                placeholder="Subject"
+                value={template.ack_template_invoice?.subject ?? ""}
+                onChange={(e) =>
+                  updateTemplateLocal(template.id, {
+                    ack_template_invoice: {
+                      subject: e.target.value,
+                      html: template.ack_template_invoice?.html ?? "",
+                    },
+                  })
+                }
+                className={inputCls}
+              />
+              <textarea
+                placeholder="HTML body. Merge tokens like {{first_name}}."
+                value={template.ack_template_invoice?.html ?? ""}
+                onChange={(e) =>
+                  updateTemplateLocal(template.id, {
+                    ack_template_invoice: {
+                      subject: template.ack_template_invoice?.subject ?? "",
+                      html: e.target.value,
+                    },
+                  })
+                }
+                rows={5}
+                className={textareaCls}
+              />
+            </div>
+          </div>
           <button
             type="button"
             onClick={() => onDeleteTemplate(template.id)}
