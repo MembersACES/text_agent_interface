@@ -44,6 +44,7 @@ interface RunDetail {
   business_name: string | null;
   context: Record<string, unknown>;
   steps: StepRow[];
+  email_ID?: string | null;
   ack_draft?: { stop_reason: string; thread_id: string | null } | null;
 }
 

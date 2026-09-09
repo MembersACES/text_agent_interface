@@ -112,3 +112,13 @@ export function templateCoversFlow(
   if (template.sequence_type === flowKey) return true;
   return (template.linked_flow_keys ?? []).includes(flowKey);
 }
+
+export const GCI_OUTBOUND_SEQUENCE = "gci_outbound_v1";
+
+/** Sequences started from Base 2, invoice, solar, and document pages — not campaigns. */
+export function isComparisonLinkedTemplate(template: {
+  sequence_type: string;
+  linked_flow_keys?: string[] | null;
+}): boolean {
+  return COMPARISON_TRIGGERS.some((link) => templateCoversFlow(template, link.sequence_type));
+}
