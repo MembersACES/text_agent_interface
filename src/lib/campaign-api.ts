@@ -43,12 +43,30 @@ function headers(token: string): HeadersInit {
   };
 }
 
+function formatApiDetail(detail: unknown): string | null {
+  if (typeof detail === "string" && detail.trim()) return detail.trim();
+  if (Array.isArray(detail)) {
+    const parts = detail
+      .map((item) => {
+        if (typeof item === "string" && item.trim()) return item.trim();
+        if (item && typeof item === "object" && "msg" in item) {
+          const msg = (item as { msg: unknown }).msg;
+          if (typeof msg === "string" && msg.trim()) return msg.trim();
+        }
+        return "";
+      })
+      .filter(Boolean);
+    if (parts.length) return parts.join(" · ");
+  }
+  return null;
+}
+
 async function readError(res: Response, fallback: string): Promise<string> {
   try {
     const data = await res.json();
     if (data && typeof data === "object" && "detail" in data) {
-      const detail = (data as { detail: unknown }).detail;
-      if (typeof detail === "string" && detail.trim()) return detail;
+      const formatted = formatApiDetail((data as { detail: unknown }).detail);
+      if (formatted) return formatted;
     }
   } catch {
     /* ignore */
@@ -162,15 +180,31 @@ export async function resumeCampaign(token: string, id: number): Promise<Campaig
   return res.json();
 }
 
-export async function listSequenceTypes(token: string): Promise<{ sequence_type: string; display_name: string }[]> {
+export type CampaignSequenceOption = {
+  sequence_type: string;
+  display_name: string;
+  linked_flow_keys: string[];
+  is_active: boolean;
+};
+
+export async function listSequenceTypes(token: string): Promise<CampaignSequenceOption[]> {
   const res = await fetch(`${base()}/api/autonomous/sequences/templates`, {
     headers: headers(token),
   });
   if (!res.ok) throw new Error(await readError(res, "Could not load sequence templates"));
   const data = await res.json();
   const items = Array.isArray(data) ? data : data.items || [];
-  return items.map((t: { sequence_type: string; display_name: string }) => ({
-    sequence_type: t.sequence_type,
-    display_name: t.display_name || t.sequence_type,
-  }));
+  return items.map(
+    (t: {
+      sequence_type: string;
+      display_name: string;
+      linked_flow_keys?: string[] | null;
+      is_active?: boolean;
+    }) => ({
+      sequence_type: t.sequence_type,
+      display_name: t.display_name || t.sequence_type,
+      linked_flow_keys: Array.isArray(t.linked_flow_keys) ? t.linked_flow_keys : [],
+      is_active: t.is_active !== false,
+    }),
+  );
 }

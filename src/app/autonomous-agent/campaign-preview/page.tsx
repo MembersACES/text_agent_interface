@@ -54,7 +54,11 @@ import {
 import MergeTemplateEditor, {
   type MergeTemplateEditorHandle,
 } from "../_components/MergeTemplateEditor";
-import CampaignControls from "../_components/CampaignControls";
+import {
+  CampaignSendCard,
+  CampaignSetupCard,
+  CampaignWorkspace,
+} from "../_components/CampaignControls";
 
 type LastFocus = "subject" | "body";
 
@@ -236,30 +240,31 @@ export default function CampaignPreviewPage() {
       <PageHeader
         pageName="Campaigns"
         title="Campaigns"
-        description="Upload a list, map merge fields, preview the first-touch, send a test, then start the list."
+        description="Outbound first-touch only. Upload a list, write the email, send yourself a test, then start the list. Comparison follow-ups still start from Base 2 and invoice pages."
       />
 
+      <CampaignWorkspace
+        token={token}
+        userEmail={userEmail}
+        headers={headers}
+        rawRows={rawRows}
+        columnMap={columnMap}
+        subject={subject}
+        body={body}
+        setSubject={setSubject}
+        setBody={setBody}
+        setColumnMap={setColumnMap}
+        currentMergeRow={currentRow}
+        currentLabel={
+          current
+            ? `Recipient ${safeIndex + 1} of ${recipients.length} — ${current.mergeRow.company_name || current.email || "this row"}`
+            : "the selected recipient"
+        }
+        currentSourceIndex={current?.sourceIndex ?? null}
+        parsed={parsed}
+      >
       <div className="mt-5 space-y-5">
-        <CampaignControls
-          token={token}
-          userEmail={userEmail}
-          headers={headers}
-          rawRows={rawRows}
-          columnMap={columnMap}
-          subject={subject}
-          body={body}
-          setSubject={setSubject}
-          setBody={setBody}
-          setColumnMap={setColumnMap}
-          currentMergeRow={currentRow}
-          currentLabel={
-            current
-              ? `Recipient ${safeIndex + 1} of ${recipients.length} — ${current.mergeRow.company_name || current.email || "this row"}`
-              : "the selected recipient"
-          }
-          currentSourceIndex={current?.sourceIndex ?? null}
-          parsed={parsed}
-        />
+        <CampaignSetupCard />
         <UploadSection
           fileName={fileName}
           parseError={parseError}
@@ -315,7 +320,9 @@ export default function CampaignPreviewPage() {
           usedTokens={usedTokens}
           coverage={coverage}
         />
+        <CampaignSendCard />
       </div>
+      </CampaignWorkspace>
     </>
   );
 }
@@ -357,9 +364,9 @@ function UploadSection({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Upload</CardTitle>
+        <CardTitle>2. Upload list</CardTitle>
         <CardDescription>
-          Parsed in the browser. The file is not sent anywhere.
+          Drop a .csv. It is parsed in the browser and is not uploaded until you save the campaign.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -456,10 +463,10 @@ function MapSection({
   return (
     <Card className={cn(!enabled && "pointer-events-none opacity-50")}>
       <CardHeader>
-        <CardTitle>Map columns</CardTitle>
+        <CardTitle>3. Map columns</CardTitle>
         <CardDescription>
-          Intelligence is the default. Anything not mapped to a merge field is
-          held back and never enters the preview.
+          Only mapped fields can appear in the email. Everything else stays as intelligence and is
+          never inserted.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -691,10 +698,10 @@ function ComposeSection({
   return (
     <Card className={cn(!enabled && "pointer-events-none opacity-50")}>
       <CardHeader>
-        <CardTitle>Compose & preview</CardTitle>
+        <CardTitle>4. Write the first email</CardTitle>
         <CardDescription>
-          The preview walks unique recipients, not raw duplicate rows.
-          Intelligence columns cannot be inserted or substituted.
+          Preview walks unique recipients, not duplicate rows. Insert merge fields from the mapped
+          columns only.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
