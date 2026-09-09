@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getAutonomousApiBaseUrl, cn } from "@/lib/utils";
+import { stopReasonLabel } from "@/lib/stop-reasons";
 import { dispatchRunNowFromList } from "@/lib/autonomous-dispatch";
 import { PageHeader } from "@/components/Layouts/PageHeader";
 import { useToast } from "@/components/ui/toast";
@@ -113,7 +114,7 @@ function StatusPill({ status, stopReason }: { status: string; stopReason?: strin
       </span>
       {stopReason && (
         <span className="text-[10px] text-gray-400 dark:text-gray-500 pl-0.5">
-          {stopReason.replace(/_/g, " ")}
+          {stopReasonLabel(stopReason)}
         </span>
       )}
     </div>
@@ -340,6 +341,9 @@ export default function AutonomousAgentPage() {
             sequence_type: template.sequence_type,
             validity_mode: template.validity_mode ?? "fixed_days",
             validity_days: template.validity_days ?? 7,
+            stop_on: template.stop_on ?? ["agreement_signed", "negative_sentiment_stop"],
+            ack_template_signed: template.ack_template_signed ?? null,
+            ack_template_invoice: template.ack_template_invoice ?? null,
           }),
         },
       );

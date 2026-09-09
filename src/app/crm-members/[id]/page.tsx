@@ -25,13 +25,13 @@ import { UtilitiesTab, getUtilitiesCountFromBusinessInfo } from "@/components/cr
 import { ToolsTab } from "@/components/crm-member/tabs/ToolsTab";
 import { ClimateTab } from "@/components/crm-member/tabs/ClimateTab";
 import { CommercialTabPanel } from "@/components/crm-member/tabs/CommercialTabPanel";
+import { OffersTab } from "@/components/crm-member/tabs/OffersTab";
 import { ActivityTabPanel } from "@/components/crm-member/tabs/ActivityTabPanel";
 import { SolutionsStrategyTabPanel } from "@/components/crm-member/tabs/SolutionsStrategyTabPanel";
 import { resolveMemberTab } from "@/components/crm-member/member-tab-utils";
 import { recordMemberProfileView } from "@/lib/member-profile-recent";
 import type {
   ActivitySubTab,
-  CommercialSubTab,
   SolutionsSubTab,
 } from "@/components/crm-member/member-tab-utils";
 export default function ClientDetailPage() {
@@ -49,7 +49,7 @@ export default function ClientDetailPage() {
   const { data: session } = useSession();
   const rawTab = searchParams.get("tab");
   const rawSubTab = searchParams.get("subtab");
-  const { tab, subTab: aliasSubTab } = resolveMemberTab(rawTab);
+  const { tab, subTab: aliasSubTab } = resolveMemberTab(rawTab, rawSubTab);
   const subTab = rawSubTab ?? aliasSubTab;
 
   const {
@@ -234,9 +234,21 @@ export default function ClientDetailPage() {
     }
   };
 
+  const openEditProfile = () => {
+    if (!client) return;
+    setEditProfileForm({
+      business_name: client.business_name ?? "",
+      primary_contact_email: client.primary_contact_email ?? "",
+      gdrive_folder_url: client.gdrive_folder_url ?? "",
+      owner_email: client.owner_email ?? "",
+    });
+    setError(null);
+    setEditProfileOpen(true);
+  };
+
   const handleSaveProfile = (e: FormEvent) => {
-    actions.handleSaveProfile(e, editProfileForm).then(() => {
-      setEditProfileOpen(false);
+    void actions.handleSaveProfile(e, editProfileForm).then((ok) => {
+      if (ok) setEditProfileOpen(false);
     });
   };
 
@@ -263,17 +275,18 @@ export default function ClientDetailPage() {
         label: "Documents",
         count: businessInfo ? getDocumentsCountFromBusinessInfo(businessInfo) : null,
       },
-      {
-        key: "utilities" as const,
-        label: "Utilities",
-        count: businessInfo ? getUtilitiesCountFromBusinessInfo(businessInfo) : null,
-      },
+      { key: "offers" as const, label: "Offers", count: offers.length },
       {
         key: "activity" as const,
         label: "Activity",
         count: activities.length + notes.length,
       },
-      { key: "commercial" as const, label: "Offers & Savings", count: offers.length },
+      {
+        key: "utilities" as const,
+        label: "Utilities",
+        count: businessInfo ? getUtilitiesCountFromBusinessInfo(businessInfo) : null,
+      },
+      { key: "savings" as const, label: "Savings", count: null },
       { key: "solutions" as const, label: "Solutions & Strategy", count: null },
       { key: "climate" as const, label: "Climate", count: null },
     ],
@@ -324,6 +337,7 @@ export default function ClientDetailPage() {
               businessInfoLoading={businessInfoLoading}
               fetchBusinessInfo={fetchBusinessInfoForBase2}
               onOpenTools={() => setToolsOpen(true)}
+              onEditProfile={openEditProfile}
               onDeleteMember={() => {
                 setDeleteMemberConfirm(false);
                 setDeleteMemberOpen(true);
@@ -363,6 +377,7 @@ export default function ClientDetailPage() {
                       setCreateOfferOpen(true);
                       setError(null);
                     }}
+                    onSyncClientEmail={actions.syncPrimaryContactEmail}
                   />
                   </div>
                 )}
@@ -390,17 +405,30 @@ export default function ClientDetailPage() {
                   </div>
                 )}
 
-                {tab === "commercial" && (
-                  <div key="commercial" className="pg-fade-up">
-                  <CommercialTabPanel
-                    initialSubTab={(subTab as CommercialSubTab) ?? "offers"}
+                {tab === "offers" && (
+                  <div key="offers" className="pg-fade-up">
+                  <OffersTab
                     offers={offers}
-                    businessInfo={businessInfo}
-                    clientId={clientId}
                     onCreateOfferClick={() => {
                       setCreateOfferOpen(true);
                       setError(null);
                     }}
+                  />
+                  </div>
+                )}
+
+                {tab === "savings" && (
+                  <div key="savings" className="pg-fade-up">
+                  <CommercialTabPanel
+                    initialSubTab={
+                      aliasSubTab === "savings" ||
+                      aliasSubTab === "new-revenue" ||
+                      aliasSubTab === "testimonials"
+                        ? aliasSubTab
+                        : "savings"
+                    }
+                    businessInfo={businessInfo}
+                    clientId={clientId}
                   />
                   </div>
                 )}
@@ -470,6 +498,7 @@ export default function ClientDetailPage() {
                   }}
                   onDeleteTask={handleDeleteTask}
                   deletingTaskId={deletingTaskId}
+                  onEditContact={openEditProfile}
                 />
               </aside>
             </div>
@@ -533,6 +562,9 @@ export default function ClientDetailPage() {
                     }
                     className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900/60 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary/60 focus:border-primary/60"
                   />
+                  <p className="mt-1 text-[11px] text-gray-400">
+                    Shown on the Contact card. Editing business details also updates this.
+                  </p>
                 </label>
 
                 <label className="block">

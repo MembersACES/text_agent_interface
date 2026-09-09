@@ -39,6 +39,7 @@ export interface MemberProfileHeaderProps {
   /** When provided, called to load business info if missing when opening Base 2 (so Base 2 gets full URL like business-info). */
   fetchBusinessInfo?: () => Promise<Record<string, unknown> | null>;
   onOpenTools?: () => void;
+  onEditProfile?: () => void;
   onDeleteMember?: () => void;
   onStageChange?: (stage: ClientStage) => void | Promise<void>;
   savingStage?: boolean;
@@ -131,6 +132,7 @@ export function MemberProfileHeader({
   businessInfo,
   fetchBusinessInfo,
   onOpenTools,
+  onEditProfile,
   onDeleteMember,
   onStageChange,
   savingStage = false,
@@ -650,6 +652,18 @@ export function MemberProfileHeader({
             </Button>
             {showMoreMenu && (
               <div className="absolute right-0 top-full z-[9999] mt-1 min-w-[180px] rounded-lg border border-stroke bg-white py-1 shadow-lg dark:border-dark-3 dark:bg-gray-dark">
+                {onEditProfile ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowMoreMenu(false);
+                      onEditProfile();
+                    }}
+                    className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray/50 dark:text-gray-200 dark:hover:bg-dark-2"
+                  >
+                    Edit profile
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => {

@@ -82,6 +82,10 @@
       "One Month Savings Invoice": {
         "path": "/one-month-savings",
         "description": "Generate and track 1st month savings tax invoices for clients where Carbon Zero Australasia has achieved savings on their services"
+      },
+      "Discrepancy / New Revenue Invoice": {
+        "path": "/new-revenue",
+        "description": "Generate invoices for 20% of recovered discrepancies, rebates, or new revenue streams"
       }
     }
   },

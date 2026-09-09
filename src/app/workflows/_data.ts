@@ -1,6 +1,7 @@
 import {
   FolderPlus,
   MapPin,
+  Factory,
   FileSignature,
   Handshake,
   Zap,
@@ -31,10 +32,16 @@ export const WORKFLOW_CARD_GROUPS: { label: string; cards: WorkflowCard[] }[] = 
     label: "Member Onboarding",
     cards: [
       { title: "Google Drive - New Member Creation", description: "Create folder structure and file LOA", href: "/loa-upload", icon: FolderPlus, color: "from-green-500 to-emerald-600" },
-      { title: "Distributors", description: "Master list of distributors and Drive folders", href: "/distributors", icon: Handshake, color: "from-lime-600 to-emerald-700" },
+      { title: "Distributors", description: "Distributor Drive folders, documents, and uploads", href: "/distributors", icon: Handshake, color: "from-lime-600 to-emerald-700" },
       { title: "Distributor Folder Creation", description: "Create distributor folder from agreement", href: "/distributor-folder-creation", icon: FolderPlus, color: "from-lime-500 to-green-600" },
       { title: "Site Profiling", description: "Profile and capture site details", href: "/site-profiling", icon: MapPin, color: "from-teal-500 to-cyan-600" },
       { title: "New Member LOA Generation", description: "Generate new LOA and/or SFA documents", href: "/new-client-loa", icon: FileSignature, color: "from-purple-500 to-pink-600" },
+    ],
+  },
+  {
+    label: "Suppliers",
+    cards: [
+      { title: "Suppliers", description: "Energy, waste, and other supplier Drive folders — view forms and upload documents", href: "/suppliers", icon: Factory, color: "from-lime-600 to-teal-600" },
     ],
   },
   {
@@ -62,7 +69,9 @@ export const WORKFLOW_CARD_GROUPS: { label: string; cards: WorkflowCard[] }[] = 
     cards: [
       { title: "Document Generation", description: "Create and manage member documents", href: "/document-generation", icon: FileCheck, color: "from-orange-500 to-amber-600" },
       { title: "Signed Agreement Lodgement", description: "Lodge signed agreements", href: "/signed-agreement-lodgement", icon: FileUp, color: "from-emerald-500 to-teal-600" },
+      { title: "Send Alinta gas agreement", description: "Upload signed Alinta EF, look up MIRN, email LOA + agreement", href: "/alinta-gas-agreement-request", icon: Flame, color: "from-orange-500 to-red-600" },
       { title: "1st Month Savings Invoice", description: "First month savings invoicing", href: "/one-month-savings", icon: Receipt, color: "from-cyan-500 to-blue-600" },
+      { title: "Discrepancy / New Revenue Invoice", description: "20% of recovered discrepancy or new revenue", href: "/new-revenue", icon: Receipt, color: "from-teal-500 to-cyan-600" },
       { title: "Unsigned pipeline", description: "Load by state and invoice PDFs for unsigned sites", href: "/unsigned-pipeline", icon: FolderPlus, color: "from-orange-600 to-amber-700" },
     ],
   },

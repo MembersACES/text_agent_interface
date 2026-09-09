@@ -64,6 +64,27 @@ ${found.description}
 
   // ========== CONTEXTUAL RESPONSES ==========
 
+  // --- SITE PHOTOS (member-specific) ---
+  if (
+    lower.includes("site photo") ||
+    lower.includes("site photos") ||
+    (lower.includes("photo") && lower.includes("upload"))
+  ) {
+    return {
+      message: `📷 To upload **site photos** for a member:
+1️⃣ Open **CRM Members** and select the member profile.
+2️⃣ Go to the **Documents** tab.
+3️⃣ Filter **Site Photos** (or set Upload to **Site photos**) and click **Upload**.
+
+Photos are saved as originals in the member's Google Drive **Site Photos** folder — they are not merged into a PDF.
+
+💡 Contracts, EOIs, and other files still go in the other Documents categories. Use **Additional Documents** for non-photo extras.`,
+      suggestedLinks: [
+        { label: "Open CRM Members", href: "/crm-members" },
+      ],
+    };
+  }
+
   // --- UTILITIES / DMA / ENERGY ---
   // Note: "robot" is handled in Solution Range section, "waste" can be utility or solution
   if (

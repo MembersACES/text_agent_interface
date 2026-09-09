@@ -16,6 +16,7 @@ export default function CIElectricityInvoiceInfoPage() {
   const clientIdParam =
     searchParams.get("clientId") || searchParams.get("client_id") || searchParams.get("clientid");
   const clientId = clientIdParam ? parseInt(clientIdParam, 10) : NaN;
+  const clientFolderUrl = searchParams.get("client_folder_url") || searchParams.get("clientFolderUrl") || "";
   const formRef = useRef<any>(null);
 
   // Extract business information from URL parameters
@@ -59,6 +60,7 @@ export default function CIElectricityInvoiceInfoPage() {
       initialExtraFields={initialExtraFields}
       offerId={Number.isNaN(offerId) ? undefined : offerId}
       clientId={Number.isNaN(clientId) ? undefined : clientId}
+      clientFolderUrl={clientFolderUrl || undefined}
     />
   );
 } 

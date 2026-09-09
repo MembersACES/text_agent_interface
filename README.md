@@ -65,8 +65,8 @@ Follow these steps once to configure env files and dependencies. After that, use
 
 ### Prerequisites
 
-*   [Node.js](https://nodejs.org/en) (v18 or later recommended)
-*   [Python](https://www.python.org/) (v3.8 or later recommended) and `pip`
+*   [Node.js](https://nodejs.org/en) 20.9 or later (22 recommended; matches the frontend Docker image)
+*   [Python](https://www.python.org/) 3.11 or later and `pip` (3.12 recommended for Cloud Run; 3.14 is fine locally)
 *   Access to the Google Cloud project to get the `GOOGLE_CLIENT_ID`.
 *   The `text_agent_backend` project files located at `C:\My Projects\text_agent_backend`.
 

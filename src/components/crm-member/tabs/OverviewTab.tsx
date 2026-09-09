@@ -56,6 +56,7 @@ export interface OverviewTabProps {
   offers: Offer[];
   notes: Note[];
   onCreateOfferClick: () => void;
+  onSyncClientEmail?: (email: string) => Promise<boolean>;
 }
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
@@ -200,6 +201,7 @@ export function OverviewTab({
   offers,
   notes,
   onCreateOfferClick,
+  onSyncClientEmail,
 }: OverviewTabProps) {
   const { data: session } = useSession();
   const { showToast } = useToast();
@@ -322,6 +324,17 @@ export function OverviewTab({
             (businessInfo.record_ID as string) ||
             recordId,
         });
+      }
+      if (onSyncClientEmail) {
+        const synced = await onSyncClientEmail(editForm.email);
+        if (!synced) {
+          showToast(
+            "Business details saved, but the CRM contact email could not be updated",
+            "error"
+          );
+          setEditOpen(false);
+          return;
+        }
       }
       showToast("Business details updated", "success");
       setEditOpen(false);
@@ -794,7 +807,7 @@ export function OverviewTab({
                 Create offer
               </button>
               <Link
-                href={`/crm-members/${clientId}?tab=commercial`}
+                href={`/crm-members/${clientId}?tab=offers`}
                 className="text-xs font-semibold text-primary hover:underline"
               >
                 View all →
@@ -911,7 +924,7 @@ export function OverviewTab({
           </div>
         </div>
         <p className="mt-3 text-[11px] text-gray-400">
-          Saves to the LOA Business Details record in Airtable (same source as business-info).
+          Saves to the LOA Business Details record in Airtable and updates the CRM contact email.
         </p>
       </Modal>
 

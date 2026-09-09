@@ -528,6 +528,7 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility, cli
     if (rep.contact_name) url += `&contact_name=${encodeURIComponent(String(rep.contact_name))}`;
     if (rep.position) url += `&contact_position=${encodeURIComponent(String(rep.position))}`;
     if (rep.loa_sign_date) url += `&loa_sign_date=${encodeURIComponent(String(rep.loa_sign_date))}`;
+    if (driveUrl) url += `&client_folder_url=${encodeURIComponent(String(driveUrl))}`;
     return url;
   }
 

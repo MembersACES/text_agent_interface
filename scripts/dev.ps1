@@ -32,7 +32,7 @@ function Ensure-Backend {
     if (-not $SkipInstall) {
         Write-Host "Checking backend dependencies..." -ForegroundColor Cyan
         Push-Location $BackendRoot
-        & $venvPython -m pip install -q -r requirements.txt
+        & $venvPython -m pip install -q --upgrade -r requirements.txt
         Pop-Location
     }
 }

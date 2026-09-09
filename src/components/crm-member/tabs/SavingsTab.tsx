@@ -272,7 +272,7 @@ export function SavingsTab({ businessInfo }: SavingsTabProps) {
       if (data.document_link) window.open(data.document_link, "_blank");
       showToast(data.message || "Testimonial generated.", "success");
       setCalculateModalOpen(false);
-      if (pathname) router.push(`${pathname}?tab=commercial&subtab=testimonials`);
+      if (pathname) router.push(`${pathname}?tab=testimonials`);
     } catch (e: unknown) {
       showToast(e instanceof Error ? e.message : "Failed to generate testimonial", "error");
     }

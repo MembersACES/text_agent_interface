@@ -8,6 +8,7 @@ import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { getAutonomousApiBaseUrl, getApiBaseUrl } from "@/lib/utils";
+import { gmailThreadUrl, stopReasonLabel } from "@/lib/stop-reasons";
 import { dispatchRunNow, dispatchStepNow } from "@/lib/autonomous-dispatch";
 import { PageHeader } from "@/components/Layouts/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -43,6 +44,8 @@ interface RunDetail {
   business_name: string | null;
   context: Record<string, unknown>;
   steps: StepRow[];
+  email_ID?: string | null;
+  ack_draft?: { stop_reason: string; thread_id: string | null } | null;
 }
 
 interface Offer {
@@ -477,7 +480,7 @@ function StatusBadge({ status, stopReason }: { status: string; stopReason?: stri
     <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${style.bg} ${style.text}`}>
       <span className={`h-1.5 w-1.5 rounded-full ${style.dot} ${s === "running" ? "animate-pulse" : ""}`} />
       <span className="capitalize">{status.replace(/_/g, " ")}</span>
-      {stopReason && <span className="opacity-60">· {stopReason.replace(/_/g, " ")}</span>}
+      {stopReason && <span className="opacity-60">· {stopReasonLabel(stopReason)}</span>}
     </span>
   );
 }
@@ -1009,6 +1012,22 @@ export default function AutonomousRunDetailPage() {
               </Link>
               <div className="h-4 w-px bg-gray-200 dark:bg-gray-700" />
               <StatusBadge status={run.run_status} stopReason={run.stop_reason} />
+              {run.ack_draft && (
+                run.ack_draft.thread_id ? (
+                  <a
+                    href={gmailThreadUrl(run.ack_draft.thread_id)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="rounded-full bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800 px-2.5 py-1 text-xs text-sky-700 dark:text-sky-300 hover:underline"
+                  >
+                    Acknowledgement drafted — review in Gmail
+                  </a>
+                ) : (
+                  <span className="rounded-full bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800 px-2.5 py-1 text-xs text-sky-700 dark:text-sky-300">
+                    Acknowledgement drafted — review in Gmail
+                  </span>
+                )
+              )}
               <span className="rounded-full bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-2.5 py-1 text-xs text-gray-500">
                 {autonomousScheduleTimezoneLabel(run.timezone)}
               </span>
