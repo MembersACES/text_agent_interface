@@ -22,17 +22,28 @@ import { Modal } from "@/components/ui/modal";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import {
-  fetchDistributorDocuments,
-  fetchDistributorFolders,
-  uploadDistributorDocument,
-  type DistributorFile,
-  type DistributorFolder,
-  type DistributorPathItem,
-} from "@/lib/distributors-drive-api";
-import {
-  fetchDistributorMasterList,
-  type DistributorMasterRow,
-} from "@/lib/member-folder-api";
+  createSupplierFolder,
+  fetchSupplierDocuments,
+  fetchSupplierFolders,
+  uploadSupplierDocument,
+  type SupplierCategory,
+  type SupplierFile,
+  type SupplierFolder,
+  type SupplierPathItem,
+} from "@/lib/suppliers-api";
+
+const CATEGORY_FILTERS: { id: "all" | SupplierCategory; label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "energy", label: "Energy" },
+  { id: "waste", label: "Waste" },
+  { id: "other", label: "Other" },
+];
+
+const CATEGORY_LABEL: Record<SupplierCategory, string> = {
+  energy: "Energy",
+  waste: "Waste",
+  other: "Other",
+};
 
 function formatDriveDate(iso?: string | null): string | null {
   if (!iso) return null;
@@ -64,7 +75,7 @@ function fileTypeLabel(fileType: string): string {
   }
 }
 
-function canPreviewFile(file: DistributorFile | null): boolean {
+function canPreviewFile(file: SupplierFile | null): boolean {
   if (!file?.preview_url) return false;
   return ["pdf", "image", "sheet", "doc", "slides"].includes(file.file_type);
 }
@@ -76,55 +87,7 @@ function splitFilename(name: string): { stem: string; ext: string } {
   return { stem: base.slice(0, lastDot), ext: base.slice(lastDot) };
 }
 
-function folderIdFromDriveUrl(url: string): string {
-  const m = String(url).match(/\/folders\/([a-zA-Z0-9_-]+)/);
-  return m?.[1] ?? "";
-}
-
-function sheetForDistributor(
-  rows: DistributorMasterRow[],
-  folder: DistributorFolder | null,
-): DistributorMasterRow | null {
-  if (!folder) return null;
-  const byId = rows.find(
-    (row) => folderIdFromDriveUrl(String(row["Drive Folder URL"] ?? "")) === folder.id,
-  );
-  if (byId) return byId;
-  const display = (folder.display_name || folder.name).trim().toLowerCase();
-  const driveName = folder.name.trim().toLowerCase();
-  return (
-    rows.find((row) => {
-      const business = String(row["Distributor Business"] ?? "")
-        .trim()
-        .toLowerCase();
-      const trading = String(row["Trading As"] ?? "")
-        .trim()
-        .toLowerCase();
-      return (
-        (business && business === display) ||
-        (trading && trading === display) ||
-        (business && `a - ${business}` === driveName)
-      );
-    }) ?? null
-  );
-}
-
-function sheetSearchText(row: DistributorMasterRow | null): string {
-  if (!row) return "";
-  return [
-    row["Distributor Business"],
-    row["Trading As"],
-    row["Contact Name"],
-    row["Email"],
-    row["Phone"],
-    row["Mobile"],
-    row["Status"],
-  ]
-    .map((value) => String(value ?? "").toLowerCase())
-    .join(" ");
-}
-
-function DistributorsPageInner() {
+function SuppliersPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { data: session, status: sessionStatus } = useSession();
@@ -135,26 +98,25 @@ function DistributorsPageInner() {
   const accessToken =
     (session as { accessToken?: string } | null)?.accessToken ?? "";
 
-  const urlDistributorId = searchParams.get("id")?.trim() || null;
+  const urlSupplierId = searchParams.get("id")?.trim() || null;
   const urlFolderId = searchParams.get("folder")?.trim() || null;
 
-  const [distributors, setDistributors] = useState<DistributorFolder[]>([]);
+  const [suppliers, setSuppliers] = useState<SupplierFolder[]>([]);
   const [parentFolderUrl, setParentFolderUrl] = useState("");
-  const [sheetRows, setSheetRows] = useState<DistributorMasterRow[]>([]);
-  const [sheetUrl, setSheetUrl] = useState("");
   const [listLoading, setListLoading] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(urlDistributorId);
+  const [category, setCategory] = useState<"all" | SupplierCategory>("all");
+  const [selectedId, setSelectedId] = useState<string | null>(urlSupplierId);
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(
-    urlFolderId || urlDistributorId,
+    urlFolderId || urlSupplierId,
   );
 
-  const [files, setFiles] = useState<DistributorFile[]>([]);
-  const [subfolders, setSubfolders] = useState<DistributorFile[]>([]);
-  const [selectedMeta, setSelectedMeta] = useState<DistributorFolder | null>(null);
-  const [folderPath, setFolderPath] = useState<DistributorPathItem[]>([]);
-  const [currentFolder, setCurrentFolder] = useState<DistributorPathItem | null>(null);
+  const [files, setFiles] = useState<SupplierFile[]>([]);
+  const [subfolders, setSubfolders] = useState<SupplierFile[]>([]);
+  const [selectedMeta, setSelectedMeta] = useState<SupplierFolder | null>(null);
+  const [folderPath, setFolderPath] = useState<SupplierPathItem[]>([]);
+  const [currentFolder, setCurrentFolder] = useState<SupplierPathItem | null>(null);
   const [docsLoading, setDocsLoading] = useState(false);
   const [docsError, setDocsError] = useState<string | null>(null);
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
@@ -166,49 +128,51 @@ function DistributorsPageInner() {
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [uploadName, setUploadName] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createName, setCreateName] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
-  const loadDistributors = useCallback(async () => {
+  const loadSuppliers = useCallback(async () => {
     if (!token) return;
     setListLoading(true);
     setListError(null);
     try {
-      const data = await fetchDistributorFolders(token);
-      setDistributors(data.distributors);
+      const data = await fetchSupplierFolders(token);
+      setSuppliers(data.suppliers);
       setParentFolderUrl(data.parent_folder_url);
     } catch (err: unknown) {
       setListError(err instanceof Error ? err.message : String(err));
-      setDistributors([]);
+      setSuppliers([]);
     } finally {
       setListLoading(false);
     }
   }, [token]);
 
-  const loadSheet = useCallback(async () => {
-    if (!token) return;
-    try {
-      const data = await fetchDistributorMasterList(token, accessToken);
-      setSheetRows(data.rows);
-      setSheetUrl(data.spreadsheet_url || "");
-    } catch {
-      setSheetRows([]);
-    }
-  }, [token, accessToken]);
-
   useEffect(() => {
     if (sessionStatus === "loading") return;
-    void loadDistributors();
-    void loadSheet();
-  }, [sessionStatus, loadDistributors, loadSheet]);
+    void loadSuppliers();
+  }, [sessionStatus, loadSuppliers]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return distributors.filter((row) => {
+    return suppliers.filter((row) => {
+      if (category !== "all" && row.category !== category) return false;
       if (!q) return true;
-      const sheet = sheetForDistributor(sheetRows, row);
-      const haystack = `${row.display_name || ""} ${row.name} ${sheetSearchText(sheet)}`.toLowerCase();
-      return haystack.includes(q);
+      return row.name.toLowerCase().includes(q);
     });
-  }, [distributors, query, sheetRows]);
+  }, [suppliers, query, category]);
+
+  const grouped = useMemo(() => {
+    const order: SupplierCategory[] = ["energy", "waste", "other"];
+    return order
+      .map((key) => ({
+        key,
+        label: CATEGORY_LABEL[key],
+        rows: filtered.filter((row) => row.category === key),
+      }))
+      .filter((group) => group.rows.length > 0);
+  }, [filtered]);
 
   useEffect(() => {
     if (filtered.length === 0) {
@@ -217,13 +181,13 @@ function DistributorsPageInner() {
       return;
     }
     if (selectedId && filtered.some((row) => row.id === selectedId)) return;
-    const fromUrl = urlDistributorId
-      ? filtered.find((row) => row.id === urlDistributorId)
+    const fromUrl = urlSupplierId
+      ? filtered.find((row) => row.id === urlSupplierId)
       : undefined;
     const next = fromUrl?.id ?? filtered[0].id;
     setSelectedId(next);
     setCurrentFolderId(fromUrl && urlFolderId ? urlFolderId : next);
-  }, [filtered, selectedId, urlDistributorId, urlFolderId]);
+  }, [filtered, selectedId, urlSupplierId, urlFolderId]);
 
   useEffect(() => {
     const currentId = searchParams.get("id")?.trim() || "";
@@ -238,7 +202,7 @@ function DistributorsPageInner() {
     if (nextFolder) params.set("folder", nextFolder);
     else params.delete("folder");
     const qs = params.toString();
-    router.replace(qs ? `/distributors?${qs}` : "/distributors", { scroll: false });
+    router.replace(qs ? `/suppliers?${qs}` : "/suppliers", { scroll: false });
   }, [selectedId, currentFolderId, router, searchParams]);
 
   const loadDocuments = useCallback(async () => {
@@ -255,10 +219,10 @@ function DistributorsPageInner() {
     setDocsError(null);
     setUploadError(null);
     try {
-      const data = await fetchDistributorDocuments(token, currentFolderId);
+      const data = await fetchSupplierDocuments(token, currentFolderId);
       setFiles(data.files);
       setSubfolders(data.folders);
-      setSelectedMeta(data.distributor);
+      setSelectedMeta(data.supplier);
       setFolderPath(data.path);
       setCurrentFolder(data.current_folder ?? null);
       setSelectedFileId(data.files.length > 0 ? data.files[0].id : null);
@@ -284,11 +248,6 @@ function DistributorsPageInner() {
     [files, selectedFileId],
   );
 
-  const selectedSheet = useMemo(
-    () => sheetForDistributor(sheetRows, selectedMeta),
-    [sheetRows, selectedMeta],
-  );
-
   const handleUpload = useCallback(
     async (file: File, displayName: string) => {
       if (!token || !currentFolderId) return;
@@ -296,7 +255,7 @@ function DistributorsPageInner() {
       setUploadError(null);
       setUploadNotice(null);
       try {
-        const result = await uploadDistributorDocument(
+        const result = await uploadSupplierDocument(
           token,
           currentFolderId,
           file,
@@ -339,7 +298,7 @@ function DistributorsPageInner() {
     void handleUpload(pendingFile, displayName);
   };
 
-  const openDistributor = (id: string) => {
+  const openSupplier = (id: string) => {
     setSelectedId(id);
     setCurrentFolderId(id);
     setSelectedFileId(null);
@@ -347,24 +306,60 @@ function DistributorsPageInner() {
     setUploadError(null);
   };
 
+  const openCreateModal = () => {
+    setCreateName("");
+    setCreateError(null);
+    setCreateOpen(true);
+  };
+
+  const closeCreateModal = () => {
+    if (creating) return;
+    setCreateOpen(false);
+    setCreateError(null);
+  };
+
+  const confirmCreate = async () => {
+    const name = createName.trim();
+    if (!token || !name) return;
+    setCreating(true);
+    setCreateError(null);
+    try {
+      const created = await createSupplierFolder(token, name, accessToken);
+      setCreateOpen(false);
+      setCreateName("");
+      setCategory("all");
+      setQuery("");
+      await loadSuppliers();
+      setSelectedId(created.id);
+      setCurrentFolderId(created.id);
+      setUploadNotice(
+        created.created
+          ? `Created ${created.name}`
+          : `${created.name} already exists — opened that folder`,
+      );
+    } catch (err: unknown) {
+      setCreateError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCreating(false);
+    }
+  };
+
   const canPreview = canPreviewFile(selectedFile);
   const driveFolderUrl = currentFolder?.folder_url || selectedMeta?.folder_url;
   const nested = Boolean(selectedId && currentFolderId && currentFolderId !== selectedId);
-  const headingName = selectedMeta?.display_name || selectedMeta?.name || "Distributor";
 
   return (
     <div className="space-y-6">
       <PageHeader
-        pageName="Distributors"
-        title="Distributors"
-        description="Browse distributor folders from Google Drive. Open a distributor to view files and upload new documents. New folders get a Distributor Documents subfolder for the signed agreement."
+        pageName="Suppliers"
+        title="Suppliers"
+        description="Energy, waste, and other supplier folders from Google Drive. Open a supplier to view forms and upload new documents."
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="secondary"
               onClick={() => {
-                void loadDistributors();
-                void loadSheet();
+                void loadSuppliers();
                 void loadDocuments();
               }}
               disabled={listLoading || docsLoading || !token}
@@ -373,10 +368,11 @@ function DistributorsPageInner() {
               Refresh
             </Button>
             <Button
-              onClick={() => router.push("/distributor-folder-creation")}
+              onClick={openCreateModal}
+              disabled={!token}
               leftIcon={<FolderPlus className="h-4 w-4" />}
             >
-              New from agreement
+              New supplier
             </Button>
             {parentFolderUrl ? (
               <a
@@ -393,89 +389,111 @@ function DistributorsPageInner() {
         }
       />
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <div className="relative min-w-[220px] flex-1 max-w-md">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search distributors…"
+            placeholder="Search suppliers…"
             className="pl-9"
           />
         </div>
-        {sheetUrl ? (
-          <a
-            href={sheetUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
-          >
-            Open sheet <ExternalLink className="h-3.5 w-3.5" />
-          </a>
-        ) : null}
+        <div className="flex flex-wrap gap-1.5">
+          {CATEGORY_FILTERS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => setCategory(item.id)}
+              className={cn(
+                "rounded-full px-3 py-1 text-xs font-semibold transition-colors",
+                category === item.id
+                  ? "bg-primary text-white"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-2 dark:text-gray-300 dark:hover:bg-dark-3",
+              )}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {sessionStatus === "unauthenticated" || !token ? (
         <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200">
-          Sign in to view distributor folders.
+          Sign in to view supplier folders.
         </p>
-      ) : listLoading && distributors.length === 0 ? (
+      ) : listLoading && suppliers.length === 0 ? (
         <Skeleton className="h-64 w-full rounded-xl" />
       ) : listError ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200">
           <p className="font-medium">{listError}</p>
-          <Button className="mt-2" variant="secondary" onClick={() => void loadDistributors()}>
+          <Button className="mt-2" variant="secondary" onClick={() => void loadSuppliers()}>
             Retry
           </Button>
         </div>
       ) : filtered.length === 0 ? (
         <EmptyState
           icon={<FolderOpen className="h-10 w-10" />}
-          title={query.trim() ? "No matching distributors" : "No distributor folders"}
+          title={query.trim() || category !== "all" ? "No matching suppliers" : "No supplier folders"}
           description={
-            query.trim()
-              ? "Try another search."
-              : "Share 003-Distributors with the service account, then create a folder from a signed agreement."
+            query.trim() || category !== "all"
+              ? "Try another search or category."
+              : "Share 005-Suppliers → Supplier Folders with the service account, then set SUPPLIER_FOLDERS_PARENT_ID if Drive search cannot find it."
+          }
+          action={
+            query.trim() || category !== "all" ? undefined : (
+              <Button onClick={openCreateModal} leftIcon={<FolderPlus className="h-4 w-4" />}>
+                New supplier
+              </Button>
+            )
           }
         />
       ) : (
         <div className="grid gap-4 lg:grid-cols-[minmax(240px,320px)_1fr] lg:items-start">
           <div className="overflow-hidden rounded-xl border border-stroke bg-white dark:border-dark-3 dark:bg-gray-dark">
             <div className="border-b border-stroke px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:border-dark-3 dark:text-gray-400">
-              {filtered.length} distributor{filtered.length === 1 ? "" : "s"}
+              {filtered.length} supplier{filtered.length === 1 ? "" : "s"}
             </div>
-            <ul className="max-h-[min(70vh,720px)] divide-y divide-stroke overflow-y-auto dark:divide-dark-3">
-              {filtered.map((row) => {
-                const isActive = selectedId === row.id;
-                const label = row.display_name || row.name;
-                return (
-                  <li key={row.id}>
-                    <button
-                      type="button"
-                      onClick={() => openDistributor(row.id)}
-                      className={cn(
-                        "flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm transition-colors",
-                        isActive
-                          ? "bg-primary/10 font-semibold text-primary dark:bg-primary/20"
-                          : "text-dark hover:bg-gray-50 dark:text-white dark:hover:bg-dark-2",
-                      )}
-                    >
-                      <FolderOpen className="h-4 w-4 shrink-0 opacity-60" aria-hidden />
-                      <span className="min-w-0 flex-1 truncate" title={row.name}>
-                        {label}
-                      </span>
-                      <ChevronRight
-                        className={cn(
-                          "h-4 w-4 shrink-0 opacity-40",
-                          isActive && "text-primary opacity-100",
-                        )}
-                        aria-hidden
-                      />
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
+            <div className="max-h-[min(70vh,720px)] overflow-y-auto">
+              {grouped.map((group) => (
+                <div key={group.key}>
+                  <div className="sticky top-0 bg-gray-50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:bg-dark-2 dark:text-gray-400">
+                    {group.label}
+                  </div>
+                  <ul className="divide-y divide-stroke dark:divide-dark-3">
+                    {group.rows.map((row) => {
+                      const isActive = selectedId === row.id;
+                      return (
+                        <li key={row.id}>
+                          <button
+                            type="button"
+                            onClick={() => openSupplier(row.id)}
+                            className={cn(
+                              "flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm transition-colors",
+                              isActive
+                                ? "bg-primary/10 font-semibold text-primary dark:bg-primary/20"
+                                : "text-dark hover:bg-gray-50 dark:text-white dark:hover:bg-dark-2",
+                            )}
+                          >
+                            <FolderOpen className="h-4 w-4 shrink-0 opacity-60" aria-hidden />
+                            <span className="min-w-0 flex-1 truncate" title={row.name}>
+                              {row.name}
+                            </span>
+                            <ChevronRight
+                              className={cn(
+                                "h-4 w-4 shrink-0 opacity-40",
+                                isActive && "text-primary opacity-100",
+                              )}
+                              aria-hidden
+                            />
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              ))}
+            </div>
           </div>
 
           <div className="min-w-0 space-y-4">
@@ -483,22 +501,18 @@ function DistributorsPageInner() {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
                   <h2 className="text-base font-semibold text-dark dark:text-white">
-                    {headingName}
+                    {selectedMeta?.name || "Supplier"}
                   </h2>
                   {folderPath.length > 0 ? (
                     <nav className="mt-1 flex flex-wrap items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
                       {folderPath.map((crumb, index) => {
                         const isLast = index === folderPath.length - 1;
-                        const label =
-                          index === 0
-                            ? selectedMeta?.display_name || crumb.name
-                            : crumb.name;
                         return (
                           <span key={crumb.id} className="inline-flex min-w-0 items-center gap-1">
                             {index > 0 ? <ChevronRight className="h-3 w-3 shrink-0 opacity-50" /> : null}
                             {isLast ? (
                               <span className="truncate font-medium text-dark dark:text-white">
-                                {label}
+                                {crumb.name}
                               </span>
                             ) : (
                               <button
@@ -510,7 +524,7 @@ function DistributorsPageInner() {
                                 }}
                                 className="truncate hover:text-primary hover:underline"
                               >
-                                {label}
+                                {crumb.name}
                               </button>
                             )}
                           </span>
@@ -519,18 +533,7 @@ function DistributorsPageInner() {
                     </nav>
                   ) : selectedMeta ? (
                     <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                      Click a folder to browse files
-                    </p>
-                  ) : null}
-                  {selectedSheet ? (
-                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                      {[
-                        String(selectedSheet["Contact Name"] ?? "").trim(),
-                        String(selectedSheet["Email"] ?? "").trim(),
-                        String(selectedSheet["Status"] ?? "").trim(),
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
+                      {CATEGORY_LABEL[selectedMeta.category]} · click a folder to browse files
                     </p>
                   ) : null}
                 </div>
@@ -734,7 +737,7 @@ function DistributorsPageInner() {
         open={Boolean(pendingFile)}
         onClose={closeRenameModal}
         title="Rename upload"
-        id="distributor-rename-upload"
+        id="supplier-rename-upload"
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={closeRenameModal} disabled={uploading}>
@@ -754,7 +757,7 @@ function DistributorsPageInner() {
           <p className="text-sm text-gray-600 dark:text-gray-400">
             Saving into{" "}
             <span className="font-medium text-dark dark:text-white">
-              {currentFolder?.name || selectedMeta?.display_name || selectedMeta?.name || "this folder"}
+              {currentFolder?.name || selectedMeta?.name || "this folder"}
             </span>
             . Change the name if you want, then upload.
           </p>
@@ -785,21 +788,66 @@ function DistributorsPageInner() {
           </div>
         </div>
       </Modal>
+
+      <Modal
+        open={createOpen}
+        onClose={closeCreateModal}
+        title="New supplier folder"
+        id="supplier-create-folder"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={closeCreateModal} disabled={creating}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => void confirmCreate()}
+              disabled={!createName.trim() || creating}
+              loading={creating}
+              leftIcon={<FolderPlus className="h-4 w-4" />}
+            >
+              Create folder
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Creates a folder under Supplier Folders in Drive. You can upload documents into it
+            afterwards.
+          </p>
+          <Input
+            label="Supplier name"
+            value={createName}
+            onChange={(e) => setCreateName(e.target.value)}
+            placeholder="e.g. Visy"
+            autoFocus
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                void confirmCreate();
+              }
+            }}
+          />
+          {createError ? (
+            <p className="text-sm text-red-600 dark:text-red-400">{createError}</p>
+          ) : null}
+        </div>
+      </Modal>
     </div>
   );
 }
 
-export default function DistributorsPage() {
+export default function SuppliersPage() {
   return (
     <Suspense
       fallback={
         <div className="space-y-6">
-          <PageHeader pageName="Distributors" title="Distributors" />
+          <PageHeader pageName="Suppliers" title="Suppliers" />
           <Skeleton className="h-64 w-full rounded-xl" />
         </div>
       }
     >
-      <DistributorsPageInner />
+      <SuppliersPageInner />
     </Suspense>
   );
 }

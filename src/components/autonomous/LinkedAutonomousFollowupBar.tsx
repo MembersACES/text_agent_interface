@@ -5,8 +5,14 @@ import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { getAutonomousApiBaseUrl } from "@/lib/utils";
 import type { AutonomousSequenceLink } from "@/lib/autonomous-sequence-keys";
+import { templateCoversFlow } from "@/lib/autonomous-sequence-keys";
 
-type TemplateRow = { sequence_type: string; display_name: string; is_active: boolean };
+type TemplateRow = {
+  sequence_type: string;
+  display_name: string;
+  is_active: boolean;
+  linked_flow_keys?: string[];
+};
 
 let cacheToken = "";
 let cacheRows: TemplateRow[] | null = null;
@@ -25,10 +31,13 @@ function loadTemplates(token: string): Promise<TemplateRow[]> {
       throw new Error(typeof data?.detail === "string" ? data.detail : "Failed to load templates");
     }
     const rows: TemplateRow[] = Array.isArray(data)
-      ? data.map((t: { sequence_type?: string; display_name?: string; is_active?: boolean }) => ({
+      ? data.map((t: { sequence_type?: string; display_name?: string; is_active?: boolean; linked_flow_keys?: string[] }) => ({
           sequence_type: String(t.sequence_type || ""),
           display_name: String(t.display_name || t.sequence_type || ""),
           is_active: t.is_active !== false,
+          linked_flow_keys: Array.isArray(t.linked_flow_keys)
+            ? t.linked_flow_keys.map((k) => String(k || "").trim()).filter(Boolean)
+            : [],
         }))
       : [];
     cacheRows = rows;
@@ -86,7 +95,7 @@ export function LinkedAutonomousFollowupBar({
         <span className="text-[11px] text-amber-700">{error}</span>
       ) : (
         links.map((link) => {
-          const tpl = templates.find((t) => t.sequence_type === link.sequence_type);
+          const tpl = templates.find((t) => templateCoversFlow(t, link.sequence_type));
           return (
             <span
               key={link.sequence_type}
