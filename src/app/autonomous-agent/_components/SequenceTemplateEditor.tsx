@@ -9,6 +9,7 @@ import {
   templateCoversFlow,
   WIRED_SEQUENCE_TYPE_LABELS,
 } from "@/lib/autonomous-sequence-keys";
+import AckTemplateEditor from "./AckTemplateEditor";
 import SignatureHtmlEditor from "./SignatureHtmlEditor";
 import StartTestRunPanel from "./StartTestRunPanel";
 import RetellVoicePromptPanel, {
@@ -46,6 +47,8 @@ export interface SequenceTemplate {
   stop_on?: string[];
   ack_template_signed?: { subject: string; html: string } | null;
   ack_template_invoice?: { subject: string; html: string } | null;
+  /** "comparison" (proposal / savings figures) or "none". */
+  figures_mode?: string;
   steps: SequenceTemplateStep[];
 }
 
@@ -511,6 +514,17 @@ export default function SequenceTemplateEditor({
               placeholder="Talking points injected into every email, SMS, and voice call as {{extra_context}}. Add {{extra_context}} to the Retell prompt if the agent should say this."
             />
           </label>
+          <label className={labelCls}>
+            Figures in follow-up emails
+            <select
+              value={template.figures_mode ?? "comparison"}
+              onChange={(e) => updateTemplateLocal(template.id, { figures_mode: e.target.value })}
+              className={inputCls}
+            >
+              <option value="comparison">Comparison — quote verified savings, else refer to the proposal</option>
+              <option value="none">None — no figures, no proposal</option>
+            </select>
+          </label>
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-3 space-y-3">
             <p className={labelCls}>Stop when</p>
             <p className="text-[11px] font-normal normal-case tracking-normal text-gray-400">
@@ -548,69 +562,29 @@ export default function SequenceTemplateEditor({
               Negative sentiment (always on)
             </label>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <p className={labelCls}>Ack — agreement signed</p>
-              <input
-                type="text"
-                placeholder="Subject"
-                value={template.ack_template_signed?.subject ?? ""}
-                onChange={(e) =>
-                  updateTemplateLocal(template.id, {
-                    ack_template_signed: {
-                      subject: e.target.value,
-                      html: template.ack_template_signed?.html ?? "",
-                    },
-                  })
-                }
-                className={inputCls}
-              />
-              <textarea
-                placeholder="HTML body. Merge tokens like {{first_name}}."
-                value={template.ack_template_signed?.html ?? ""}
-                onChange={(e) =>
-                  updateTemplateLocal(template.id, {
-                    ack_template_signed: {
-                      subject: template.ack_template_signed?.subject ?? "",
-                      html: e.target.value,
-                    },
-                  })
-                }
-                rows={5}
-                className={textareaCls}
-              />
-            </div>
-            <div className="space-y-2">
-              <p className={labelCls}>Ack — invoice received</p>
-              <input
-                type="text"
-                placeholder="Subject"
-                value={template.ack_template_invoice?.subject ?? ""}
-                onChange={(e) =>
-                  updateTemplateLocal(template.id, {
-                    ack_template_invoice: {
-                      subject: e.target.value,
-                      html: template.ack_template_invoice?.html ?? "",
-                    },
-                  })
-                }
-                className={inputCls}
-              />
-              <textarea
-                placeholder="HTML body. Merge tokens like {{first_name}}."
-                value={template.ack_template_invoice?.html ?? ""}
-                onChange={(e) =>
-                  updateTemplateLocal(template.id, {
-                    ack_template_invoice: {
-                      subject: template.ack_template_invoice?.subject ?? "",
-                      html: e.target.value,
-                    },
-                  })
-                }
-                rows={5}
-                className={textareaCls}
-              />
-            </div>
+          <div className="space-y-4">
+            <AckTemplateEditor
+              title="Ack — agreement signed"
+              subject={template.ack_template_signed?.subject ?? ""}
+              html={template.ack_template_signed?.html ?? ""}
+              subjectClassName={inputCls}
+              onChange={(next) =>
+                updateTemplateLocal(template.id, {
+                  ack_template_signed: next,
+                })
+              }
+            />
+            <AckTemplateEditor
+              title="Ack — invoice received"
+              subject={template.ack_template_invoice?.subject ?? ""}
+              html={template.ack_template_invoice?.html ?? ""}
+              subjectClassName={inputCls}
+              onChange={(next) =>
+                updateTemplateLocal(template.id, {
+                  ack_template_invoice: next,
+                })
+              }
+            />
           </div>
           <button
             type="button"
