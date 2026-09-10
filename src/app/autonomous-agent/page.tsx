@@ -5,7 +5,7 @@ import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getAutonomousApiBaseUrl, cn } from "@/lib/utils";
-import { stopReasonLabel } from "@/lib/stop-reasons";
+import { gmailThreadUrl, stopReasonLabel } from "@/lib/stop-reasons";
 import { dispatchRunNowFromList } from "@/lib/autonomous-dispatch";
 import { PageHeader } from "@/components/Layouts/PageHeader";
 import { useToast } from "@/components/ui/toast";
@@ -39,6 +39,8 @@ interface AutonomousRunRow {
   next_step_at: string | null;
   steps_done: number;
   steps_total: number;
+  ack_draft_pending?: boolean;
+  ack_draft_thread_id?: string | null;
 }
 
 function apiDetail(data: unknown, fallback: string): string {
@@ -100,6 +102,24 @@ function ChannelBadge({ channel }: { channel: string }) {
   );
 }
 
+function DraftReadyBadge({ threadId }: { threadId?: string | null }) {
+  const cls =
+    "inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold tracking-wide w-fit bg-orange-100 text-orange-800 border-orange-400 dark:bg-orange-950/50 dark:text-orange-200 dark:border-orange-600";
+  if (threadId) {
+    return (
+      <a
+        href={gmailThreadUrl(threadId)}
+        target="_blank"
+        rel="noreferrer"
+        className={cls}
+      >
+        Draft ready
+      </a>
+    );
+  }
+  return <span className={cls}>Draft ready</span>;
+}
+
 function StatusPill({ status, stopReason }: { status: string; stopReason?: string | null }) {
   const map: Record<string, string> = {
     running: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800",
@@ -156,6 +176,7 @@ export default function AutonomousAgentPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [total, setTotal] = useState(0);
+  const [ackDraftPendingCount, setAckDraftPendingCount] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [stoppingId, setStoppingId] = useState<number | null>(null);
@@ -225,6 +246,9 @@ export default function AutonomousAgentPage() {
         const data = await res.json();
         setRuns(Array.isArray(data.items) ? data.items : []);
         setTotal(typeof data.total === "number" ? data.total : 0);
+        setAckDraftPendingCount(
+          typeof data.ack_draft_pending_count === "number" ? data.ack_draft_pending_count : 0,
+        );
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : "Failed to load sequences");
       } finally { setLoading(false); }
@@ -247,6 +271,9 @@ export default function AutonomousAgentPage() {
       if (!res.ok) throw new Error("Failed to load more");
       const data = await res.json();
       setRuns((prev) => [...prev, ...(Array.isArray(data.items) ? data.items : [])]);
+      if (typeof data.ack_draft_pending_count === "number") {
+        setAckDraftPendingCount(data.ack_draft_pending_count);
+      }
     } catch (e) { console.error("Load more sequences", e); }
     finally { setLoadingMore(false); }
   };
@@ -680,7 +707,11 @@ export default function AutonomousAgentPage() {
       <PageHeader
         pageName="Autonomous Agent"
         title="Autonomous Agent"
-        description="Follow-up sequence runs (email via n8n, voice via Retell). Data lives in the CRM backend."
+        description={
+          ackDraftPendingCount > 0
+            ? `Follow-up sequence runs (email via n8n, voice via Retell). ${ackDraftPendingCount} acknowledgement ${ackDraftPendingCount === 1 ? "draft is" : "drafts are"} ready for review.`
+            : "Follow-up sequence runs (email via n8n, voice via Retell). Data lives in the CRM backend."
+        }
       />
 
       <div className="mt-5 space-y-5">
@@ -709,13 +740,18 @@ export default function AutonomousAgentPage() {
                     aria-selected={tab === t}
                     onClick={() => setTab(t)}
                     className={cn(
-                      "px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all",
+                      "inline-flex items-center px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all",
                       tab === t
                         ? "bg-indigo-600 text-white shadow-sm"
                         : "text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800",
                     )}
                   >
                     {labels[t]}
+                    {t === "finished" && ackDraftPendingCount > 0 && (
+                      <span className="ml-1.5 inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-orange-100 px-1.5 py-0.5 text-[10px] font-semibold text-orange-800 dark:bg-orange-950/60 dark:text-orange-200">
+                        {ackDraftPendingCount}
+                      </span>
+                    )}
                   </button>
                 );
               })}
@@ -896,7 +932,12 @@ export default function AutonomousAgentPage() {
 
                       {/* status */}
                       <td className="px-4 py-3 whitespace-nowrap">
-                        <StatusPill status={r.run_status} stopReason={r.stop_reason} />
+                        <div className="flex flex-col gap-1">
+                          <StatusPill status={r.run_status} stopReason={r.stop_reason} />
+                          {r.ack_draft_pending && (
+                            <DraftReadyBadge threadId={r.ack_draft_thread_id} />
+                          )}
+                        </div>
                       </td>
 
                       {/* progress */}
