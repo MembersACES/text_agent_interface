@@ -360,6 +360,7 @@ export default function AutonomousAgentPage() {
             stop_on: template.stop_on ?? ["agreement_signed", "negative_sentiment_stop"],
             ack_template_signed: template.ack_template_signed ?? null,
             ack_template_invoice: template.ack_template_invoice ?? null,
+            figures_mode: template.figures_mode ?? "comparison",
           }),
         },
       );

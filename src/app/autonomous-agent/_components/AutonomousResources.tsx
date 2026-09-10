@@ -833,8 +833,8 @@ function Drafting() {
         </P>
         <P>
           Each sequence type carries its own prompt configuration in the DB —{" "}
-          <Code>email_system_prompt</Code>, <Code>email_example</Code>,{" "}
-          <Code>sms_system_prompt</Code>, <Code>sms_example</Code> and a <Code>retell_agent_id</Code>{" "}
+          <Code>system_prompt</Code>, <Code>email_example</Code>,{" "}
+          <Code>sms_example</Code> and a <Code>retell_agent_id</Code>{" "}
           (<Code>AutonomousSequenceType</Code> <Ref>db/models.py:22</Ref>). These feed the drafting
           agents as the system prompt and a worked example — this is the backend side of the
           &ldquo;Sequence templates&rdquo; tab.
@@ -911,7 +911,7 @@ function DataModel() {
               <Code key="t">autonomous_sequence_type</Code>,
               "Per-type prompts & voice agent",
               <span key="f">
-                <Code>email_system_prompt</Code>, <Code>sms_system_prompt</Code>, examples,{" "}
+                <Code>system_prompt</Code>, examples,{" "}
                 <Code>retell_agent_id</Code>
               </span>,
             ],
