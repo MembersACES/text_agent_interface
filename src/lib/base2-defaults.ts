@@ -115,8 +115,8 @@ export const DEFAULT_BASE2_DEFAULTS: Base2Defaults = {
         demandChargeDefault: 12.0,
         smeEnergyShare: 0.55,
         loadShapePeak: 0.4,
-        loadShapeOffPeak: 0.3,
-        loadShapeShoulder: 0.3,
+        loadShapeOffPeak: 0.6,
+        loadShapeShoulder: 0,
       },
   },
   gas: {

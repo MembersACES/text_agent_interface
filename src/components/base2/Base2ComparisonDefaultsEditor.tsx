@@ -238,7 +238,7 @@ export function Base2ComparisonDefaultsEditor({
         </div>
       </Section>
 
-      <Section title="SME Electricity" note="SME vs SME: offer = current × discount factor when a current rate exists. SME→C&I uses the energy share to unbundle a bundled bill, then C&I offer rates (by state). Load shape is used only when the SME bill has no peak/off-peak/shoulder split.">
+      <Section title="SME Electricity" note="SME vs SME: offer = current × discount factor when a current rate exists. SME→C&I uses the energy share to unbundle a bundled bill, then C&I offer rates (by state). Load shape is peak/off-peak only when the SME bill has no TOU split; shoulder is used only if the bill has shoulder kWh.">
         <div className="grid gap-3 sm:grid-cols-3">
           <NumInput label="Discount factor" value={sme.discountFactor} onChange={(v) => setSme({ discountFactor: v })} hint="e.g. 0.95 = 5% below current" />
           <NumInput label="Peak fallback (c/kWh)" value={sme.peakRateDefault} onChange={(v) => setSme({ peakRateDefault: v })} />
@@ -250,7 +250,7 @@ export function Base2ComparisonDefaultsEditor({
           <NumInput label="SME→C&I energy share" value={sme.smeEnergyShare} onChange={(v) => setSme({ smeEnergyShare: v })} hint="Fallback when no nearby C&I electricity bills (0–1)" />
           <NumInput label="Load shape peak" value={sme.loadShapePeak} onChange={(v) => setSme({ loadShapePeak: v })} hint="Share of kWh if bill is general/stepped" />
           <NumInput label="Load shape off-peak" value={sme.loadShapeOffPeak} onChange={(v) => setSme({ loadShapeOffPeak: v })} />
-          <NumInput label="Load shape shoulder" value={sme.loadShapeShoulder} onChange={(v) => setSme({ loadShapeShoulder: v })} />
+          <NumInput label="Load shape shoulder" value={sme.loadShapeShoulder} onChange={(v) => setSme({ loadShapeShoulder: v })} hint="Ignored unless the SME bill has TOU shoulder kWh" />
         </div>
       </Section>
 

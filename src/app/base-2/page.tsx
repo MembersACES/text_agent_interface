@@ -677,6 +677,9 @@ function applyBase2Defaults(d: Base2Defaults) {
 /** Keep in sync with backend `AIRTABLE_SME_GAS_NEAR_SCREEN_GJ` (default 850). */
 const SME_GAS_NEAR_BAND_LOW_GJ = 850;
 const SME_GAS_GAP_DAYS_BADGE_MIN = 30;
+/** SME → C&I electricity typically needs ~60 MWh p.a. (60,000 kWh). */
+const SME_ELEC_CI_THRESHOLD_KWH = 60_000;
+const SME_ELEC_CI_NEAR_KWH = 50_000;
 
 function roundGjForInput(n: number): number {
   return Math.round(n * 1000) / 1000;
@@ -766,13 +769,17 @@ function getSmeElecBundledCPerKwhFromState(c: UtilityComparison): number | undef
   return (ex / kwh) * 100;
 }
 
-function smeElecDefaultLoadShape(): { peak: number; offPeak: number; shoulder: number } {
+function smeElecDefaultLoadShape(includeShoulder: boolean): { peak: number; offPeak: number; shoulder: number } {
   const sme = activeBase2Defaults.electricity.sme;
   let peak = sme.loadShapePeak > 0 ? sme.loadShapePeak : 0.4;
-  let offPeak = sme.loadShapeOffPeak > 0 ? sme.loadShapeOffPeak : 0.3;
-  let shoulder = sme.loadShapeShoulder > 0 ? sme.loadShapeShoulder : 0.3;
+  let offPeak = sme.loadShapeOffPeak > 0 ? sme.loadShapeOffPeak : 0.6;
+  let shoulder = sme.loadShapeShoulder > 0 ? sme.loadShapeShoulder : 0;
+  if (!includeShoulder) {
+    offPeak += shoulder;
+    shoulder = 0;
+  }
   const sum = peak + offPeak + shoulder;
-  if (!(sum > 0)) return { peak: 0.4, offPeak: 0.3, shoulder: 0.3 };
+  if (!(sum > 0)) return includeShoulder ? { peak: 0.4, offPeak: 0.3, shoulder: 0.3 } : { peak: 0.4, offPeak: 0.6, shoulder: 0 };
   return { peak: peak / sum, offPeak: offPeak / sum, shoulder: shoulder / sum };
 }
 
@@ -787,15 +794,43 @@ function applySmeElecUsageShape(u: UtilityComparison): UtilityComparison {
   if (next.smeElecTariffShape === "tou" && touSum > 0) {
     next.smeElecLoadShapeApplied = false;
     next.monthlyUsage = touSum;
+    if (!(sh > 0)) {
+      next.shoulderUsage = undefined;
+      next.currentShoulderRate = undefined;
+    }
     return next;
   }
-  const shape = smeElecDefaultLoadShape();
+  const shape = smeElecDefaultLoadShape(false);
   next.peakUsage = parseFloat((total * shape.peak).toFixed(3));
   next.offPeakUsage = parseFloat((total * shape.offPeak).toFixed(3));
-  next.shoulderUsage = shape.shoulder > 0.001 ? parseFloat((total * shape.shoulder).toFixed(3)) : undefined;
+  next.shoulderUsage = undefined;
+  next.currentShoulderRate = undefined;
   next.monthlyUsage = total;
   next.smeElecLoadShapeApplied = true;
   return next;
+}
+
+function getSmeElecAnnualKwh(c: UtilityComparison): number | undefined {
+  const period = c.smeElecInvoicePeriodKwh;
+  if (period == null || !(period > 0) || !Number.isFinite(period)) return undefined;
+  return period * periodToAnnualMultiplier(c.elecInvoiceReviewDays);
+}
+
+function smeElecAnnualThresholdFlags(annualKwh: number | undefined): {
+  annualKwh: number | undefined;
+  annualMwh: number | undefined;
+  meets60Mwh: boolean | null;
+  near60Mwh: boolean | null;
+} {
+  if (annualKwh == null || !(annualKwh > 0) || !Number.isFinite(annualKwh)) {
+    return { annualKwh: undefined, annualMwh: undefined, meets60Mwh: null, near60Mwh: null };
+  }
+  return {
+    annualKwh,
+    annualMwh: annualKwh / 1000,
+    meets60Mwh: annualKwh >= SME_ELEC_CI_THRESHOLD_KWH,
+    near60Mwh: annualKwh >= SME_ELEC_CI_NEAR_KWH && annualKwh < SME_ELEC_CI_THRESHOLD_KWH,
+  };
 }
 
 function applySmeElecCiOfferRates(u: UtilityComparison): UtilityComparison {
@@ -836,8 +871,10 @@ function withSmeElecCiDerivedRates(u: UtilityComparison): UtilityComparison {
     const implied = parseFloat((bundled * share).toFixed(4));
     next.currentPeakRate = implied;
     next.currentOffPeakRate = implied;
-    if ((next.shoulderUsage ?? 0) > 0 || next.smeElecTariffShape === "tou") {
+    if ((next.shoulderUsage ?? 0) > 0) {
       next.currentShoulderRate = implied;
+    } else {
+      next.currentShoulderRate = undefined;
     }
   }
   next = applySmeElecCiOfferRates(next);
@@ -1055,7 +1092,7 @@ function offerComparisonButtonLabel(c: UtilityComparison): string {
 
 const BNE_GAS_WEBHOOK_URL = 'https://membersaces.app.n8n.cloud/webhook/generate-gas-ci-comparaison-b%26e';
 const FUTURE_GAS_WEBHOOK_URL = 'https://membersaces.app.n8n.cloud/webhook/generate-gas-ci-comparaison-future-contract';
-const SME_ELEC_CI_WEBHOOK_URL = 'https://membersaces.app.n8n.cloud/webhook-test/generate-electricity-sme-ci-comparaison-b2';
+const SME_ELEC_CI_WEBHOOK_URL = 'https://membersaces.app.n8n.cloud/webhook/generate-electricity-sme-ci-comparaison-b2';
 
 function applyCiGasOfferPeriod(
   payload: Record<string, unknown>,
@@ -1707,8 +1744,9 @@ export default function Base2Page() {
         );
         if (totalEx) rates.smeElecTotalExGst = totalEx;
         if (periodKwh) {
-          rates.smeElecInvoicePeriodKwh = periodKwh;
-          rates.monthlyUsage = periodKwh;
+          const roundedKwh = parseFloat(periodKwh.toFixed(3));
+          rates.smeElecInvoicePeriodKwh = roundedKwh;
+          rates.monthlyUsage = roundedKwh;
         }
         rates.smeElecTariffShape = shape;
         rates.smeElecComparisonMode = "invoice_blocks";
@@ -2028,7 +2066,7 @@ export default function Base2Page() {
       ) {
         next.currentPeakRate = parsedValue;
         next.currentOffPeakRate = parsedValue;
-        if ((next.shoulderUsage ?? 0) > 0 || next.smeElecTariffShape === "tou" || next.currentShoulderRate != null) {
+        if ((next.shoulderUsage ?? 0) > 0) {
           next.currentShoulderRate = parsedValue;
         }
       }
@@ -2282,12 +2320,15 @@ export default function Base2Page() {
     if (comparison.utilityType.includes('Electricity')) {
       if (comparison.utilityType === "SME Electricity" && comparison.smeElecComparisonMode === "sme_benchmark_stub") return savings;
       const smeElecCi = isSmeElecCiOffer(comparison);
-      const peakUsage = comparison.peakUsage || (comparison.monthlyUsage ? comparison.monthlyUsage * 0.4 : 0);
-      const offPeakUsage = comparison.offPeakUsage || (comparison.monthlyUsage ? comparison.monthlyUsage * 0.3 : 0);
+      let peakUsage = comparison.peakUsage || (comparison.monthlyUsage ? comparison.monthlyUsage * 0.4 : 0);
+      let offPeakUsage = comparison.offPeakUsage || (comparison.monthlyUsage ? comparison.monthlyUsage * (smeElecCi ? 0.6 : 0.3) : 0);
       const leftover = Math.max(0, (comparison.monthlyUsage || 0) - (comparison.peakUsage || 0) - (comparison.offPeakUsage || 0));
       const shoulderUsage = comparison.shoulderUsage && comparison.shoulderUsage > 0
         ? comparison.shoulderUsage
-        : (smeElecCi && leftover > 0 ? leftover : 0);
+        : 0;
+      if (smeElecCi && !(shoulderUsage > 0) && leftover > 0) {
+        offPeakUsage += leftover;
+      }
       const elecMult = periodToAnnualMultiplier(comparison.elecInvoiceReviewDays);
       const currentPeak = comparison.currentPeakRate || 0; const currentOffPeak = comparison.currentOffPeakRate || 0; const currentShoulder = comparison.currentShoulderRate || 0;
       const compPeak = comparison.comparisonPeakRate || 0; const compOffPeak = comparison.comparisonOffPeakRate || 0; const compShoulder = comparison.comparisonShoulderRate || 0;
@@ -2665,6 +2706,17 @@ export default function Base2Page() {
             const exGst = getSmeElecEffectiveTotalExGst(util);
             payload.sme_elec_effective_total_ex_gst = exGst != null ? exGst.toFixed(2) : "";
             payload.sme_elec_invoice_period_kwh = util.smeElecInvoicePeriodKwh != null && util.smeElecInvoicePeriodKwh > 0 ? util.smeElecInvoicePeriodKwh.toFixed(3) : "";
+            const annualFlags = smeElecAnnualThresholdFlags(getSmeElecAnnualKwh(util));
+            payload.sme_elec_annual_kwh = annualFlags.annualKwh != null ? annualFlags.annualKwh.toFixed(2) : "";
+            payload.sme_elec_annual_mwh = annualFlags.annualMwh != null ? annualFlags.annualMwh.toFixed(3) : "";
+            payload.sme_elec_meets_60mwh = annualFlags.meets60Mwh === true;
+            payload.sme_elec_near_60mwh = annualFlags.near60Mwh === true;
+            payload.sme_elec_threshold_kwh = String(SME_ELEC_CI_THRESHOLD_KWH);
+            if (!((util.shoulderUsage ?? 0) > 0)) {
+              payload.shoulder_rate_invoice = "0";
+              payload.shoulder_usage_invoice = "0";
+              payload.offer1ShoulderRate = "0";
+            }
           }
         } else if (util.utilityType === 'C&I Gas') {
           webhookUrl = ciGasLane === "bne"
@@ -3121,11 +3173,11 @@ export default function Base2Page() {
 
       rows.push(
         <tr key="peak" className="hover:bg-gray-50/50">
-          <td className={labelTd}>Peak Rate <span className="text-gray-400">(c/kWh)</span></td>
+          <td className={labelTd}>{smeElecCi ? <>Peak kWh <span className="text-gray-400">(C&amp;I offer band)</span></> : <>Peak Rate <span className="text-gray-400">(c/kWh)</span></>}</td>
           <td className={tdBase}>
             <input type="number" step="0.01" value={comparison.currentPeakRate || ''} onChange={(e) => updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentPeakRate', e.target.value)} className={inputCls} placeholder="c/kWh" />
             {smeElecCi && (
-              <div className="mt-1 text-[10px] text-violet-700 text-right">Implied energy (bundled × share)</div>
+              <div className="mt-1 text-[10px] text-violet-700 text-right">One implied energy rate for all kWh (bundled × share). Edit here — off-peak uses the same figure.</div>
             )}
             <RateUsageTotalHint rate={comparison.currentPeakRate} annualUsage={savings?.peakAnnualKwh} usageUnit="kWh" cents />
           </td>
@@ -3155,7 +3207,7 @@ export default function Base2Page() {
                   placeholder={String(DEFAULT_SME_CI_ELEC_ENERGY_SHARE)}
                 />
                 {comparison.smeElecLoadShapeApplied && (
-                  <div className="text-[10px] text-amber-700 text-right">kWh split from default load shape (no TOU on bill)</div>
+                  <div className="text-[10px] text-amber-700 text-right">kWh split from default peak/off-peak load shape (no TOU on bill)</div>
                 )}
               </div>
             )}
@@ -3171,10 +3223,20 @@ export default function Base2Page() {
       );
       rows.push(
         <tr key="offpeak" className="hover:bg-gray-50/50">
-          <td className={labelTd}>Off-Peak Rate <span className="text-gray-400">(c/kWh)</span></td>
+          <td className={labelTd}>{smeElecCi ? <>Off-peak kWh <span className="text-gray-400">(C&amp;I offer band)</span></> : <>Off-Peak Rate <span className="text-gray-400">(c/kWh)</span></>}</td>
           <td className={tdBase}>
-            <input type="number" step="0.01" value={comparison.currentOffPeakRate || ''} onChange={(e) => updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentOffPeakRate', e.target.value)} className={inputCls} placeholder="c/kWh" />
-            <RateUsageTotalHint rate={comparison.currentOffPeakRate} annualUsage={savings?.offPeakAnnualKwh} usageUnit="kWh" cents />
+            {smeElecCi ? (
+              <div className="text-right">
+                <div className="font-mono text-sm tabular-nums text-gray-500">{comparison.currentOffPeakRate != null && Number.isFinite(comparison.currentOffPeakRate) ? comparison.currentOffPeakRate.toFixed(4) : "—"}</div>
+                <div className="mt-1 text-[10px] text-violet-700">Same implied energy — not a separate off-peak tariff</div>
+                <RateUsageTotalHint rate={comparison.currentOffPeakRate} annualUsage={savings?.offPeakAnnualKwh} usageUnit="kWh" cents />
+              </div>
+            ) : (
+              <>
+                <input type="number" step="0.01" value={comparison.currentOffPeakRate || ''} onChange={(e) => updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentOffPeakRate', e.target.value)} className={inputCls} placeholder="c/kWh" />
+                <RateUsageTotalHint rate={comparison.currentOffPeakRate} annualUsage={savings?.offPeakAnnualKwh} usageUnit="kWh" cents />
+              </>
+            )}
           </td>
           <td className={tdBase}>
             <input type="number" step="0.01" value={comparison.offPeakUsage || ''} onChange={(e) => updateUsage(comparison.utilityType, comparison.identifier, 'offPeakUsage', e.target.value)} className={inputCls} placeholder="kWh" />
@@ -3197,10 +3259,20 @@ export default function Base2Page() {
       if (comparison.currentShoulderRate && comparison.currentShoulderRate > 0) {
         rows.push(
           <tr key="shoulder" className="hover:bg-gray-50/50">
-            <td className={labelTd}>Shoulder Rate <span className="text-gray-400">(c/kWh)</span></td>
+            <td className={labelTd}>{smeElecCi ? <>Shoulder kWh <span className="text-gray-400">(C&amp;I offer band)</span></> : <>Shoulder Rate <span className="text-gray-400">(c/kWh)</span></>}</td>
             <td className={tdBase}>
-              <input type="number" step="0.01" value={comparison.currentShoulderRate || ''} onChange={(e) => updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentShoulderRate', e.target.value)} className={inputCls} />
-              <RateUsageTotalHint rate={comparison.currentShoulderRate} annualUsage={savings?.shoulderAnnualKwh} usageUnit="kWh" cents />
+              {smeElecCi ? (
+                <div className="text-right">
+                  <div className="font-mono text-sm tabular-nums text-gray-500">{comparison.currentShoulderRate != null && Number.isFinite(comparison.currentShoulderRate) ? comparison.currentShoulderRate.toFixed(4) : "—"}</div>
+                  <div className="mt-1 text-[10px] text-violet-700">Same implied energy — not a separate shoulder tariff</div>
+                  <RateUsageTotalHint rate={comparison.currentShoulderRate} annualUsage={savings?.shoulderAnnualKwh} usageUnit="kWh" cents />
+                </div>
+              ) : (
+                <>
+                  <input type="number" step="0.01" value={comparison.currentShoulderRate || ''} onChange={(e) => updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentShoulderRate', e.target.value)} className={inputCls} />
+                  <RateUsageTotalHint rate={comparison.currentShoulderRate} annualUsage={savings?.shoulderAnnualKwh} usageUnit="kWh" cents />
+                </>
+              )}
             </td>
             <td className={tdBase}>
               <input type="number" step="0.01" value={comparison.shoulderUsage || ''} onChange={(e) => updateUsage(comparison.utilityType, comparison.identifier, 'shoulderUsage', e.target.value)} className={inputCls} placeholder="kWh" />
@@ -4240,8 +4312,8 @@ export default function Base2Page() {
                             <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-4">
                               <div className="mb-2 text-sm font-semibold text-gray-900">Bundled rate (C&I-style comparison)</div>
                               <p className="mb-3 text-[11px] leading-snug text-gray-500">
-                                Current energy ¢/kWh = reference energy share × (invoice $ ÷ kWh). Time-of-use, general usage and steps are collapsed into one bundled rate. C&I offer rates still use peak / off-peak / shoulder kWh
-                                {comparison.smeElecTariffShape === "tou" ? " from this bill." : comparison.smeElecTariffShape === "stepped" ? " via a default load shape (stepped general-usage bill)." : comparison.smeElecTariffShape === "flat" ? " via a default load shape (general-usage bill)." : "."}
+                                Current energy ¢/kWh = reference energy share × (invoice $ ÷ kWh). Time-of-use, general usage and steps are collapsed into one bundled rate. C&I offer rates use peak / off-peak kWh
+                                {comparison.smeElecTariffShape === "tou" ? " from this bill (shoulder only if the bill has it)." : comparison.smeElecTariffShape === "stepped" ? " via a default peak/off-peak load shape (stepped general-usage bill)." : comparison.smeElecTariffShape === "flat" ? " via a default peak/off-peak load shape (general-usage bill)." : "."}
                               </p>
                               {comparison.smeElecTariffShape && comparison.smeElecTariffShape !== "unknown" && (
                                 <p className="mb-3 inline-flex rounded-full border border-indigo-200 bg-white px-2.5 py-0.5 text-[11px] font-medium text-indigo-800">
@@ -4262,10 +4334,39 @@ export default function Base2Page() {
                                 </div>
                                 <div>
                                   <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-gray-500">Bill-period usage (kWh)</label>
-                                  <input type="number" step="0.001" min={0} value={comparison.smeElecInvoicePeriodKwh != null && comparison.smeElecInvoicePeriodKwh > 0 ? comparison.smeElecInvoicePeriodKwh : ""} onChange={(e) => { const v = e.target.value; const n = v === "" ? NaN : parseFloat(v); updateSmeElecBillModeling(comparison.identifier, { smeElecInvoicePeriodKwh: v === "" || !Number.isFinite(n) || n <= 0 ? undefined : n }); }} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-400" placeholder="e.g. from invoice" />
+                                  <input type="number" step="0.001" min={0} value={comparison.smeElecInvoicePeriodKwh != null && comparison.smeElecInvoicePeriodKwh > 0 ? Number(comparison.smeElecInvoicePeriodKwh.toFixed(3)) : ""} onChange={(e) => { const v = e.target.value; const n = v === "" ? NaN : parseFloat(v); updateSmeElecBillModeling(comparison.identifier, { smeElecInvoicePeriodKwh: v === "" || !Number.isFinite(n) || n <= 0 ? undefined : n }); }} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-400" placeholder="e.g. from invoice" />
+                                  <label className="mt-2 mb-1 block text-[10px] font-medium uppercase tracking-wide text-gray-500">Invoice days</label>
+                                  <input type="number" step="1" min={1} value={comparison.elecInvoiceReviewDays ?? ""} onChange={(e) => updateUsage(comparison.utilityType, comparison.identifier, "elecInvoiceReviewDays", e.target.value)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-400" placeholder="blank = monthly ×12" />
                                 </div>
                               </div>
                               {(() => { const ex = getSmeElecEffectiveTotalExGst(comparison); const kwh = comparison.smeElecInvoicePeriodKwh; if (ex != null && ex > 0 && kwh != null && Number.isFinite(kwh) && kwh > 0) { const bundled = (ex / kwh) * 100; return <p className="mt-2 rounded-lg border border-blue-100 bg-white/80 px-3 py-2 font-mono text-[11px] text-gray-800">{formatAud(ex)} ex-GST ÷ {kwh.toLocaleString("en-AU", { maximumFractionDigits: 1 })} kWh = <strong className="text-blue-800">{bundled.toFixed(2)} c/kWh</strong> bundled</p>; } return <p className="mt-2 text-[10px] text-amber-700">Enter a positive invoice total and bill-period kWh to compute bundled ¢/kWh.</p>; })()}
+                              {(() => {
+                                const flags = smeElecAnnualThresholdFlags(getSmeElecAnnualKwh(comparison));
+                                if (flags.annualKwh == null || flags.annualMwh == null) return null;
+                                const days = comparison.elecInvoiceReviewDays;
+                                const how = days != null && days > 0 ? `${days} d → ${flags.annualKwh.toLocaleString("en-AU", { maximumFractionDigits: 0 })} kWh/yr` : `monthly ×12 → ${flags.annualKwh.toLocaleString("en-AU", { maximumFractionDigits: 0 })} kWh/yr`;
+                                let badgeClass = "border-gray-200 bg-white text-gray-700";
+                                let label = "Under 60 MWh p.a.";
+                                if (flags.meets60Mwh) {
+                                  badgeClass = "border-emerald-200 bg-emerald-50 text-emerald-900";
+                                  label = "≥60 MWh p.a. — C&I threshold met";
+                                } else if (flags.near60Mwh) {
+                                  badgeClass = "border-amber-200 bg-amber-50 text-amber-900";
+                                  label = "50–60 MWh p.a. — near C&I threshold";
+                                }
+                                return (
+                                  <div className="mt-2 space-y-1.5">
+                                    <p className="text-[11px] text-gray-600">
+                                      Est. annual: <span className="font-mono font-semibold tabular-nums">{flags.annualMwh.toLocaleString("en-AU", { maximumFractionDigits: 1 })} MWh</span>
+                                      <span className="text-gray-400"> ({how})</span>
+                                    </p>
+                                    <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${badgeClass}`}>{label}</span>
+                                    {!(days != null && days > 0) && (
+                                      <p className="text-[10px] text-amber-700">Add invoice days if this bill is not monthly — ×12 can over- or under-state the 60 MWh screen.</p>
+                                    )}
+                                  </div>
+                                );
+                              })()}
                             </div>
                             <div className="flex flex-wrap items-center gap-2">
                               <span className="text-xs font-medium text-gray-600">Postcode (C&I reference bills)</span>
@@ -4421,6 +4522,11 @@ export default function Base2Page() {
                       </div>
                     )}
 
+                    {isSmeElecCiOffer(comparison) && (
+                      <p className="mb-2 text-[11px] leading-snug text-gray-600">
+                        This SME bill has <strong>one</strong> implied energy rate (bundled ¢/kWh × energy share), not separate peak/off-peak current tariffs. Peak and off-peak usage exist only so the C&I offer rates can be applied to a load shape.
+                      </p>
+                    )}
                     {/* Comparison Table */}
                     <div className="overflow-x-auto rounded-xl border border-gray-200 mb-4">
                       <table className="w-full text-sm border-collapse">
