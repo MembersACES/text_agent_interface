@@ -1055,6 +1055,7 @@ function offerComparisonButtonLabel(c: UtilityComparison): string {
 
 const BNE_GAS_WEBHOOK_URL = 'https://membersaces.app.n8n.cloud/webhook/generate-gas-ci-comparaison-b%26e';
 const FUTURE_GAS_WEBHOOK_URL = 'https://membersaces.app.n8n.cloud/webhook/generate-gas-ci-comparaison-future-contract';
+const SME_ELEC_CI_WEBHOOK_URL = 'https://membersaces.app.n8n.cloud/webhook-test/generate-electricity-sme-ci-comparaison-b2';
 
 function applyCiGasOfferPeriod(
   payload: Record<string, unknown>,
@@ -2591,9 +2592,11 @@ export default function Base2Page() {
             payload.period_years = '5';
           }
         } else if (util.utilityType === 'C&I Electricity' || isSmeElecCiOffer(util)) {
-          webhookUrl = isRsl
-            ? 'https://membersaces.app.n8n.cloud/webhook/generate-electricity-ci-comparaison-b2-rsl'
-            : 'https://membersaces.app.n8n.cloud/webhook/generate-electricity-ci-comparaison-b2';
+          webhookUrl = isSmeElecCiOffer(util)
+            ? SME_ELEC_CI_WEBHOOK_URL
+            : isRsl
+              ? 'https://membersaces.app.n8n.cloud/webhook/generate-electricity-ci-comparaison-b2-rsl'
+              : 'https://membersaces.app.n8n.cloud/webhook/generate-electricity-ci-comparaison-b2';
           const details = util.invoiceData?.electricity_ci_invoice_details || util.invoiceData?.electricity_sme_invoice_details || {}; const fullData = details?.full_invoice_data || {};
           payload.nmi = util.identifier; payload.invoice_id = fullData['Invoice ID'] || details?.invoice_id || ''; payload.site_address = fullData['Site Address'] || details?.site_address || businessInfo?.site_address || ''; payload.retailer = fullData['Retailer'] || details?.retailer || ''; payload.invoice_number = fullData['Invoice Number'] || details?.invoice_number || '';
           // Pass EXACT values to n8n — never round rates/usage (a comparison must use the real numbers).
