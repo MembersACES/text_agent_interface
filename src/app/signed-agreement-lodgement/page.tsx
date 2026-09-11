@@ -8,6 +8,7 @@ import { signIn } from "next-auth/react";
 import { ToolPageLayout } from "@/components/Layouts/ToolPageLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { fetchEmailRecipients, type OperationalEmailRecipient } from "@/lib/operational-email-api";
 
 interface ContractTypes {
   contracts: string[];
@@ -197,6 +198,28 @@ export default function SignedAgreementLodgementPage() {
   const [loading, setLoading] = useState(false);
   const [availableContracts, setAvailableContracts] = useState<ContractTypes>({ contracts: [], eois: [] });
   const [submittedBusinessName, setSubmittedBusinessName] = useState("");
+  const [contractRecipients, setContractRecipients] = useState<OperationalEmailRecipient[]>([]);
+  const [eoiRecipients, setEoiRecipients] = useState<OperationalEmailRecipient[]>([]);
+
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    Promise.all([
+      fetchEmailRecipients(token, "signed_contract"),
+      fetchEmailRecipients(token, "eoi"),
+    ])
+      .then(([contracts, eois]) => {
+        if (cancelled) return;
+        setContractRecipients(contracts.recipients);
+        setEoiRecipients(eois.recipients);
+      })
+      .catch((err) => {
+        console.warn("Could not load live recipient lists, using built-in maps", err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
 
   // Listen for file data from postMessage
   useEffect(() => {
@@ -470,7 +493,20 @@ export default function SignedAgreementLodgementPage() {
 
   // Get utility types based on agreement type
   const getUtilityTypes = () => {
-    return agreementType === "contract" ? UTILITY_TYPES : EOI_TYPES;
+    const base: Record<string, string[]> = {
+      ...(agreementType === "contract" ? UTILITY_TYPES : EOI_TYPES),
+    };
+    const rows = agreementType === "eoi" ? eoiRecipients : contractRecipients;
+    for (const row of rows) {
+      const groups = [row.group_name, ...(row.extra_groups || [])].filter(Boolean);
+      for (const group of groups) {
+        if (!base[group]) base[group] = [];
+        if (!base[group].includes(row.key)) {
+          base[group] = [...base[group], row.key];
+        }
+      }
+    }
+    return base;
   };
 
   // Get suppliers for selected utility type
@@ -510,8 +546,16 @@ export default function SignedAgreementLodgementPage() {
   };
 
   // Get supplier email for selected contract type
-  const getSupplierEmail = (): { name: string; email: string } | null => {
+  const getSupplierEmail = (): { name: string; email: string; isPlaceholder?: boolean } | null => {
     if (!contractType) return null;
+
+    const rows = agreementType === "eoi" ? eoiRecipients : contractRecipients;
+    const match = rows.find(
+      (row) => row.key === contractType || row.key.toLowerCase() === contractType.toLowerCase(),
+    );
+    if (match) {
+      return { name: match.display_name, email: match.email, isPlaceholder: match.is_placeholder };
+    }
     
     const mapping = agreementType === "eoi" ? EOI_EMAIL_MAPPINGS : CONTRACT_EMAIL_MAPPINGS;
     
@@ -870,6 +914,14 @@ useEffect(() => {
                     <div className="text-blue-700 text-xs break-all">
                       {supplierInfo.email}
                     </div>
+                    {supplierInfo.isPlaceholder ? (
+                      <div className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-amber-700">
+                        Placeholder address — replace on Email Templates before live send
+                      </div>
+                    ) : null}
+                    <a href="/email-templates" className="mt-2 inline-block text-xs font-medium text-primary hover:underline">
+                      Edit recipients
+                    </a>
                   </div>
                 </div>
               );

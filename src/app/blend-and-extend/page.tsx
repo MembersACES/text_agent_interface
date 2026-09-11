@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { getApiBaseUrl } from "@/lib/utils";
 import { ToolPageLayout } from "@/components/Layouts/ToolPageLayout";
+import { fetchEmailRecipients, type OperationalEmailRecipient } from "@/lib/operational-email-api";
 
 const BE_SUPPLIER_OPTIONS = ["Origin C&I", "Alinta C&I", "Shell C&I", "Momentum C&I", "Data Quote"] as const;
 
@@ -86,6 +87,7 @@ export default function BlendExtendRequestPage() {
 
   // Selected retailers state
   const [selectedRetailers, setSelectedRetailers] = useState<string[]>([]);
+  const [quoteRecipients, setQuoteRecipients] = useState<OperationalEmailRecipient[]>([]);
   
   // Modal state
   const [showSummaryModal, setShowSummaryModal] = useState(false);
@@ -97,6 +99,25 @@ export default function BlendExtendRequestPage() {
 
   const [successMessage, setSuccessMessage] = useState<string>('');
   const [showSuccessModalState, setShowSuccessModalState] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!token) return;
+    fetchEmailRecipients(token, "quote_request")
+      .then((res) => setQuoteRecipients(res.recipients))
+      .catch((err) => console.warn("Could not load quote recipient lists", err));
+  }, [token]);
+
+  const supplierOptions = Array.from(
+    new Set([
+      ...BE_SUPPLIER_OPTIONS,
+      ...quoteRecipients
+        .filter((row) => {
+          const groups = (row.group_name || "all").split(",").map((part) => part.trim());
+          return groups.includes("all") || groups.includes("electricity_ci") || groups.includes("gas_ci");
+        })
+        .map((row) => row.key),
+    ]),
+  );
 
   const beDefaultDatesApplied = useRef(false);
 
@@ -1437,7 +1458,7 @@ export default function BlendExtendRequestPage() {
               }}
             >
               <option value="">Select supplier…</option>
-              {BE_SUPPLIER_OPTIONS.map((r) => (
+              {supplierOptions.map((r) => (
                 <option key={r} value={r}>
                   {r}
                   {r === "Data Quote" ? " (test inbox)" : ""}

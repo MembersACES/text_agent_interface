@@ -49,6 +49,7 @@ const QUICK_ACTIONS = [
   { href: "/distributor-folder-creation", label: "Distributor folder from agreement", icon: FolderPlus, section: "Actions" },
   { href: "/tasks", label: "View all tasks", icon: ClipboardList, section: "Actions" },
   { href: "/unsigned-pipeline", label: "Unsigned pipeline", icon: FileText, section: "Navigate" },
+  { href: "/email-templates", label: "Email templates", icon: FileText, section: "Navigate" },
   { href: "/crm", label: "CRM dashboard", icon: LayoutDashboard, section: "Navigate" },
   { href: "/crm-members", label: "Browse members", icon: Users, section: "Navigate" },
   { href: "/offers", label: "Browse offers", icon: ListTodo, section: "Navigate" },

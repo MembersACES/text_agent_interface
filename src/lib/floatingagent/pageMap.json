@@ -67,6 +67,10 @@
         "path": "/signed-agreement-lodgement",
         "description": "Upload and manage signed contracts and agreements"
       },
+      "Email Templates": {
+        "path": "/email-templates",
+        "description": "Edit data request, quote request, and signed agreement email copy and recipients"
+      },
       "Drive Filing": {
         "path": "/drive-filing",
         "description": "File documents directly to Google Drive"

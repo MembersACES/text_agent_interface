@@ -81,6 +81,7 @@ export const JOB_GROUPS: NavGroupItem[] = [
     items: [
       { title: "Invoice & Data Lodgement", url: "/document-lodgement" },
       { title: "Unsigned pipeline", url: "/unsigned-pipeline" },
+      { title: "Email Templates", url: "/email-templates" },
       { title: "Invoicing", url: "/invoicing" },
     ],
   },
