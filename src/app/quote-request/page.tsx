@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { getApiBaseUrl } from "@/lib/utils";
 import { PageHeader } from "@/components/Layouts/PageHeader";
+import { fetchEmailRecipients, type OperationalEmailRecipient } from "@/lib/operational-email-api";
 
 export default function QuoteRequestPage() {
   const { data: session } = useSession();
@@ -40,6 +41,7 @@ export default function QuoteRequestPage() {
 
   // Selected retailers state
   const [selectedRetailers, setSelectedRetailers] = useState<string[]>([]);
+  const [quoteRecipients, setQuoteRecipients] = useState<OperationalEmailRecipient[]>([]);
   
   // Modal state
   const [showSummaryModal, setShowSummaryModal] = useState(false);
@@ -60,30 +62,36 @@ export default function QuoteRequestPage() {
   // Available retailers based on utility type
   const getAvailableRetailers = () => {
     const dataQuoteRetailer = 'Data Quote';
-    
-    if (utility === 'electricity_ci' || utility === 'gas_ci') {
-      return [
-        dataQuoteRetailer,
-        'Origin C&I',
-        'Alinta C&I', 
-        'Shell C&I',
-        'Momentum C&I'
-      ];
-    } else if (utility === 'electricity_sme' || utility === 'gas_sme') {
-      return [
-        dataQuoteRetailer,
-        'Origin SME',
-        'Alinta SME',
-        'Shell SME', 
-        'Momentum SME'
-      ];
-    } else if (utility === 'waste') {
-      return [dataQuoteRetailer, 'Waste Provider 1', 'Waste Provider 2'];
-    } else if (utility === 'oil') {
-      return [dataQuoteRetailer, 'Oil Provider 1', 'Oil Provider 2'];
-    }
-    return [dataQuoteRetailer];
+    const hardcoded = (() => {
+      if (utility === 'electricity_ci' || utility === 'gas_ci') {
+        return [dataQuoteRetailer, 'Origin C&I', 'Alinta C&I', 'Shell C&I', 'Momentum C&I'];
+      }
+      if (utility === 'electricity_sme' || utility === 'gas_sme') {
+        return [dataQuoteRetailer, 'Origin SME', 'Alinta SME', 'Shell SME', 'Momentum SME'];
+      }
+      if (utility === 'waste') {
+        return [dataQuoteRetailer, 'Waste Provider 1', 'Waste Provider 2'];
+      }
+      if (utility === 'oil') {
+        return [dataQuoteRetailer, 'Oil Provider 1', 'Oil Provider 2'];
+      }
+      return [dataQuoteRetailer];
+    })();
+    const extra = quoteRecipients
+      .filter((row) => {
+        const groups = (row.group_name || "all").split(",").map((part) => part.trim());
+        return groups.includes("all") || (utility ? groups.includes(utility) : true);
+      })
+      .map((row) => row.key);
+    return Array.from(new Set([...hardcoded, ...extra]));
   };
+
+  useEffect(() => {
+    if (!token) return;
+    fetchEmailRecipients(token, "quote_request")
+      .then((res) => setQuoteRecipients(res.recipients))
+      .catch((err) => console.warn("Could not load quote recipient lists", err));
+  }, [token]);
 
   // Auto-select Data Quote for SME on mount
   useEffect(() => {

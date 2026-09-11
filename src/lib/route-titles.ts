@@ -59,6 +59,7 @@ const ROUTE_TITLES: Record<string, string> = {
   "/canva-pitch-deck": "Canva Pitch Deck",
   "/document-generation": "Document Generation",
   "/signed-agreement-lodgement": "Signed Agreement Lodgement",
+  "/email-templates": "Email Templates",
   "/alinta-gas-agreement-request": "Send Alinta gas agreement",
   "/one-month-savings": "1st Month Savings Invoice",
   "/new-revenue": "Discrepancy / New Revenue Invoice",
