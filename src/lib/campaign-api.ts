@@ -128,7 +128,13 @@ export async function saveCampaignRows(
   headersList: string[],
   rows: string[][],
   column_map: Record<string, string>,
-): Promise<{ rows: number; unique_recipients: number; groups_with_conflicts: unknown[] }> {
+): Promise<{
+  rows: number;
+  unique_recipients: number;
+  groups_with_conflicts: unknown[];
+  pending?: number;
+  suppressed_addresses?: string[];
+}> {
   const res = await fetch(`${base()}/api/autonomous/campaigns/${id}/rows`, {
     method: "POST",
     headers: headers(token),
@@ -159,7 +165,14 @@ export async function startCampaign(token: string, id: number) {
     headers: headers(token),
   });
   if (!res.ok) throw new Error(await readError(res, "Could not start campaign"));
-  return res.json();
+  return res.json() as Promise<{
+    ok: boolean;
+    started: number;
+    pending: number;
+    skipped_suppressed?: number;
+    skipped_suppressed_addresses?: string[];
+    status: CampaignStatus;
+  }>;
 }
 
 export async function pauseCampaign(token: string, id: number): Promise<CampaignSummary> {
@@ -178,6 +191,30 @@ export async function resumeCampaign(token: string, id: number): Promise<Campaig
   });
   if (!res.ok) throw new Error(await readError(res, "Could not resume campaign"));
   return res.json();
+}
+
+export type SuppressionRow = {
+  id: number;
+  email: string;
+  reason: string | null;
+  source: string | null;
+  created_at: string | null;
+};
+
+export async function listSuppressions(token: string): Promise<SuppressionRow[]> {
+  const res = await fetch(`${base()}/api/autonomous/campaigns/suppressions`, {
+    headers: headers(token),
+  });
+  if (!res.ok) throw new Error(await readError(res, "Could not load suppressions"));
+  return res.json();
+}
+
+export async function deleteSuppression(token: string, id: number): Promise<void> {
+  const res = await fetch(`${base()}/api/autonomous/campaigns/suppressions/${id}`, {
+    method: "DELETE",
+    headers: headers(token),
+  });
+  if (!res.ok) throw new Error(await readError(res, "Could not remove suppression"));
 }
 
 export type CampaignSequenceOption = {

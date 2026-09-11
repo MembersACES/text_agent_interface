@@ -21,9 +21,11 @@ import {
 } from "@/lib/autonomous-sequence-keys";
 import {
   createCampaign,
+  deleteSuppression,
   getCampaign,
   listCampaigns,
   listSequenceTypes,
+  listSuppressions,
   patchCampaign,
   pauseCampaign,
   resumeCampaign,
@@ -33,6 +35,7 @@ import {
   type CampaignSequenceOption,
   type CampaignStatus,
   type CampaignSummary,
+  type SuppressionRow,
 } from "@/lib/campaign-api";
 import { renderTemplate } from "@/lib/merge-template";
 
@@ -87,6 +90,9 @@ type CampaignCtx = {
   onStart: () => Promise<void>;
   onPause: () => Promise<void>;
   onResume: () => Promise<void>;
+  suppressions: SuppressionRow[];
+  suppressionsError: string | null;
+  onDeleteSuppression: (id: number) => Promise<void>;
 };
 
 const Ctx = createContext<CampaignCtx | null>(null);
@@ -135,6 +141,8 @@ export function CampaignWorkspace({
   const [rowCounts, setRowCounts] = useState<CampaignSummary["row_counts"] | null>(null);
   const [campaignId, setCampaignId] = useState<number | null>(null);
   const [serverRows, setServerRows] = useState<{ id: number; sourceHint: string }[]>([]);
+  const [suppressions, setSuppressions] = useState<SuppressionRow[]>([]);
+  const [suppressionsError, setSuppressionsError] = useState<string | null>(null);
 
   const readOnly = status !== "draft";
   const resolvedSubject = renderTemplate(subject, currentMergeRow).output;
@@ -173,6 +181,12 @@ export function CampaignWorkspace({
         setSequenceType((current) => current || pickDefaultSequence(outbound));
       })
       .catch((e) => fail(e instanceof Error ? e.message : "Could not load sequences"));
+    void listSuppressions(token)
+      .then((rows) => {
+        setSuppressions(rows);
+        setSuppressionsError(null);
+      })
+      .catch((e) => setSuppressionsError(e instanceof Error ? e.message : "Could not load suppressions"));
   }, [token, fail]);
 
   const outboundTypes = useMemo(
@@ -212,7 +226,7 @@ export function CampaignWorkspace({
       })),
     );
     setMessage(
-      `${campaign.row_counts.rows} rows · ${campaign.row_counts.unique_recipients} unique recipients · ${campaign.row_counts.human_only} human only`,
+      `${campaign.row_counts?.rows ?? 0} rows · ${campaign.row_counts?.unique_recipients ?? 0} unique recipients · ${campaign.row_counts?.human_only ?? 0} human only`,
     );
   }
 
@@ -283,10 +297,21 @@ export function CampaignWorkspace({
         setRowCounts({
           rows: summary.rows,
           unique_recipients: summary.unique_recipients,
-          pending: summary.rows,
+          pending: summary.pending ?? summary.rows,
           human_only: 0,
           test_sends: rowCounts?.test_sends || 0,
         });
+        const suppressed = summary.suppressed_addresses ?? [];
+        if (suppressed.length) {
+          const named =
+            suppressed.length === 1
+              ? `${suppressed[0]} has unsubscribed`
+              : `These addresses have unsubscribed: ${suppressed.join(", ")}`;
+          applyCampaign(await getCampaign(token, id));
+          setCampaigns(await listCampaigns(token));
+          fail(named);
+          return;
+        }
       }
       applyCampaign(await getCampaign(token, id));
       setCampaigns(await listCampaigns(token));
@@ -355,7 +380,20 @@ export function CampaignWorkspace({
     try {
       const result = await startCampaign(token, campaignId);
       applyCampaign(await getCampaign(token, campaignId));
-      ok(`Started ${result.started} · ${result.pending} still pending`);
+      const skipped = result.skipped_suppressed_addresses ?? [];
+      if (skipped.length) {
+        const named =
+          skipped.length === 1
+            ? `${skipped[0]} has unsubscribed`
+            : `These addresses have unsubscribed: ${skipped.join(", ")}`;
+        if (result.started > 0) {
+          ok(`Started ${result.started} · ${named}`);
+        } else {
+          fail(named);
+        }
+      } else {
+        ok(`Started ${result.started} · ${result.pending} still pending`);
+      }
     } catch (e) {
       fail(e instanceof Error ? e.message : "Start failed");
     } finally {
@@ -386,6 +424,20 @@ export function CampaignWorkspace({
       ok("Resumed.");
     } catch (e) {
       fail(e instanceof Error ? e.message : "Resume failed");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function onDeleteSuppression(id: number) {
+    if (!token) return;
+    setBusy("suppression");
+    try {
+      await deleteSuppression(token, id);
+      setSuppressions((prev) => prev.filter((row) => row.id !== id));
+      ok("Suppression cleared. That address can be uploaded again.");
+    } catch (e) {
+      fail(e instanceof Error ? e.message : "Could not remove suppression");
     } finally {
       setBusy(null);
     }
@@ -424,6 +476,9 @@ export function CampaignWorkspace({
     onStart,
     onPause,
     onResume,
+    suppressions,
+    suppressionsError,
+    onDeleteSuppression,
   };
 
   return (
@@ -647,12 +702,56 @@ export function CampaignSendCard() {
   );
 }
 
+export function CampaignSuppressionsCard() {
+  const { suppressions, suppressionsError, onDeleteSuppression, busy } = useCampaign();
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Unsubscribed addresses</CardTitle>
+        <CardDescription>
+          Recipients who unsubscribed. Remove a row to allow that address on the next upload or start.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {suppressionsError ? <p className="text-sm text-red-700">{suppressionsError}</p> : null}
+        {suppressions.length === 0 && !suppressionsError ? (
+          <p className="text-sm text-gray-500">No suppressions.</p>
+        ) : (
+          <ul className="divide-y divide-gray-100 rounded-lg border border-gray-200 dark:divide-gray-800 dark:border-gray-700">
+            {suppressions.map((row) => (
+              <li key={row.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+                <span className="min-w-0">
+                  <span className="block truncate font-medium">{row.email}</span>
+                  <span className="text-xs text-gray-500">
+                    {row.reason || "unsubscribed"}
+                    {row.source ? ` · ${row.source}` : ""}
+                  </span>
+                </span>
+                <Button
+                  variant="secondary"
+                  onClick={() => void onDeleteSuppression(row.id)}
+                  disabled={busy !== null}
+                  loading={busy === "suppression"}
+                >
+                  Remove
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function CampaignControls(props: Omit<Props, "children">) {
   return (
     <CampaignWorkspace {...props}>
       <div className="space-y-5">
         <CampaignSetupCard />
         <CampaignSendCard />
+        <CampaignSuppressionsCard />
       </div>
     </CampaignWorkspace>
   );
