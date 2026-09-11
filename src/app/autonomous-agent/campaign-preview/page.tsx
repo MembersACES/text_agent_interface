@@ -57,6 +57,7 @@ import MergeTemplateEditor, {
 import {
   CampaignSendCard,
   CampaignSetupCard,
+  CampaignSuppressionsCard,
   CampaignWorkspace,
 } from "../_components/CampaignControls";
 
@@ -321,6 +322,7 @@ export default function CampaignPreviewPage() {
           coverage={coverage}
         />
         <CampaignSendCard />
+        <CampaignSuppressionsCard />
       </div>
       </CampaignWorkspace>
     </>

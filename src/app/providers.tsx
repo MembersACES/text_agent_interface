@@ -17,14 +17,19 @@ import { BRAND } from "@/lib/brand";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 
-function isDedicatedAuthPath(pathname: string): boolean {
-  return pathname.startsWith("/auth/") || pathname.startsWith("/api/auth/");
+function isPublicPath(pathname: string): boolean {
+  return (
+    pathname.startsWith("/auth/") ||
+    pathname.startsWith("/api/auth/") ||
+    pathname.startsWith("/api/autonomous/campaigns/unsubscribe") ||
+    pathname === "/unsubscribe"
+  );
 }
 
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { data: session, status } = useSession();
   const pathname = usePathname() || "";
-  const onAuthPage = isDedicatedAuthPath(pathname);
+  const onAuthPage = isPublicPath(pathname);
 
   useEffect(() => {
     if (status !== "unauthenticated" || onAuthPage) return;
@@ -42,7 +47,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   const userEmail = session?.user?.email || "";
   const isDomainValid = session && isAllowedEmailDomain(userEmail);
 
-  if (status === "loading") {
+  if (status === "loading" && !onAuthPage) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-canvas dark:bg-canvas-dark">
         <div className="text-center">
