@@ -1,5 +1,6 @@
 import {
   OFFER_ACTIVITY_LABELS,
+  OFFER_ACTIVITY_TYPES,
   type OfferActivityType,
 } from "@/constants/crm";
 
@@ -26,6 +27,19 @@ export function activityTypeLabel(type: string): string {
   if (type === "client_manual_activity") return "Manual activity";
   return OFFER_ACTIVITY_LABELS[type as OfferActivityType] ?? type.replace(/_/g, " ");
 }
+
+export const ACTIVITY_TYPE_FILTER_OPTIONS: { value: string; label: string }[] = [
+  { value: "note_added", label: activityTypeLabel("note_added") },
+  { value: "task_created", label: activityTypeLabel("task_created") },
+  { value: "task_edited", label: activityTypeLabel("task_edited") },
+  { value: "task_completed", label: activityTypeLabel("task_completed") },
+  { value: "testimonial_activity", label: activityTypeLabel("testimonial_activity") },
+  { value: "client_manual_activity", label: "Manual activity (client)" },
+  ...OFFER_ACTIVITY_TYPES.map((type) => ({
+    value: type,
+    label: activityTypeLabel(type),
+  })),
+];
 
 export function formatActivityTimestamp(iso: string): string {
   try {

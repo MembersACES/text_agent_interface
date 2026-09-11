@@ -7,17 +7,21 @@ import { getApiBaseUrl } from "@/lib/utils";
 import { PageHeader } from "@/components/Layouts/PageHeader";
 import { Button } from "@/components/ui/button";
 import { SurfacePanel, FilterInput, FilterSelect, FilterTextarea } from "@/components/ui/surface-panel";
+import { Modal } from "@/components/ui/modal";
+import { useToast } from "@/components/ui/toast";
 import { ActivityReportSummary } from "@/components/reports/activity-report-summary";
 import { ActivityReportTable } from "@/components/reports/activity-report-table";
+import { FilterCombobox } from "@/components/reports/filter-combobox";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Inbox } from "lucide-react";
+import { Download, Inbox } from "lucide-react";
 import {
-  OFFER_ACTIVITY_TYPES,
-  OFFER_ACTIVITY_LABELS,
-  type OfferActivityType,
-} from "@/constants/crm";
+  ACTIVITY_TYPE_FILTER_OPTIONS,
+  activityTypeLabel,
+} from "@/lib/activity-display";
 
 const MAX_ACTIVITIES = 100;
+const TEST_CLEANUP_EMAIL = "test@acesolutions.com.au";
+const TEST_CLEANUP_CONFIRM = "REMOVE";
 const CUSTOM_ACTIVITY_TYPES = new Set([
   "note_added",
   "task_created",
@@ -68,6 +72,16 @@ interface ClientOption {
   business_name: string;
 }
 
+interface TestDataPreview {
+  email: string;
+  offer_activity_count: number;
+  client_manual_count: number;
+  strategy_item_count: number;
+  autonomous_runs_unlinked: number;
+  by_type: Record<string, number>;
+  sample_clients: string[];
+}
+
 function parseClientListResponse(data: unknown): ClientOption[] {
   if (Array.isArray(data)) {
     return data.map((row: { id: number; business_name?: string | null }) => ({
@@ -86,9 +100,18 @@ export default function ActivityReportPage() {
   const token = (session as any)?.id_token || (session as any)?.accessToken;
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { showToast } = useToast();
+  const isAcesStaff = ((session as { user?: { email?: string } })?.user?.email || "")
+    .trim()
+    .toLowerCase()
+    .endsWith("@acesolutions.com.au");
 
   const [activities, setActivities] = useState<ActivityItem[]>([]);
-  const [clients, setClients] = useState<ClientOption[]>([]);
+  const [filterClient, setFilterClient] = useState<ClientOption | null>(null);
+  const [clientFilterOptions, setClientFilterOptions] = useState<ClientOption[]>([]);
+  const [clientFilterLoading, setClientFilterLoading] = useState(false);
+  const [clientFilterQuery, setClientFilterQuery] = useState("");
+  const clientFilterReq = useRef(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<
@@ -110,6 +133,13 @@ export default function ActivityReportPage() {
   const [addActivitySaving, setAddActivitySaving] = useState(false);
   const [addActivityError, setAddActivityError] = useState<string | null>(null);
   const [activitiesVersion, setActivitiesVersion] = useState(0);
+  const [exporting, setExporting] = useState(false);
+  const [removeTestOpen, setRemoveTestOpen] = useState(false);
+  const [removeTestPreview, setRemoveTestPreview] = useState<TestDataPreview | null>(null);
+  const [removeTestLoading, setRemoveTestLoading] = useState(false);
+  const [removeTestSubmitting, setRemoveTestSubmitting] = useState(false);
+  const [removeTestConfirm, setRemoveTestConfirm] = useState("");
+  const [removeTestError, setRemoveTestError] = useState<string | null>(null);
 
   const filterClientId = searchParams.get("client_id") ?? "";
   const filterActivityType = searchParams.get("activity_type") ?? "";
@@ -145,6 +175,124 @@ export default function ActivityReportPage() {
   );
 
   const hasAnyFilter = !!(filterClientId || filterActivityType || filterCreatedAfter || filterCreatedBefore);
+
+  useEffect(() => {
+    if (!token) return;
+    const reqId = ++clientFilterReq.current;
+    setClientFilterLoading(true);
+    const t = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const params = new URLSearchParams();
+          params.set("limit", "30");
+          if (clientFilterQuery.trim().length >= 2) params.set("query", clientFilterQuery.trim());
+          const res = await fetch(`${getApiBaseUrl()}/api/clients?${params.toString()}`, {
+            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          });
+          if (reqId !== clientFilterReq.current) return;
+          if (!res.ok) {
+            setClientFilterOptions([]);
+            return;
+          }
+          const data = await res.json();
+          setClientFilterOptions(parseClientListResponse(data));
+        } catch {
+          if (reqId === clientFilterReq.current) setClientFilterOptions([]);
+        } finally {
+          if (reqId === clientFilterReq.current) setClientFilterLoading(false);
+        }
+      })();
+    }, 300);
+    return () => {
+      window.clearTimeout(t);
+    };
+  }, [token, clientFilterQuery]);
+
+  const handleExportCsv = useCallback(async () => {
+    if (!token) return;
+    try {
+      setExporting(true);
+      const params = new URLSearchParams();
+      if (filterClientId) params.set("client_id", filterClientId);
+      if (filterActivityType) params.set("activity_type", filterActivityType);
+      params.set("created_after", effectiveAfter);
+      params.set("created_before", effectiveBefore);
+      const res = await fetch(`${getApiBaseUrl()}/api/reports/activities/export?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(typeof data.detail === "string" ? data.detail : "Failed to export activities");
+      }
+      const blob = await res.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `activity-report-${effectiveAfter}-to-${effectiveBefore}.csv`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : "Failed to export activities", "error");
+    } finally {
+      setExporting(false);
+    }
+  }, [token, filterClientId, filterActivityType, effectiveAfter, effectiveBefore, showToast]);
+
+  const openRemoveTest = useCallback(async () => {
+    if (!token) return;
+    setRemoveTestOpen(true);
+    setRemoveTestConfirm("");
+    setRemoveTestError(null);
+    setRemoveTestPreview(null);
+    try {
+      setRemoveTestLoading(true);
+      const res = await fetch(`${getApiBaseUrl()}/api/reports/activities/test-data`, {
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(typeof data.detail === "string" ? data.detail : "Failed to load test data preview");
+      }
+      setRemoveTestPreview((await res.json()) as TestDataPreview);
+    } catch (e: unknown) {
+      setRemoveTestError(e instanceof Error ? e.message : "Failed to load test data preview");
+    } finally {
+      setRemoveTestLoading(false);
+    }
+  }, [token]);
+
+  const handlePurgeTestData = useCallback(async () => {
+    if (!token) return;
+    if (removeTestConfirm.trim() !== TEST_CLEANUP_CONFIRM) return;
+    try {
+      setRemoveTestSubmitting(true);
+      setRemoveTestError(null);
+      const res = await fetch(`${getApiBaseUrl()}/api/reports/activities/test-data`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(typeof data.detail === "string" ? data.detail : "Failed to remove test activities");
+      }
+      const result = (await res.json()) as {
+        offer_activities_deleted: number;
+        client_manual_deleted: number;
+      };
+      const total = (result.offer_activities_deleted || 0) + (result.client_manual_deleted || 0);
+      setRemoveTestOpen(false);
+      setRemoveTestConfirm("");
+      setRemoveTestPreview(null);
+      setActivitiesVersion((v) => v + 1);
+      showToast(
+        total === 1 ? "Removed 1 test activity" : `Removed ${total} test activities`,
+        "success",
+      );
+    } catch (e: unknown) {
+      setRemoveTestError(e instanceof Error ? e.message : "Failed to remove test activities");
+    } finally {
+      setRemoveTestSubmitting(false);
+    }
+  }, [token, removeTestConfirm, showToast]);
 
   const handleDeleteActivity = useCallback(async () => {
     if (!token || !deleteTarget) return;
@@ -249,10 +397,9 @@ export default function ActivityReportPage() {
     if (fidStr && token) {
       const fid = parseInt(fidStr, 10);
       if (Number.isFinite(fid)) {
-        const from = clients.find((c) => c.id === fid);
-        if (from) {
-          setAddActivitySelectedClient(from);
-          setClientSearchInput(from.business_name);
+        if (filterClient && filterClient.id === fid) {
+          setAddActivitySelectedClient(filterClient);
+          setClientSearchInput(filterClient.business_name);
         } else {
           void (async () => {
             try {
@@ -273,7 +420,7 @@ export default function ActivityReportPage() {
       }
     }
     setAddActivityOpen(true);
-  }, [filterClientId, clients, token]);
+  }, [filterClientId, filterClient, token]);
 
   const handleAddActivity = useCallback(async () => {
     if (!token) return;
@@ -331,25 +478,33 @@ export default function ActivityReportPage() {
   }, [token, addActivitySelectedClient, addActivityOfferPreset, addActivityOfferCustom, addActivityNote, addActivityLink]);
 
   useEffect(() => {
-    if (!token) {
-      setLoading(false);
+    if (!token || !filterClientId) {
+      setFilterClient(null);
       return;
     }
-    const fetchClients = async () => {
+    const fid = parseInt(filterClientId, 10);
+    if (!Number.isFinite(fid)) {
+      setFilterClient(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
       try {
-        const res = await fetch(`${getApiBaseUrl()}/api/clients`, {
+        const res = await fetch(`${getApiBaseUrl()}/api/clients/${fid}`, {
           headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         });
-        if (res.ok) {
-          const data = await res.json();
-          setClients(Array.isArray(data) ? data : []);
-        }
+        if (!res.ok || cancelled) return;
+        const j = (await res.json()) as { id: number; business_name?: string | null };
+        const name = (j.business_name && String(j.business_name).trim()) || `Client ${j.id}`;
+        if (!cancelled) setFilterClient({ id: j.id, business_name: name });
       } catch {
-        setClients([]);
+        if (!cancelled) setFilterClient(null);
       }
+    })();
+    return () => {
+      cancelled = true;
     };
-    fetchClients();
-  }, [token]);
+  }, [token, filterClientId]);
 
   useEffect(() => {
     if (!searchParams.has("created_after") && !searchParams.has("created_before")) {
@@ -405,7 +560,8 @@ export default function ActivityReportPage() {
         ];
 
         const clientIdNum = filterClientId ? parseInt(filterClientId, 10) : 0;
-        let clientName: string | null = clientIdNum ? clients.find((c) => c.id === clientIdNum)?.business_name ?? null : null;
+        let clientName: string | null =
+          clientIdNum && filterClient?.id === clientIdNum ? filterClient.business_name : null;
         if (clientIdNum && !clientName) {
           try {
             const cr = await fetch(`${getApiBaseUrl()}/api/clients/${clientIdNum}`, {
@@ -464,7 +620,7 @@ export default function ActivityReportPage() {
       }
     };
     fetchActivities();
-  }, [token, filterClientId, filterActivityType, effectiveAfter, effectiveBefore, activitiesVersion, clients]);
+  }, [token, filterClientId, filterActivityType, effectiveAfter, effectiveBefore, activitiesVersion, filterClient]);
 
   const summaryStats = useMemo(() => {
     const clientIds = new Set<number>();
@@ -497,38 +653,35 @@ export default function ActivityReportPage() {
 
         <SurfacePanel className="pg-fade-up pg-stagger-2 p-4">
           <div className="flex flex-wrap items-end gap-2">
-            <FilterSelect
+            <FilterCombobox
               value={filterClientId}
-              onChange={(e) => setFilters({ client_id: e.target.value })}
-              aria-label="Filter by client"
-              className="min-w-[10rem] flex-1 sm:flex-none"
-            >
-              <option value="">All clients</option>
-              {clients.map((c) => (
-                <option key={c.id} value={String(c.id)}>
-                  {c.business_name}
-                </option>
-              ))}
-            </FilterSelect>
-            <FilterSelect
+              selectedLabel={filterClient?.business_name}
+              allLabel="All clients"
+              placeholder="Search clients…"
+              ariaLabel="Filter by client"
+              options={clientFilterOptions.map((c) => ({
+                value: String(c.id),
+                label: c.business_name,
+              }))}
+              loading={clientFilterLoading}
+              onQueryChange={setClientFilterQuery}
+              onChange={(next) => {
+                if (!next) setFilterClient(null);
+                else {
+                  const match = clientFilterOptions.find((c) => String(c.id) === next);
+                  if (match) setFilterClient(match);
+                }
+                setFilters({ client_id: next });
+              }}
+            />
+            <FilterCombobox
               value={filterActivityType}
-              onChange={(e) => setFilters({ activity_type: e.target.value })}
-              aria-label="Filter by activity type"
-              className="min-w-[10rem] flex-1 sm:flex-none"
-            >
-              <option value="">All types</option>
-              <option value="note_added">Note added</option>
-              <option value="task_created">Task created</option>
-              <option value="task_edited">Task edited</option>
-              <option value="task_completed">Task completed</option>
-              <option value="testimonial_activity">Testimonial activity</option>
-              <option value="client_manual_activity">Manual activity (client)</option>
-              {OFFER_ACTIVITY_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {OFFER_ACTIVITY_LABELS[t as OfferActivityType] ?? t}
-                </option>
-              ))}
-            </FilterSelect>
+              allLabel="All types"
+              placeholder="Search types…"
+              ariaLabel="Filter by activity type"
+              options={ACTIVITY_TYPE_FILTER_OPTIONS}
+              onChange={(next) => setFilters({ activity_type: next })}
+            />
             <FilterInput
               type="date"
               value={filterCreatedAfter || defaultRange.after}
@@ -551,21 +704,40 @@ export default function ActivityReportPage() {
                   const next = new URLSearchParams();
                   next.set("created_after", after);
                   next.set("created_before", before);
+                  setFilterClient(null);
                   router.replace(`?${next.toString()}`, { scroll: false });
                 }}
               >
                 Clear filters
               </Button>
             )}
-            <Button
-              type="button"
-              disabled={!token}
-              onClick={openAddActivityModal}
-              size="sm"
-              className="sm:ml-auto"
-            >
-              Add activity
-            </Button>
+            <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
+              {isAcesStaff ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={!token}
+                  onClick={() => void openRemoveTest()}
+                >
+                  Remove test
+                </Button>
+              ) : null}
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={!token || exporting}
+                loading={exporting}
+                leftIcon={<Download />}
+                onClick={() => void handleExportCsv()}
+              >
+                Export CSV
+              </Button>
+              <Button type="button" disabled={!token} onClick={openAddActivityModal} size="sm">
+                Add activity
+              </Button>
+            </div>
           </div>
         </SurfacePanel>
 
@@ -828,6 +1000,113 @@ export default function ActivityReportPage() {
             </div>
           </div>
         )}
+        <Modal
+          open={removeTestOpen}
+          onClose={() => {
+            if (removeTestSubmitting) return;
+            setRemoveTestOpen(false);
+            setRemoveTestError(null);
+            setRemoveTestConfirm("");
+          }}
+          title="Remove test activities"
+          footer={
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={removeTestSubmitting}
+                onClick={() => {
+                  setRemoveTestOpen(false);
+                  setRemoveTestError(null);
+                  setRemoveTestConfirm("");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="danger"
+                size="sm"
+                disabled={
+                  removeTestSubmitting ||
+                  removeTestLoading ||
+                  removeTestConfirm.trim() !== TEST_CLEANUP_CONFIRM ||
+                  !removeTestPreview ||
+                  removeTestPreview.offer_activity_count + removeTestPreview.client_manual_count === 0
+                }
+                loading={removeTestSubmitting}
+                onClick={() => void handlePurgeTestData()}
+              >
+                Remove test data
+              </Button>
+            </div>
+          }
+        >
+          <div className="space-y-3 text-sm text-gray-700 dark:text-gray-300">
+            <p>
+              Deletes comparison and other activity rows created by{" "}
+              <span className="font-medium text-dark dark:text-white">{TEST_CLEANUP_EMAIL}</span>.
+              Offers, clients, Drive files, tasks, and notes are kept. Linked Strategy WIP rows are
+              removed and autonomous runs are unlinked.
+            </p>
+            {removeTestLoading ? (
+              <p className="text-xs text-gray-500 dark:text-gray-400">Counting matching rows…</p>
+            ) : removeTestPreview ? (
+              <div className="rounded-xl bg-canvas px-3 py-2 text-xs dark:bg-dark-2">
+                <p>
+                  <span className="font-semibold text-dark dark:text-white">
+                    {removeTestPreview.offer_activity_count + removeTestPreview.client_manual_count}
+                  </span>{" "}
+                  activity rows
+                  {removeTestPreview.strategy_item_count > 0
+                    ? ` · ${removeTestPreview.strategy_item_count} Strategy WIP`
+                    : ""}
+                  {removeTestPreview.autonomous_runs_unlinked > 0
+                    ? ` · ${removeTestPreview.autonomous_runs_unlinked} autonomous runs unlinked`
+                    : ""}
+                </p>
+                {Object.keys(removeTestPreview.by_type).length > 0 ? (
+                  <ul className="mt-2 space-y-0.5 text-gray-600 dark:text-gray-400">
+                    {Object.entries(removeTestPreview.by_type)
+                      .sort((a, b) => b[1] - a[1])
+                      .map(([type, count]) => (
+                        <li key={type}>
+                          {activityTypeLabel(type)}: {count}
+                        </li>
+                      ))}
+                  </ul>
+                ) : (
+                  <p className="mt-1 text-gray-500">No matching test activities found.</p>
+                )}
+                {removeTestPreview.sample_clients.length > 0 ? (
+                  <p className="mt-2 text-gray-500 dark:text-gray-400">
+                    Sample clients: {removeTestPreview.sample_clients.join(", ")}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+            {removeTestError ? (
+              <p className="text-xs text-red-600 dark:text-red-400">{removeTestError}</p>
+            ) : null}
+            <div>
+              <label
+                htmlFor="remove-test-confirm"
+                className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300"
+              >
+                Type {TEST_CLEANUP_CONFIRM} to confirm
+              </label>
+              <FilterInput
+                id="remove-test-confirm"
+                value={removeTestConfirm}
+                onChange={(e) => setRemoveTestConfirm(e.target.value)}
+                placeholder={TEST_CLEANUP_CONFIRM}
+                className="w-full"
+                disabled={removeTestSubmitting || removeTestLoading}
+              />
+            </div>
+          </div>
+        </Modal>
       </div>
     </>
   );
