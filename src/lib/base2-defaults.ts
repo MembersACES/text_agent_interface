@@ -36,7 +36,8 @@ export interface Base2ElectricityCiDefaults {
 }
 
 /** SME electricity. Comparison = current * discountFactor when a current rate
- *  exists; otherwise the *Default fallback below is used. */
+ *  exists; otherwise the *Default fallback below is used.
+ *  smeEnergyShare is the SME→C&I unbundle fallback (energy $ ÷ invoice $). */
 export interface Base2ElectricitySmeDefaults {
   discountFactor: number;
   peakRateDefault: number;
@@ -45,6 +46,10 @@ export interface Base2ElectricitySmeDefaults {
   meteringAnnual: number;
   dailySupplyDefault: number;
   demandChargeDefault: number;
+  smeEnergyShare: number;
+  loadShapePeak: number;
+  loadShapeOffPeak: number;
+  loadShapeShoulder: number;
 }
 
 /** Gas. C&I uses the annual-load tiers; SME uses the flat ciComparisonPerGj
@@ -100,15 +105,19 @@ export const DEFAULT_BASE2_DEFAULTS: Base2Defaults = {
       dailySupply: 0,
       demandCharge: 0,
     },
-    sme: {
-      discountFactor: 0.95,
-      peakRateDefault: 24.5,
-      offPeakRateDefault: 18.0,
-      shoulderRateDefault: 20.0,
-      meteringAnnual: 700.0,
-      dailySupplyDefault: 1.5,
-      demandChargeDefault: 12.0,
-    },
+      sme: {
+        discountFactor: 0.95,
+        peakRateDefault: 24.5,
+        offPeakRateDefault: 18.0,
+        shoulderRateDefault: 20.0,
+        meteringAnnual: 700.0,
+        dailySupplyDefault: 1.5,
+        demandChargeDefault: 12.0,
+        smeEnergyShare: 0.55,
+        loadShapePeak: 0.4,
+        loadShapeOffPeak: 0.3,
+        loadShapeShoulder: 0.3,
+      },
   },
   gas: {
     tiers: [

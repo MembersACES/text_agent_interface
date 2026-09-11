@@ -22,8 +22,8 @@ export const SEQUENCE_LINK_CI_GAS: AutonomousSequenceLink = {
 
 export const SEQUENCE_LINK_CI_ELECTRICITY: AutonomousSequenceLink = {
   sequence_type: AUTONOMOUS_SEQUENCE_CI_ELECTRICITY,
-  label: "C&I Electricity",
-  startsWhen: "Generate C&I E Offer Comparison",
+  label: "C&I / SME→C&I Electricity",
+  startsWhen: "Generate C&I E or SME E → C&I Offer Comparison",
 };
 
 export const SEQUENCE_LINK_BNE_GAS: AutonomousSequenceLink = {
@@ -66,6 +66,7 @@ export const BASE2_SEQUENCE_LINKS: AutonomousSequenceLink[] = [
 export function sequenceLinksForBase2Comparison(comparison: {
   utilityType: string;
   smeGasComparisonMode?: string | null;
+  smeElecComparisonMode?: string | null;
 }): AutonomousSequenceLink[] {
   const mode = comparison.smeGasComparisonMode ?? "invoice_blocks";
   if (comparison.utilityType === "C&I Gas") {
@@ -73,6 +74,9 @@ export function sequenceLinksForBase2Comparison(comparison: {
   }
   if (comparison.utilityType === "SME Gas" && mode === "ci_offer") return [SEQUENCE_LINK_CI_GAS];
   if (comparison.utilityType === "C&I Electricity") return [SEQUENCE_LINK_CI_ELECTRICITY];
+  if (comparison.utilityType === "SME Electricity" && comparison.smeElecComparisonMode === "ci_offer") {
+    return [SEQUENCE_LINK_CI_ELECTRICITY];
+  }
   return [];
 }
 
