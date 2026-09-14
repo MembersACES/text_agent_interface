@@ -178,6 +178,30 @@ export function hasMdqOverrun(row: DiscrepancyRow): boolean {
   return parseMdqOverrun(row).found;
 }
 
+export function hasTakeOrPayInvoice(row: DiscrepancyRow): boolean {
+  const raw = (row.take_or_pay_invoice ?? "").trim();
+  if (!raw) return false;
+  if (/take or pay:\s*yes/i.test(raw)) return true;
+  if (/take or pay:\s*no/i.test(raw)) return false;
+  return isTruthyDetected(raw);
+}
+
+export type GasIssueFilter = {
+  takeOrPay: boolean;
+  mdqOverrun: boolean;
+};
+
+export function hasActiveGasIssueFilter(filter: GasIssueFilter): boolean {
+  return filter.takeOrPay || filter.mdqOverrun;
+}
+
+export function matchesGasIssueFilter(row: DiscrepancyRow, filter: GasIssueFilter): boolean {
+  if (!hasActiveGasIssueFilter(filter)) return true;
+  if (filter.takeOrPay && hasTakeOrPayInvoice(row)) return true;
+  if (filter.mdqOverrun && hasMdqOverrun(row)) return true;
+  return false;
+}
+
 export function isGasRowNotable(row: DiscrepancyRow): boolean {
   return isGasOvercharged(row) || hasMdqOverrun(row);
 }

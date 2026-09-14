@@ -26,9 +26,11 @@ import {
   formatCurrencyAmount,
   isDemandMismatch,
   isDmaMismatch,
+  hasActiveGasIssueFilter,
   isGasOvercharged,
   isGasRowNotable,
   isTruthyDetected,
+  matchesGasIssueFilter,
   parseDiscrepancyViewType,
   parseMdqOverrun,
   parseNumericCell,
@@ -671,6 +673,8 @@ export default function DiscrepancyCheckPage() {
   const [filterIdentifier, setFilterIdentifier] = useState(initialIdentifier);
   const [viewType, setViewType] = useState<ViewType>(() => initialViewType);
   const [showOnlyOverchargedGas, setShowOnlyOverchargedGas] = useState(true);
+  const [showTakeOrPayInvoices, setShowTakeOrPayInvoices] = useState(false);
+  const [showMdqOverrunInvoices, setShowMdqOverrunInvoices] = useState(false);
   const [showOnlyMismatchesElectricity, setShowOnlyMismatchesElectricity] = useState(
     defaultMismatchFilter && initialViewType === "electricity_contract"
   );
@@ -811,10 +815,19 @@ export default function DiscrepancyCheckPage() {
 
   const sortedRows = useMemo(() => sortByInvoicePeriod(filteredRows), [filteredRows]);
 
+  const gasIssueFilter = useMemo(
+    () => ({ takeOrPay: showTakeOrPayInvoices, mdqOverrun: showMdqOverrunInvoices }),
+    [showTakeOrPayInvoices, showMdqOverrunInvoices]
+  );
+  const gasIssueFilterActive = hasActiveGasIssueFilter(gasIssueFilter);
+
   const displayedGasRows = useMemo(() => {
+    if (gasIssueFilterActive) {
+      return sortedRows.filter((row) => matchesGasIssueFilter(row, gasIssueFilter));
+    }
     if (!showOnlyOverchargedGas) return sortedRows;
     return sortedRows.filter(isGasRowNotable);
-  }, [sortedRows, showOnlyOverchargedGas]);
+  }, [sortedRows, showOnlyOverchargedGas, gasIssueFilter, gasIssueFilterActive]);
   const sortedElectricityContract = useMemo(
     () => sortByInvoicePeriod(filteredElectricityContract),
     [filteredElectricityContract]
@@ -958,15 +971,47 @@ export default function DiscrepancyCheckPage() {
               />
             </label>
             {viewType === "gas" && (
-              <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={showOnlyOverchargedGas}
-                  onChange={(e) => setShowOnlyOverchargedGas(e.target.checked)}
-                  className="rounded border-stroke dark:border-dark-3"
-                />
-                Hide zero overcharge
-              </label>
+              <>
+                <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={showOnlyOverchargedGas}
+                    onChange={(e) => setShowOnlyOverchargedGas(e.target.checked)}
+                    disabled={gasIssueFilterActive}
+                    className="rounded border-stroke dark:border-dark-3"
+                  />
+                  Hide zero overcharge
+                </label>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-600 dark:text-gray-400">Show</span>
+                  <button
+                    type="button"
+                    aria-pressed={showTakeOrPayInvoices}
+                    onClick={() => setShowTakeOrPayInvoices((v) => !v)}
+                    className={cn(
+                      "shrink-0 whitespace-nowrap rounded-full border px-3 py-1 text-xs font-semibold",
+                      showTakeOrPayInvoices
+                        ? "border-transparent bg-primary/10 text-primary"
+                        : "border-gray-200 text-gray-600 dark:border-gray-700 dark:text-gray-400"
+                    )}
+                  >
+                    Take or Pay
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={showMdqOverrunInvoices}
+                    onClick={() => setShowMdqOverrunInvoices((v) => !v)}
+                    className={cn(
+                      "shrink-0 whitespace-nowrap rounded-full border px-3 py-1 text-xs font-semibold",
+                      showMdqOverrunInvoices
+                        ? "border-transparent bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300"
+                        : "border-gray-200 text-gray-600 dark:border-gray-700 dark:text-gray-400"
+                    )}
+                  >
+                    MDQ Overrun
+                  </button>
+                </div>
+              </>
             )}
             {viewType === "electricity_contract" && (
               <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 cursor-pointer">
@@ -1004,15 +1049,16 @@ export default function DiscrepancyCheckPage() {
             {(filterBusinessName.trim() ||
               filterIdentifier.trim() ||
               showOnlyOverchargedGas ||
+              gasIssueFilterActive ||
               showOnlyMismatchesElectricity ||
               showOnlyMismatchesDma ||
               showOnlyMismatchesDemand) && (
               <span className="text-xs text-gray-500 dark:text-gray-400">
                 {filterBusinessName.trim() ? "Business filter applied. " : ""}
+                {viewType === "gas" && showTakeOrPayInvoices ? "Take or Pay. " : ""}
+                {viewType === "gas" && showMdqOverrunInvoices ? "MDQ Overrun. " : ""}
                 {activeRowCount} row(s)
-                {viewType === "gas" &&
-                showOnlyOverchargedGas &&
-                rowCountGasTotal !== rowCountGas
+                {viewType === "gas" && rowCountGasTotal !== rowCountGas
                   ? ` of ${rowCountGasTotal}`
                   : ""}
                 {viewType === "electricity_contract" &&
@@ -1048,7 +1094,14 @@ export default function DiscrepancyCheckPage() {
               </p>
             ) : rowCountGas === 0 ? (
               <p className="text-sm text-gray-500 italic py-4">
-                No overcharged or MDQ overrun rows in the current filter set. Turn off &quot;Hide zero overcharge&quot; to see all rows.
+                {gasIssueFilterActive
+                  ? `No ${[
+                      showTakeOrPayInvoices ? "Take or Pay" : null,
+                      showMdqOverrunInvoices ? "MDQ Overrun" : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" or ")} invoices in the current filter set.`
+                  : "No overcharged or MDQ overrun rows in the current filter set. Turn off \"Hide zero overcharge\" to see all rows."}
               </p>
             ) : (
               <>

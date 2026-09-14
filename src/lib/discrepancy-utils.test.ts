@@ -6,8 +6,10 @@ import {
   hasElectricityHits,
   hasGasHits,
   hasMdqOverrun,
+  hasTakeOrPayInvoice,
   isGasOvercharged,
   isGasRowNotable,
+  matchesGasIssueFilter,
   isTruthyDetected,
   parseMdqOverrun,
   pickGasSummary,
@@ -163,5 +165,33 @@ describe("discrepancy-utils", () => {
     });
     expect(hasMdqOverrun(none)).toBe(false);
     expect(isGasRowNotable(none)).toBe(false);
+  });
+
+  it("detects billed Take or Pay invoices from the n8n email block", () => {
+    const topOnly = baseGasRow({
+      take_or_pay_invoice: [
+        "Take or Pay: Yes",
+        "• Actual Quantity (GJ): 800.000",
+        "• Contract MAQ (GJ): 960.000",
+        "• Shortfall (GJ): 160.000",
+        "• Charge Amount ($): 1,234.56",
+      ].join("\n"),
+    });
+    const explicitNo = baseGasRow({ take_or_pay_invoice: "Take or Pay: No" });
+    const blank = baseGasRow({ take_or_pay_invoice: "" });
+
+    expect(hasTakeOrPayInvoice(topOnly)).toBe(true);
+    expect(hasTakeOrPayInvoice(explicitNo)).toBe(false);
+    expect(hasTakeOrPayInvoice(blank)).toBe(false);
+    expect(matchesGasIssueFilter(topOnly, { takeOrPay: true, mdqOverrun: false })).toBe(true);
+    expect(matchesGasIssueFilter(blank, { takeOrPay: true, mdqOverrun: false })).toBe(false);
+    expect(matchesGasIssueFilter(topOnly, { takeOrPay: false, mdqOverrun: true })).toBe(false);
+
+    const mdqOnly = baseGasRow({
+      contract_mdq_overrun: "Contract MDQ Overrun: Yes\n• Charge Amount ($): 100.00",
+    });
+    expect(matchesGasIssueFilter(mdqOnly, { takeOrPay: true, mdqOverrun: true })).toBe(true);
+    expect(matchesGasIssueFilter(topOnly, { takeOrPay: true, mdqOverrun: true })).toBe(true);
+    expect(matchesGasIssueFilter(blank, { takeOrPay: true, mdqOverrun: true })).toBe(false);
   });
 });
