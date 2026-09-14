@@ -16,11 +16,15 @@ import { mapUtilityKey } from "../shared/mapUtilityKey";
 import { getApiBaseUrl, formatDateAustralian, formatDateDDMMYYYY, parseDateDDMMYYYYToISO } from "@/lib/utils";
 import {
   buildDiscrepancyCheckUrl,
+  formatCurrencyAmount,
   hasElectricityHits,
   hasGasHits,
+  hasMdqOverrunHits,
+  parseMdqOverrun,
   pickDmaSummary,
   pickElectricityContractSummary,
   pickGasSummary,
+  pickLatestMdqOverrun,
   type DmaRow,
   type ElectricityContractRow,
 } from "@/lib/discrepancy-utils";
@@ -204,6 +208,11 @@ type DiscrepancyRow = {
   annual_quantity_gj: string;
   annual_potential_overcharge: string;
   take_or_pay_invoice: string;
+  contract_mdq_overrun?: string;
+  contract_mdq_overrun_found?: string;
+  contract_mdq_overrun_quantity?: string;
+  contract_mdq_overrun_rate?: string;
+  contract_mdq_overrun_charge?: string;
 };
 
 /** C&I Electricity contract (invoice vs contract) discrepancy row */
@@ -483,6 +492,11 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility, cli
 
   const hasGasDiscrepancy = useCallback(
     (identifier: string) => hasGasHits(discrepancyByIdentifier.get(identifier) ?? []),
+    [discrepancyByIdentifier]
+  );
+
+  const hasGasMdqOverrun = useCallback(
+    (identifier: string) => hasMdqOverrunHits(discrepancyByIdentifier.get(identifier) ?? []),
     [discrepancyByIdentifier]
   );
 
@@ -788,6 +802,13 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility, cli
                       : null;
                   const showGasDiscrepancy =
                     !discrepancyLoading && row.displayKey === "C&I Gas" && hasGasDiscrepancy(identifier);
+                  const showGasMdqOverrun =
+                    !discrepancyLoading && row.displayKey === "C&I Gas" && hasGasMdqOverrun(identifier);
+                  const mdqOverrunRow =
+                    showGasMdqOverrun
+                      ? pickLatestMdqOverrun(discrepancyByIdentifier.get(identifier) ?? [])
+                      : null;
+                  const mdqOverrun = mdqOverrunRow ? parseMdqOverrun(mdqOverrunRow) : null;
                   const showElectricityDiscrepancy =
                     !discrepancyLoading &&
                     row.displayKey === "C&I Electricity" &&
@@ -824,6 +845,14 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility, cli
                           {showGasDiscrepancy && (
                             <Badge intent="warning" shape="pill" className="font-semibold">
                               Discrepancy
+                            </Badge>
+                          )}
+                          {showGasMdqOverrun && (
+                            <Badge intent="warning" shape="pill" className="font-semibold">
+                              MDQ overrun
+                              {mdqOverrun?.chargeAmount != null
+                                ? ` ${formatCurrencyAmount(mdqOverrun.chargeAmount)}`
+                                : ""}
                             </Badge>
                           )}
                           {showElectricityDiscrepancy && (
@@ -898,7 +927,7 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility, cli
                         <div className="text-sm font-medium text-gray-800 dark:text-gray-100">
                           {row.config.label}: {identifier}
                         </div>
-                        {showGasDiscrepancy && gasSummary && (
+                        {(showGasDiscrepancy || showGasMdqOverrun) && gasSummary && (
                           <div className="mt-2 rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50/80 dark:bg-amber-900/20">
                             <button
                               type="button"
@@ -929,6 +958,19 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility, cli
                                   <div className="text-amber-700 dark:text-amber-300">
                                     +{gasSummary.moreCount} more flagged period{gasSummary.moreCount === 1 ? "" : "s"}
                                   </div>
+                                )}
+                                {mdqOverrun?.found && (
+                                  <>
+                                    <div>
+                                      Contract MDQ Overrun
+                                      {mdqOverrunRow?.invoice_period ? ` (${mdqOverrunRow.invoice_period})` : ""}
+                                    </div>
+                                    {mdqOverrun.quantityGj && <div>Overrun quantity: {mdqOverrun.quantityGj} GJ</div>}
+                                    {mdqOverrun.ratePerGj && <div>Overrun rate: ${mdqOverrun.ratePerGj}/GJ</div>}
+                                    {mdqOverrun.chargeAmount != null && (
+                                      <div>Overrun charge: {formatCurrencyAmount(mdqOverrun.chargeAmount)}</div>
+                                    )}
+                                  </>
                                 )}
                                 <button
                                   type="button"

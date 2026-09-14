@@ -23,6 +23,7 @@ import { defaultShareEmail } from "@/lib/share-folder-api";
 import { BRAND, CONTRACT_STATUS_OPTIONS } from "@/lib/brand";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
+import { formatCurrencyAmount, hasMdqOverrun, parseMdqOverrun } from "@/lib/discrepancy-utils";
 
 
 function InfoRow({
@@ -167,6 +168,11 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
     annual_quantity_gj: string;
     annual_potential_overcharge: string;
     take_or_pay_invoice: string;
+    contract_mdq_overrun?: string;
+    contract_mdq_overrun_found?: string;
+    contract_mdq_overrun_quantity?: string;
+    contract_mdq_overrun_rate?: string;
+    contract_mdq_overrun_charge?: string;
   };
 
   /** Normalize linked_utilities to rows with identifier + optional retailer + extra. Handles n8n format (array of objects) and legacy (array of strings). */
@@ -2632,6 +2638,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                               )
                             : [];
                         const hasGasDiscrepancy = gasRowsForIdentifier.length > 0;
+                        const hasGasMdqOverrun = gasRowsForIdentifier.some(hasMdqOverrun);
                         const hasElectricityDiscrepancy =
                           electricityContractForId.length > 0 || electricityDmaForId.length > 0;
                         const hasDiscrepancy =
@@ -2650,6 +2657,11 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                               {hasDiscrepancy && (
                                 <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-300">
                                   Discrepancy
+                                </span>
+                              )}
+                              {hasGasMdqOverrun && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-300">
+                                  MDQ overrun
                                 </span>
                               )}
                               {hasDemandReview && (
@@ -2691,6 +2703,18 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                                             Take or Pay:{" "}
                                             {d.take_or_pay_invoice.slice(0, 80)}
                                             {d.take_or_pay_invoice.length > 80 ? "…" : ""}
+                                          </div>
+                                        )}
+                                        {hasMdqOverrun(d) && (
+                                          <div>
+                                            Contract MDQ Overrun
+                                            {(() => {
+                                              const mdq = parseMdqOverrun(d);
+                                              return mdq.chargeAmount != null
+                                                ? `: ${formatCurrencyAmount(mdq.chargeAmount)}`
+                                                : "";
+                                            })()}
+                                            {d.invoice_period ? ` (${d.invoice_period})` : ""}
                                           </div>
                                         )}
                                       </div>
