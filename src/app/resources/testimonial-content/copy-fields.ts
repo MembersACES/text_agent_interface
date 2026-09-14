@@ -110,6 +110,7 @@ export const DROPDOWN_ORDER = [
   "waste",
   "resource_recovery",
   "dma",
+  "vas",
   "automated_cleaning_robot",
   "solar_panel_cleaning",
   "client_endorsement",

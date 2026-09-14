@@ -25,6 +25,7 @@ export const SOLUTION_TYPE_LABELS: Record<string, string> = {
   waste: "Waste Reviews",
   resource_recovery: "Oil / Resource Recovery",
   dma: "Direct Metering Agreement",
+  vas: "Value Added Service",
   automated_cleaning_robot: "Automated Cleaning Robot",
   solar_panel_cleaning: "Solar Panel Cleaning",
   client_endorsement: "Client Endorsement",
@@ -209,6 +210,26 @@ export const DEFAULT_TESTIMONIAL_SOLUTION_CONTENT: TestimonialSolutionContentIte
     key_outcome_dotpoints_4: "Transparent metrics for CFO and committees.",
     key_outcome_dotpoints_5: "ESG: typically minimal GHG change where savings are metering-commercial.",
     conclusion: "DMA reviews deliver concise, defensible metering savings on a single-page summary.",
+    esg_scope_for_solution: "SCOPE 3",
+    sdg_impact_for_solution: "SDG 12",
+  },
+
+  {
+    ...emptyItem("vas", "Value Added Service"),
+    key_outcome_metrics: "VAS service cost reduction",
+    key_challenge_of_solution:
+      "The member's value-added service (VAS) charges sat on the metering agreement and invoices, but were hard to separate from meter rental without specialist time.",
+    key_approach_of_solution:
+      "The ACES team isolated VAS line items from meter rental and reviewed them against typical service-charge benchmarks.",
+    key_outcome_of_solution:
+      "The ACES team supplied the specialist VAS review the member could not justify hiring in-house, working from the invoices and the agreement rather than a generic pack. Finance received a position on the service charge that could be signed off without recruiting a metering analyst.",
+    key_outcome_dotpoints_1: "Annual VAS spend and net saving identified.",
+    key_outcome_dotpoints_2: "VAS lines separated from meter rental—not a bundled metering figure.",
+    key_outcome_dotpoints_3: "Savings articulated for budgeting and approvals.",
+    key_outcome_dotpoints_4: "Transparent metrics for CFO and committees.",
+    key_outcome_dotpoints_5: "ESG: typically minimal GHG change where savings are metering-commercial.",
+    conclusion:
+      "VAS reviews deliver concise, defensible savings on the service charge, distinct from meter rental.",
     esg_scope_for_solution: "SCOPE 3",
     sdg_impact_for_solution: "SDG 12",
   },
