@@ -5,9 +5,13 @@ import {
   filterGasHits,
   hasElectricityHits,
   hasGasHits,
+  hasMdqOverrun,
   isGasOvercharged,
+  isGasRowNotable,
   isTruthyDetected,
+  parseMdqOverrun,
   pickGasSummary,
+  pickLatestMdqOverrun,
   type DiscrepancyRow,
   type ElectricityContractRow,
 } from "./discrepancy-utils";
@@ -25,6 +29,11 @@ const baseGasRow = (overrides: Partial<DiscrepancyRow> = {}): DiscrepancyRow => 
   annual_quantity_gj: "100",
   annual_potential_overcharge: "0",
   take_or_pay_invoice: "",
+  contract_mdq_overrun: "",
+  contract_mdq_overrun_found: "",
+  contract_mdq_overrun_quantity: "",
+  contract_mdq_overrun_rate: "",
+  contract_mdq_overrun_charge: "",
   ...overrides,
 });
 
@@ -118,5 +127,41 @@ describe("discrepancy-utils", () => {
     expect(summary.hitCount).toBe(2);
     expect(summary.totalAnnualOvercharge).toBe(1500);
     expect(summary.moreCount).toBe(1);
+  });
+
+  it("detects billed Contract MDQ Overrun without treating it as a rate overcharge", () => {
+    const overrunOnly = baseGasRow({
+      rate_difference: "0",
+      pct_difference: "0",
+      annual_potential_overcharge: "0",
+      contract_mdq_overrun: [
+        "Contract MDQ Overrun: Yes",
+        "• Quantity (GJ): 269.369",
+        "• Rate ($/GJ): 10.000000",
+        "• Charge Amount ($): 2,693.69",
+      ].join("\n"),
+    });
+
+    expect(isGasOvercharged(overrunOnly)).toBe(false);
+    expect(hasMdqOverrun(overrunOnly)).toBe(true);
+    expect(isGasRowNotable(overrunOnly)).toBe(true);
+    expect(hasGasHits([overrunOnly])).toBe(false);
+    expect(filterGasHits([overrunOnly])).toHaveLength(0);
+
+    const parsed = parseMdqOverrun(overrunOnly);
+    expect(parsed.found).toBe(true);
+    expect(parsed.quantityGj).toBe("269.369");
+    expect(parsed.ratePerGj).toBe("10.000000");
+    expect(parsed.chargeAmount).toBe(2693.69);
+    expect(pickLatestMdqOverrun([overrunOnly])?.utility_identifier).toBe("MRIN123");
+  });
+
+  it("does not flag MDQ overrun when Found is No", () => {
+    const none = baseGasRow({
+      contract_mdq_overrun_found: "No",
+      contract_mdq_overrun: "",
+    });
+    expect(hasMdqOverrun(none)).toBe(false);
+    expect(isGasRowNotable(none)).toBe(false);
   });
 });

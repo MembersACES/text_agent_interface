@@ -13,6 +13,11 @@ export type DiscrepancyRow = {
   annual_quantity_gj: string;
   annual_potential_overcharge: string;
   take_or_pay_invoice: string;
+  contract_mdq_overrun?: string;
+  contract_mdq_overrun_found?: string;
+  contract_mdq_overrun_quantity?: string;
+  contract_mdq_overrun_rate?: string;
+  contract_mdq_overrun_charge?: string;
 };
 
 export type ElectricityContractRow = {
@@ -116,6 +121,74 @@ export function isGasOvercharged(row: DiscrepancyRow): boolean {
   const pctDiff = parseNumericCell(row.pct_difference);
   if (pctDiff != null && Math.abs(pctDiff) > DISCREPANCY_NUMERIC_EPSILON) return true;
   return false;
+}
+
+export type MdqOverrunDetail = {
+  found: boolean;
+  quantityGj: string;
+  ratePerGj: string;
+  charge: string;
+  chargeAmount: number | null;
+  raw: string;
+};
+
+function extractMdqLineValue(raw: string, patterns: RegExp[]): string {
+  for (const re of patterns) {
+    const match = raw.match(re);
+    if (match?.[1]) return match[1].trim();
+  }
+  return "";
+}
+
+function isExplicitYes(value: string): boolean {
+  return ["yes", "y", "true", "1"].includes(value.trim().toLowerCase());
+}
+
+function isExplicitNo(value: string): boolean {
+  return ["no", "n", "false", "0"].includes(value.trim().toLowerCase());
+}
+
+export function parseMdqOverrun(row: DiscrepancyRow): MdqOverrunDetail {
+  const raw = (row.contract_mdq_overrun ?? "").trim();
+  const foundField = (row.contract_mdq_overrun_found ?? "").trim();
+  const quantityGj =
+    (row.contract_mdq_overrun_quantity ?? "").trim() ||
+    extractMdqLineValue(raw, [/quantity\s*\(gj\)\s*:\s*([0-9,.\-]+)/i]);
+  const ratePerGj =
+    (row.contract_mdq_overrun_rate ?? "").trim() ||
+    extractMdqLineValue(raw, [/rate\s*\(\$\/gj\)\s*:\s*([0-9,.\-]+)/i]);
+  const charge =
+    (row.contract_mdq_overrun_charge ?? "").trim() ||
+    extractMdqLineValue(raw, [
+      /charge amount\s*\(\$\)\s*:?\s*\$?\s*([0-9,.\-]+)/i,
+      /charge\s*:?\s*\$\s*([0-9,.\-]+)/i,
+    ]);
+  const chargeAmount = parseNumericCell(charge);
+  const blobYes = /contract mdq overrun:\s*yes/i.test(raw);
+  const blobNo = /contract mdq overrun:\s*no/i.test(raw);
+  const found =
+    isExplicitYes(foundField) ||
+    blobYes ||
+    (!isExplicitNo(foundField) && !blobNo && chargeAmount != null && chargeAmount > DISCREPANCY_NUMERIC_EPSILON);
+
+  return { found, quantityGj, ratePerGj, charge, chargeAmount, raw };
+}
+
+export function hasMdqOverrun(row: DiscrepancyRow): boolean {
+  return parseMdqOverrun(row).found;
+}
+
+export function isGasRowNotable(row: DiscrepancyRow): boolean {
+  return isGasOvercharged(row) || hasMdqOverrun(row);
+}
+
+export function hasMdqOverrunHits(rows: DiscrepancyRow[]): boolean {
+  return rows.some(hasMdqOverrun);
+}
+
+export function pickLatestMdqOverrun(rows: DiscrepancyRow[]): DiscrepancyRow | null {
+  const hits = sortByInvoicePeriod(rows.filter(hasMdqOverrun));
+  return hits[0] ?? null;
 }
 
 export function isElectricityContractHit(row: ElectricityContractRow): boolean {
