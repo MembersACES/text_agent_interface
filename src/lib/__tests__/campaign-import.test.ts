@@ -66,7 +66,7 @@ describe("columnShapeWarnings", () => {
   it("warns when a mapped email column is mostly not emails", () => {
     const headers = ["phone_or_email", "state"];
     const rows = Array.from({ length: 10 }, (_, i) => [
-      i === 0 ? "ada@example.com" : "Kim McGill",
+      i === 0 ? "ada@example.com" : `Kim McGill ${i}`,
       "VIC",
     ]);
     const warnings = columnShapeWarnings(headers, rows, {
@@ -76,6 +76,31 @@ describe("columnShapeWarnings", () => {
     const email = warnings.find((warning) => warning.key === "contact_email");
     expect(email).toBeTruthy();
     expect(email!.okCount).toBe(1);
+    expect(email!.failCount).toBe(9);
+  });
+
+  it("still fires when 15 shifted emails are hidden by duplicate rows", () => {
+    const headers = ["company_name", "contact_email", "state"];
+    const rows: string[][] = [];
+    for (let i = 0; i < 45; i += 1) {
+      const copies = i < 33 ? 7 : 6;
+      for (let n = 0; n < copies; n += 1) {
+        rows.push([`Co ${i}`, `person${i}@example.com`, "VIC"]);
+      }
+    }
+    for (let i = 0; i < 15; i += 1) {
+      rows.push([`Shifted ${i}`, `FirstName${i}`, "VIC"]);
+    }
+    expect(rows).toHaveLength(318);
+    const warnings = columnShapeWarnings(headers, rows, {
+      company_name: "company_name",
+      contact_email: "contact_email",
+      state: "state",
+    });
+    const email = warnings.find((warning) => warning.key === "contact_email");
+    expect(email).toBeTruthy();
+    expect(email!.failCount).toBe(15);
+    expect(email!.total).toBe(60);
   });
 
   it("does not shape-check Intelligence columns", () => {

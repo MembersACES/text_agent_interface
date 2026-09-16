@@ -20,7 +20,11 @@ import {
   isComparisonLinkedTemplate,
 } from "@/lib/autonomous-sequence-keys";
 import {
+  archiveCampaign,
+  archiveCampaigns,
+  CampaignDeleteError,
   createCampaign,
+  deleteCampaign,
   deleteSuppression,
   getCampaign,
   listCampaigns,
@@ -31,8 +35,13 @@ import {
   resumeCampaign,
   saveCampaignRows,
   sendCampaignTest,
+  setCampaignRowHumanOnly,
   startCampaign,
+  unarchiveCampaign,
+  type CampaignDeleteBlocked,
+  type CampaignRowPayload,
   type CampaignSequenceOption,
+  type CampaignShapeWarning,
   type CampaignStatus,
   type CampaignSummary,
   type SuppressionRow,
@@ -57,6 +66,8 @@ type Props = {
   children: ReactNode;
 };
 
+export type CampaignRowFilter = "rows" | "distinct" | "sendable" | "human_only" | "warnings";
+
 type CampaignCtx = {
   token: string | undefined;
   selectedId: number | "new";
@@ -76,8 +87,28 @@ type CampaignCtx = {
   error: string | null;
   dismissError: () => void;
   rowCounts: CampaignSummary["row_counts"] | null;
+  shapeWarnings: CampaignShapeWarning[];
+  serverRows: CampaignRowPayload[];
+  rowFilter: CampaignRowFilter;
+  setRowFilter: (value: CampaignRowFilter) => void;
+  warningsAcknowledged: boolean;
+  setWarningsAcknowledged: (value: boolean) => void;
+  onSetHumanOnly: (rowId: number, human_only: boolean, reason?: string) => Promise<void>;
   campaignId: number | null;
   campaigns: CampaignSummary[];
+  archived: boolean;
+  showArchived: boolean;
+  setShowArchived: (value: boolean) => void;
+  selectedIds: number[];
+  onToggleSelected: (id: number, checked: boolean) => void;
+  onToggleSelectedAll: (checked: boolean) => void;
+  onArchiveSelected: () => Promise<void>;
+  onArchive: (id?: number) => Promise<void>;
+  onUnarchive: (id?: number) => Promise<void>;
+  onDelete: () => Promise<void>;
+  onConfirmDelete: () => Promise<void>;
+  onCancelDelete: () => void;
+  deleteBlock: CampaignDeleteBlocked | null;
   dropdownTypes: CampaignSequenceOption[];
   comparisonSelected: boolean;
   readOnly: boolean;
@@ -97,7 +128,7 @@ type CampaignCtx = {
 
 const Ctx = createContext<CampaignCtx | null>(null);
 
-function useCampaign() {
+export function useCampaign() {
   const ctx = useContext(Ctx);
   if (!ctx) throw new Error("Campaign controls must wrap the campaigns page");
   return ctx;
@@ -139,10 +170,17 @@ export function CampaignWorkspace({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [rowCounts, setRowCounts] = useState<CampaignSummary["row_counts"] | null>(null);
+  const [shapeWarnings, setShapeWarnings] = useState<CampaignShapeWarning[]>([]);
   const [campaignId, setCampaignId] = useState<number | null>(null);
-  const [serverRows, setServerRows] = useState<{ id: number; sourceHint: string }[]>([]);
+  const [serverRows, setServerRows] = useState<CampaignRowPayload[]>([]);
+  const [rowFilter, setRowFilter] = useState<CampaignRowFilter>("rows");
+  const [warningsAcknowledged, setWarningsAcknowledged] = useState(false);
   const [suppressions, setSuppressions] = useState<SuppressionRow[]>([]);
   const [suppressionsError, setSuppressionsError] = useState<string | null>(null);
+  const [archived, setArchived] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [deleteBlock, setDeleteBlock] = useState<CampaignDeleteBlocked | null>(null);
 
   const readOnly = status !== "draft";
   const resolvedSubject = renderTemplate(subject, currentMergeRow).output;
@@ -169,11 +207,21 @@ export function CampaignWorkspace({
     setTestTo((prev) => prev || userEmail);
   }, [userEmail]);
 
+  const refreshList = useCallback(async () => {
+    if (!token) return;
+    const items = await listCampaigns(token, showArchived);
+    setCampaigns(items);
+    const valid = new Set(items.map((item) => item.id));
+    setSelectedIds((prev) => prev.filter((id) => valid.has(id)));
+  }, [token, showArchived]);
+
   useEffect(() => {
     if (!token) return;
-    void listCampaigns(token)
-      .then(setCampaigns)
-      .catch((e) => fail(e instanceof Error ? e.message : "Could not list campaigns"));
+    void refreshList().catch((e) => fail(e instanceof Error ? e.message : "Could not list campaigns"));
+  }, [token, fail, refreshList]);
+
+  useEffect(() => {
+    if (!token) return;
     void listSequenceTypes(token)
       .then((items) => {
         const outbound = items.filter((t) => t.is_active && !isComparisonLinkedTemplate(t));
@@ -188,6 +236,10 @@ export function CampaignWorkspace({
       })
       .catch((e) => setSuppressionsError(e instanceof Error ? e.message : "Could not load suppressions"));
   }, [token, fail]);
+
+  useEffect(() => {
+    setWarningsAcknowledged(false);
+  }, [campaignId, rowCounts?.warnings]);
 
   const outboundTypes = useMemo(
     () => types.filter((t) => t.is_active && !isComparisonLinkedTemplate(t)),
@@ -218,16 +270,27 @@ export function CampaignWorkspace({
     setProvenance(campaign.provenance_note || "");
     setDailyCap(campaign.daily_cap != null ? String(campaign.daily_cap) : "");
     setColumnMap(campaign.merge_field_map || {});
-    setRowCounts(campaign.row_counts);
-    setServerRows(
-      (campaign.rows || []).map((row) => ({
-        id: row.id,
-        sourceHint: row.merge_json.company_name || row.recipient_key || String(row.id),
-      })),
-    );
-    setMessage(
-      `${campaign.row_counts?.rows ?? 0} rows · ${campaign.row_counts?.unique_recipients ?? 0} unique recipients · ${campaign.row_counts?.human_only ?? 0} human only`,
-    );
+    setRowCounts({
+      rows: campaign.row_counts?.rows ?? 0,
+      unique_recipients: campaign.row_counts?.unique_recipients ?? 0,
+      pending: campaign.row_counts?.pending ?? 0,
+      sendable: campaign.row_counts?.sendable ?? 0,
+      human_only: campaign.row_counts?.human_only ?? 0,
+      warnings: campaign.row_counts?.warnings ?? 0,
+      test_sends: campaign.row_counts?.test_sends ?? 0,
+    });
+    setShapeWarnings(campaign.shape_warnings ?? []);
+    setArchived(Boolean(campaign.archived));
+    setDeleteBlock(null);
+    if (campaign.rows) {
+      setServerRows(
+        campaign.rows.map((row) => ({
+          ...row,
+          shape_warnings: row.shape_warnings || [],
+          human_only_reason: row.human_only_reason ?? null,
+        })),
+      );
+    }
   }
 
   async function loadCampaign(id: number) {
@@ -243,16 +306,25 @@ export function CampaignWorkspace({
     }
   }
 
+  function resetToNew() {
+    setSelectedId("new");
+    setCampaignId(null);
+    setStatus("draft");
+    setArchived(false);
+    setDeleteBlock(null);
+    setRowCounts(null);
+    setShapeWarnings([]);
+    setServerRows([]);
+    setRowFilter("rows");
+    setWarningsAcknowledged(false);
+    setMessage(null);
+    setError(null);
+    setSequenceType(pickDefaultSequence(outboundTypes));
+  }
+
   function onSelectCampaign(value: string) {
     if (value === "new") {
-      setSelectedId("new");
-      setCampaignId(null);
-      setStatus("draft");
-      setRowCounts(null);
-      setServerRows([]);
-      setMessage(null);
-      setError(null);
-      setSequenceType(pickDefaultSequence(outboundTypes));
+      resetToNew();
       return;
     }
     void loadCampaign(Number(value));
@@ -297,10 +369,13 @@ export function CampaignWorkspace({
         setRowCounts({
           rows: summary.rows,
           unique_recipients: summary.unique_recipients,
-          pending: summary.pending ?? summary.rows,
-          human_only: 0,
+          pending: summary.pending ?? 0,
+          sendable: summary.sendable ?? 0,
+          human_only: summary.human_only ?? 0,
+          warnings: summary.warnings ?? 0,
           test_sends: rowCounts?.test_sends || 0,
         });
+        setShapeWarnings(summary.shape_warnings ?? []);
         const suppressed = summary.suppressed_addresses ?? [];
         if (suppressed.length) {
           const named =
@@ -308,13 +383,13 @@ export function CampaignWorkspace({
               ? `${suppressed[0]} has unsubscribed`
               : `These addresses have unsubscribed: ${suppressed.join(", ")}`;
           applyCampaign(await getCampaign(token, id));
-          setCampaigns(await listCampaigns(token));
+          await refreshList();
           fail(named);
           return;
         }
       }
       applyCampaign(await getCampaign(token, id));
-      setCampaigns(await listCampaigns(token));
+      await refreshList();
       ok("Draft saved.");
     } catch (e) {
       fail(e instanceof Error ? e.message : "Save failed");
@@ -329,7 +404,7 @@ export function CampaignWorkspace({
       return;
     }
     const row =
-      serverRows.find((item) => item.sourceHint === currentMergeRow.company_name) ||
+      serverRows.find((item) => item.merge_json.company_name === currentMergeRow.company_name) ||
       (currentSourceIndex != null ? serverRows[currentSourceIndex] : undefined) ||
       serverRows[0];
     if (!row) {
@@ -358,10 +433,22 @@ export function CampaignWorkspace({
       fail("Save the campaign first.");
       return;
     }
+    const warningCount = rowCounts?.warnings ?? 0;
+    if (warningCount > 0 && !warningsAcknowledged) {
+      fail(
+        `${warningCount} rows have shape warnings and will not be sent. Tick the acknowledgement naming that count to mark ready.`,
+      );
+      return;
+    }
     setBusy("ready");
     setError(null);
     try {
-      applyCampaign(await patchCampaign(token, campaignId, { status: "ready" }));
+      applyCampaign(
+        await patchCampaign(token, campaignId, {
+          status: "ready",
+          ...(warningCount > 0 ? { acknowledge_warnings: warningCount } : {}),
+        }),
+      );
       ok("Ready to send. Start list when you want the first-touch to go out.");
     } catch (e) {
       fail(e instanceof Error ? e.message : "Could not mark ready");
@@ -429,6 +516,115 @@ export function CampaignWorkspace({
     }
   }
 
+  function onToggleSelected(id: number, checked: boolean) {
+    setSelectedIds((prev) => {
+      if (checked) return prev.includes(id) ? prev : [...prev, id];
+      return prev.filter((item) => item !== id);
+    });
+  }
+
+  function onToggleSelectedAll(checked: boolean) {
+    setSelectedIds(checked ? campaigns.map((item) => item.id) : []);
+  }
+
+  async function onArchive(id?: number) {
+    const targetId = id ?? campaignId;
+    if (!token || targetId == null) {
+      fail("Save the campaign first, then archive it.");
+      return;
+    }
+    setBusy("archive");
+    setError(null);
+    try {
+      await archiveCampaign(token, targetId);
+      if (targetId === campaignId && !showArchived) resetToNew();
+      else if (targetId === campaignId) applyCampaign(await getCampaign(token, targetId));
+      await refreshList();
+      ok("Campaign archived.");
+    } catch (e) {
+      fail(e instanceof Error ? e.message : "Could not archive campaign");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function onUnarchive(id?: number) {
+    const targetId = id ?? campaignId;
+    if (!token || targetId == null) return;
+    setBusy("unarchive");
+    setError(null);
+    try {
+      const updated = await unarchiveCampaign(token, targetId);
+      if (targetId === campaignId) applyCampaign(updated);
+      await refreshList();
+      ok("Campaign restored.");
+    } catch (e) {
+      fail(e instanceof Error ? e.message : "Could not unarchive campaign");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function onArchiveSelected() {
+    if (!token || selectedIds.length === 0) return;
+    setBusy("archive-selected");
+    setError(null);
+    try {
+      const ids = [...selectedIds];
+      await archiveCampaigns(token, ids);
+      if (campaignId != null && ids.includes(campaignId) && !showArchived) resetToNew();
+      setSelectedIds([]);
+      await refreshList();
+      ok(ids.length === 1 ? "Campaign archived." : `Archived ${ids.length} campaigns.`);
+    } catch (e) {
+      fail(e instanceof Error ? e.message : "Could not archive campaigns");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function deleteCurrent(confirm: boolean) {
+    if (!token || campaignId == null) {
+      fail("Save the campaign first, then delete it.");
+      return;
+    }
+    setBusy("delete");
+    setError(null);
+    try {
+      await deleteCampaign(token, campaignId, confirm);
+      setDeleteBlock(null);
+      resetToNew();
+      await refreshList();
+      ok("Campaign deleted.");
+    } catch (e) {
+      if (e instanceof CampaignDeleteError) {
+        setDeleteBlock({
+          confirm_required: true,
+          message: e.message,
+          runs: e.runs,
+          offers: e.offers,
+        });
+        return;
+      }
+      fail(e instanceof Error ? e.message : "Could not delete campaign");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function onDelete() {
+    setDeleteBlock(null);
+    await deleteCurrent(false);
+  }
+
+  async function onConfirmDelete() {
+    await deleteCurrent(true);
+  }
+
+  function onCancelDelete() {
+    setDeleteBlock(null);
+  }
+
   async function onDeleteSuppression(id: number) {
     if (!token) return;
     setBusy("suppression");
@@ -438,6 +634,23 @@ export function CampaignWorkspace({
       ok("Suppression cleared. That address can be uploaded again.");
     } catch (e) {
       fail(e instanceof Error ? e.message : "Could not remove suppression");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function onSetHumanOnly(rowId: number, human_only: boolean, reason?: string) {
+    if (!token || campaignId == null) {
+      fail("Save the campaign first, then flag rows.");
+      return;
+    }
+    setBusy(`human-only-${rowId}`);
+    setError(null);
+    try {
+      await setCampaignRowHumanOnly(token, campaignId, rowId, human_only, reason);
+      applyCampaign(await getCampaign(token, campaignId));
+    } catch (e) {
+      fail(e instanceof Error ? e.message : "Could not update human-only flag");
     } finally {
       setBusy(null);
     }
@@ -462,8 +675,28 @@ export function CampaignWorkspace({
     error,
     dismissError: () => setError(null),
     rowCounts,
+    shapeWarnings,
+    serverRows,
+    rowFilter,
+    setRowFilter,
+    warningsAcknowledged,
+    setWarningsAcknowledged,
+    onSetHumanOnly,
     campaignId,
     campaigns,
+    archived,
+    showArchived,
+    setShowArchived,
+    selectedIds,
+    onToggleSelected,
+    onToggleSelectedAll,
+    onArchiveSelected,
+    onArchive,
+    onUnarchive,
+    onDelete,
+    onConfirmDelete,
+    onCancelDelete,
+    deleteBlock,
     dropdownTypes,
     comparisonSelected,
     readOnly,
@@ -509,12 +742,25 @@ export function CampaignSetupCard() {
     sequenceType,
     setSequenceType,
     campaigns,
+    showArchived,
+    setShowArchived,
+    selectedIds,
+    onToggleSelected,
+    onToggleSelectedAll,
+    onArchiveSelected,
+    onArchive,
+    onUnarchive,
     dropdownTypes,
     comparisonSelected,
     readOnly,
     onSelectCampaign,
     busy,
   } = useCampaign();
+
+  const openCampaigns = campaigns.filter((campaign) => !campaign.archived);
+  const selectedMissingFromOpen =
+    typeof selectedId === "number" && !openCampaigns.some((campaign) => campaign.id === selectedId);
+  const allSelected = campaigns.length > 0 && selectedIds.length === campaigns.length;
 
   return (
     <Card>
@@ -523,7 +769,8 @@ export function CampaignSetupCard() {
         <CardDescription>
           Name it and pick the outbound sequence that should run after the first email. Comparison
           follow-ups (Base 2, solar, invoice offers) are not listed here — those still start from
-          their product pages.
+          their product pages. Archive test campaigns to hide them from Open; delete only when you
+          also want their stub offers and runs gone.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -535,11 +782,14 @@ export function CampaignSetupCard() {
             className="px-3 py-1.5"
           >
             <option value="new">New campaign</option>
-            {campaigns.map((c) => (
+            {openCampaigns.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name} ({c.status})
               </option>
             ))}
+            {selectedMissingFromOpen && typeof selectedId === "number" ? (
+              <option value={selectedId}>{name} (archived)</option>
+            ) : null}
           </Select>
           <Input
             label="Name"
@@ -571,6 +821,88 @@ export function CampaignSetupCard() {
           </Select>
         </div>
         {busy === "load" ? <p className="text-xs text-gray-500">Loading campaign…</p> : null}
+
+        <div className="rounded-xl border border-gray-200 dark:border-gray-700">
+          <div className="flex flex-wrap items-center gap-3 border-b border-gray-200 px-3 py-2 dark:border-gray-700">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={allSelected}
+                onChange={(event) => onToggleSelectedAll(event.target.checked)}
+                disabled={campaigns.length === 0}
+              />
+              <span className="text-gray-600 dark:text-gray-300">Select all</span>
+            </label>
+            <Button
+              onClick={() => void onArchiveSelected()}
+              disabled={selectedIds.length === 0 || busy !== null}
+              loading={busy === "archive-selected"}
+            >
+              Archive selected
+              {selectedIds.length ? ` (${selectedIds.length})` : ""}
+            </Button>
+            <label className="ml-auto flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={showArchived}
+                onChange={(event) => setShowArchived(event.target.checked)}
+              />
+              Show archived
+            </label>
+          </div>
+          {campaigns.length === 0 ? (
+            <p className="px-3 py-3 text-sm text-gray-500">
+              {showArchived ? "No campaigns." : "No open campaigns."}
+            </p>
+          ) : (
+            <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+              {campaigns.map((campaign) => (
+                <li key={campaign.id} className="flex items-center gap-3 px-3 py-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.includes(campaign.id)}
+                    onChange={(event) => onToggleSelected(campaign.id, event.target.checked)}
+                    aria-label={`Select ${campaign.name}`}
+                  />
+                  <button
+                    type="button"
+                    className="min-w-0 flex-1 text-left"
+                    onClick={() => onSelectCampaign(String(campaign.id))}
+                  >
+                    <span className="block truncate font-medium">{campaign.name}</span>
+                    <span className="text-xs text-gray-500">
+                      {campaign.status}
+                      {campaign.archived ? " · archived" : ""}
+                      {campaign.row_counts
+                        ? ` · ${campaign.row_counts.sendable ?? 0} sendable`
+                        : ""}
+                    </span>
+                  </button>
+                  {campaign.archived ? (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => void onUnarchive(campaign.id)}
+                      disabled={busy !== null}
+                      loading={busy === "unarchive"}
+                    >
+                      Unarchive
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      onClick={() => void onArchive(campaign.id)}
+                      disabled={busy !== null}
+                      loading={busy === "archive"}
+                    >
+                      Archive
+                    </Button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </CardContent>
     </Card>
   );
@@ -587,6 +919,8 @@ export function CampaignSendCard() {
     message,
     error,
     rowCounts,
+    warningsAcknowledged,
+    setWarningsAcknowledged,
     campaignId,
     comparisonSelected,
     readOnly,
@@ -599,7 +933,17 @@ export function CampaignSendCard() {
     onStart,
     onPause,
     onResume,
+    archived,
+    onArchive,
+    onUnarchive,
+    onDelete,
+    onConfirmDelete,
+    onCancelDelete,
+    deleteBlock,
   } = useCampaign();
+
+  const warningCount = rowCounts?.warnings ?? 0;
+  const sendable = rowCounts?.sendable ?? 0;
 
   return (
     <Card>
@@ -633,7 +977,13 @@ export function CampaignSendCard() {
           <Button
             variant="secondary"
             onClick={() => void onReady()}
-            disabled={!token || campaignId == null || status !== "draft" || busy !== null}
+            disabled={
+              !token ||
+              campaignId == null ||
+              status !== "draft" ||
+              busy !== null ||
+              (warningCount > 0 && !warningsAcknowledged)
+            }
             loading={busy === "ready"}
           >
             Mark ready
@@ -660,6 +1010,67 @@ export function CampaignSendCard() {
             Resume
           </Button>
         </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {archived ? (
+            <Button
+              variant="secondary"
+              onClick={() => void onUnarchive()}
+              disabled={!token || campaignId == null || busy !== null}
+              loading={busy === "unarchive"}
+            >
+              Unarchive
+            </Button>
+          ) : (
+            <Button
+              onClick={() => void onArchive()}
+              disabled={!token || campaignId == null || busy !== null}
+              loading={busy === "archive"}
+            >
+              Archive
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            onClick={() => void onDelete()}
+            disabled={!token || campaignId == null || busy !== null}
+            loading={busy === "delete" && !deleteBlock}
+          >
+            Delete
+          </Button>
+        </div>
+        {deleteBlock ? (
+          <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-100">
+            <p className="font-medium">{deleteBlock.message}</p>
+            <p className="mt-1 text-xs opacity-80">This cannot be undone.</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button
+                variant="danger"
+                onClick={() => void onConfirmDelete()}
+                disabled={busy !== null}
+                loading={busy === "delete"}
+              >
+                Delete campaign, runs and offers
+              </Button>
+              <Button variant="ghost" onClick={onCancelDelete} disabled={busy !== null}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        ) : null}
+        {warningCount > 0 && status === "draft" ? (
+          <label className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={warningsAcknowledged}
+              onChange={(event) => setWarningsAcknowledged(event.target.checked)}
+            />
+            <span>
+              {warningCount} flagged rows will not be emailed. Mark ready for the remaining {sendable}{" "}
+              sendable recipients.
+            </span>
+          </label>
+        ) : null}
         <p className="text-xs text-gray-500">
           Mark ready needs a saved draft and one test send. Pause stops new first-touch sends only —
           already-running sequences keep going until you stop them on Autonomous Agent.
@@ -690,8 +1101,9 @@ export function CampaignSendCard() {
 
         {rowCounts ? (
           <p className="text-sm font-semibold">
-            {rowCounts.rows} rows · {rowCounts.unique_recipients} unique recipients ·{" "}
-            {rowCounts.human_only} held back · {rowCounts.test_sends} tests sent
+            {rowCounts.rows} rows · {rowCounts.unique_recipients} distinct · {sendable} sendable ·{" "}
+            {rowCounts.human_only} human only · {warningCount} warnings · {rowCounts.test_sends} tests
+            sent
           </p>
         ) : null}
         {message && !error ? (

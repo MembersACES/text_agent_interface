@@ -116,9 +116,30 @@ export type ShapeWarning = {
   key: string;
   label: string;
   okCount: number;
+  failCount: number;
   total: number;
   okFraction: number;
 };
+
+function uniqueRowIndexes(
+  headers: string[],
+  rows: string[][],
+  columnMap: Record<string, string>,
+): number[] {
+  const emailHeader = headers.find((header) => columnMap[header] === "contact_email");
+  const emailIndex = emailHeader != null ? headers.indexOf(emailHeader) : -1;
+  const seen = new Set<string>();
+  const indexes: number[] = [];
+  rows.forEach((row, index) => {
+    const email =
+      emailIndex >= 0 ? (row[emailIndex] ?? "").trim().toLowerCase() : "";
+    const id = email ? `email:${email}` : `row:${index}`;
+    if (seen.has(id)) return;
+    seen.add(id);
+    indexes.push(index);
+  });
+  return indexes;
+}
 
 export function columnShapeWarnings(
   headers: string[],
@@ -126,7 +147,10 @@ export function columnShapeWarnings(
   columnMap: Record<string, string>,
 ): ShapeWarning[] {
   const warnings: ShapeWarning[] = [];
-  const total = rows.length;
+  if (rows.length === 0) return warnings;
+  const uniqueIndexes = uniqueRowIndexes(headers, rows, columnMap);
+  const uniqueRows = uniqueIndexes.map((index) => rows[index]);
+  const total = uniqueRows.length;
   if (total === 0) return warnings;
 
   for (const header of headers) {
@@ -136,15 +160,17 @@ export function columnShapeWarnings(
     if (!checker) continue;
     const headerIndex = headers.indexOf(header);
     let okCount = 0;
-    for (const row of rows) {
+    for (const row of uniqueRows) {
       if (checker((row[headerIndex] ?? "").trim())) okCount += 1;
     }
+    const failCount = total - okCount;
     const okFraction = okCount / total;
     if (okFraction < SHAPE_THRESHOLD) {
       warnings.push({
         key,
         label: MERGE_FIELD_BY_KEY[key]?.label ?? header,
         okCount,
+        failCount,
         total,
         okFraction,
       });
