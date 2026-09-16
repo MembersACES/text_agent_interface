@@ -12,6 +12,7 @@ import {
   LayoutDashboard,
   Leaf,
   ListTodo,
+  Receipt,
   UserPlus,
   Users,
 } from "lucide-react";
@@ -49,6 +50,10 @@ const QUICK_ACTIONS = [
   { href: "/distributor-folder-creation", label: "Distributor folder from agreement", icon: FolderPlus, section: "Actions" },
   { href: "/tasks", label: "View all tasks", icon: ClipboardList, section: "Actions" },
   { href: "/unsigned-pipeline", label: "Unsigned pipeline", icon: FileText, section: "Navigate" },
+  { href: "/invoicing", label: "Invoicing", icon: Receipt, section: "Navigate" },
+  { href: "/invoicing?stream=origin-gas", label: "Origin Gas invoicing", icon: Receipt, section: "Navigate" },
+  { href: "/invoicing?stream=trojan-oil", label: "Trojan Oil invoicing", icon: Receipt, section: "Navigate" },
+  { href: "/invoicing?stream=bank-rec", label: "Bank Rec", icon: Receipt, section: "Navigate" },
   { href: "/email-templates", label: "Email templates", icon: FileText, section: "Navigate" },
   { href: "/crm", label: "CRM dashboard", icon: LayoutDashboard, section: "Navigate" },
   { href: "/crm-members", label: "Browse members", icon: Users, section: "Navigate" },

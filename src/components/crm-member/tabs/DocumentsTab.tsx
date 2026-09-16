@@ -1358,7 +1358,7 @@ export function DocumentsTab({
               radius="md"
               onClick={() => window.open(alintaAgreementHref(), "_blank", "noopener,noreferrer")}
             >
-              Send Alinta gas agreement
+              Lodge Alinta EF for agreement generation
             </Button>
           </div>
         </div>
