@@ -7,15 +7,22 @@ afterEach(() => {
 
 describe("listCampaigns", () => {
   it("requests archived campaigns only when asked", async () => {
-    const fetchMock = vi.fn(async () => ({
-      ok: true,
-      json: async () => [],
-    }));
-    vi.stubGlobal("fetch", fetchMock);
+    const urls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        urls.push(String(input));
+        return {
+          ok: true,
+          json: async () => [],
+        };
+      }),
+    );
     await listCampaigns("token");
-    expect(String(fetchMock.mock.calls[0]?.[0])).not.toContain("include_archived");
     await listCampaigns("token", true);
-    expect(String(fetchMock.mock.calls[1]?.[0])).toContain("include_archived=true");
+    expect(urls).toHaveLength(2);
+    expect(urls[0]).not.toContain("include_archived");
+    expect(urls[1]).toContain("include_archived=true");
   });
 });
 
