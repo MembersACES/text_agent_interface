@@ -60,6 +60,10 @@ import {
   CampaignSuppressionsCard,
   CampaignWorkspace,
 } from "../_components/CampaignControls";
+import {
+  CampaignRowList,
+  CampaignSummaryBar,
+} from "../_components/CampaignImportSummary";
 
 type LastFocus = "subject" | "body";
 
@@ -266,6 +270,8 @@ export default function CampaignPreviewPage() {
       >
       <div className="mt-5 space-y-5">
         <CampaignSetupCard />
+        <CampaignSummaryBar />
+        <CampaignRowList />
         <UploadSection
           fileName={fileName}
           parseError={parseError}
@@ -548,7 +554,7 @@ function MapSection({
                 {shapeWarnings.map((warning) => (
                   <p key={warning.key}>
                     {warning.label} does not look like the right shape in{" "}
-                    {warning.total - warning.okCount} of {warning.total} rows (
+                    {warning.failCount} of {warning.total} recipients (
                     {Math.round(warning.okFraction * 100)}% match). Check for a
                     shifted column.
                   </p>

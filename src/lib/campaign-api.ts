@@ -2,6 +2,28 @@ import { getAutonomousApiBaseUrl } from "@/lib/utils";
 
 export type CampaignStatus = "draft" | "ready" | "sending" | "paused" | "done";
 
+export type CampaignShapeWarning = {
+  key: string;
+  label: string;
+  ok_count: number;
+  fail_count: number;
+  total: number;
+  ok_fraction: number;
+};
+
+export type CampaignRowPayload = {
+  id: number;
+  merge_json: Record<string, string>;
+  intelligence_json: Record<string, string>;
+  recipient_key: string | null;
+  row_status: string;
+  human_only: boolean;
+  human_only_reason: string | null;
+  shape_warnings: string[];
+  run_id: number | null;
+  offer_id: number | null;
+};
+
 export type CampaignSummary = {
   id: number;
   name: string;
@@ -15,25 +37,18 @@ export type CampaignSummary = {
   daily_cap: number | null;
   send_window_start: string | null;
   send_window_end: string | null;
+  archived?: boolean;
   row_counts: {
     rows: number;
     unique_recipients: number;
     pending: number;
+    sendable: number;
     human_only: number;
+    warnings: number;
     test_sends: number;
   };
+  shape_warnings?: CampaignShapeWarning[];
   rows?: CampaignRowPayload[];
-};
-
-export type CampaignRowPayload = {
-  id: number;
-  merge_json: Record<string, string>;
-  intelligence_json: Record<string, string>;
-  recipient_key: string | null;
-  row_status: string;
-  human_only: boolean;
-  run_id: number | null;
-  offer_id: number | null;
 };
 
 function headers(token: string): HeadersInit {
@@ -58,6 +73,11 @@ function formatApiDetail(detail: unknown): string | null {
       .filter(Boolean);
     if (parts.length) return parts.join(" · ");
   }
+  if (detail && typeof detail === "object" && !Array.isArray(detail)) {
+    const record = detail as { message?: unknown; msg?: unknown };
+    if (typeof record.message === "string" && record.message.trim()) return record.message.trim();
+    if (typeof record.msg === "string" && record.msg.trim()) return record.msg.trim();
+  }
   return null;
 }
 
@@ -78,8 +98,12 @@ function base() {
   return getAutonomousApiBaseUrl();
 }
 
-export async function listCampaigns(token: string): Promise<CampaignSummary[]> {
-  const res = await fetch(`${base()}/api/autonomous/campaigns`, {
+export async function listCampaigns(
+  token: string,
+  includeArchived = false,
+): Promise<CampaignSummary[]> {
+  const suffix = includeArchived ? "?include_archived=true" : "";
+  const res = await fetch(`${base()}/api/autonomous/campaigns${suffix}`, {
     headers: headers(token),
   });
   if (!res.ok) throw new Error(await readError(res, "Could not list campaigns"));
@@ -101,7 +125,7 @@ export async function createCampaign(
 }
 
 export async function getCampaign(token: string, id: number): Promise<CampaignSummary> {
-  const res = await fetch(`${base()}/api/autonomous/campaigns/${id}?limit=500`, {
+  const res = await fetch(`${base()}/api/autonomous/campaigns/${id}?limit=2000`, {
     headers: headers(token),
   });
   if (!res.ok) throw new Error(await readError(res, "Could not load campaign"));
@@ -133,6 +157,10 @@ export async function saveCampaignRows(
   unique_recipients: number;
   groups_with_conflicts: unknown[];
   pending?: number;
+  sendable?: number;
+  human_only?: number;
+  warnings?: number;
+  shape_warnings?: CampaignShapeWarning[];
   suppressed_addresses?: string[];
 }> {
   const res = await fetch(`${base()}/api/autonomous/campaigns/${id}/rows`, {
@@ -141,6 +169,25 @@ export async function saveCampaignRows(
     body: JSON.stringify({ headers: headersList, rows, column_map }),
   });
   if (!res.ok) throw new Error(await readError(res, "Could not save rows"));
+  return res.json();
+}
+
+export async function setCampaignRowHumanOnly(
+  token: string,
+  campaignId: number,
+  rowId: number,
+  human_only: boolean,
+  reason?: string,
+): Promise<CampaignRowPayload> {
+  const res = await fetch(
+    `${base()}/api/autonomous/campaigns/${campaignId}/rows/${rowId}/human-only`,
+    {
+      method: "POST",
+      headers: headers(token),
+      body: JSON.stringify({ human_only, reason: reason || null }),
+    },
+  );
+  if (!res.ok) throw new Error(await readError(res, "Could not update human-only flag"));
   return res.json();
 }
 
@@ -191,6 +238,105 @@ export async function resumeCampaign(token: string, id: number): Promise<Campaig
   });
   if (!res.ok) throw new Error(await readError(res, "Could not resume campaign"));
   return res.json();
+}
+
+export type CampaignDeleteBlocked = {
+  confirm_required: boolean;
+  message: string;
+  runs: number;
+  offers: number;
+};
+
+export class CampaignDeleteError extends Error {
+  runs: number;
+  offers: number;
+  confirmRequired: boolean;
+
+  constructor(block: CampaignDeleteBlocked) {
+    super(block.message);
+    this.name = "CampaignDeleteError";
+    this.runs = block.runs;
+    this.offers = block.offers;
+    this.confirmRequired = block.confirm_required;
+  }
+}
+
+function parseDeleteBlock(detail: unknown): CampaignDeleteBlocked | null {
+  if (!detail || typeof detail !== "object") return null;
+  const record = detail as {
+    confirm_required?: unknown;
+    message?: unknown;
+    runs?: unknown;
+    offers?: unknown;
+  };
+  if (record.confirm_required !== true) return null;
+  if (typeof record.message !== "string") return null;
+  if (typeof record.runs !== "number" || typeof record.offers !== "number") return null;
+  return {
+    confirm_required: true,
+    message: record.message,
+    runs: record.runs,
+    offers: record.offers,
+  };
+}
+
+export async function archiveCampaign(token: string, id: number): Promise<CampaignSummary> {
+  const res = await fetch(`${base()}/api/autonomous/campaigns/${id}/archive`, {
+    method: "POST",
+    headers: headers(token),
+  });
+  if (!res.ok) throw new Error(await readError(res, "Could not archive campaign"));
+  return res.json();
+}
+
+export async function unarchiveCampaign(token: string, id: number): Promise<CampaignSummary> {
+  const res = await fetch(`${base()}/api/autonomous/campaigns/${id}/unarchive`, {
+    method: "POST",
+    headers: headers(token),
+  });
+  if (!res.ok) throw new Error(await readError(res, "Could not unarchive campaign"));
+  return res.json();
+}
+
+export async function archiveCampaigns(
+  token: string,
+  ids: number[],
+): Promise<CampaignSummary[]> {
+  const res = await fetch(`${base()}/api/autonomous/campaigns/archive`, {
+    method: "POST",
+    headers: headers(token),
+    body: JSON.stringify({ ids }),
+  });
+  if (!res.ok) throw new Error(await readError(res, "Could not archive campaigns"));
+  return res.json();
+}
+
+export async function deleteCampaign(
+  token: string,
+  id: number,
+  confirm = false,
+): Promise<void> {
+  const suffix = confirm ? "?confirm=true" : "";
+  const res = await fetch(`${base()}/api/autonomous/campaigns/${id}${suffix}`, {
+    method: "DELETE",
+    headers: headers(token),
+  });
+  if (res.status === 409) {
+    let data: unknown = null;
+    try {
+      data = await res.json();
+    } catch {
+      throw new Error("Could not delete campaign");
+    }
+    const detail =
+      data && typeof data === "object" && "detail" in data
+        ? (data as { detail: unknown }).detail
+        : data;
+    const block = parseDeleteBlock(detail);
+    if (block) throw new CampaignDeleteError(block);
+    throw new Error(formatApiDetail(detail) || "Could not delete campaign");
+  }
+  if (!res.ok) throw new Error(await readError(res, "Could not delete campaign"));
 }
 
 export type SuppressionRow = {
