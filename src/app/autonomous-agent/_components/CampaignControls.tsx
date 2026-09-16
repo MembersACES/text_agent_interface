@@ -105,9 +105,10 @@ type CampaignCtx = {
   onArchiveSelected: () => Promise<void>;
   onArchive: (id?: number) => Promise<void>;
   onUnarchive: (id?: number) => Promise<void>;
-  onDelete: () => Promise<void>;
+  onDelete: (id?: number) => Promise<void>;
   onConfirmDelete: () => Promise<void>;
   onCancelDelete: () => void;
+  deleteTargetId: number | null;
   deleteBlock: CampaignDeleteBlocked | null;
   dropdownTypes: CampaignSequenceOption[];
   comparisonSelected: boolean;
@@ -180,6 +181,7 @@ export function CampaignWorkspace({
   const [archived, setArchived] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [deleteTargetId, setDeleteTargetId] = useState<number | null>(null);
   const [deleteBlock, setDeleteBlock] = useState<CampaignDeleteBlocked | null>(null);
 
   const readOnly = status !== "draft";
@@ -281,7 +283,6 @@ export function CampaignWorkspace({
     });
     setShapeWarnings(campaign.shape_warnings ?? []);
     setArchived(Boolean(campaign.archived));
-    setDeleteBlock(null);
     if (campaign.rows) {
       setServerRows(
         campaign.rows.map((row) => ({
@@ -312,6 +313,7 @@ export function CampaignWorkspace({
     setStatus("draft");
     setArchived(false);
     setDeleteBlock(null);
+    setDeleteTargetId(null);
     setRowCounts(null);
     setShapeWarnings([]);
     setServerRows([]);
@@ -583,21 +585,23 @@ export function CampaignWorkspace({
     }
   }
 
-  async function deleteCurrent(confirm: boolean) {
-    if (!token || campaignId == null) {
-      fail("Save the campaign first, then delete it.");
+  async function deleteById(targetId: number, confirm: boolean) {
+    if (!token) {
+      fail("Sign in to delete a campaign.");
       return;
     }
     setBusy("delete");
     setError(null);
     try {
-      await deleteCampaign(token, campaignId, confirm);
+      await deleteCampaign(token, targetId, confirm);
       setDeleteBlock(null);
-      resetToNew();
+      setDeleteTargetId(null);
+      if (targetId === campaignId) resetToNew();
       await refreshList();
       ok("Campaign deleted.");
     } catch (e) {
       if (e instanceof CampaignDeleteError) {
+        setDeleteTargetId(targetId);
         setDeleteBlock({
           confirm_required: true,
           message: e.message,
@@ -612,17 +616,25 @@ export function CampaignWorkspace({
     }
   }
 
-  async function onDelete() {
+  async function onDelete(id?: number) {
+    const targetId = id ?? campaignId;
+    if (targetId == null) {
+      fail("Save the campaign first, then delete it.");
+      return;
+    }
     setDeleteBlock(null);
-    await deleteCurrent(false);
+    setDeleteTargetId(targetId);
+    await deleteById(targetId, false);
   }
 
   async function onConfirmDelete() {
-    await deleteCurrent(true);
+    if (deleteTargetId == null) return;
+    await deleteById(deleteTargetId, true);
   }
 
   function onCancelDelete() {
     setDeleteBlock(null);
+    setDeleteTargetId(null);
   }
 
   async function onDeleteSuppression(id: number) {
@@ -696,6 +708,7 @@ export function CampaignWorkspace({
     onDelete,
     onConfirmDelete,
     onCancelDelete,
+    deleteTargetId,
     deleteBlock,
     dropdownTypes,
     comparisonSelected,
@@ -734,6 +747,33 @@ export function CampaignWorkspace({
   );
 }
 
+function CampaignDeleteConfirm({
+  block,
+  busy,
+  onConfirm,
+  onCancel,
+}: {
+  block: CampaignDeleteBlocked;
+  busy: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-900 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-100">
+      <p className="font-medium">{block.message}</p>
+      <p className="mt-1 text-xs opacity-80">This cannot be undone.</p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Button variant="danger" size="sm" onClick={onConfirm} disabled={busy} loading={busy}>
+          Delete campaign, runs and offers
+        </Button>
+        <Button variant="ghost" size="sm" onClick={onCancel} disabled={busy}>
+          Cancel
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function CampaignSetupCard() {
   const {
     selectedId,
@@ -750,6 +790,11 @@ export function CampaignSetupCard() {
     onArchiveSelected,
     onArchive,
     onUnarchive,
+    onDelete,
+    onConfirmDelete,
+    onCancelDelete,
+    deleteTargetId,
+    deleteBlock,
     dropdownTypes,
     comparisonSelected,
     readOnly,
@@ -857,47 +902,66 @@ export function CampaignSetupCard() {
           ) : (
             <ul className="divide-y divide-gray-100 dark:divide-gray-800">
               {campaigns.map((campaign) => (
-                <li key={campaign.id} className="flex items-center gap-3 px-3 py-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.includes(campaign.id)}
-                    onChange={(event) => onToggleSelected(campaign.id, event.target.checked)}
-                    aria-label={`Select ${campaign.name}`}
-                  />
-                  <button
-                    type="button"
-                    className="min-w-0 flex-1 text-left"
-                    onClick={() => onSelectCampaign(String(campaign.id))}
-                  >
-                    <span className="block truncate font-medium">{campaign.name}</span>
-                    <span className="text-xs text-gray-500">
-                      {campaign.status}
-                      {campaign.archived ? " · archived" : ""}
-                      {campaign.row_counts
-                        ? ` · ${campaign.row_counts.sendable ?? 0} sendable`
-                        : ""}
-                    </span>
-                  </button>
-                  {campaign.archived ? (
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => void onUnarchive(campaign.id)}
-                      disabled={busy !== null}
-                      loading={busy === "unarchive"}
+                <li key={campaign.id} className="space-y-2 px-3 py-2 text-sm">
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.includes(campaign.id)}
+                      onChange={(event) => onToggleSelected(campaign.id, event.target.checked)}
+                      aria-label={`Select ${campaign.name}`}
+                    />
+                    <button
+                      type="button"
+                      className="min-w-0 flex-1 text-left"
+                      onClick={() => onSelectCampaign(String(campaign.id))}
                     >
-                      Unarchive
-                    </Button>
-                  ) : (
+                      <span className="block truncate font-medium">{campaign.name}</span>
+                      <span className="text-xs text-gray-500">
+                        {campaign.status}
+                        {campaign.archived ? " · archived" : ""}
+                        {campaign.row_counts
+                          ? ` · ${campaign.row_counts.sendable ?? 0} sendable`
+                          : ""}
+                      </span>
+                    </button>
+                    {campaign.archived ? (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => void onUnarchive(campaign.id)}
+                        disabled={busy !== null}
+                        loading={busy === "unarchive"}
+                      >
+                        Unarchive
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        onClick={() => void onArchive(campaign.id)}
+                        disabled={busy !== null}
+                        loading={busy === "archive"}
+                      >
+                        Archive
+                      </Button>
+                    )}
                     <Button
+                      variant="danger"
                       size="sm"
-                      onClick={() => void onArchive(campaign.id)}
+                      onClick={() => void onDelete(campaign.id)}
                       disabled={busy !== null}
-                      loading={busy === "archive"}
+                      loading={busy === "delete" && deleteTargetId === campaign.id && !deleteBlock}
                     >
-                      Archive
+                      Delete
                     </Button>
-                  )}
+                  </div>
+                  {deleteTargetId === campaign.id && deleteBlock ? (
+                    <CampaignDeleteConfirm
+                      block={deleteBlock}
+                      busy={busy === "delete"}
+                      onConfirm={() => void onConfirmDelete()}
+                      onCancel={onCancelDelete}
+                    />
+                  ) : null}
                 </li>
               ))}
             </ul>
@@ -939,6 +1003,7 @@ export function CampaignSendCard() {
     onDelete,
     onConfirmDelete,
     onCancelDelete,
+    deleteTargetId,
     deleteBlock,
   } = useCampaign();
 
@@ -1030,7 +1095,7 @@ export function CampaignSendCard() {
             </Button>
           )}
           <Button
-            variant="ghost"
+            variant="danger"
             onClick={() => void onDelete()}
             disabled={!token || campaignId == null || busy !== null}
             loading={busy === "delete" && !deleteBlock}
@@ -1038,24 +1103,13 @@ export function CampaignSendCard() {
             Delete
           </Button>
         </div>
-        {deleteBlock ? (
-          <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-100">
-            <p className="font-medium">{deleteBlock.message}</p>
-            <p className="mt-1 text-xs opacity-80">This cannot be undone.</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <Button
-                variant="danger"
-                onClick={() => void onConfirmDelete()}
-                disabled={busy !== null}
-                loading={busy === "delete"}
-              >
-                Delete campaign, runs and offers
-              </Button>
-              <Button variant="ghost" onClick={onCancelDelete} disabled={busy !== null}>
-                Cancel
-              </Button>
-            </div>
-          </div>
+        {deleteBlock && (deleteTargetId == null || deleteTargetId === campaignId) ? (
+          <CampaignDeleteConfirm
+            block={deleteBlock}
+            busy={busy === "delete"}
+            onConfirm={() => void onConfirmDelete()}
+            onCancel={onCancelDelete}
+          />
         ) : null}
         {warningCount > 0 && status === "draft" ? (
           <label className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
