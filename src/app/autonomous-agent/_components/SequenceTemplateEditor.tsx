@@ -9,6 +9,7 @@ import {
   templateCoversFlow,
   WIRED_SEQUENCE_TYPE_LABELS,
 } from "@/lib/autonomous-sequence-keys";
+import { formatScheduleZone } from "@/lib/schedule-tz";
 import AckTemplateEditor from "./AckTemplateEditor";
 import SignatureHtmlEditor from "./SignatureHtmlEditor";
 import StartTestRunPanel from "./StartTestRunPanel";
@@ -433,7 +434,7 @@ export default function SequenceTemplateEditor({
             </div>
             <label className={labelCls}>
               Timezone
-              <input type="text" value="AEST (Australia/Brisbane)" readOnly className={cn(inputCls, "bg-gray-50 dark:bg-gray-900 text-gray-500")} />
+              <input type="text" value={formatScheduleZone(template.timezone)} readOnly className={cn(inputCls, "bg-gray-50 dark:bg-gray-900 text-gray-500")} />
             </label>
             <label className={cn(labelCls, "md:col-span-2")}>
               Description

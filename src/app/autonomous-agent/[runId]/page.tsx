@@ -10,6 +10,7 @@ import { useParams, useRouter } from "next/navigation";
 import { getAutonomousApiBaseUrl, getApiBaseUrl } from "@/lib/utils";
 import { gmailThreadUrl, stopReasonLabel } from "@/lib/stop-reasons";
 import { dispatchRunNow, dispatchStepNow } from "@/lib/autonomous-dispatch";
+import { formatScheduleZone } from "@/lib/schedule-tz";
 import { PageHeader } from "@/components/Layouts/PageHeader";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
@@ -540,9 +541,9 @@ function scheduledToScheduleInput(iso: string | null, tz: string): string {
   return dayjs(iso).tz(tz).format("YYYY-MM-DDTHH:mm");
 }
 
-/** Human label: new sequences use fixed AEST via Australia/Brisbane. */
+/** Human label for the run's configured IANA zone. */
 function autonomousScheduleTimezoneLabel(tz: string): string {
-  return tz === "Australia/Brisbane" ? "AEST (Australia/Brisbane)" : tz;
+  return formatScheduleZone(tz);
 }
 
 /** datetime-local (wall clock in run TZ) → UTC ISO for the API */

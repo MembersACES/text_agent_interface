@@ -41,7 +41,12 @@ import {
   setCampaignRowHumanOnly,
   startCampaign,
   unarchiveCampaign,
+  applyPendingHumanOnly,
+  countsFromCampaignRows,
+  recipientFlagKey,
+  MidSendEditError,
   type CampaignDeleteBlocked,
+  type CampaignMidSendEdit,
   type CampaignRowPayload,
   type CampaignSequenceOption,
   type CampaignShapeWarning,
@@ -50,6 +55,7 @@ import {
   type SuppressionRow,
 } from "@/lib/campaign-api";
 import { renderTemplate } from "@/lib/merge-template";
+import { formatScheduleZone } from "@/lib/schedule-tz";
 
 type Props = {
   token: string | undefined;
@@ -114,6 +120,7 @@ type CampaignCtx = {
   warningsAcknowledged: boolean;
   setWarningsAcknowledged: (value: boolean) => void;
   onSetHumanOnly: (rowId: number, human_only: boolean, reason?: string) => Promise<void>;
+  canFlagHumanOnly: boolean;
   campaignId: number | null;
   campaigns: CampaignSummary[];
   archived: boolean;
@@ -135,11 +142,17 @@ type CampaignCtx = {
   dropdownTypes: CampaignSequenceOption[];
   comparisonSelected: boolean;
   readOnly: boolean;
+  contentEditable: boolean;
   throttleEditable: boolean;
   resolvedSubject: string;
   currentLabel: string;
   onSelectCampaign: (value: string) => void;
   onSave: () => Promise<void>;
+  midSendConfirm: { already_sent: number; will_get_new: number } | null;
+  onConfirmMidSendEdit: () => Promise<void>;
+  onCancelMidSendEdit: () => void;
+  scheduleTimezone: string;
+  midSendEdits: CampaignMidSendEdit[];
   onSaveThrottle: () => Promise<void>;
   onTestSend: () => Promise<void>;
   onReady: () => Promise<void>;
@@ -214,9 +227,20 @@ export function CampaignWorkspace({
   const [deleteTargetId, setDeleteTargetId] = useState<number | null>(null);
   const [deleteBlock, setDeleteBlock] = useState<CampaignDeleteBlocked | null>(null);
   const persistedCsv = useRef<string | null>(null);
+  const [pendingHumanOnly, setPendingHumanOnly] = useState<
+    Record<string, { human_only: boolean; reason?: string }>
+  >({});
+  const [midSendConfirm, setMidSendConfirm] = useState<{
+    already_sent: number;
+    will_get_new: number;
+  } | null>(null);
+  const [scheduleTimezone, setScheduleTimezone] = useState("Australia/Brisbane");
+  const [midSendEdits, setMidSendEdits] = useState<CampaignMidSendEdit[]>([]);
 
   const readOnly = status !== "draft";
+  const contentEditable = status !== "done" && !archived;
   const throttleEditable = status !== "done" && !archived;
+  const canFlagHumanOnly = status !== "done" && !archived;
   const resolvedSubject = renderTemplate(subject, currentMergeRow).output;
 
   const fail = useCallback(
@@ -357,6 +381,9 @@ export function CampaignWorkspace({
     setSummaryIsPreview(false);
     persistedCsv.current = csvFingerprint(headers, rawRows, campaign.merge_field_map || {});
     setArchived(Boolean(campaign.archived));
+    setScheduleTimezone(campaign.schedule_timezone || "Australia/Brisbane");
+    setMidSendEdits(campaign.mid_send_edits ?? []);
+    setPendingHumanOnly({});
     setServerRows(
       (campaign.rows ?? []).map((row) => ({
         ...row,
@@ -393,6 +420,9 @@ export function CampaignWorkspace({
     setServerRows([]);
     setRowFilter("rows");
     setWarningsAcknowledged(false);
+    setPendingHumanOnly({});
+    setMidSendConfirm(null);
+    setMidSendEdits([]);
     setMessage(null);
     setError(null);
     setSequenceType(pickDefaultSequence(outboundTypes));
@@ -409,7 +439,7 @@ export function CampaignWorkspace({
     void loadCampaign(id);
   }
 
-  async function onSave() {
+  async function persistCampaign(confirmMidSend = false) {
     if (!token) {
       fail("Sign in to save a campaign.");
       return;
@@ -422,7 +452,7 @@ export function CampaignWorkspace({
       fail("That sequence is a comparison follow-up. Pick an outbound sequence.");
       return;
     }
-    setBusy("save");
+    setBusy(confirmMidSend ? "mid-send" : "save");
     setError(null);
     try {
       let id = campaignId;
@@ -442,8 +472,9 @@ export function CampaignWorkspace({
         daily_cap: dailyCap ? Number(dailyCap) : null,
         send_window_start: sendWindowStart || "09:00",
         send_window_end: sendWindowEnd || "17:00",
+        ...(confirmMidSend ? { confirm_mid_send_edit: true } : {}),
       });
-      if (parsed) {
+      if (parsed && status === "draft") {
         const summary = await saveCampaignRows(token, id, headers, rawRows, columnMap);
         setRowCounts({
           rows: summary.rows,
@@ -467,14 +498,42 @@ export function CampaignWorkspace({
           return;
         }
       }
-      applyCampaign(await getCampaign(token, id));
+      let saved = await getCampaign(token, id);
+      const savedRows = saved.rows ?? [];
+      for (const [flagKey, flag] of Object.entries(pendingHumanOnly)) {
+        const row = savedRows.find((item) => recipientFlagKey(item) === flagKey);
+        if (!row || row.row_status === "started" || row.run_id) continue;
+        if (Boolean(row.human_only) === flag.human_only && (row.human_only_reason || "") === (flag.reason || "")) {
+          continue;
+        }
+        await setCampaignRowHumanOnly(token, id, row.id, flag.human_only, flag.reason);
+      }
+      saved = await getCampaign(token, id);
+      applyCampaign(saved);
       await refreshList();
-      ok("Draft saved.");
+      setMidSendConfirm(null);
+      ok(status === "draft" ? "Draft saved." : "Email saved.");
     } catch (e) {
+      if (e instanceof MidSendEditError) {
+        setMidSendConfirm({ already_sent: e.already_sent, will_get_new: e.will_get_new });
+        return;
+      }
       fail(e instanceof Error ? e.message : "Save failed");
     } finally {
       setBusy(null);
     }
+  }
+
+  async function onSave() {
+    await persistCampaign(false);
+  }
+
+  async function onConfirmMidSendEdit() {
+    await persistCampaign(true);
+  }
+
+  function onCancelMidSendEdit() {
+    setMidSendConfirm(null);
   }
 
   async function onTestSend() {
@@ -793,8 +852,13 @@ export function CampaignWorkspace({
   }
 
   async function onSetHumanOnly(rowId: number, human_only: boolean, reason?: string) {
-    if (!token || campaignId == null) {
-      fail("Save the campaign first, then flag rows.");
+    const row = serverRows.find((item) => item.id === rowId);
+    const flagKey = row ? recipientFlagKey(row) : `row:${rowId}`;
+    setPendingHumanOnly((prev) => ({
+      ...prev,
+      [flagKey]: { human_only, reason },
+    }));
+    if (!token || campaignId == null || summaryIsPreview || rowId < 0) {
       return;
     }
     setBusy(`human-only-${rowId}`);
@@ -808,6 +872,21 @@ export function CampaignWorkspace({
       setBusy(null);
     }
   }
+
+  const flaggedRows = useMemo(
+    () => applyPendingHumanOnly(serverRows, pendingHumanOnly),
+    [serverRows, pendingHumanOnly],
+  );
+  const flaggedCounts = useMemo(() => {
+    if (!rowCounts) return null;
+    const computed = countsFromCampaignRows(flaggedRows);
+    return {
+      ...rowCounts,
+      sendable: computed.sendable,
+      pending: computed.sendable,
+      human_only: computed.human_only,
+    };
+  }, [rowCounts, flaggedRows]);
 
   const value: CampaignCtx = {
     token,
@@ -833,15 +912,16 @@ export function CampaignWorkspace({
     message,
     error,
     dismissError: () => setError(null),
-    rowCounts,
+    rowCounts: flaggedCounts,
     summaryIsPreview,
     shapeWarnings,
-    serverRows,
+    serverRows: flaggedRows,
     rowFilter,
     setRowFilter,
     warningsAcknowledged,
     setWarningsAcknowledged,
     onSetHumanOnly,
+    canFlagHumanOnly,
     campaignId,
     campaigns,
     archived,
@@ -863,11 +943,17 @@ export function CampaignWorkspace({
     dropdownTypes,
     comparisonSelected,
     readOnly,
+    contentEditable,
     throttleEditable,
     resolvedSubject,
     currentLabel,
     onSelectCampaign,
     onSave,
+    midSendConfirm,
+    onConfirmMidSendEdit,
+    onCancelMidSendEdit,
+    scheduleTimezone,
+    midSendEdits,
     onSaveThrottle,
     onTestSend,
     onReady,
@@ -1167,12 +1253,17 @@ export function CampaignSendCard() {
     setWarningsAcknowledged,
     campaignId,
     comparisonSelected,
-    readOnly,
+    contentEditable,
     throttleEditable,
     resolvedSubject,
     currentLabel,
     status,
     onSave,
+    midSendConfirm,
+    onConfirmMidSendEdit,
+    onCancelMidSendEdit,
+    scheduleTimezone,
+    midSendEdits,
     onSaveThrottle,
     onTestSend,
     onReady,
@@ -1229,16 +1320,49 @@ export function CampaignSendCard() {
             className="px-3 py-2"
           />
         </div>
+        <p className="text-xs text-gray-500">
+          Send window and daily cap reset are evaluated in {formatScheduleZone(scheduleTimezone)}.
+        </p>
+        {midSendEdits.length > 0 ? (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
+            <p className="font-semibold">Email was edited mid-send</p>
+            {midSendEdits.map((edit) => (
+              <p key={edit.id} className="mt-1 text-xs">
+                {(edit.payload.already_sent ?? 0)} already sent · {(edit.payload.will_get_new ?? 0)} got
+                the new version
+                {edit.actor ? ` · ${edit.actor}` : ""}
+                {edit.created_at ? ` · ${new Date(edit.created_at).toLocaleString("en-AU")}` : ""}
+              </p>
+            ))}
+          </div>
+        ) : null}
+        {midSendConfirm ? (
+          <div className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-3 text-sm text-indigo-950 dark:border-indigo-900/50 dark:bg-indigo-950/30 dark:text-indigo-100">
+            <p className="font-semibold">This campaign has already started sending</p>
+            <p className="mt-1">
+              {midSendConfirm.already_sent} {midSendConfirm.already_sent === 1 ? "has" : "have"} already
+              gone. {midSendConfirm.will_get_new} will get the new version.
+            </p>
+            <div className="mt-3 flex gap-2">
+              <Button onClick={() => void onConfirmMidSendEdit()} loading={busy === "mid-send"}>
+                Save new version
+              </Button>
+              <Button variant="ghost" onClick={onCancelMidSendEdit} disabled={busy !== null}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        ) : null}
         <div className="flex flex-wrap items-center gap-2">
           <Badge intent={status === "draft" ? "neutral" : status === "ready" ? "info" : "success"}>
             {status}
           </Badge>
           <Button
             onClick={() => void onSave()}
-            disabled={!token || readOnly || busy !== null || comparisonSelected}
-            loading={busy === "save"}
+            disabled={!token || !contentEditable || busy !== null || comparisonSelected}
+            loading={busy === "save" || busy === "mid-send"}
           >
-            Save draft
+            {status === "draft" ? "Save draft" : "Save email"}
           </Button>
           <Button
             variant="secondary"

@@ -24,6 +24,17 @@ export type CampaignRowPayload = {
   offer_id: number | null;
 };
 
+export type CampaignMidSendEdit = {
+  id: number;
+  actor: string | null;
+  created_at: string | null;
+  payload: {
+    already_sent?: number;
+    will_get_new?: number;
+    subject?: string | null;
+  };
+};
+
 export type CampaignSummary = {
   id: number;
   name: string;
@@ -38,6 +49,7 @@ export type CampaignSummary = {
   send_window_start: string | null;
   send_window_end: string | null;
   archived?: boolean;
+  schedule_timezone?: string;
   row_counts: {
     rows: number;
     unique_recipients: number;
@@ -49,7 +61,74 @@ export type CampaignSummary = {
   };
   shape_warnings?: CampaignShapeWarning[];
   rows?: CampaignRowPayload[];
+  mid_send_edits?: CampaignMidSendEdit[];
 };
+
+export class MidSendEditError extends Error {
+  already_sent: number;
+  will_get_new: number;
+
+  constructor(already_sent: number, will_get_new: number, message: string) {
+    super(message);
+    this.name = "MidSendEditError";
+    this.already_sent = already_sent;
+    this.will_get_new = will_get_new;
+  }
+}
+
+export function recipientFlagKey(row: {
+  id: number;
+  recipient_key: string | null;
+}): string {
+  const key = (row.recipient_key || "").trim();
+  return key ? `email:${key}` : `row:${row.id}`;
+}
+
+export function applyPendingHumanOnly(
+  rows: CampaignRowPayload[],
+  pending: Record<string, { human_only: boolean; reason?: string }>,
+): CampaignRowPayload[] {
+  return rows.map((row) => {
+    const local = pending[recipientFlagKey(row)];
+    if (!local) return row;
+    return {
+      ...row,
+      human_only: local.human_only,
+      human_only_reason: local.reason ?? row.human_only_reason,
+    };
+  });
+}
+
+export function countsFromCampaignRows(rows: CampaignRowPayload[]): {
+  sendable: number;
+  human_only: number;
+} {
+  const humanKeys = new Set<string>();
+  let humanBlanks = 0;
+  const startedKeys = new Set<string>();
+  for (const row of rows) {
+    const key = (row.recipient_key || "").trim();
+    if (row.run_id && key) startedKeys.add(key);
+    if (!row.human_only) continue;
+    if (key) humanKeys.add(key);
+    else humanBlanks += 1;
+  }
+  const sendableKeys = new Set<string>();
+  let sendableBlanks = 0;
+  for (const row of rows) {
+    const key = (row.recipient_key || "").trim();
+    if (row.row_status !== "pending") continue;
+    if (row.human_only || (key && humanKeys.has(key))) continue;
+    if ((row.shape_warnings || []).length > 0) continue;
+    if (row.run_id || (key && startedKeys.has(key))) continue;
+    if (key) sendableKeys.add(key);
+    else sendableBlanks += 1;
+  }
+  return {
+    sendable: sendableKeys.size + sendableBlanks,
+    human_only: humanKeys.size + humanBlanks,
+  };
+}
 
 function headers(token: string): HeadersInit {
   return {
@@ -142,7 +221,36 @@ export async function patchCampaign(
     headers: headers(token),
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(await readError(res, "Could not save campaign"));
+  if (!res.ok) {
+    let data: { detail?: unknown } = {};
+    try {
+      data = await res.json();
+    } catch {
+      data = {};
+    }
+    const detail = data.detail;
+    if (
+      res.status === 409 &&
+      detail &&
+      typeof detail === "object" &&
+      !Array.isArray(detail) &&
+      (detail as { code?: unknown }).code === "mid_send_edit_confirmation"
+    ) {
+      const payload = detail as {
+        already_sent?: unknown;
+        will_get_new?: unknown;
+        message?: unknown;
+      };
+      throw new MidSendEditError(
+        typeof payload.already_sent === "number" ? payload.already_sent : 0,
+        typeof payload.will_get_new === "number" ? payload.will_get_new : 0,
+        typeof payload.message === "string"
+          ? payload.message
+          : "This campaign has already sent. Confirm to apply the new email to the rest of the list.",
+      );
+    }
+    throw new Error(formatApiDetail(detail) || "Could not save campaign");
+  }
   return res.json();
 }
 
