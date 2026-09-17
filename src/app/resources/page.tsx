@@ -123,7 +123,7 @@ const RESOURCES: Resource[] = [
     name: "Contract Ending / Expiring",
     link: "/resources/contract-ending",
     password: "N/A",
-    notes: "View C&I Electricity and C&I Gas contract end dates; sync from Google Sheet to Airtable.",
+    notes: "C&I Electricity and C&I Gas end dates with member, state, contact and portal link; sync from Google Sheet to Airtable.",
     env: "production",
     category: "Dashboard",
     dashboardLink: true,

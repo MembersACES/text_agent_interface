@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -36,6 +37,7 @@ import {
   saveCampaignRows,
   sendCampaignTest,
   sendCampaignNextN,
+  previewCampaignRows,
   setCampaignRowHumanOnly,
   startCampaign,
   unarchiveCampaign,
@@ -69,6 +71,16 @@ type Props = {
 
 export type CampaignRowFilter = "rows" | "distinct" | "sendable" | "human_only" | "warnings";
 
+function csvFingerprint(
+  headersList: string[],
+  rows: string[][],
+  map: Record<string, string>,
+) {
+  const keys = Object.keys(map).sort();
+  const columnMap = Object.fromEntries(keys.map((key) => [key, map[key]]));
+  return JSON.stringify({ headers: headersList, rows, columnMap });
+}
+
 type CampaignCtx = {
   token: string | undefined;
   selectedId: number | "new";
@@ -94,6 +106,7 @@ type CampaignCtx = {
   error: string | null;
   dismissError: () => void;
   rowCounts: CampaignSummary["row_counts"] | null;
+  summaryIsPreview: boolean;
   shapeWarnings: CampaignShapeWarning[];
   serverRows: CampaignRowPayload[];
   rowFilter: CampaignRowFilter;
@@ -186,6 +199,7 @@ export function CampaignWorkspace({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [rowCounts, setRowCounts] = useState<CampaignSummary["row_counts"] | null>(null);
+  const [summaryIsPreview, setSummaryIsPreview] = useState(false);
   const [shapeWarnings, setShapeWarnings] = useState<CampaignShapeWarning[]>([]);
   const [campaignId, setCampaignId] = useState<number | null>(null);
   const [serverRows, setServerRows] = useState<CampaignRowPayload[]>([]);
@@ -199,6 +213,7 @@ export function CampaignWorkspace({
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [deleteTargetId, setDeleteTargetId] = useState<number | null>(null);
   const [deleteBlock, setDeleteBlock] = useState<CampaignDeleteBlocked | null>(null);
+  const persistedCsv = useRef<string | null>(null);
 
   const readOnly = status !== "draft";
   const throttleEditable = status !== "done" && !archived;
@@ -260,6 +275,44 @@ export function CampaignWorkspace({
     setWarningsAcknowledged(false);
   }, [campaignId, rowCounts?.warnings]);
 
+  useEffect(() => {
+    if (!token || !parsed || status !== "draft") return;
+    const fingerprint = csvFingerprint(headers, rawRows, columnMap);
+    if (campaignId != null && persistedCsv.current === fingerprint) return;
+    let cancelled = false;
+    const handle = window.setTimeout(() => {
+      void previewCampaignRows(token, headers, rawRows, columnMap)
+        .then((summary) => {
+          if (cancelled) return;
+          setRowCounts({
+            rows: summary.rows,
+            unique_recipients: summary.unique_recipients,
+            pending: summary.pending ?? 0,
+            sendable: summary.sendable ?? 0,
+            human_only: summary.human_only ?? 0,
+            warnings: summary.warnings ?? 0,
+            test_sends: 0,
+          });
+          setShapeWarnings(summary.shape_warnings ?? []);
+          setSummaryIsPreview(true);
+          setServerRows(
+            (summary.preview_rows ?? []).map((row) => ({
+              ...row,
+              shape_warnings: row.shape_warnings || [],
+              human_only_reason: row.human_only_reason ?? null,
+            })),
+          );
+        })
+        .catch((e) => {
+          if (!cancelled) fail(e instanceof Error ? e.message : "Could not preview the list");
+        });
+    }, 250);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(handle);
+    };
+  }, [token, parsed, headers, rawRows, columnMap, status, campaignId, fail]);
+
   const outboundTypes = useMemo(
     () => types.filter((t) => t.is_active && !isComparisonLinkedTemplate(t)),
     [types],
@@ -301,6 +354,8 @@ export function CampaignWorkspace({
       test_sends: campaign.row_counts?.test_sends ?? 0,
     });
     setShapeWarnings(campaign.shape_warnings ?? []);
+    setSummaryIsPreview(false);
+    persistedCsv.current = csvFingerprint(headers, rawRows, campaign.merge_field_map || {});
     setArchived(Boolean(campaign.archived));
     setServerRows(
       (campaign.rows ?? []).map((row) => ({
@@ -332,6 +387,8 @@ export function CampaignWorkspace({
     setDeleteBlock(null);
     setDeleteTargetId(null);
     setRowCounts(null);
+    setSummaryIsPreview(false);
+    persistedCsv.current = null;
     setShapeWarnings([]);
     setServerRows([]);
     setRowFilter("rows");
@@ -478,6 +535,17 @@ export function CampaignWorkspace({
     }
   }
 
+  async function persistThrottle() {
+    if (!token || campaignId == null || !throttleEditable) return;
+    applyCampaign(
+      await patchCampaign(token, campaignId, {
+        daily_cap: dailyCap.trim() ? Number(dailyCap) : null,
+        send_window_start: sendWindowStart || null,
+        send_window_end: sendWindowEnd || null,
+      }),
+    );
+  }
+
   async function onStart() {
     if (!token || campaignId == null) {
       fail("Save and mark ready first.");
@@ -486,9 +554,16 @@ export function CampaignWorkspace({
     setBusy("start");
     setError(null);
     try {
+      await persistThrottle();
       const result = await startCampaign(token, campaignId);
       applyCampaign(await getCampaign(token, campaignId));
       const skipped = result.skipped_suppressed_addresses ?? [];
+      if (result.started === 0 && result.reason === "daily_cap") {
+        fail(
+          `Daily cap already reached today (${result.started_today ?? 0}/${result.daily_cap ?? 0}). Raise the limit and press Start, or Send next N to go past it.`,
+        );
+        return;
+      }
       if (skipped.length) {
         const named =
           skipped.length === 1
@@ -547,13 +622,7 @@ export function CampaignWorkspace({
     setBusy("throttle");
     setError(null);
     try {
-      applyCampaign(
-        await patchCampaign(token, campaignId, {
-          daily_cap: dailyCap ? Number(dailyCap) : null,
-          send_window_start: sendWindowStart || null,
-          send_window_end: sendWindowEnd || null,
-        }),
-      );
+      await persistThrottle();
       ok("Send limits saved.");
     } catch (e) {
       fail(e instanceof Error ? e.message : "Could not save send limits");
@@ -765,6 +834,7 @@ export function CampaignWorkspace({
     error,
     dismissError: () => setError(null),
     rowCounts,
+    summaryIsPreview,
     shapeWarnings,
     serverRows,
     rowFilter,

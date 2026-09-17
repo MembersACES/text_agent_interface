@@ -2,7 +2,9 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
+import Link from "next/link";
 import { Breadcrumb } from "@/components/ui/breadcrumb";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Table,
@@ -15,8 +17,10 @@ import {
 import { getApiBaseUrl, formatDateAustralian, formatDateDDMMYYYY, parseDateDDMMYYYYToISO } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 import { Modal } from "@/components/ui/modal";
-import { RefreshCw, AlertCircle, FileQuestion, CheckCircle2, CalendarClock, CalendarCheck, HelpCircle, Pencil, AlertTriangle, ChevronDown } from "lucide-react";
+import { RefreshCw, AlertCircle, CheckCircle2, CalendarClock, CalendarCheck, HelpCircle, Pencil, AlertTriangle, ChevronDown, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+type PhoneType = "mobile" | "landline" | "unknown" | "";
 
 type ContractItem = {
   identifier: string;
@@ -24,6 +28,14 @@ type ContractItem = {
   contract_end_date: string | null;
   retailer: string;
   record_id?: string;
+  business_name?: string;
+  state?: string;
+  contact_name?: string;
+  email?: string;
+  telephone?: string;
+  phone_type?: PhoneType;
+  client_id?: number | null;
+  portal_path?: string;
 };
 
 type SyncUpdate = {
@@ -68,6 +80,7 @@ export default function ContractEndingPage() {
   const [filterMonth, setFilterMonth] = useState<string>("");
   const [filterYear, setFilterYear] = useState<string>("");
   const [filterUtilityType, setFilterUtilityType] = useState<string>("");
+  const [searchQuery, setSearchQuery] = useState<string>("");
   const [lastSync, setLastSync] = useState<ApiResponse["sync"] | null>(null);
   const [showNotInAirtableList, setShowNotInAirtableList] = useState(false);
   const [activeTab, setActiveTab] = useState<"ending" | "ended" | "undefined">("ending");
@@ -142,6 +155,21 @@ export default function ContractEndingPage() {
     fetchData(false);
   }, [fetchData]);
 
+  const matchesSearch = useCallback((c: ContractItem) => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return true;
+    return [
+      c.business_name,
+      c.identifier,
+      c.contact_name,
+      c.email,
+      c.telephone,
+      c.state,
+      c.retailer,
+      c.utility_type,
+    ].some((v) => (v || "").toLowerCase().includes(q));
+  }, [searchQuery]);
+
   const filteredWithEndDate = useMemo(() => {
     let list = contractsWithEndDate;
     if (filterUtilityType) {
@@ -156,8 +184,8 @@ export default function ContractEndingPage() {
         return true;
       });
     }
-    return list;
-  }, [contractsWithEndDate, filterMonth, filterYear, filterUtilityType]);
+    return list.filter(matchesSearch);
+  }, [contractsWithEndDate, filterMonth, filterYear, filterUtilityType, matchesSearch]);
 
   const contractsEnding = useMemo(() => {
     const list = filteredWithEndDate.filter((c) => c.contract_end_date && c.contract_end_date >= today);
@@ -201,9 +229,12 @@ export default function ContractEndingPage() {
   }, [contractsEnding, currentMonth]);
 
   const filteredUndefined = useMemo(() => {
-    if (!filterUtilityType) return endDatesUndefined;
-    return endDatesUndefined.filter((c) => c.utility_type === filterUtilityType);
-  }, [endDatesUndefined, filterUtilityType]);
+    let list = endDatesUndefined;
+    if (filterUtilityType) {
+      list = list.filter((c) => c.utility_type === filterUtilityType);
+    }
+    return list.filter(matchesSearch);
+  }, [endDatesUndefined, filterUtilityType, matchesSearch]);
 
   const years = useMemo(() => {
     const set = new Set<string>();
@@ -263,22 +294,73 @@ export default function ContractEndingPage() {
     <Table>
       <TableHeader>
         <TableRow>
+          <TableHead>Business name</TableHead>
+          <TableHead>State</TableHead>
           <TableHead>Identifier (NMI / MRIN)</TableHead>
           <TableHead>Utility type</TableHead>
+          <TableHead>Retailer</TableHead>
+          <TableHead>Contact name</TableHead>
+          <TableHead>Contact details</TableHead>
           {showDate && <TableHead>Contract end date</TableHead>}
+          <TableHead>Portal</TableHead>
           {showEdit && <TableHead className="w-20 text-right">Edit</TableHead>}
         </TableRow>
       </TableHeader>
       <TableBody>
         {rows.map((row, i) => (
           <TableRow key={`${row.utility_type}-${row.identifier}-${i}`}>
+            <TableCell className="min-w-[10rem] font-medium text-dark dark:text-white">
+              {row.business_name || <span className="font-normal text-gray-400">—</span>}
+            </TableCell>
+            <TableCell>{row.state || "—"}</TableCell>
             <TableCell className="font-mono text-sm">{row.identifier}</TableCell>
-            <TableCell>{row.utility_type}</TableCell>
+            <TableCell className="whitespace-nowrap">{row.utility_type}</TableCell>
+            <TableCell className="text-sm">{row.retailer || "—"}</TableCell>
+            <TableCell>{row.contact_name || "—"}</TableCell>
+            <TableCell className="min-w-[12rem]">
+              <div className="flex flex-col gap-0.5">
+                {row.email ? (
+                  <a href={`mailto:${row.email}`} className="text-sm text-primary hover:underline break-all">
+                    {row.email}
+                  </a>
+                ) : (
+                  <span className="text-sm text-gray-400">No email</span>
+                )}
+                <div className="flex items-center gap-1.5">
+                  {row.telephone ? (
+                    <a href={`tel:${row.telephone}`} className="text-sm text-gray-700 dark:text-gray-300 hover:underline">
+                      {row.telephone}
+                    </a>
+                  ) : (
+                    <span className="text-sm text-gray-400">No phone</span>
+                  )}
+                  {row.phone_type === "mobile" && (
+                    <Badge intent="info" shape="pill" className="px-1.5 py-0 text-[10px]">Mobile</Badge>
+                  )}
+                  {row.phone_type === "landline" && (
+                    <Badge intent="warning" shape="pill" className="px-1.5 py-0 text-[10px]">Landline</Badge>
+                  )}
+                </div>
+              </div>
+            </TableCell>
             {showDate && (
-              <TableCell>
+              <TableCell className="whitespace-nowrap">
                 {row.contract_end_date ? formatDateAustralian(row.contract_end_date) : "—"}
               </TableCell>
             )}
+            <TableCell>
+              {row.portal_path ? (
+                <Link
+                  href={row.portal_path}
+                  className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+                >
+                  Open
+                  <ExternalLink className="h-3 w-3" />
+                </Link>
+              ) : (
+                <span className="text-sm text-gray-400">—</span>
+              )}
+            </TableCell>
             {showEdit && (
               <TableCell className="text-right">
                 <button
@@ -298,7 +380,7 @@ export default function ContractEndingPage() {
   );
 
   return (
-    <div className="space-y-4 max-w-6xl">
+    <div className="space-y-4 max-w-[90rem]">
       <Breadcrumb />
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
@@ -306,7 +388,7 @@ export default function ContractEndingPage() {
             Contract Ending / Expiring
           </h1>
           <p className="text-body-sm text-gray-600 dark:text-gray-400 mt-0.5">
-            C&I Electricity and C&I Gas. Sync from Google Sheet to fill missing dates in Airtable.
+            C&I Electricity and C&I Gas. Business, state and contact come from Airtable LOA records; Open goes to the member portal.
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -446,6 +528,16 @@ export default function ContractEndingPage() {
       <Card className="border border-stroke dark:border-dark-3">
         <CardContent className="p-0">
           <div className="flex flex-wrap gap-4 items-center px-4 pt-4 pb-2 border-b border-stroke dark:border-dark-3">
+            <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+              Search
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Business, NMI/MRIN, contact…"
+                className="border border-stroke dark:border-dark-3 rounded-md px-2 py-1.5 bg-white dark:bg-gray-dark text-dark dark:text-white text-sm min-w-[14rem]"
+              />
+            </label>
             <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
               Utility type
               <select
