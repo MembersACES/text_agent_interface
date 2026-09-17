@@ -5,6 +5,7 @@ export const STOP_REASON_LABELS: Record<string, string> = {
   manual_stop: "Stopped manually",
   policy: "Policy",
   unsubscribed: "Unsubscribed",
+  step_error: "Step error",
 };
 
 export function stopReasonLabel(reason: string | null | undefined): string {

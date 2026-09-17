@@ -60,8 +60,8 @@ function filterRows(
 }
 
 export function CampaignSummaryBar() {
-  const { rowCounts, shapeWarnings, rowFilter, setRowFilter } = useCampaign();
-  if (!rowCounts || rowCounts.rows === 0) return null;
+  const { campaignId, rowCounts, shapeWarnings, rowFilter, setRowFilter } = useCampaign();
+  if (campaignId == null || !rowCounts) return null;
 
   const sendable = rowCounts.sendable ?? 0;
   const figures: {
@@ -86,7 +86,7 @@ export function CampaignSummaryBar() {
     <div className="space-y-2">
       <div
         className={cn(
-          "flex flex-wrap items-center gap-x-1 gap-y-2 rounded-xl border px-4 py-3 text-sm shadow-sm",
+          "sticky top-16 z-10 flex flex-wrap items-center gap-x-1 gap-y-2 rounded-xl border px-4 py-3 text-sm shadow-sm",
           (rowCounts.warnings ?? 0) > 0
             ? "border-amber-200 bg-amber-50 dark:border-amber-900/50 dark:bg-amber-950/30"
             : "border-stroke bg-white dark:border-dark-3 dark:bg-gray-dark",
@@ -133,6 +133,7 @@ export function CampaignSummaryBar() {
 
 export function CampaignRowList() {
   const {
+    campaignId,
     serverRows,
     rowCounts,
     rowFilter,
@@ -147,7 +148,7 @@ export function CampaignRowList() {
     [serverRows, rowFilter],
   );
 
-  if (!rowCounts || rowCounts.rows === 0) return null;
+  if (campaignId == null || !rowCounts) return null;
 
   const filterLabel =
     rowFilter === "distinct"
