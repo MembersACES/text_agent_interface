@@ -172,6 +172,33 @@ export async function saveCampaignRows(
   return res.json();
 }
 
+export async function previewCampaignRows(
+  token: string,
+  headersList: string[],
+  rows: string[][],
+  column_map: Record<string, string>,
+): Promise<{
+  rows: number;
+  unique_recipients: number;
+  groups_with_conflicts: unknown[];
+  pending?: number;
+  sendable?: number;
+  human_only?: number;
+  warnings?: number;
+  shape_warnings?: CampaignShapeWarning[];
+  suppressed_addresses?: string[];
+  preview?: boolean;
+  preview_rows?: CampaignRowPayload[];
+}> {
+  const res = await fetch(`${base()}/api/autonomous/campaigns/preview-rows`, {
+    method: "POST",
+    headers: headers(token),
+    body: JSON.stringify({ headers: headersList, rows, column_map }),
+  });
+  if (!res.ok) throw new Error(await readError(res, "Could not preview rows"));
+  return res.json();
+}
+
 export async function setCampaignRowHumanOnly(
   token: string,
   campaignId: number,
@@ -241,6 +268,9 @@ export async function startCampaign(token: string, id: number) {
     skipped_suppressed?: number;
     skipped_suppressed_addresses?: string[];
     status: CampaignStatus;
+    reason?: string;
+    daily_cap?: number | null;
+    started_today?: number;
   }>;
 }
 

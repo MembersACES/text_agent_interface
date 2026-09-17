@@ -60,8 +60,9 @@ function filterRows(
 }
 
 export function CampaignSummaryBar() {
-  const { campaignId, rowCounts, shapeWarnings, rowFilter, setRowFilter } = useCampaign();
-  if (campaignId == null || !rowCounts) return null;
+  const { campaignId, rowCounts, summaryIsPreview, shapeWarnings, rowFilter, setRowFilter } =
+    useCampaign();
+  if (!rowCounts) return null;
 
   const sendable = rowCounts.sendable ?? 0;
   const figures: {
@@ -115,6 +116,11 @@ export function CampaignSummaryBar() {
             </button>
           </span>
         ))}
+        {summaryIsPreview || campaignId == null ? (
+          <span className="ml-2 rounded-md bg-white/70 px-1.5 py-0.5 text-xs font-semibold text-gray-600 dark:bg-gray-900/50 dark:text-gray-300">
+            Preview · not saved
+          </span>
+        ) : null}
       </div>
       {shapeWarnings.length > 0 ? (
         <div className="space-y-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
@@ -136,6 +142,7 @@ export function CampaignRowList() {
     campaignId,
     serverRows,
     rowCounts,
+    summaryIsPreview,
     rowFilter,
     readOnly,
     busy,
@@ -148,7 +155,7 @@ export function CampaignRowList() {
     [serverRows, rowFilter],
   );
 
-  if (campaignId == null || !rowCounts) return null;
+  if (!rowCounts) return null;
 
   const filterLabel =
     rowFilter === "distinct"
@@ -164,10 +171,11 @@ export function CampaignRowList() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Imported rows</CardTitle>
+        <CardTitle>{summaryIsPreview || campaignId == null ? "Preview rows" : "Imported rows"}</CardTitle>
         <CardDescription>
-          Flag government, hospital, listed-company and large industrial accounts as human
-          only. Shape warnings and human-only rows stay on the list but are never started.
+          {summaryIsPreview || campaignId == null
+            ? "Counts come from the same server check as Save. Nothing is stored until you save the campaign."
+            : "Flag government, hospital, listed-company and large industrial accounts as human only. Shape warnings and human-only rows stay on the list but are never started."}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -241,7 +249,7 @@ export function CampaignRowList() {
                           <input
                             type="checkbox"
                             checked={row.human_only}
-                            disabled={readOnly || rowBusy}
+                            disabled={readOnly || campaignId == null || summaryIsPreview || rowBusy}
                             onChange={(event) =>
                               void onSetHumanOnly(
                                 row.id,
@@ -257,7 +265,7 @@ export function CampaignRowList() {
                         <Input
                           value={reasonValue}
                           placeholder="Optional reason"
-                          disabled={readOnly || rowBusy}
+                          disabled={readOnly || campaignId == null || summaryIsPreview || rowBusy}
                           className="px-2 py-1 text-xs"
                           onChange={(event) =>
                             setReasons((prev) => ({
