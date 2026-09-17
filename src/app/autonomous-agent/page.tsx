@@ -192,6 +192,148 @@ function ProgressBar({ done, total }: { done: number; total: number }) {
   );
 }
 
+function RunsQueueTable({
+  title,
+  description,
+  runs,
+  emptyMessage,
+  tab,
+  canRestart,
+  startingId,
+  stoppingId,
+  deletingId,
+  restartingId,
+  onStart,
+  onStop,
+  onRestart,
+  onDelete,
+}: {
+  title: string;
+  description: string;
+  runs: AutonomousRunRow[];
+  emptyMessage: string;
+  tab: AgentTab;
+  canRestart: (sequenceType: string) => boolean;
+  startingId: number | null;
+  stoppingId: number | null;
+  deletingId: number | null;
+  restartingId: number | null;
+  onStart: (runId: number) => void;
+  onStop: (runId: number) => void;
+  onRestart: (runId: number) => void;
+  onDelete: (runId: number) => void;
+}) {
+  return (
+    <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm overflow-hidden">
+      <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800">
+        <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{title}</h2>
+        <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{description}</p>
+      </div>
+      {runs.length === 0 ? (
+        <p className="px-4 py-10 text-sm text-gray-500 dark:text-gray-400 text-center">{emptyMessage}</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-100 dark:divide-gray-800 text-sm">
+            <thead className="bg-gray-50 dark:bg-gray-800/60">
+              <tr>
+                {["Client", "Offer", "Status", "Progress", "Next step", "Anchor", "Actions"].map((h) => (
+                  <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide whitespace-nowrap">
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50 dark:divide-gray-800/80">
+              {runs.map((r) => (
+                <tr key={r.id} className="hover:bg-gray-50/70 dark:hover:bg-gray-800/40 transition-colors">
+                  <td className="px-4 py-3 whitespace-nowrap font-semibold text-gray-900 dark:text-gray-100">
+                    {r.business_name || <span className="text-gray-300 dark:text-gray-600">—</span>}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    <span className="font-mono text-xs text-gray-500 dark:text-gray-400">#{r.offer_id}</span>
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    <div className="flex flex-col gap-1">
+                      <StatusPill status={r.run_status} stopReason={r.stop_reason} />
+                      {r.ack_draft_pending && (
+                        <DraftReadyBadge threadId={r.ack_draft_thread_id} />
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    <ProgressBar done={r.steps_done} total={r.steps_total} />
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    {r.next_step_channel ? (
+                      <div className="space-y-1">
+                        <ChannelBadge channel={r.next_step_channel} />
+                        <div className="text-[11px] text-gray-400 dark:text-gray-500">{formatDateTime(r.next_step_at)}</div>
+                      </div>
+                    ) : (
+                      <span className="text-gray-300 dark:text-gray-600">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">
+                    {formatDateTime(r.anchor_at)}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    <div className="flex flex-wrap gap-1.5">
+                      <Link href={`/autonomous-agent/${r.id}`}
+                        className="inline-flex items-center rounded-md border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 text-[11px] font-semibold px-2 py-1 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition">
+                        Sequence
+                      </Link>
+                      <Link href={`/offers/${r.offer_id}`}
+                        className="inline-flex items-center rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-300 text-[11px] font-semibold px-2 py-1 hover:bg-gray-50 dark:hover:bg-gray-800 transition">
+                        Offer
+                      </Link>
+                      {tab === "running" && r.run_status === "running" && (
+                        <button
+                          type="button"
+                          disabled={startingId === r.id || stoppingId === r.id || deletingId === r.id || restartingId === r.id}
+                          onClick={() => onStart(r.id)}
+                          className="inline-flex items-center rounded-md border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-[11px] font-semibold px-2 py-1 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition disabled:opacity-40"
+                        >
+                          {startingId === r.id ? "Starting…" : "Start"}
+                        </button>
+                      )}
+                      {tab === "running" && r.run_status === "running" && (
+                        <button type="button"
+                          disabled={stoppingId === r.id || deletingId === r.id || restartingId === r.id || startingId === r.id}
+                          onClick={() => onStop(r.id)}
+                          className="inline-flex items-center rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 text-[11px] font-semibold px-2 py-1 hover:bg-amber-100 dark:hover:bg-amber-900/50 transition disabled:opacity-40">
+                          {stoppingId === r.id ? "Stopping…" : "Stop"}
+                        </button>
+                      )}
+                      {isSequenceQueueTab(tab) && tab !== "running" &&
+                        ["stopped", "completed", "cancelled", "errored"].includes(r.run_status) &&
+                        canRestart(r.sequence_type) && (
+                          <button type="button"
+                            disabled={restartingId === r.id || deletingId === r.id || stoppingId === r.id}
+                            onClick={() => onRestart(r.id)}
+                            className="inline-flex items-center rounded-md border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-[11px] font-semibold px-2 py-1 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition disabled:opacity-40">
+                            {restartingId === r.id ? "Starting…" : "Start again"}
+                          </button>
+                        )}
+                      <button type="button"
+                        disabled={deletingId === r.id || stoppingId === r.id || restartingId === r.id || startingId === r.id}
+                        onClick={() => onDelete(r.id)}
+                        className="inline-flex items-center rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 text-[11px] font-semibold px-2 py-1 hover:bg-red-100 dark:hover:bg-red-900/50 transition disabled:opacity-40">
+                        {deletingId === r.id ? "Deleting…" : "Delete"}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+type RunSource = "followup" | "campaign";
+
 // ─── main component ──────────────────────────────────────────────────────────
 
 export default function AutonomousAgentPage() {
@@ -205,11 +347,14 @@ export default function AutonomousAgentPage() {
   const initialTab: AgentTab = parseAgentTab(tabFromUrl);
   const [tab, setTab] = useState<AgentTab>(initialTab);
   const [runs, setRuns] = useState<AutonomousRunRow[]>([]);
+  const [campaignRuns, setCampaignRuns] = useState<AutonomousRunRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [total, setTotal] = useState(0);
+  const [campaignTotal, setCampaignTotal] = useState(0);
   const [ackDraftPendingCount, setAckDraftPendingCount] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [loadingMoreCampaign, setLoadingMoreCampaign] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [stoppingId, setStoppingId] = useState<number | null>(null);
   const [startingId, setStartingId] = useState<number | null>(null);
@@ -257,31 +402,49 @@ export default function AutonomousAgentPage() {
 
   // ── data fetching (unchanged) ─────────────────────────────────────────────
 
+  const fetchRunPage = async (source: RunSource, offset: number, limit: number) => {
+    const params = new URLSearchParams();
+    params.set("limit", String(limit));
+    params.set("offset", String(offset));
+    params.set("run_status_group", tab);
+    params.set("source", source);
+    const res = await fetch(
+      `${getAutonomousApiBaseUrl()}/api/autonomous/sequences/runs?${params.toString()}`,
+      { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } },
+    );
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(typeof data.detail === "string" ? data.detail : "Failed to load sequences");
+    }
+    return res.json() as Promise<{
+      items?: AutonomousRunRow[];
+      total?: number;
+      ack_draft_pending_count?: number;
+    }>;
+  };
+
   useEffect(() => {
     if (!token) { setLoading(false); return; }
     if (!isSequenceQueueTab(tab)) { setLoading(false); return; }
     const fetchRuns = async () => {
       try {
         setLoading(true); setError(null);
-        const params = new URLSearchParams();
         const pageSize = tab === "running" ? RUNNING_PAGE_SIZE : PAGE_SIZE;
-        params.set("limit", String(pageSize));
-        params.set("offset", "0");
-        params.set("run_status_group", tab);
-        const res = await fetch(
-          `${getAutonomousApiBaseUrl()}/api/autonomous/sequences/runs?${params.toString()}`,
-          { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } },
-        );
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          throw new Error(typeof data.detail === "string" ? data.detail : "Failed to load sequences");
-        }
-        const data = await res.json();
-        setRuns(Array.isArray(data.items) ? data.items : []);
-        setTotal(typeof data.total === "number" ? data.total : 0);
-        setAckDraftPendingCount(
-          typeof data.ack_draft_pending_count === "number" ? data.ack_draft_pending_count : 0,
-        );
+        const [followup, campaign] = await Promise.all([
+          fetchRunPage("followup", 0, pageSize),
+          fetchRunPage("campaign", 0, pageSize),
+        ]);
+        setRuns(Array.isArray(followup.items) ? followup.items : []);
+        setTotal(typeof followup.total === "number" ? followup.total : 0);
+        setCampaignRuns(Array.isArray(campaign.items) ? campaign.items : []);
+        setCampaignTotal(typeof campaign.total === "number" ? campaign.total : 0);
+        const ackCount =
+          typeof followup.ack_draft_pending_count === "number"
+            ? followup.ack_draft_pending_count
+            : typeof campaign.ack_draft_pending_count === "number"
+              ? campaign.ack_draft_pending_count
+              : 0;
+        setAckDraftPendingCount(ackCount);
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : "Failed to load sequences");
       } finally { setLoading(false); }
@@ -289,26 +452,32 @@ export default function AutonomousAgentPage() {
     fetchRuns();
   }, [token, tab]);
 
-  const loadMore = async () => {
-    if (!token || loadingMore || runs.length >= total) return;
+  const loadMore = async (source: RunSource) => {
+    if (!token) return;
+    const current = source === "campaign" ? campaignRuns : runs;
+    const currentTotal = source === "campaign" ? campaignTotal : total;
+    const busy = source === "campaign" ? loadingMoreCampaign : loadingMore;
+    if (busy || current.length >= currentTotal) return;
     try {
-      setLoadingMore(true);
-      const params = new URLSearchParams();
-      params.set("limit", String(PAGE_SIZE));
-      params.set("offset", String(runs.length));
-      params.set("run_status_group", tab);
-      const res = await fetch(
-        `${getAutonomousApiBaseUrl()}/api/autonomous/sequences/runs?${params.toString()}`,
-        { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } },
-      );
-      if (!res.ok) throw new Error("Failed to load more");
-      const data = await res.json();
-      setRuns((prev) => [...prev, ...(Array.isArray(data.items) ? data.items : [])]);
+      if (source === "campaign") setLoadingMoreCampaign(true);
+      else setLoadingMore(true);
+      const data = await fetchRunPage(source, current.length, PAGE_SIZE);
+      const items = Array.isArray(data.items) ? data.items : [];
+      if (source === "campaign") {
+        setCampaignRuns((prev) => [...prev, ...items]);
+        if (typeof data.total === "number") setCampaignTotal(data.total);
+      } else {
+        setRuns((prev) => [...prev, ...items]);
+        if (typeof data.total === "number") setTotal(data.total);
+      }
       if (typeof data.ack_draft_pending_count === "number") {
         setAckDraftPendingCount(data.ack_draft_pending_count);
       }
     } catch (e) { console.error("Load more sequences", e); }
-    finally { setLoadingMore(false); }
+    finally {
+      if (source === "campaign") setLoadingMoreCampaign(false);
+      else setLoadingMore(false);
+    }
   };
 
   useEffect(() => {
@@ -643,7 +812,9 @@ export default function AutonomousAgentPage() {
         throw new Error(typeof data.detail === "string" ? data.detail : "Stop failed");
       }
       setRuns((prev) => prev.filter((r) => r.id !== runId));
-      setTotal((t) => Math.max(0, t - 1));
+      setCampaignRuns((prev) => prev.filter((r) => r.id !== runId));
+      setTotal((t) => (runs.some((r) => r.id === runId) ? Math.max(0, t - 1) : t));
+      setCampaignTotal((t) => (campaignRuns.some((r) => r.id === runId) ? Math.max(0, t - 1) : t));
       showToast("Sequence stopped.", "success");
     } catch (e: unknown) {
       showToast(e instanceof Error ? e.message : "Stop failed", "error");
@@ -706,7 +877,9 @@ export default function AutonomousAgentPage() {
         throw new Error(typeof data.detail === "string" ? data.detail : "Delete failed");
       }
       setRuns((prev) => prev.filter((r) => r.id !== runId));
-      setTotal((t) => Math.max(0, t - 1));
+      setCampaignRuns((prev) => prev.filter((r) => r.id !== runId));
+      setTotal((t) => (runs.some((r) => r.id === runId) ? Math.max(0, t - 1) : t));
+      setCampaignTotal((t) => (campaignRuns.some((r) => r.id === runId) ? Math.max(0, t - 1) : t));
       showToast("Sequence deleted.", "success");
     } catch (e: unknown) {
       showToast(e instanceof Error ? e.message : "Delete failed", "error");
@@ -929,135 +1102,61 @@ export default function AutonomousAgentPage() {
             Loading sequences…
           </div>
 
-        ) : runs.length === 0 ? (
-          /* ── empty state ── */
-          <div className="rounded-xl border border-dashed border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 py-16 text-center">
-            <div className="text-3xl mb-3">🤖</div>
-            <p className="text-sm text-gray-500 dark:text-gray-400 max-w-sm mx-auto">{emptyMessage}</p>
-          </div>
-
         ) : (
-          /* ══════════════ RUNS TABLE ══════════════ */
-          <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-100 dark:divide-gray-800 text-sm">
-                <thead className="bg-gray-50 dark:bg-gray-800/60">
-                  <tr>
-                    {["Client", "Offer", "Status", "Progress", "Next step", "Anchor", "Actions"].map((h) => (
-                      <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50 dark:divide-gray-800/80">
-                  {runs.map((r) => (
-                    <tr key={r.id} className="hover:bg-gray-50/70 dark:hover:bg-gray-800/40 transition-colors">
-
-                      {/* client */}
-                      <td className="px-4 py-3 whitespace-nowrap font-semibold text-gray-900 dark:text-gray-100">
-                        {r.business_name || <span className="text-gray-300 dark:text-gray-600">—</span>}
-                      </td>
-
-                      {/* offer */}
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <span className="font-mono text-xs text-gray-500 dark:text-gray-400">#{r.offer_id}</span>
-                      </td>
-
-                      {/* status */}
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <div className="flex flex-col gap-1">
-                          <StatusPill status={r.run_status} stopReason={r.stop_reason} />
-                          {r.ack_draft_pending && (
-                            <DraftReadyBadge threadId={r.ack_draft_thread_id} />
-                          )}
-                        </div>
-                      </td>
-
-                      {/* progress */}
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <ProgressBar done={r.steps_done} total={r.steps_total} />
-                      </td>
-
-                      {/* next step */}
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        {r.next_step_channel ? (
-                          <div className="space-y-1">
-                            <ChannelBadge channel={r.next_step_channel} />
-                            <div className="text-[11px] text-gray-400 dark:text-gray-500">{formatDateTime(r.next_step_at)}</div>
-                          </div>
-                        ) : (
-                          <span className="text-gray-300 dark:text-gray-600">—</span>
-                        )}
-                      </td>
-
-                      {/* anchor */}
-                      <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">
-                        {formatDateTime(r.anchor_at)}
-                      </td>
-
-                      {/* actions */}
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <div className="flex flex-wrap gap-1.5">
-                          <Link href={`/autonomous-agent/${r.id}`}
-                            className="inline-flex items-center rounded-md border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 text-[11px] font-semibold px-2 py-1 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition">
-                            Sequence
-                          </Link>
-                          <Link href={`/offers/${r.offer_id}`}
-                            className="inline-flex items-center rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-300 text-[11px] font-semibold px-2 py-1 hover:bg-gray-50 dark:hover:bg-gray-800 transition">
-                            Offer
-                          </Link>
-                          {tab === "running" && r.run_status === "running" && (
-                            <button
-                              type="button"
-                              disabled={startingId === r.id || stoppingId === r.id || deletingId === r.id || restartingId === r.id}
-                              onClick={() => handleStartRunNow(r.id)}
-                              className="inline-flex items-center rounded-md border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-[11px] font-semibold px-2 py-1 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition disabled:opacity-40"
-                            >
-                              {startingId === r.id ? "Starting…" : "Start"}
-                            </button>
-                          )}
-                          {tab === "running" && r.run_status === "running" && (
-                            <button type="button"
-                              disabled={stoppingId === r.id || deletingId === r.id || restartingId === r.id || startingId === r.id}
-                              onClick={() => handleStopRun(r.id)}
-                              className="inline-flex items-center rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 text-[11px] font-semibold px-2 py-1 hover:bg-amber-100 dark:hover:bg-amber-900/50 transition disabled:opacity-40">
-                              {stoppingId === r.id ? "Stopping…" : "Stop"}
-                            </button>
-                          )}
-                          {isSequenceQueueTab(tab) && tab !== "running" &&
-                            ["stopped", "completed", "cancelled", "errored"].includes(r.run_status) &&
-                            canRestart(r.sequence_type) && (
-                              <button type="button"
-                                disabled={restartingId === r.id || deletingId === r.id || stoppingId === r.id}
-                                onClick={() => handleRestartRun(r.id)}
-                                className="inline-flex items-center rounded-md border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-[11px] font-semibold px-2 py-1 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition disabled:opacity-40">
-                                {restartingId === r.id ? "Starting…" : "Start again"}
-                              </button>
-                            )}
-                          <button type="button"
-                            disabled={deletingId === r.id || stoppingId === r.id || restartingId === r.id || startingId === r.id}
-                            onClick={() => handleDeleteRun(r.id)}
-                            className="inline-flex items-center rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 text-[11px] font-semibold px-2 py-1 hover:bg-red-100 dark:hover:bg-red-900/50 transition disabled:opacity-40">
-                            {deletingId === r.id ? "Deleting…" : "Delete"}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* load more */}
-        {isSequenceQueueTab(tab) && tab !== "running" && !loading && runs.length > 0 && runs.length < total && (
-          <div className="flex justify-center">
-            <button type="button" onClick={() => loadMore()} disabled={loadingMore}
-              className={cn(btnSecondary, "px-6 py-2 text-sm")}>
-              {loadingMore ? "Loading…" : "Load more"}
-            </button>
+          /* ══════════════ RUNS TABLES ══════════════ */
+          <div className="space-y-5">
+            <RunsQueueTable
+              title="Autonomous runs"
+              description="Comparison follow-ups and other sequences that are not from a campaign."
+              runs={runs}
+              emptyMessage={emptyMessage}
+              tab={tab}
+              canRestart={canRestart}
+              startingId={startingId}
+              stoppingId={stoppingId}
+              deletingId={deletingId}
+              restartingId={restartingId}
+              onStart={(id) => void handleStartRunNow(id)}
+              onStop={(id) => void handleStopRun(id)}
+              onRestart={(id) => void handleRestartRun(id)}
+              onDelete={(id) => void handleDeleteRun(id)}
+            />
+            {tab !== "running" && runs.length > 0 && runs.length < total ? (
+              <div className="flex justify-center">
+                <button type="button" onClick={() => void loadMore("followup")} disabled={loadingMore}
+                  className={cn(btnSecondary, "px-6 py-2 text-sm")}>
+                  {loadingMore ? "Loading…" : "Load more"}
+                </button>
+              </div>
+            ) : null}
+            <RunsQueueTable
+              title="Campaigns"
+              description="First-touch sequences started from the Campaigns page."
+              runs={campaignRuns}
+              emptyMessage={
+                tab === "running"
+                  ? "No campaign sequences running."
+                  : "No campaign sequences in this bucket."
+              }
+              tab={tab}
+              canRestart={canRestart}
+              startingId={startingId}
+              stoppingId={stoppingId}
+              deletingId={deletingId}
+              restartingId={restartingId}
+              onStart={(id) => void handleStartRunNow(id)}
+              onStop={(id) => void handleStopRun(id)}
+              onRestart={(id) => void handleRestartRun(id)}
+              onDelete={(id) => void handleDeleteRun(id)}
+            />
+            {tab !== "running" && campaignRuns.length > 0 && campaignRuns.length < campaignTotal ? (
+              <div className="flex justify-center">
+                <button type="button" onClick={() => void loadMore("campaign")} disabled={loadingMoreCampaign}
+                  className={cn(btnSecondary, "px-6 py-2 text-sm")}>
+                  {loadingMoreCampaign ? "Loading…" : "Load more campaigns"}
+                </button>
+              </div>
+            ) : null}
           </div>
         )}
       </div>
