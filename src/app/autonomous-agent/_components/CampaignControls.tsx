@@ -35,6 +35,7 @@ import {
   resumeCampaign,
   saveCampaignRows,
   sendCampaignTest,
+  sendCampaignNextN,
   setCampaignRowHumanOnly,
   startCampaign,
   unarchiveCampaign,
@@ -80,6 +81,12 @@ type CampaignCtx = {
   setProvenance: (value: string) => void;
   dailyCap: string;
   setDailyCap: (value: string) => void;
+  sendWindowStart: string;
+  setSendWindowStart: (value: string) => void;
+  sendWindowEnd: string;
+  setSendWindowEnd: (value: string) => void;
+  sendNextN: string;
+  setSendNextN: (value: string) => void;
   testTo: string;
   setTestTo: (value: string) => void;
   busy: string | null;
@@ -97,6 +104,8 @@ type CampaignCtx = {
   campaignId: number | null;
   campaigns: CampaignSummary[];
   archived: boolean;
+  listTab: "running" | "finished";
+  setListTab: (value: "running" | "finished") => void;
   showArchived: boolean;
   setShowArchived: (value: boolean) => void;
   selectedIds: number[];
@@ -113,13 +122,16 @@ type CampaignCtx = {
   dropdownTypes: CampaignSequenceOption[];
   comparisonSelected: boolean;
   readOnly: boolean;
+  throttleEditable: boolean;
   resolvedSubject: string;
   currentLabel: string;
   onSelectCampaign: (value: string) => void;
   onSave: () => Promise<void>;
+  onSaveThrottle: () => Promise<void>;
   onTestSend: () => Promise<void>;
   onReady: () => Promise<void>;
   onStart: () => Promise<void>;
+  onSendNext: () => Promise<void>;
   onPause: () => Promise<void>;
   onResume: () => Promise<void>;
   suppressions: SuppressionRow[];
@@ -166,6 +178,9 @@ export function CampaignWorkspace({
   const [status, setStatus] = useState<CampaignStatus>("draft");
   const [provenance, setProvenance] = useState("");
   const [dailyCap, setDailyCap] = useState("25");
+  const [sendWindowStart, setSendWindowStart] = useState("09:00");
+  const [sendWindowEnd, setSendWindowEnd] = useState("17:00");
+  const [sendNextN, setSendNextN] = useState("10");
   const [testTo, setTestTo] = useState(userEmail);
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -179,12 +194,14 @@ export function CampaignWorkspace({
   const [suppressions, setSuppressions] = useState<SuppressionRow[]>([]);
   const [suppressionsError, setSuppressionsError] = useState<string | null>(null);
   const [archived, setArchived] = useState(false);
+  const [listTab, setListTab] = useState<"running" | "finished">("running");
   const [showArchived, setShowArchived] = useState(false);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [deleteTargetId, setDeleteTargetId] = useState<number | null>(null);
   const [deleteBlock, setDeleteBlock] = useState<CampaignDeleteBlocked | null>(null);
 
   const readOnly = status !== "draft";
+  const throttleEditable = status !== "done" && !archived;
   const resolvedSubject = renderTemplate(subject, currentMergeRow).output;
 
   const fail = useCallback(
@@ -211,11 +228,11 @@ export function CampaignWorkspace({
 
   const refreshList = useCallback(async () => {
     if (!token) return;
-    const items = await listCampaigns(token, showArchived);
+    const items = await listCampaigns(token, true);
     setCampaigns(items);
     const valid = new Set(items.map((item) => item.id));
     setSelectedIds((prev) => prev.filter((id) => valid.has(id)));
-  }, [token, showArchived]);
+  }, [token]);
 
   useEffect(() => {
     if (!token) return;
@@ -271,6 +288,8 @@ export function CampaignWorkspace({
     setBody(campaign.first_touch_html || body);
     setProvenance(campaign.provenance_note || "");
     setDailyCap(campaign.daily_cap != null ? String(campaign.daily_cap) : "");
+    setSendWindowStart(campaign.send_window_start || "09:00");
+    setSendWindowEnd(campaign.send_window_end || "17:00");
     setColumnMap(campaign.merge_field_map || {});
     setRowCounts({
       rows: campaign.row_counts?.rows ?? 0,
@@ -283,15 +302,13 @@ export function CampaignWorkspace({
     });
     setShapeWarnings(campaign.shape_warnings ?? []);
     setArchived(Boolean(campaign.archived));
-    if (campaign.rows) {
-      setServerRows(
-        campaign.rows.map((row) => ({
-          ...row,
-          shape_warnings: row.shape_warnings || [],
-          human_only_reason: row.human_only_reason ?? null,
-        })),
-      );
-    }
+    setServerRows(
+      (campaign.rows ?? []).map((row) => ({
+        ...row,
+        shape_warnings: row.shape_warnings || [],
+        human_only_reason: row.human_only_reason ?? null,
+      })),
+    );
   }
 
   async function loadCampaign(id: number) {
@@ -329,7 +346,10 @@ export function CampaignWorkspace({
       resetToNew();
       return;
     }
-    void loadCampaign(Number(value));
+    const id = Number(value);
+    const listed = campaigns.find((item) => item.id === id);
+    if (listed) applyCampaign(listed);
+    void loadCampaign(id);
   }
 
   async function onSave() {
@@ -363,8 +383,8 @@ export function CampaignWorkspace({
         merge_field_map: columnMap,
         provenance_note: provenance,
         daily_cap: dailyCap ? Number(dailyCap) : null,
-        send_window_start: "09:00",
-        send_window_end: "17:00",
+        send_window_start: sendWindowStart || "09:00",
+        send_window_end: sendWindowEnd || "17:00",
       });
       if (parsed) {
         const summary = await saveCampaignRows(token, id, headers, rawRows, columnMap);
@@ -445,12 +465,11 @@ export function CampaignWorkspace({
     setBusy("ready");
     setError(null);
     try {
-      applyCampaign(
-        await patchCampaign(token, campaignId, {
-          status: "ready",
-          ...(warningCount > 0 ? { acknowledge_warnings: warningCount } : {}),
-        }),
-      );
+      await patchCampaign(token, campaignId, {
+        status: "ready",
+        ...(warningCount > 0 ? { acknowledge_warnings: warningCount } : {}),
+      });
+      applyCampaign(await getCampaign(token, campaignId));
       ok("Ready to send. Start list when you want the first-touch to go out.");
     } catch (e) {
       fail(e instanceof Error ? e.message : "Could not mark ready");
@@ -495,7 +514,8 @@ export function CampaignWorkspace({
     setBusy("pause");
     setError(null);
     try {
-      applyCampaign(await pauseCampaign(token, campaignId));
+      await pauseCampaign(token, campaignId);
+      applyCampaign(await getCampaign(token, campaignId));
       ok("Paused. Already-started sequences keep running.");
     } catch (e) {
       fail(e instanceof Error ? e.message : "Pause failed");
@@ -509,10 +529,57 @@ export function CampaignWorkspace({
     setBusy("resume");
     setError(null);
     try {
-      applyCampaign(await resumeCampaign(token, campaignId));
+      await resumeCampaign(token, campaignId);
+      applyCampaign(await getCampaign(token, campaignId));
       ok("Resumed.");
     } catch (e) {
       fail(e instanceof Error ? e.message : "Resume failed");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function onSaveThrottle() {
+    if (!token || campaignId == null) {
+      fail("Save the campaign first.");
+      return;
+    }
+    setBusy("throttle");
+    setError(null);
+    try {
+      applyCampaign(
+        await patchCampaign(token, campaignId, {
+          daily_cap: dailyCap ? Number(dailyCap) : null,
+          send_window_start: sendWindowStart || null,
+          send_window_end: sendWindowEnd || null,
+        }),
+      );
+      ok("Send limits saved.");
+    } catch (e) {
+      fail(e instanceof Error ? e.message : "Could not save send limits");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function onSendNext() {
+    if (!token || campaignId == null) {
+      fail("Save and mark ready first.");
+      return;
+    }
+    const n = Number(sendNextN);
+    if (!Number.isFinite(n) || n < 1) {
+      fail("Enter how many to send now.");
+      return;
+    }
+    setBusy("send-next");
+    setError(null);
+    try {
+      const result = await sendCampaignNextN(token, campaignId, n);
+      applyCampaign(await getCampaign(token, campaignId));
+      ok(`Sent ${result.started} now · ${result.pending} still pending`);
+    } catch (e) {
+      fail(e instanceof Error ? e.message : "Could not send the next batch");
     } finally {
       setBusy(null);
     }
@@ -526,7 +593,12 @@ export function CampaignWorkspace({
   }
 
   function onToggleSelectedAll(checked: boolean) {
-    setSelectedIds(checked ? campaigns.map((item) => item.id) : []);
+    const visible = campaigns.filter((campaign) =>
+      listTab === "finished"
+        ? Boolean(campaign.archived) || campaign.status === "done"
+        : !campaign.archived && campaign.status !== "done",
+    );
+    setSelectedIds(checked ? visible.map((item) => item.id) : []);
   }
 
   async function onArchive(id?: number) {
@@ -539,7 +611,7 @@ export function CampaignWorkspace({
     setError(null);
     try {
       await archiveCampaign(token, targetId);
-      if (targetId === campaignId && !showArchived) resetToNew();
+      if (targetId === campaignId && listTab !== "finished") resetToNew();
       else if (targetId === campaignId) applyCampaign(await getCampaign(token, targetId));
       await refreshList();
       ok("Campaign archived.");
@@ -574,7 +646,7 @@ export function CampaignWorkspace({
     try {
       const ids = [...selectedIds];
       await archiveCampaigns(token, ids);
-      if (campaignId != null && ids.includes(campaignId) && !showArchived) resetToNew();
+      if (campaignId != null && ids.includes(campaignId) && listTab !== "finished") resetToNew();
       setSelectedIds([]);
       await refreshList();
       ok(ids.length === 1 ? "Campaign archived." : `Archived ${ids.length} campaigns.`);
@@ -680,6 +752,12 @@ export function CampaignWorkspace({
     setProvenance,
     dailyCap,
     setDailyCap,
+    sendWindowStart,
+    setSendWindowStart,
+    sendWindowEnd,
+    setSendWindowEnd,
+    sendNextN,
+    setSendNextN,
     testTo,
     setTestTo,
     busy,
@@ -697,6 +775,8 @@ export function CampaignWorkspace({
     campaignId,
     campaigns,
     archived,
+    listTab,
+    setListTab,
     showArchived,
     setShowArchived,
     selectedIds,
@@ -713,13 +793,16 @@ export function CampaignWorkspace({
     dropdownTypes,
     comparisonSelected,
     readOnly,
+    throttleEditable,
     resolvedSubject,
     currentLabel,
     onSelectCampaign,
     onSave,
+    onSaveThrottle,
     onTestSend,
     onReady,
     onStart,
+    onSendNext,
     onPause,
     onResume,
     suppressions,
@@ -782,8 +865,8 @@ export function CampaignSetupCard() {
     sequenceType,
     setSequenceType,
     campaigns,
-    showArchived,
-    setShowArchived,
+    listTab,
+    setListTab,
     selectedIds,
     onToggleSelected,
     onToggleSelectedAll,
@@ -802,10 +885,17 @@ export function CampaignSetupCard() {
     busy,
   } = useCampaign();
 
-  const openCampaigns = campaigns.filter((campaign) => !campaign.archived);
+  const visibleCampaigns = campaigns.filter((campaign) =>
+    listTab === "finished"
+      ? Boolean(campaign.archived) || campaign.status === "done"
+      : !campaign.archived && campaign.status !== "done",
+  );
+  const openCampaigns = campaigns.filter(
+    (campaign) => !campaign.archived && campaign.status !== "done",
+  );
   const selectedMissingFromOpen =
     typeof selectedId === "number" && !openCampaigns.some((campaign) => campaign.id === selectedId);
-  const allSelected = campaigns.length > 0 && selectedIds.length === campaigns.length;
+  const allSelected = visibleCampaigns.length > 0 && selectedIds.length === visibleCampaigns.length;
 
   return (
     <Card>
@@ -869,12 +959,34 @@ export function CampaignSetupCard() {
 
         <div className="rounded-xl border border-gray-200 dark:border-gray-700">
           <div className="flex flex-wrap items-center gap-3 border-b border-gray-200 px-3 py-2 dark:border-gray-700">
+            <div
+              className="inline-flex items-center rounded-lg border border-gray-200 bg-white p-0.5 dark:border-gray-700 dark:bg-gray-900"
+              role="tablist"
+              aria-label="Campaign list"
+            >
+              {(["running", "finished"] as const).map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  role="tab"
+                  aria-selected={listTab === tab}
+                  onClick={() => setListTab(tab)}
+                  className={
+                    listTab === tab
+                      ? "rounded-md bg-indigo-600 px-3 py-1 text-xs font-semibold text-white"
+                      : "rounded-md px-3 py-1 text-xs font-medium text-gray-500"
+                  }
+                >
+                  {tab === "running" ? "Running" : "Finished"}
+                </button>
+              ))}
+            </div>
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
                 checked={allSelected}
                 onChange={(event) => onToggleSelectedAll(event.target.checked)}
-                disabled={campaigns.length === 0}
+                disabled={visibleCampaigns.length === 0}
               />
               <span className="text-gray-600 dark:text-gray-300">Select all</span>
             </label>
@@ -886,22 +998,14 @@ export function CampaignSetupCard() {
               Archive selected
               {selectedIds.length ? ` (${selectedIds.length})` : ""}
             </Button>
-            <label className="ml-auto flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={showArchived}
-                onChange={(event) => setShowArchived(event.target.checked)}
-              />
-              Show archived
-            </label>
           </div>
-          {campaigns.length === 0 ? (
+          {visibleCampaigns.length === 0 ? (
             <p className="px-3 py-3 text-sm text-gray-500">
-              {showArchived ? "No campaigns." : "No open campaigns."}
+              {listTab === "finished" ? "No finished campaigns." : "No running campaigns."}
             </p>
           ) : (
             <ul className="divide-y divide-gray-100 dark:divide-gray-800">
-              {campaigns.map((campaign) => (
+              {visibleCampaigns.map((campaign) => (
                 <li key={campaign.id} className="space-y-2 px-3 py-2 text-sm">
                   <div className="flex items-center gap-3">
                     <input
@@ -977,6 +1081,12 @@ export function CampaignSendCard() {
     token,
     dailyCap,
     setDailyCap,
+    sendWindowStart,
+    setSendWindowStart,
+    sendWindowEnd,
+    setSendWindowEnd,
+    sendNextN,
+    setSendNextN,
     testTo,
     setTestTo,
     busy,
@@ -988,13 +1098,16 @@ export function CampaignSendCard() {
     campaignId,
     comparisonSelected,
     readOnly,
+    throttleEditable,
     resolvedSubject,
     currentLabel,
     status,
     onSave,
+    onSaveThrottle,
     onTestSend,
     onReady,
     onStart,
+    onSendNext,
     onPause,
     onResume,
     archived,
@@ -1020,14 +1133,32 @@ export function CampaignSendCard() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <Input
-          label="Max sends per day"
-          type="number"
-          value={dailyCap}
-          onChange={(e) => setDailyCap(e.target.value)}
-          disabled={readOnly}
-          className="max-w-xs px-3 py-2"
-        />
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Input
+            label="Max sends per day"
+            type="number"
+            value={dailyCap}
+            onChange={(e) => setDailyCap(e.target.value)}
+            disabled={!throttleEditable}
+            className="px-3 py-2"
+          />
+          <Input
+            label="Send window start"
+            type="time"
+            value={sendWindowStart}
+            onChange={(e) => setSendWindowStart(e.target.value)}
+            disabled={!throttleEditable}
+            className="px-3 py-2"
+          />
+          <Input
+            label="Send window end"
+            type="time"
+            value={sendWindowEnd}
+            onChange={(e) => setSendWindowEnd(e.target.value)}
+            disabled={!throttleEditable}
+            className="px-3 py-2"
+          />
+        </div>
         <div className="flex flex-wrap items-center gap-2">
           <Badge intent={status === "draft" ? "neutral" : status === "ready" ? "info" : "success"}>
             {status}
@@ -1038,6 +1169,14 @@ export function CampaignSendCard() {
             loading={busy === "save"}
           >
             Save draft
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => void onSaveThrottle()}
+            disabled={!token || campaignId == null || !throttleEditable || busy !== null}
+            loading={busy === "throttle"}
+          >
+            Save limits
           </Button>
           <Button
             variant="secondary"
@@ -1075,6 +1214,29 @@ export function CampaignSendCard() {
             Resume
           </Button>
         </div>
+        {status === "ready" || status === "sending" ? (
+          <div className="flex flex-wrap items-end gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-3 dark:border-indigo-900/50 dark:bg-indigo-950/30">
+            <Input
+              label="Send next N now"
+              type="number"
+              value={sendNextN}
+              onChange={(e) => setSendNextN(e.target.value)}
+              disabled={busy !== null}
+              className="w-28 px-3 py-2"
+            />
+            <Button
+              onClick={() => void onSendNext()}
+              disabled={!token || campaignId == null || busy !== null}
+              loading={busy === "send-next"}
+            >
+              Send now
+            </Button>
+            <p className="text-xs text-indigo-900 dark:text-indigo-200">
+              Bypasses today&apos;s cap for this batch only. Does not reset the counter. Recorded as
+              who sent it.
+            </p>
+          </div>
+        ) : null}
         <div className="flex flex-wrap items-center gap-2">
           {archived ? (
             <Button
@@ -1126,8 +1288,10 @@ export function CampaignSendCard() {
           </label>
         ) : null}
         <p className="text-xs text-gray-500">
-          Mark ready needs a saved draft and one test send. Pause stops new first-touch sends only —
-          already-running sequences keep going until you stop them on Autonomous Agent.
+          Mark ready needs a saved draft and one test send. Daily cap and send window stay editable
+          after a campaign starts. Send next N now releases a batch without resetting today&apos;s
+          counter. Pause stops new first-touch sends only — already-running sequences keep going
+          until you stop them on Autonomous Agent.
         </p>
 
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/50 dark:bg-amber-950/30">

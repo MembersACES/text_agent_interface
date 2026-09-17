@@ -25,7 +25,40 @@ import DeleteSequenceTemplateModal, {
   loadTemplateDeletePreview,
 } from "./_components/DeleteSequenceTemplateModal";
 
-type AgentTab = "running" | "finished" | "templates" | "resources";
+type AgentTab =
+  | "running"
+  | "stopped_negative"
+  | "stopped_signed"
+  | "stopped_invoice"
+  | "stopped_unsubscribed"
+  | "completed"
+  | "errored"
+  | "stopped_other"
+  | "templates"
+  | "resources";
+
+const SEQUENCE_TABS: { id: AgentTab; label: string }[] = [
+  { id: "running", label: "Running" },
+  { id: "stopped_negative", label: "Stopped (negative)" },
+  { id: "stopped_signed", label: "Stopped (signed)" },
+  { id: "stopped_invoice", label: "Stopped (invoice)" },
+  { id: "stopped_unsubscribed", label: "Stopped (unsubscribed)" },
+  { id: "completed", label: "Completed" },
+  { id: "errored", label: "Errored" },
+  { id: "stopped_other", label: "Stopped (other)" },
+  { id: "templates", label: "Sequence templates" },
+  { id: "resources", label: "Autonomous Resources" },
+];
+
+function isSequenceQueueTab(tab: AgentTab): boolean {
+  return tab !== "templates" && tab !== "resources";
+}
+
+function parseAgentTab(value: string | null): AgentTab {
+  if (value === "finished") return "completed";
+  if (SEQUENCE_TABS.some((tab) => tab.id === value)) return value as AgentTab;
+  return "running";
+}
 
 interface AutonomousRunRow {
   id: number;
@@ -68,6 +101,7 @@ function formatDateTime(iso?: string | null) {
 }
 
 const PAGE_SIZE = 20;
+const RUNNING_PAGE_SIZE = 2000;
 
 const RESTARTABLE_SEQUENCE_TYPES = new Set([
   "gas_base2_followup_v1",
@@ -126,6 +160,7 @@ function StatusPill({ status, stopReason }: { status: string; stopReason?: strin
     completed: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800",
     stopped: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800",
     cancelled: "bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800",
+    errored: "bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800",
   };
   const cls = map[status] ?? "bg-gray-50 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700";
   return (
@@ -167,10 +202,7 @@ export default function AutonomousAgentPage() {
   const { showToast } = useToast();
 
   const tabFromUrl = searchParams.get("tab");
-  const initialTab: AgentTab =
-    tabFromUrl === "templates" || tabFromUrl === "finished" || tabFromUrl === "resources" || tabFromUrl === "running"
-      ? tabFromUrl
-      : "running";
+  const initialTab: AgentTab = parseAgentTab(tabFromUrl);
   const [tab, setTab] = useState<AgentTab>(initialTab);
   const [runs, setRuns] = useState<AutonomousRunRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -227,14 +259,15 @@ export default function AutonomousAgentPage() {
 
   useEffect(() => {
     if (!token) { setLoading(false); return; }
-    if (tab === "templates" || tab === "resources") { setLoading(false); return; }
+    if (!isSequenceQueueTab(tab)) { setLoading(false); return; }
     const fetchRuns = async () => {
       try {
         setLoading(true); setError(null);
         const params = new URLSearchParams();
-        params.set("limit", String(PAGE_SIZE));
+        const pageSize = tab === "running" ? RUNNING_PAGE_SIZE : PAGE_SIZE;
+        params.set("limit", String(pageSize));
         params.set("offset", "0");
-        params.set("run_status_group", tab === "running" ? "running" : "finished");
+        params.set("run_status_group", tab);
         const res = await fetch(
           `${getAutonomousApiBaseUrl()}/api/autonomous/sequences/runs?${params.toString()}`,
           { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } },
@@ -263,7 +296,7 @@ export default function AutonomousAgentPage() {
       const params = new URLSearchParams();
       params.set("limit", String(PAGE_SIZE));
       params.set("offset", String(runs.length));
-      params.set("run_status_group", tab === "running" ? "running" : "finished");
+      params.set("run_status_group", tab);
       const res = await fetch(
         `${getAutonomousApiBaseUrl()}/api/autonomous/sequences/runs?${params.toString()}`,
         { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } },
@@ -305,9 +338,7 @@ export default function AutonomousAgentPage() {
 
   useEffect(() => {
     const t = searchParams.get("tab");
-    if (t === "templates" || t === "finished" || t === "resources" || t === "running") {
-      setTab(t);
-    }
+    setTab(parseAgentTab(t));
   }, [searchParams]);
 
   const typeParam = searchParams.get("type");
@@ -687,7 +718,11 @@ export default function AutonomousAgentPage() {
   const emptyMessage =
     tab === "running"
       ? "No active autonomous sequences. Start a test run from Sequence templates, or generate the linked comparison."
-      : "No finished sequences yet.";
+      : tab === "errored"
+        ? "No errored sequences."
+        : tab === "completed"
+          ? "No completed sequences yet."
+          : "No sequences in this stop bucket.";
   const selectedTemplate = templates.find((t) => t.id === selectedTemplateId) ?? null;
   const canRestart = (sequenceType: string) => {
     const tpl = templates.find((t) => t.sequence_type === sequenceType);
@@ -725,29 +760,28 @@ export default function AutonomousAgentPage() {
               role="tablist"
               aria-label="Autonomous sequence queue"
             >
-              {(["running", "finished", "templates", "resources"] as AgentTab[]).map((t) => {
-                const labels: Record<AgentTab, string> = {
-                  running: "Running",
-                  finished: "Finished",
-                  templates: "Sequence templates",
-                  resources: "Autonomous Resources",
-                };
+              {SEQUENCE_TABS.map((item) => {
                 return (
                   <button
-                    key={t}
+                    key={item.id}
                     type="button"
                     role="tab"
-                    aria-selected={tab === t}
-                    onClick={() => setTab(t)}
+                    aria-selected={tab === item.id}
+                    onClick={() => {
+                      setTab(item.id);
+                      const params = new URLSearchParams(searchParams.toString());
+                      params.set("tab", item.id);
+                      router.replace(`/autonomous-agent?${params.toString()}`, { scroll: false });
+                    }}
                     className={cn(
                       "inline-flex items-center px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all",
-                      tab === t
+                      tab === item.id
                         ? "bg-indigo-600 text-white shadow-sm"
                         : "text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800",
                     )}
                   >
-                    {labels[t]}
-                    {t === "finished" && ackDraftPendingCount > 0 && (
+                    {item.label}
+                    {item.id === "completed" && ackDraftPendingCount > 0 && (
                       <span className="ml-1.5 inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-orange-100 px-1.5 py-0.5 text-[10px] font-semibold text-orange-800 dark:bg-orange-950/60 dark:text-orange-200">
                         {ackDraftPendingCount}
                       </span>
@@ -991,8 +1025,8 @@ export default function AutonomousAgentPage() {
                               {stoppingId === r.id ? "Stopping…" : "Stop"}
                             </button>
                           )}
-                          {tab === "finished" &&
-                            ["stopped", "completed", "cancelled"].includes(r.run_status) &&
+                          {isSequenceQueueTab(tab) && tab !== "running" &&
+                            ["stopped", "completed", "cancelled", "errored"].includes(r.run_status) &&
                             canRestart(r.sequence_type) && (
                               <button type="button"
                                 disabled={restartingId === r.id || deletingId === r.id || stoppingId === r.id}
@@ -1018,7 +1052,7 @@ export default function AutonomousAgentPage() {
         )}
 
         {/* load more */}
-        {tab !== "templates" && tab !== "resources" && !loading && runs.length > 0 && runs.length < total && (
+        {isSequenceQueueTab(tab) && tab !== "running" && !loading && runs.length > 0 && runs.length < total && (
           <div className="flex justify-center">
             <button type="button" onClick={() => loadMore()} disabled={loadingMore}
               className={cn(btnSecondary, "px-6 py-2 text-sm")}>

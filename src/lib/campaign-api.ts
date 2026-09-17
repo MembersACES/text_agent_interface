@@ -206,6 +206,28 @@ export async function sendCampaignTest(
   return res.json();
 }
 
+export async function sendCampaignNextN(
+  token: string,
+  id: number,
+  n: number,
+): Promise<{
+  ok: boolean;
+  started: number;
+  pending: number;
+  requested?: number;
+  bypassed_daily_cap?: boolean;
+  status: CampaignStatus;
+  skipped_suppressed_addresses?: string[];
+}> {
+  const res = await fetch(`${base()}/api/autonomous/campaigns/${id}/send-next`, {
+    method: "POST",
+    headers: headers(token),
+    body: JSON.stringify({ n }),
+  });
+  if (!res.ok) throw new Error(await readError(res, "Could not send the next batch"));
+  return res.json();
+}
+
 export async function startCampaign(token: string, id: number) {
   const res = await fetch(`${base()}/api/autonomous/campaigns/${id}/start`, {
     method: "POST",
