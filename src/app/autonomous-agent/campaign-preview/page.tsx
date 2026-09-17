@@ -271,7 +271,6 @@ export default function CampaignPreviewPage() {
       <div className="mt-5 space-y-5">
         <CampaignSetupCard />
         <CampaignSummaryBar />
-        <CampaignRowList />
         <UploadSection
           fileName={fileName}
           parseError={parseError}
@@ -300,6 +299,8 @@ export default function CampaignPreviewPage() {
           setRecipientPicks={setRecipientPicks}
           shapeWarnings={shapeWarnings}
         />
+
+        <CampaignRowList />
 
         <ComposeSection
           enabled={parsed}

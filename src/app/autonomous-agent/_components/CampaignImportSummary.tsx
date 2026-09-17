@@ -37,6 +37,11 @@ function filterRows(
   rows: CampaignRowPayload[],
   filter: CampaignRowFilter,
 ): CampaignRowPayload[] {
+  const humanKeys = new Set(
+    rows
+      .filter((row) => row.human_only && (row.recipient_key || "").trim())
+      .map((row) => (row.recipient_key || "").trim()),
+  );
   switch (filter) {
     case "distinct":
       return uniqueRecipientRows(rows);
@@ -47,6 +52,7 @@ function filterRows(
             row.row_status === "pending" &&
             !row.human_only &&
             !row.run_id &&
+            !(row.recipient_key && humanKeys.has(row.recipient_key.trim())) &&
             (row.shape_warnings || []).length === 0,
         ),
       );
@@ -144,7 +150,7 @@ export function CampaignRowList() {
     rowCounts,
     summaryIsPreview,
     rowFilter,
-    readOnly,
+    canFlagHumanOnly,
     busy,
     onSetHumanOnly,
   } = useCampaign();
@@ -210,6 +216,11 @@ export function CampaignRowList() {
                     reasons[row.id] ?? row.human_only_reason ?? "";
                   const flags = row.shape_warnings || [];
                   const rowBusy = busy === `human-only-${row.id}`;
+                  const rowLocked =
+                    !canFlagHumanOnly ||
+                    row.row_status === "started" ||
+                    Boolean(row.run_id) ||
+                    rowBusy;
                   return (
                     <tr
                       key={row.id}
@@ -249,7 +260,7 @@ export function CampaignRowList() {
                           <input
                             type="checkbox"
                             checked={row.human_only}
-                            disabled={readOnly || campaignId == null || summaryIsPreview || rowBusy}
+                            disabled={rowLocked}
                             onChange={(event) =>
                               void onSetHumanOnly(
                                 row.id,
@@ -265,7 +276,7 @@ export function CampaignRowList() {
                         <Input
                           value={reasonValue}
                           placeholder="Optional reason"
-                          disabled={readOnly || campaignId == null || summaryIsPreview || rowBusy}
+                          disabled={rowLocked}
                           className="px-2 py-1 text-xs"
                           onChange={(event) =>
                             setReasons((prev) => ({

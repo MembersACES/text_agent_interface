@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -26,6 +26,7 @@ import DeleteSequenceTemplateModal, {
 } from "./_components/DeleteSequenceTemplateModal";
 
 type AgentTab =
+  | "needs_attention"
   | "running"
   | "stopped_negative"
   | "stopped_signed"
@@ -38,13 +39,14 @@ type AgentTab =
   | "resources";
 
 const SEQUENCE_TABS: { id: AgentTab; label: string }[] = [
+  { id: "needs_attention", label: "Needs attention" },
   { id: "running", label: "Running" },
   { id: "stopped_negative", label: "Stopped (negative)" },
   { id: "stopped_signed", label: "Stopped (signed)" },
   { id: "stopped_invoice", label: "Stopped (invoice)" },
   { id: "stopped_unsubscribed", label: "Stopped (unsubscribed)" },
   { id: "completed", label: "Completed" },
-  { id: "errored", label: "Errored" },
+  { id: "errored", label: "Error" },
   { id: "stopped_other", label: "Stopped (other)" },
   { id: "templates", label: "Sequence templates" },
   { id: "resources", label: "Autonomous Resources" },
@@ -57,7 +59,7 @@ function isSequenceQueueTab(tab: AgentTab): boolean {
 function parseAgentTab(value: string | null): AgentTab {
   if (value === "finished") return "completed";
   if (SEQUENCE_TABS.some((tab) => tab.id === value)) return value as AgentTab;
-  return "running";
+  return "needs_attention";
 }
 
 interface AutonomousRunRow {
@@ -74,6 +76,8 @@ interface AutonomousRunRow {
   steps_total: number;
   ack_draft_pending?: boolean;
   ack_draft_thread_id?: string | null;
+  campaign_id?: number | null;
+  campaign_name?: string | null;
 }
 
 function apiDetail(data: unknown, fallback: string): string {
@@ -98,6 +102,131 @@ function formatDateTime(iso?: string | null) {
   } catch {
     return iso;
   }
+}
+
+function formatRelative(iso?: string | null) {
+  if (!iso) return "—";
+  const at = new Date(iso).getTime();
+  if (Number.isNaN(at)) return iso;
+  const diffMs = at - Date.now();
+  const abs = Math.abs(diffMs);
+  const minute = 60_000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  let amount: number;
+  let unit: string;
+  if (abs < hour) {
+    amount = Math.max(1, Math.round(abs / minute));
+    unit = amount === 1 ? "min" : "min";
+  } else if (abs < day) {
+    amount = Math.round(abs / hour);
+    unit = amount === 1 ? "hr" : "hrs";
+  } else {
+    amount = Math.round(abs / day);
+    unit = amount === 1 ? "day" : "days";
+  }
+  return diffMs < 0 ? `${amount} ${unit} ago` : `in ${amount} ${unit}`;
+}
+
+function isOverdue(run: AutonomousRunRow, now = Date.now()) {
+  if (run.run_status !== "running" || !run.next_step_at) return false;
+  const at = new Date(run.next_step_at).getTime();
+  return !Number.isNaN(at) && at < now;
+}
+
+function nextStepSortValue(run: AutonomousRunRow) {
+  if (!run.next_step_at) return Number.POSITIVE_INFINITY;
+  const at = new Date(run.next_step_at).getTime();
+  return Number.isNaN(at) ? Number.POSITIVE_INFINITY : at;
+}
+
+function sortByNextStep(rows: AutonomousRunRow[]) {
+  return [...rows].sort((a, b) => {
+    const delta = nextStepSortValue(a) - nextStepSortValue(b);
+    if (delta !== 0) return delta;
+    return a.id - b.id;
+  });
+}
+
+function sequenceTypeLabel(sequenceType: string) {
+  return sequenceType.replace(/_v\d+$/, "").replace(/_/g, " ");
+}
+
+function sourceLabel(run: AutonomousRunRow) {
+  if (run.campaign_id) {
+    return run.campaign_name?.trim() ? `Campaign · ${run.campaign_name.trim()}` : "Campaign";
+  }
+  return "Follow-up";
+}
+
+function matchesRunSearch(run: AutonomousRunRow, query: string) {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const haystack = [
+    run.business_name,
+    sequenceTypeLabel(run.sequence_type),
+    run.sequence_type,
+    String(run.offer_id),
+    run.campaign_name,
+    sourceLabel(run),
+    run.run_status,
+    run.stop_reason,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return haystack.includes(q);
+}
+
+function uniqueById(rows: AutonomousRunRow[]) {
+  const seen = new Set<number>();
+  const out: AutonomousRunRow[] = [];
+  for (const row of rows) {
+    if (seen.has(row.id)) continue;
+    seen.add(row.id);
+    out.push(row);
+  }
+  return out;
+}
+
+type AttentionBucket = "errored" | "drafts" | "negative" | "overdue";
+
+const ATTENTION_BUCKETS: { id: AttentionBucket; singular: string; plural: string }[] = [
+  { id: "errored", singular: "error", plural: "errors" },
+  { id: "drafts", singular: "draft", plural: "drafts" },
+  { id: "negative", singular: "negative", plural: "negative" },
+  { id: "overdue", singular: "overdue", plural: "overdue" },
+];
+
+function inAttentionBucket(run: AutonomousRunRow, bucket: AttentionBucket) {
+  switch (bucket) {
+    case "errored":
+      return run.run_status === "errored";
+    case "drafts":
+      return Boolean(run.ack_draft_pending);
+    case "negative":
+      return run.stop_reason === "negative_sentiment_stop";
+    case "overdue":
+      return isOverdue(run);
+  }
+}
+
+function countAttentionBuckets(rows: AutonomousRunRow[]) {
+  return {
+    errored: rows.filter((row) => inAttentionBucket(row, "errored")).length,
+    drafts: rows.filter((row) => inAttentionBucket(row, "drafts")).length,
+    negative: rows.filter((row) => inAttentionBucket(row, "negative")).length,
+    overdue: rows.filter((row) => inAttentionBucket(row, "overdue")).length,
+  };
+}
+
+function stitchAttention(running: AutonomousRunRow[], finished: AutonomousRunRow[]) {
+  const now = Date.now();
+  const overdue = running.filter((row) => isOverdue(row, now));
+  const errored = finished.filter((row) => row.run_status === "errored");
+  const negative = finished.filter((row) => row.stop_reason === "negative_sentiment_stop");
+  const drafts = [...running, ...finished].filter((row) => row.ack_draft_pending);
+  return sortByNextStep(uniqueById([...errored, ...overdue, ...drafts, ...negative]));
 }
 
 const PAGE_SIZE = 20;
@@ -177,57 +306,113 @@ function StatusPill({ status, stopReason }: { status: string; stopReason?: strin
   );
 }
 
-function ProgressBar({ done, total }: { done: number; total: number }) {
-  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
-  return (
-    <div className="flex items-center gap-2">
-      <div className="h-1.5 w-20 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
-        <div
-          className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-violet-500 transition-all"
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-      <span className="text-xs tabular-nums text-gray-500 dark:text-gray-400">{done}/{total}</span>
-    </div>
-  );
-}
-
 function RunsQueueTable({
   title,
   description,
   runs,
   emptyMessage,
   tab,
+  compact,
+  search,
+  onSearchChange,
+  attentionFilter = null,
+  attentionCounts = null,
+  onAttentionFilter,
   canRestart,
   startingId,
   stoppingId,
   deletingId,
   restartingId,
+  reviewingId,
   onStart,
   onStop,
   onRestart,
   onDelete,
+  onMarkReviewed,
+  selectedIds,
+  onToggleSelected,
+  onToggleSelectedAll,
 }: {
   title: string;
   description: string;
   runs: AutonomousRunRow[];
   emptyMessage: string;
   tab: AgentTab;
+  compact: boolean;
+  search: string;
+  onSearchChange: (value: string) => void;
+  attentionFilter?: AttentionBucket | null;
+  attentionCounts?: Record<AttentionBucket, number> | null;
+  onAttentionFilter?: (bucket: AttentionBucket | null) => void;
   canRestart: (sequenceType: string) => boolean;
   startingId: number | null;
   stoppingId: number | null;
   deletingId: number | null;
   restartingId: number | null;
+  reviewingId: number | null;
   onStart: (runId: number) => void;
   onStop: (runId: number) => void;
   onRestart: (runId: number) => void;
   onDelete: (runId: number) => void;
+  onMarkReviewed: (runId: number) => void;
+  selectedIds: number[];
+  onToggleSelected: (id: number, checked: boolean) => void;
+  onToggleSelectedAll: (checked: boolean) => void;
 }) {
+  const allSelected = runs.length > 0 && runs.every((r) => selectedIds.includes(r.id));
+  const showSearch = tab === "needs_attention" || tab === "running";
+  const cell = compact ? "px-3 py-1.5" : "px-4 py-3";
+  const liveActions = tab === "running" || tab === "needs_attention";
   return (
     <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm overflow-hidden">
-      <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800">
-        <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{title}</h2>
-        <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{description}</p>
+      <div className="flex flex-wrap items-start justify-between gap-3 px-4 py-3 border-b border-gray-100 dark:border-gray-800">
+        <div>
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{title}</h2>
+          {attentionCounts && onAttentionFilter ? (
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-1 gap-y-1 text-sm text-gray-600 dark:text-gray-300">
+              {ATTENTION_BUCKETS.map((bucket, index) => {
+                const count = attentionCounts[bucket.id];
+                const selected = attentionFilter === bucket.id;
+                const label = `${count} ${count === 1 ? bucket.singular : bucket.plural}`;
+                return (
+                  <span key={bucket.id} className="flex items-center gap-1">
+                    {index > 0 ? (
+                      <span className="px-0.5 text-gray-400" aria-hidden>
+                        ·
+                      </span>
+                    ) : null}
+                    <button
+                      type="button"
+                      disabled={count === 0 && !selected}
+                      aria-pressed={selected}
+                      onClick={() => onAttentionFilter(selected ? null : bucket.id)}
+                      className={cn(
+                        "rounded-md px-1.5 py-0.5 font-semibold underline-offset-4",
+                        count === 0 && !selected
+                          ? "cursor-default text-gray-400 dark:text-gray-600"
+                          : "hover:underline",
+                        selected && "bg-indigo-50 text-indigo-800 underline dark:bg-indigo-950/50 dark:text-indigo-200",
+                      )}
+                    >
+                      {label}
+                    </button>
+                  </span>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{description}</p>
+          )}
+        </div>
+        {showSearch ? (
+          <input
+            type="search"
+            value={search}
+            onChange={(event) => onSearchChange(event.target.value)}
+            placeholder="Search this list"
+            className="w-full max-w-xs rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+          />
+        ) : null}
       </div>
       {runs.length === 0 ? (
         <p className="px-4 py-10 text-sm text-gray-500 dark:text-gray-400 text-center">{emptyMessage}</p>
@@ -236,9 +421,19 @@ function RunsQueueTable({
           <table className="min-w-full divide-y divide-gray-100 dark:divide-gray-800 text-sm">
             <thead className="bg-gray-50 dark:bg-gray-800/60">
               <tr>
-                {["Client", "Offer", "Status", "Progress", "Next step", "Anchor", "Actions"].map((h) => (
-                  <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                    {h}
+                {["", "Source", "Sequence", "Client", "Next step", "Status", "Actions"].map((h) => (
+                  <th key={h || "select"} className="px-4 py-3 text-left text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide whitespace-nowrap">
+                    {h ? (
+                      h
+                    ) : (
+                      <input
+                        type="checkbox"
+                        checked={allSelected}
+                        onChange={(event) => onToggleSelectedAll(event.target.checked)}
+                        disabled={runs.length === 0}
+                        aria-label="Select all sequences"
+                      />
+                    )}
                   </th>
                 ))}
               </tr>
@@ -246,37 +441,77 @@ function RunsQueueTable({
             <tbody className="divide-y divide-gray-50 dark:divide-gray-800/80">
               {runs.map((r) => (
                 <tr key={r.id} className="hover:bg-gray-50/70 dark:hover:bg-gray-800/40 transition-colors">
-                  <td className="px-4 py-3 whitespace-nowrap font-semibold text-gray-900 dark:text-gray-100">
+                  <td className={cell}>
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.includes(r.id)}
+                      onChange={(event) => onToggleSelected(r.id, event.target.checked)}
+                      aria-label={`Select sequence ${r.id}`}
+                    />
+                  </td>
+                  <td className={cn(cell, "whitespace-nowrap")}>
+                    <span
+                      className={cn(
+                        "inline-flex max-w-[14rem] truncate rounded-full border px-2 py-0.5 text-[11px] font-semibold",
+                        r.campaign_id
+                          ? "border-indigo-200 bg-indigo-50 text-indigo-800 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-200"
+                          : "border-gray-200 bg-gray-50 text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300",
+                      )}
+                      title={sourceLabel(r)}
+                    >
+                      {sourceLabel(r)}
+                    </span>
+                  </td>
+                  <td className={cn(cell, "whitespace-nowrap")}>
+                    <span className="text-xs capitalize text-gray-600 dark:text-gray-300" title={r.sequence_type}>
+                      {sequenceTypeLabel(r.sequence_type)}
+                    </span>
+                  </td>
+                  <td className={cn(cell, "whitespace-nowrap font-semibold text-gray-900 dark:text-gray-100")}>
                     {r.business_name || <span className="text-gray-300 dark:text-gray-600">—</span>}
                   </td>
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    <span className="font-mono text-xs text-gray-500 dark:text-gray-400">#{r.offer_id}</span>
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    <div className="flex flex-col gap-1">
-                      <StatusPill status={r.run_status} stopReason={r.stop_reason} />
-                      {r.ack_draft_pending && (
-                        <DraftReadyBadge threadId={r.ack_draft_thread_id} />
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    <ProgressBar done={r.steps_done} total={r.steps_total} />
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap">
+                  <td className={cn(cell, "whitespace-nowrap")}>
                     {r.next_step_channel ? (
-                      <div className="space-y-1">
+                      <div className={compact ? "flex items-center gap-2" : "space-y-1"}>
                         <ChannelBadge channel={r.next_step_channel} />
-                        <div className="text-[11px] text-gray-400 dark:text-gray-500">{formatDateTime(r.next_step_at)}</div>
+                        <div
+                          className={cn(
+                            "text-[11px] tabular-nums",
+                            isOverdue(r) ? "font-semibold text-amber-700 dark:text-amber-300" : "text-gray-400 dark:text-gray-500",
+                          )}
+                          title={formatDateTime(r.next_step_at)}
+                        >
+                          {formatRelative(r.next_step_at)}
+                        </div>
                       </div>
                     ) : (
                       <span className="text-gray-300 dark:text-gray-600">—</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">
-                    {formatDateTime(r.anchor_at)}
+                  <td className={cn(cell, "whitespace-nowrap")}>
+                    <div className="flex flex-col gap-1">
+                      <StatusPill status={r.run_status} stopReason={r.stop_reason} />
+                      {isOverdue(r) ? (
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                          Overdue
+                        </span>
+                      ) : null}
+                      {r.ack_draft_pending && (
+                        <div className="flex flex-wrap items-center gap-1">
+                          <DraftReadyBadge threadId={r.ack_draft_thread_id} />
+                          <button
+                            type="button"
+                            disabled={reviewingId === r.id}
+                            onClick={() => onMarkReviewed(r.id)}
+                            className="inline-flex items-center rounded-md border border-orange-200 dark:border-orange-800 bg-white dark:bg-gray-900 text-orange-800 dark:text-orange-200 text-[11px] font-semibold px-2 py-0.5 hover:bg-orange-50 dark:hover:bg-orange-950/40 transition disabled:opacity-40"
+                          >
+                            {reviewingId === r.id ? "Saving…" : "Mark reviewed"}
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </td>
-                  <td className="px-4 py-3 whitespace-nowrap">
+                  <td className={cn(cell, "whitespace-nowrap")}>
                     <div className="flex flex-wrap gap-1.5">
                       <Link href={`/autonomous-agent/${r.id}`}
                         className="inline-flex items-center rounded-md border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 text-[11px] font-semibold px-2 py-1 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition">
@@ -286,7 +521,7 @@ function RunsQueueTable({
                         className="inline-flex items-center rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-300 text-[11px] font-semibold px-2 py-1 hover:bg-gray-50 dark:hover:bg-gray-800 transition">
                         Offer
                       </Link>
-                      {tab === "running" && r.run_status === "running" && (
+                      {liveActions && r.run_status === "running" && (
                         <button
                           type="button"
                           disabled={startingId === r.id || stoppingId === r.id || deletingId === r.id || restartingId === r.id}
@@ -296,7 +531,7 @@ function RunsQueueTable({
                           {startingId === r.id ? "Starting…" : "Start"}
                         </button>
                       )}
-                      {tab === "running" && r.run_status === "running" && (
+                      {liveActions && r.run_status === "running" && (
                         <button type="button"
                           disabled={stoppingId === r.id || deletingId === r.id || restartingId === r.id || startingId === r.id}
                           onClick={() => onStop(r.id)}
@@ -332,8 +567,6 @@ function RunsQueueTable({
   );
 }
 
-type RunSource = "followup" | "campaign";
-
 // ─── main component ──────────────────────────────────────────────────────────
 
 export default function AutonomousAgentPage() {
@@ -347,14 +580,14 @@ export default function AutonomousAgentPage() {
   const initialTab: AgentTab = parseAgentTab(tabFromUrl);
   const [tab, setTab] = useState<AgentTab>(initialTab);
   const [runs, setRuns] = useState<AutonomousRunRow[]>([]);
-  const [campaignRuns, setCampaignRuns] = useState<AutonomousRunRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [total, setTotal] = useState(0);
-  const [campaignTotal, setCampaignTotal] = useState(0);
   const [ackDraftPendingCount, setAckDraftPendingCount] = useState(0);
+  const [attentionCount, setAttentionCount] = useState(0);
+  const [queueQuery, setQueueQuery] = useState("");
+  const [attentionFilter, setAttentionFilter] = useState<AttentionBucket | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [loadingMoreCampaign, setLoadingMoreCampaign] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [stoppingId, setStoppingId] = useState<number | null>(null);
   const [startingId, setStartingId] = useState<number | null>(null);
@@ -364,6 +597,9 @@ export default function AutonomousAgentPage() {
   // it is the same run twice that is not.
   const runStartsInFlight = useRef<Set<number>>(new Set());
   const [restartingId, setRestartingId] = useState<number | null>(null);
+  const [reviewingId, setReviewingId] = useState<number | null>(null);
+  const [selectedRunIds, setSelectedRunIds] = useState<number[]>([]);
+  const [batchBusy, setBatchBusy] = useState<"delete" | "stop" | "trigger" | null>(null);
   const [templates, setTemplates] = useState<SequenceTemplate[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [templatesError, setTemplatesError] = useState<string | null>(null);
@@ -402,12 +638,11 @@ export default function AutonomousAgentPage() {
 
   // ── data fetching (unchanged) ─────────────────────────────────────────────
 
-  const fetchRunPage = async (source: RunSource, offset: number, limit: number) => {
+  const fetchRunPage = async (group: string, offset: number, limit: number) => {
     const params = new URLSearchParams();
     params.set("limit", String(limit));
     params.set("offset", String(offset));
-    params.set("run_status_group", tab);
-    params.set("source", source);
+    params.set("run_status_group", group);
     const res = await fetch(
       `${getAutonomousApiBaseUrl()}/api/autonomous/sequences/runs?${params.toString()}`,
       { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } },
@@ -429,22 +664,37 @@ export default function AutonomousAgentPage() {
     const fetchRuns = async () => {
       try {
         setLoading(true); setError(null);
-        const pageSize = tab === "running" ? RUNNING_PAGE_SIZE : PAGE_SIZE;
-        const [followup, campaign] = await Promise.all([
-          fetchRunPage("followup", 0, pageSize),
-          fetchRunPage("campaign", 0, pageSize),
-        ]);
-        setRuns(Array.isArray(followup.items) ? followup.items : []);
-        setTotal(typeof followup.total === "number" ? followup.total : 0);
-        setCampaignRuns(Array.isArray(campaign.items) ? campaign.items : []);
-        setCampaignTotal(typeof campaign.total === "number" ? campaign.total : 0);
-        const ackCount =
-          typeof followup.ack_draft_pending_count === "number"
-            ? followup.ack_draft_pending_count
-            : typeof campaign.ack_draft_pending_count === "number"
-              ? campaign.ack_draft_pending_count
-              : 0;
-        setAckDraftPendingCount(ackCount);
+        if (tab === "needs_attention") {
+          const runningPage = await fetchRunPage("running", 0, RUNNING_PAGE_SIZE);
+          const finishedPage = await fetchRunPage("finished", 0, RUNNING_PAGE_SIZE);
+          const runningItems = Array.isArray(runningPage.items) ? runningPage.items : [];
+          const finishedItems = Array.isArray(finishedPage.items) ? finishedPage.items : [];
+          const attention = stitchAttention(runningItems, finishedItems);
+          setRuns(attention);
+          setTotal(attention.length);
+          setAttentionCount(attention.length);
+          setAckDraftPendingCount(
+            typeof runningPage.ack_draft_pending_count === "number"
+              ? runningPage.ack_draft_pending_count
+              : typeof finishedPage.ack_draft_pending_count === "number"
+                ? finishedPage.ack_draft_pending_count
+                : 0,
+          );
+          setQueueQuery("");
+          setAttentionFilter(null);
+        } else {
+          const pageSize = tab === "running" ? RUNNING_PAGE_SIZE : PAGE_SIZE;
+          const page = await fetchRunPage(tab, 0, pageSize);
+          const items = sortByNextStep(Array.isArray(page.items) ? page.items : []);
+          setRuns(items);
+          setTotal(typeof page.total === "number" ? page.total : items.length);
+          if (typeof page.ack_draft_pending_count === "number") {
+            setAckDraftPendingCount(page.ack_draft_pending_count);
+          }
+          setQueueQuery("");
+          setAttentionFilter(null);
+        }
+        setSelectedRunIds([]);
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : "Failed to load sequences");
       } finally { setLoading(false); }
@@ -452,31 +702,21 @@ export default function AutonomousAgentPage() {
     fetchRuns();
   }, [token, tab]);
 
-  const loadMore = async (source: RunSource) => {
-    if (!token) return;
-    const current = source === "campaign" ? campaignRuns : runs;
-    const currentTotal = source === "campaign" ? campaignTotal : total;
-    const busy = source === "campaign" ? loadingMoreCampaign : loadingMore;
-    if (busy || current.length >= currentTotal) return;
+  const loadMore = async () => {
+    if (!token || tab === "needs_attention" || tab === "running") return;
+    if (loadingMore || runs.length >= total) return;
     try {
-      if (source === "campaign") setLoadingMoreCampaign(true);
-      else setLoadingMore(true);
-      const data = await fetchRunPage(source, current.length, PAGE_SIZE);
+      setLoadingMore(true);
+      const data = await fetchRunPage(tab, runs.length, PAGE_SIZE);
       const items = Array.isArray(data.items) ? data.items : [];
-      if (source === "campaign") {
-        setCampaignRuns((prev) => [...prev, ...items]);
-        if (typeof data.total === "number") setCampaignTotal(data.total);
-      } else {
-        setRuns((prev) => [...prev, ...items]);
-        if (typeof data.total === "number") setTotal(data.total);
-      }
+      setRuns((prev) => sortByNextStep([...prev, ...items]));
+      if (typeof data.total === "number") setTotal(data.total);
       if (typeof data.ack_draft_pending_count === "number") {
         setAckDraftPendingCount(data.ack_draft_pending_count);
       }
     } catch (e) { console.error("Load more sequences", e); }
     finally {
-      if (source === "campaign") setLoadingMoreCampaign(false);
-      else setLoadingMore(false);
+      setLoadingMore(false);
     }
   };
 
@@ -812,9 +1052,8 @@ export default function AutonomousAgentPage() {
         throw new Error(typeof data.detail === "string" ? data.detail : "Stop failed");
       }
       setRuns((prev) => prev.filter((r) => r.id !== runId));
-      setCampaignRuns((prev) => prev.filter((r) => r.id !== runId));
-      setTotal((t) => (runs.some((r) => r.id === runId) ? Math.max(0, t - 1) : t));
-      setCampaignTotal((t) => (campaignRuns.some((r) => r.id === runId) ? Math.max(0, t - 1) : t));
+      setTotal((t) => Math.max(0, t - 1));
+      setAttentionCount((count) => Math.max(0, count - 1));
       showToast("Sequence stopped.", "success");
     } catch (e: unknown) {
       showToast(e instanceof Error ? e.message : "Stop failed", "error");
@@ -877,22 +1116,112 @@ export default function AutonomousAgentPage() {
         throw new Error(typeof data.detail === "string" ? data.detail : "Delete failed");
       }
       setRuns((prev) => prev.filter((r) => r.id !== runId));
-      setCampaignRuns((prev) => prev.filter((r) => r.id !== runId));
-      setTotal((t) => (runs.some((r) => r.id === runId) ? Math.max(0, t - 1) : t));
-      setCampaignTotal((t) => (campaignRuns.some((r) => r.id === runId) ? Math.max(0, t - 1) : t));
+      setTotal((t) => Math.max(0, t - 1));
+      setAttentionCount((count) => Math.max(0, count - 1));
       showToast("Sequence deleted.", "success");
     } catch (e: unknown) {
       showToast(e instanceof Error ? e.message : "Delete failed", "error");
     } finally { setDeletingId(null); }
   };
 
+  const handleMarkReviewed = async (runId: number) => {
+    if (!token) return;
+    setReviewingId(runId);
+    try {
+      const res = await fetch(
+        `${getAutonomousApiBaseUrl()}/api/autonomous/sequences/runs/${runId}/ack-reviewed`,
+        { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } },
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Could not mark reviewed");
+      const clearPending = (row: AutonomousRunRow) =>
+        row.id === runId ? { ...row, ack_draft_pending: false } : row;
+      setRuns((prev) => {
+        const next = prev.map(clearPending);
+        if (tab !== "needs_attention") return next;
+        return next.filter(
+          (row) =>
+            row.id !== runId ||
+            row.run_status === "errored" ||
+            row.stop_reason === "negative_sentiment_stop" ||
+            isOverdue(row),
+        );
+      });
+      setAckDraftPendingCount((count) => Math.max(0, count - 1));
+      setAttentionCount((count) => Math.max(0, count - 1));
+      showToast("Acknowledgement marked reviewed.", "success");
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : "Could not mark reviewed", "error");
+    } finally {
+      setReviewingId(null);
+    }
+  };
+
+  const visibleRunIds = runs.map((row) => row.id);
+  const selectedVisible = selectedRunIds.filter((id) => visibleRunIds.includes(id));
+
+  const handleBatch = async (action: "delete" | "stop" | "trigger") => {
+    if (!token || selectedVisible.length === 0) return;
+    if (action === "delete") {
+      if (!window.confirm(`Delete ${selectedVisible.length} sequences permanently? This cannot be undone.`)) return;
+    }
+    if (action === "stop") {
+      if (!window.confirm(`Stop ${selectedVisible.length} sequences? Pending steps will be skipped.`)) return;
+    }
+    setBatchBusy(action);
+    try {
+      if (action === "trigger") {
+        let ok = 0;
+        let failed = 0;
+        for (const runId of selectedVisible) {
+          try {
+            await dispatchRunNowFromList({ runId, token });
+            ok += 1;
+          } catch {
+            failed += 1;
+          }
+        }
+        showToast(
+          failed ? `Triggered ${ok}. ${failed} failed.` : `Triggered ${ok} sequences.`,
+          failed ? "error" : "success",
+        );
+      } else {
+        const res = await fetch(`${getAutonomousApiBaseUrl()}/api/autonomous/sequences/runs/batch`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ ids: selectedVisible, action }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Batch action failed");
+        const updated: number[] = Array.isArray(data.updated) ? data.updated : selectedVisible;
+        const gone = new Set(updated);
+        setRuns((prev) => prev.filter((row) => !gone.has(row.id)));
+        setTotal((t) => Math.max(0, t - updated.length));
+        setAttentionCount((count) => Math.max(0, count - updated.length));
+        setSelectedRunIds([]);
+        showToast(
+          action === "delete" ? `Deleted ${updated.length} sequences.` : `Stopped ${updated.length} sequences.`,
+          "success",
+        );
+      }
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : "Batch action failed", "error");
+    } finally {
+      setBatchBusy(null);
+    }
+  };
+
   // ── derived ───────────────────────────────────────────────────────────────
 
   const emptyMessage =
-    tab === "running"
+    tab === "needs_attention"
+      ? attentionFilter
+        ? `No ${ATTENTION_BUCKETS.find((bucket) => bucket.id === attentionFilter)?.plural ?? "items"} in this list.`
+        : "Nothing needs attention. Errors, overdue steps, negative stops and unreviewed drafts land here."
+      : tab === "running"
       ? "No active autonomous sequences. Start a test run from Sequence templates, or generate the linked comparison."
       : tab === "errored"
-        ? "No errored sequences."
+        ? "No sequences in error."
         : tab === "completed"
           ? "No completed sequences yet."
           : "No sequences in this stop bucket.";
@@ -902,6 +1231,32 @@ export default function AutonomousAgentPage() {
     if (tpl) return tpl.is_restartable;
     return RESTARTABLE_SEQUENCE_TYPES.has(sequenceType);
   };
+  const attentionCounts = useMemo(
+    () => (tab === "needs_attention" ? countAttentionBuckets(runs) : null),
+    [tab, runs],
+  );
+  const visibleRuns = useMemo(() => {
+    const bucketed =
+      tab === "needs_attention" && attentionFilter
+        ? runs.filter((row) => inAttentionBucket(row, attentionFilter))
+        : runs;
+    if (tab === "needs_attention" || tab === "running") {
+      return bucketed.filter((row) => matchesRunSearch(row, queueQuery));
+    }
+    return bucketed;
+  }, [runs, tab, queueQuery, attentionFilter]);
+  const queueTitle =
+    tab === "needs_attention"
+      ? "Needs attention"
+      : tab === "running"
+        ? "Running sequences"
+        : SEQUENCE_TABS.find((item) => item.id === tab)?.label || "Sequences";
+  const queueDescription =
+    tab === "needs_attention"
+      ? "Errors, overdue next steps, negative-sentiment stops, and acknowledgement drafts waiting for review."
+      : tab === "running"
+        ? "Every live sequence, follow-up and campaign together. Sorted by what fires next."
+        : "Follow-up and campaign sequences in this bucket.";
 
   // ── shared input classes ──────────────────────────────────────────────────
 
@@ -954,9 +1309,9 @@ export default function AutonomousAgentPage() {
                     )}
                   >
                     {item.label}
-                    {item.id === "completed" && ackDraftPendingCount > 0 && (
+                    {item.id === "needs_attention" && attentionCount > 0 && (
                       <span className="ml-1.5 inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-orange-100 px-1.5 py-0.5 text-[10px] font-semibold text-orange-800 dark:bg-orange-950/60 dark:text-orange-200">
-                        {ackDraftPendingCount}
+                        {attentionCount}
                       </span>
                     )}
                   </button>
@@ -973,6 +1328,34 @@ export default function AutonomousAgentPage() {
             >
               {triggeringFlows ? "Triggering…" : "Trigger Autonomous Flows"}
             </button>
+            {isSequenceQueueTab(tab) ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void handleBatch("trigger")}
+                  disabled={selectedVisible.length === 0 || batchBusy !== null || !token}
+                  className={btnSecondary}
+                >
+                  {batchBusy === "trigger" ? "Triggering…" : `Trigger selected${selectedVisible.length ? ` (${selectedVisible.length})` : ""}`}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleBatch("stop")}
+                  disabled={selectedVisible.length === 0 || batchBusy !== null || !token}
+                  className={btnSecondary}
+                >
+                  {batchBusy === "stop" ? "Stopping…" : `Pause selected${selectedVisible.length ? ` (${selectedVisible.length})` : ""}`}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleBatch("delete")}
+                  disabled={selectedVisible.length === 0 || batchBusy !== null || !token}
+                  className={btnSecondary}
+                >
+                  {batchBusy === "delete" ? "Deleting…" : `Delete selected${selectedVisible.length ? ` (${selectedVisible.length})` : ""}`}
+                </button>
+              </div>
+            ) : null}
           </div>
 
           <Link
@@ -1106,54 +1489,50 @@ export default function AutonomousAgentPage() {
           /* ══════════════ RUNS TABLES ══════════════ */
           <div className="space-y-5">
             <RunsQueueTable
-              title="Autonomous runs"
-              description="Comparison follow-ups and other sequences that are not from a campaign."
-              runs={runs}
-              emptyMessage={emptyMessage}
-              tab={tab}
-              canRestart={canRestart}
-              startingId={startingId}
-              stoppingId={stoppingId}
-              deletingId={deletingId}
-              restartingId={restartingId}
-              onStart={(id) => void handleStartRunNow(id)}
-              onStop={(id) => void handleStopRun(id)}
-              onRestart={(id) => void handleRestartRun(id)}
-              onDelete={(id) => void handleDeleteRun(id)}
-            />
-            {tab !== "running" && runs.length > 0 && runs.length < total ? (
-              <div className="flex justify-center">
-                <button type="button" onClick={() => void loadMore("followup")} disabled={loadingMore}
-                  className={cn(btnSecondary, "px-6 py-2 text-sm")}>
-                  {loadingMore ? "Loading…" : "Load more"}
-                </button>
-              </div>
-            ) : null}
-            <RunsQueueTable
-              title="Campaigns"
-              description="First-touch sequences started from the Campaigns page."
-              runs={campaignRuns}
+              title={queueTitle}
+              description={queueDescription}
+              runs={visibleRuns}
               emptyMessage={
-                tab === "running"
-                  ? "No campaign sequences running."
-                  : "No campaign sequences in this bucket."
+                queueQuery.trim() && runs.length > 0
+                  ? "No sequences match that search."
+                  : emptyMessage
               }
               tab={tab}
+              compact={visibleRuns.length > 20}
+              search={queueQuery}
+              onSearchChange={setQueueQuery}
+              attentionFilter={tab === "needs_attention" ? attentionFilter : null}
+              attentionCounts={attentionCounts}
+              onAttentionFilter={tab === "needs_attention" ? setAttentionFilter : undefined}
               canRestart={canRestart}
               startingId={startingId}
               stoppingId={stoppingId}
               deletingId={deletingId}
               restartingId={restartingId}
+              reviewingId={reviewingId}
               onStart={(id) => void handleStartRunNow(id)}
               onStop={(id) => void handleStopRun(id)}
               onRestart={(id) => void handleRestartRun(id)}
               onDelete={(id) => void handleDeleteRun(id)}
+              onMarkReviewed={(id) => void handleMarkReviewed(id)}
+              selectedIds={selectedRunIds}
+              onToggleSelected={(id, checked) =>
+                setSelectedRunIds((prev) => (checked ? [...prev, id] : prev.filter((item) => item !== id)))
+              }
+              onToggleSelectedAll={(checked) =>
+                setSelectedRunIds((prev) => {
+                  const ids = visibleRuns.map((row) => row.id);
+                  return checked
+                    ? Array.from(new Set([...prev, ...ids]))
+                    : prev.filter((id) => !ids.includes(id));
+                })
+              }
             />
-            {tab !== "running" && campaignRuns.length > 0 && campaignRuns.length < campaignTotal ? (
+            {tab !== "running" && tab !== "needs_attention" && runs.length > 0 && runs.length < total ? (
               <div className="flex justify-center">
-                <button type="button" onClick={() => void loadMore("campaign")} disabled={loadingMoreCampaign}
+                <button type="button" onClick={() => void loadMore()} disabled={loadingMore}
                   className={cn(btnSecondary, "px-6 py-2 text-sm")}>
-                  {loadingMoreCampaign ? "Loading…" : "Load more campaigns"}
+                  {loadingMore ? "Loading…" : "Load more"}
                 </button>
               </div>
             ) : null}
