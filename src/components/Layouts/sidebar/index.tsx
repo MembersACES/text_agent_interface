@@ -14,11 +14,13 @@ import {
   JOB_GROUPS,
   MAIN_NAV,
   NAV_DATA,
+  PARTNER_NAV,
   PINNED_NAV,
   type NavGroupItem,
   type NavLinkItem,
   type NavSection,
 } from "./data";
+import { isPartnerMode } from "@/lib/partner-mode";
 import { MenuItem } from "./menu-item";
 import { navMatchesQuery } from "./nav-utils";
 import { useSidebarContext } from "./sidebar-context";
@@ -187,6 +189,7 @@ export function Sidebar() {
   }, [pathname, setSectionExpanded, setJobGroupExpanded]);
 
   useEffect(() => {
+    if (isPartnerMode()) return;
     if (status !== "authenticated" || !session?.user?.email) return;
 
     let cancelled = false;
@@ -223,6 +226,7 @@ export function Sidebar() {
   }, [status, session?.user?.email]);
 
   useEffect(() => {
+    if (isPartnerMode()) return;
     const token =
       (session as { id_token?: string; accessToken?: string })?.id_token ??
       (session as { id_token?: string; accessToken?: string })?.accessToken;
@@ -570,7 +574,7 @@ export function Sidebar() {
           </div>
 
           {/* Jump to */}
-          {!isCollapsed && (
+          {!isCollapsed && !isPartnerMode() && (
             <div className="shrink-0 border-b border-stroke px-3 py-2 dark:border-dark-3">
               <label className="relative block">
                 <span className="sr-only">Jump to page</span>
@@ -590,6 +594,12 @@ export function Sidebar() {
           )}
 
           <div className="custom-scrollbar flex-1 overflow-y-auto px-2 py-2">
+            {isPartnerMode() ? (
+              <ul className={cn("mb-3 space-y-0.5", isCollapsed && "flex flex-col items-center")}>
+                {PARTNER_NAV.map((item) => renderLink(item))}
+              </ul>
+            ) : (
+              <>
             {/* Pinned */}
             {!isCollapsed && (
               <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
@@ -613,6 +623,8 @@ export function Sidebar() {
             {filteredJobGroups.map((group) => renderCollapsibleGroup(group))}
 
             {sections.map(renderSection)}
+              </>
+            )}
           </div>
 
           {/* Footer */}

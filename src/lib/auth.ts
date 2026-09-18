@@ -1,5 +1,22 @@
 import GoogleProvider from "next-auth/providers/google";
 import type { NextAuthOptions } from "next-auth";
+import { isPartnerMode } from "@/lib/partner-mode";
+
+const googleAuthorization = isPartnerMode()
+  ? {
+      params: {
+        scope: "openid email profile",
+        access_type: "offline",
+      },
+    }
+  : {
+      params: {
+        scope:
+          "openid email profile https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/spreadsheets",
+        access_type: "offline",
+        prompt: "consent",
+      },
+    };
 
 export const authOptions: NextAuthOptions = {
   secret: process.env.NEXTAUTH_SECRET,
@@ -7,14 +24,7 @@ export const authOptions: NextAuthOptions = {
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-      authorization: {
-        params: {
-          scope:
-            "openid email profile https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/spreadsheets",
-          access_type: "offline",
-          prompt: "consent"
-        }
-      }
+      authorization: googleAuthorization,
     }),
   ],
   session: {

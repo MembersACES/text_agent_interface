@@ -64,6 +64,10 @@ import {
 
 import { cn } from "@/lib/utils";
 
+import { isPartnerMode } from "@/lib/partner-mode";
+
+import { PartnerHomePage } from "@/components/partner/PartnerHomePage";
+
 
 
 const quickActions = [
@@ -138,7 +142,7 @@ function formatDate(): string {
 
 
 
-export default function Home() {
+function StaffHome() {
 
   const { data: session } = useSession();
 
@@ -529,4 +533,17 @@ export default function Home() {
   );
 
 }
+
+export default function Home() {
+
+  if (isPartnerMode()) {
+
+    return <PartnerHomePage />;
+
+  }
+
+  return <StaffHome />;
+
+}
+
 

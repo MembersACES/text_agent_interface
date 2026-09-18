@@ -6,6 +6,7 @@ import { EnvironmentBanner } from "@/components/Layouts/EnvironmentBanner";
 import { Header } from "@/components/Layouts/header";
 import FloatingAgentChat from "@/components/FloatingAgentChat";
 import { CommandPalette } from "@/components/CommandPalette";
+import { isPartnerMode } from "@/lib/partner-mode";
 
 import "flatpickr/dist/flatpickr.min.css";
 import "jsvectormap/dist/jsvectormap.css";
@@ -46,9 +47,8 @@ export default function RootLayout({ children }: PropsWithChildren) {
             </div>
           </div>
 
-          {/* 👇 Floating Agent always available on all pages */}
-          <FloatingAgentChat />
-          <CommandPalette />
+          {!isPartnerMode() && <FloatingAgentChat />}
+          {!isPartnerMode() && <CommandPalette />}
         </Providers>
       </body>
     </html>

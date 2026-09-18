@@ -4,8 +4,13 @@ import {
   getBase1AgentEmbedUrl,
   getBase1AgentPassword,
 } from "@/lib/base1-agent";
+import { isPartnerMode } from "@/lib/partner-mode";
+import { PartnerBase1Form } from "@/components/partner/PartnerBase1Form";
 
 export default function Base1Page() {
+  if (isPartnerMode()) {
+    return <PartnerBase1Form />;
+  }
   return (
     <>
       <PageHeader

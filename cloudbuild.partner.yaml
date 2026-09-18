@@ -1,0 +1,53 @@
+# Distributor portal Cloud Run. Never deploys the staff interface.
+# Trigger: branch `dev` → _CLOUD_RUN_SERVICE=acespartnerinterfacedev
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+substitutions:
+  _REGION: australia-southeast2
+  _CLOUD_RUN_SERVICE: acespartnerinterfacedev
+  _BACKEND_SERVICE: text-agent-backend-dev
+  _SUSTAINABILITY_PLATFORM_URL: https://prograde-sustainability-63gwbzzcdq-km.a.run.app
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        BACKEND_URL="https://${_BACKEND_SERVICE}-$PROJECT_NUMBER.${_REGION}.run.app"
+        IMAGE="gcr.io/$PROJECT_ID/github.com/membersaces/aces-partner-interface:$COMMIT_SHA"
+        echo "Building partner portal NEXT_PUBLIC_API_BASE_URL=$${BACKEND_URL}"
+        docker build \
+          --build-arg "NEXT_PUBLIC_API_BASE_URL=$${BACKEND_URL}" \
+          --build-arg "NEXT_PUBLIC_AUTONOMOUS_API_BASE_URL=$${BACKEND_URL}" \
+          --build-arg "NEXT_PUBLIC_SUSTAINABILITY_PLATFORM_URL=${_SUSTAINABILITY_PLATFORM_URL}" \
+          --build-arg "NEXT_PUBLIC_PARTNER_MODE=1" \
+          -t "$${IMAGE}" \
+          .
+
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - gcr.io/$PROJECT_ID/github.com/membersaces/aces-partner-interface:$COMMIT_SHA
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        IMAGE="gcr.io/$PROJECT_ID/github.com/membersaces/aces-partner-interface:$COMMIT_SHA"
+        NEXTAUTH_URL="https://${_CLOUD_RUN_SERVICE}-$PROJECT_NUMBER.${_REGION}.run.app"
+        gcloud run deploy "${_CLOUD_RUN_SERVICE}" \
+          --image "$${IMAGE}" \
+          --region "${_REGION}" \
+          --platform managed \
+          --allow-unauthenticated \
+          --project "$PROJECT_ID" \
+          --update-env-vars "PARTNER_MODE=1,NEXTAUTH_URL=$${NEXTAUTH_URL}"
+
+images:
+  - gcr.io/$PROJECT_ID/github.com/membersaces/aces-partner-interface:$COMMIT_SHA

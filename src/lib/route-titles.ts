@@ -2,6 +2,8 @@
  * Map pathname to display title for the header.
  * Used for visual/UX only; no business logic.
  */
+import { isPartnerMode } from "@/lib/partner-mode";
+
 const ROUTE_TITLES: Record<string, string> = {
   "/": "Dashboard",
   "/tasks": "Tasks",
@@ -92,6 +94,12 @@ const ROUTE_PREFIX_TITLES: { prefix: string; title: string }[] = [
 ];
 
 export function getTitleForPath(pathname: string): string {
+  if (isPartnerMode()) {
+    if (pathname === "/") return "Home";
+    if (pathname === "/clients") return "Clients";
+    if (pathname === "/base-1") return "Submit Base 1";
+    if (pathname.startsWith("/clients/")) return "Client";
+  }
   const exact = ROUTE_TITLES[pathname];
   if (exact) return exact;
 

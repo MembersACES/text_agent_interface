@@ -13,6 +13,7 @@ import {
   formatAllowedDomainsLabel,
   isAllowedEmailDomain,
 } from "@/lib/allowed-email-domains";
+import { isPartnerMode } from "@/lib/partner-mode";
 import { BRAND } from "@/lib/brand";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -45,7 +46,9 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
   const allowedDomainsLabel = formatAllowedDomainsLabel();
   const userEmail = session?.user?.email || "";
-  const isDomainValid = session && isAllowedEmailDomain(userEmail);
+  const isDomainValid = Boolean(
+    session && (isPartnerMode() || isAllowedEmailDomain(userEmail)),
+  );
 
   if (status === "loading" && !onAuthPage) {
     return (
@@ -71,7 +74,9 @@ function AuthGate({ children }: { children: React.ReactNode }) {
             {BRAND.name}
           </p>
           <p className="mb-6 text-sm text-gray-600 dark:text-gray-400">
-            Sign in with your {allowedDomainsLabel} account to continue.
+            {isPartnerMode()
+              ? "Sign in with Google to continue."
+              : `Sign in with your ${allowedDomainsLabel} account to continue.`}
           </p>
           <Button
             onClick={() => {
