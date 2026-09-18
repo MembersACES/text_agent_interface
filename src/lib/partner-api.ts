@@ -93,9 +93,20 @@ export async function fetchPartnerClient(
   return data as PartnerClient;
 }
 
-export type PartnerBase1Result =
-  | { kind: "created"; client_id: number }
-  | { kind: "received" };
+export type PartnerBase1Result = { kind: "created"; client_id: number };
+
+export const PARTNER_COLLISION_MESSAGE =
+  "This submission could not be processed automatically. Our team has been notified and will be in touch.";
+
+function partnerCollisionMessage(data: unknown): string | null {
+  if (!data || typeof data !== "object") return null;
+  const detail = (data as { detail?: unknown }).detail;
+  if (!detail || typeof detail !== "object") return null;
+  const rec = detail as { code?: unknown; message?: unknown };
+  if (rec.code !== "not_processed") return null;
+  if (typeof rec.message === "string" && rec.message.trim()) return rec.message.trim();
+  return PARTNER_COLLISION_MESSAGE;
+}
 
 export async function submitPartnerBase1(
   token: string,
@@ -107,14 +118,14 @@ export async function submitPartnerBase1(
     body: form,
   });
   const data = await parseJson(res);
+  if (res.status === 422) {
+    throw new Error(partnerCollisionMessage(data) || PARTNER_COLLISION_MESSAGE);
+  }
   if (!res.ok) {
     throw new Error(
       partnerApiErrorMessage(data, "Submission failed. Please try again shortly."),
     );
   }
-  const body = (data || {}) as { status?: string; client_id?: number };
-  if (body.status === "received") {
-    return { kind: "received" };
-  }
+  const body = (data || {}) as { client_id?: number };
   return { kind: "created", client_id: Number(body.client_id) };
 }

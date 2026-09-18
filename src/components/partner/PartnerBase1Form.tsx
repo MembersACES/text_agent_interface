@@ -96,14 +96,8 @@ export function PartnerBase1Form() {
     form.append("additionalInfo", additionalInfo);
     files.forEach((file) => form.append("files", file));
     try {
-      const result = await submitPartnerBase1(token, form);
-      if (result.kind === "received") {
-        setSuccess(
-          "We received your documents. Our team will review them and be in touch.",
-        );
-      } else {
-        setSuccess("Submitted. You can find this client in your client list.");
-      }
+      await submitPartnerBase1(token, form);
+      setSuccess("Submitted. You can find this client in your client list.");
       setFiles([]);
       setCompanyName("");
       setFullName("");
@@ -112,7 +106,9 @@ export function PartnerBase1Form() {
       setAdditionalInfo("");
       if (fileInputRef.current) fileInputRef.current.value = "";
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Submission failed. Please try again shortly.");
+      const message =
+        err instanceof Error ? err.message : "Submission failed. Please try again shortly.";
+      setError(message);
     } finally {
       setSubmitting(false);
     }
