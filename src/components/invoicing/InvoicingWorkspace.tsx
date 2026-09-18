@@ -25,7 +25,7 @@ import {
   type InvoicingStream,
 } from "@/lib/invoicing-streams";
 import { InvoicingPdfDrawer } from "@/components/invoicing/InvoicingPdfDrawer";
-import { InvoicingOmsInvoiceTable } from "@/components/invoicing/InvoicingOmsInvoiceTable";
+import { InvoicingDirectInvoiceTable } from "@/components/invoicing/InvoicingDirectInvoiceTable";
 
 type Props = {
   stream: InvoicingStream;
@@ -52,8 +52,8 @@ export function InvoicingWorkspace({
   const [metricLoading, setMetricLoading] = useState(false);
   const [metricError, setMetricError] = useState(false);
   const [pdfsOpen, setPdfsOpen] = useState(Boolean(stream.driveCategory));
-  const [sheetOpen, setSheetOpen] = useState(stream.id !== "one-month-savings");
-  const isOms = stream.id === "one-month-savings";
+  const [sheetOpen, setSheetOpen] = useState(stream.group !== "direct");
+  const isDirect = stream.group === "direct";
 
   const tabs = useMemo(
     () => mergeSheetTabs(stream.sheet?.tabs ?? [], liveTabs),
@@ -74,12 +74,12 @@ export function InvoicingWorkspace({
     : "";
 
   useEffect(() => {
-    setPdfsOpen(isOms ? false : Boolean(stream.driveCategory));
-    setSheetOpen(!isOms);
+    setPdfsOpen(isDirect ? false : Boolean(stream.driveCategory));
+    setSheetOpen(!isDirect);
     setLiveTabs(null);
     setMetricText(null);
     setMetricError(false);
-  }, [stream.id, stream.driveCategory, isOms]);
+  }, [stream.id, stream.driveCategory, isDirect]);
 
   useEffect(() => {
     if (!stream.retailerKey || !token) return;
@@ -196,11 +196,11 @@ export function InvoicingWorkspace({
                 "Couldn’t load totals — open the sheet to continue."
               ) : (
                 metricText ??
-                (hasSheet
-                  ? isOms
-                    ? "Update Generated / Sent / Paid on each invoice below."
-                    : "Sheet and issued PDFs for this stream."
-                  : "Issued PDFs for this stream.")
+                (isDirect
+                  ? "Update Generated / Sent / Paid on each invoice below."
+                  : hasSheet
+                    ? "Sheet and issued PDFs for this stream."
+                    : "Issued PDFs for this stream.")
               )}
             </p>
           )}
@@ -230,7 +230,7 @@ export function InvoicingWorkspace({
               PDFs
             </button>
           ) : null}
-          {hasSheet && isOms ? (
+          {hasSheet && isDirect ? (
             <button
               type="button"
               onClick={() => setSheetOpen((open) => !open)}
@@ -288,7 +288,9 @@ export function InvoicingWorkspace({
         </div>
       ) : null}
 
-      {isOms ? <InvoicingOmsInvoiceTable token={token} /> : null}
+      {isDirect ? (
+        <InvoicingDirectInvoiceTable token={token} stream={stream} />
+      ) : null}
 
       {pdfFull && stream.driveCategory ? (
         <InvoicingPdfDrawer token={token} category={stream.driveCategory} layout="full" />

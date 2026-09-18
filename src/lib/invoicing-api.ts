@@ -85,6 +85,7 @@ export async function fetchRetailerSheetTabs(
 
 export const OMS_INVOICE_STATUSES = ["Generated", "Sent", "Paid"] as const;
 export type OmsInvoiceStatus = (typeof OMS_INVOICE_STATUSES)[number];
+export type DirectInvoiceStatus = OmsInvoiceStatus;
 
 export type OmsInvoiceRow = {
   invoice_number: string;
@@ -95,6 +96,7 @@ export type OmsInvoiceRow = {
   invoice_file_id?: string;
   line_items?: { solution_label?: string }[];
 };
+export type DirectInvoiceRow = OmsInvoiceRow;
 
 function asOmsInvoice(raw: unknown): OmsInvoiceRow | null {
   if (!raw || typeof raw !== "object") return null;
@@ -119,16 +121,24 @@ function asOmsInvoice(raw: unknown): OmsInvoiceRow | null {
 export async function fetchOmsInvoices(
   token: string | undefined
 ): Promise<OmsInvoiceRow[]> {
-  const { ok, body } = await getJson(
-    `${getApiBaseUrl()}/api/invoicing/one-month-savings/invoices`,
-    token
-  );
-  if (!ok) throw new Error("oms_invoices_failed");
+  return fetchDirectClientInvoices(token, "one-month-savings");
+}
+
+export async function fetchDirectClientInvoices(
+  token: string | undefined,
+  streamId: string
+): Promise<DirectInvoiceRow[]> {
+  const u = new URL(`${getApiBaseUrl()}/api/invoicing/direct-client/invoices`);
+  u.searchParams.set("stream", streamId);
+  const { ok, body } = await getJson(u.toString(), token);
+  if (!ok) throw new Error("direct_invoices_failed");
   const list = Array.isArray(body.invoices) ? body.invoices : [];
   return list
     .map(asOmsInvoice)
-    .filter((row): row is OmsInvoiceRow => row !== null)
-    .sort((a, b) => b.invoice_number.localeCompare(a.invoice_number, undefined, { numeric: true }));
+    .filter((row): row is DirectInvoiceRow => row !== null)
+    .sort((a, b) =>
+      b.invoice_number.localeCompare(a.invoice_number, undefined, { numeric: true })
+    );
 }
 
 export async function updateOmsInvoiceStatus(input: {
@@ -136,7 +146,20 @@ export async function updateOmsInvoiceStatus(input: {
   invoice_number: string;
   status: OmsInvoiceStatus;
 }): Promise<void> {
-  const res = await fetch("/api/one-month-savings/status", {
+  await updateDirectClientInvoiceStatus({
+    stream: "one-month-savings",
+    ...input,
+  });
+}
+
+export async function updateDirectClientInvoiceStatus(input: {
+  stream: string;
+  business_name: string;
+  invoice_number: string;
+  status: DirectInvoiceStatus;
+  invoice_file_id?: string;
+}): Promise<void> {
+  const res = await fetch("/api/invoicing/direct-client/status", {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),

@@ -1,12 +1,20 @@
 /** @type {import("next").NextConfig} */
+const partnerMode = process.env.NEXT_PUBLIC_PARTNER_MODE === "1";
+
 const nextConfig = {
   output: 'standalone',
   async redirects() {
+    const shared = [
+      { source: '/base-1/robot-data', destination: '/robot-dashboard', permanent: true },
+      { source: '/robot-dashboard/invoicing', destination: '/invoicing', permanent: true },
+    ];
+    if (partnerMode) {
+      return shared;
+    }
     return [
       { source: '/clients', destination: '/crm-members', permanent: true },
       { source: '/clients/:id', destination: '/crm-members/:id', permanent: true },
-      { source: '/base-1/robot-data', destination: '/robot-dashboard', permanent: true },
-      { source: '/robot-dashboard/invoicing', destination: '/invoicing', permanent: true },
+      ...shared,
     ];
   },
   images: {

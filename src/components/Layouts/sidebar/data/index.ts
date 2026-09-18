@@ -63,6 +63,13 @@ export const MAIN_NAV: NavLinkItem[] = [
   { title: "Plus ES DMA", url: "/plus-es-dma", icon: FileText },
 ];
 
+/** Distributor portal — the four allow-path surfaces (detail is under Clients). */
+export const PARTNER_NAV: NavLinkItem[] = [
+  { title: "Home", url: "/", icon: Home },
+  { title: "Clients", url: "/clients", icon: Users },
+  { title: "Submit Base 1", url: "/base-1", icon: BarChart3 },
+];
+
 /** Collapsible job-to-be-done groups (closed by default; CRM stays open) */
 export const JOB_GROUPS: NavGroupItem[] = [
   {

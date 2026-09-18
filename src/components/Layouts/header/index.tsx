@@ -12,6 +12,7 @@ import { ThemeToggleSwitch } from "./theme-toggle";
 import { UserInfo } from "./user-info";
 import { useCommandPalette } from "@/components/CommandPaletteContext";
 import { ChevronRight, Search } from "lucide-react";
+import { isPartnerMode } from "@/lib/partner-mode";
 
 export function Header() {
   const pathname = usePathname();
@@ -89,6 +90,7 @@ export function Header() {
       </div>
 
       <div className="flex h-9 items-center gap-1.5 min-[375px]:gap-2">
+        {!isPartnerMode() && (
         <button
           type="button"
           onClick={() => palette?.toggle()}
@@ -101,8 +103,9 @@ export function Header() {
             ⌘K
           </kbd>
         </button>
+        )}
         <ThemeToggleSwitch />
-        <Notification />
+        {!isPartnerMode() && <Notification />}
         <UserInfo />
       </div>
     </header>
