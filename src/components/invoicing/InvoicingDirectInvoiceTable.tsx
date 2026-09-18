@@ -5,18 +5,18 @@ import { ExternalLink, Loader2, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 import {
-  fetchOmsInvoices,
+  fetchDirectClientInvoices,
   OMS_INVOICE_STATUSES,
-  updateOmsInvoiceStatus,
-  type OmsInvoiceRow,
-  type OmsInvoiceStatus,
+  updateDirectClientInvoiceStatus,
+  type DirectInvoiceRow,
+  type DirectInvoiceStatus,
 } from "@/lib/invoicing-api";
-import { formatAud } from "@/lib/invoicing-streams";
+import { formatAud, type InvoicingStream } from "@/lib/invoicing-streams";
 
 const STATUS_FILTERS = ["All", ...OMS_INVOICE_STATUSES] as const;
 type StatusFilter = (typeof STATUS_FILTERS)[number];
 
-function normalizeStatus(value: string): OmsInvoiceStatus {
+function normalizeStatus(value: string): DirectInvoiceStatus {
   const match = OMS_INVOICE_STATUSES.find(
     (status) => status.toLowerCase() === value.trim().toLowerCase()
   );
@@ -34,13 +34,18 @@ function statusClass(status: string): string {
   }
 }
 
+function rowKey(inv: DirectInvoiceRow): string {
+  return `${inv.business_name}::${inv.invoice_number}::${inv.invoice_file_id || ""}`;
+}
+
 type Props = {
   token: string | undefined;
+  stream: InvoicingStream;
 };
 
-export function InvoicingOmsInvoiceTable({ token }: Props) {
+export function InvoicingDirectInvoiceTable({ token, stream }: Props) {
   const { showToast } = useToast();
-  const [invoices, setInvoices] = useState<OmsInvoiceRow[]>([]);
+  const [invoices, setInvoices] = useState<DirectInvoiceRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -56,22 +61,22 @@ export function InvoicingOmsInvoiceTable({ token }: Props) {
     setLoading(true);
     setError(null);
     try {
-      const rows = await fetchOmsInvoices(token);
+      const rows = await fetchDirectClientInvoices(token, stream.id);
       setInvoices(rows);
     } catch {
-      setError("Couldn’t load 1 Month Savings invoices.");
+      setError(`Couldn’t load ${stream.title} invoices.`);
       setInvoices([]);
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [token, stream.id, stream.title]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
   const counts = useMemo(() => {
-    const next: Record<OmsInvoiceStatus, number> = {
+    const next: Record<DirectInvoiceStatus, number> = {
       Generated: 0,
       Sent: 0,
       Paid: 0,
@@ -94,32 +99,26 @@ export function InvoicingOmsInvoiceTable({ token }: Props) {
     });
   }, [invoices, query, statusFilter]);
 
-  async function onStatusChange(inv: OmsInvoiceRow, status: OmsInvoiceStatus) {
-    const key = `${inv.business_name}::${inv.invoice_number}`;
+  async function onStatusChange(inv: DirectInvoiceRow, status: DirectInvoiceStatus) {
+    const key = rowKey(inv);
     const previous = inv.status;
     setInvoices((prev) =>
-      prev.map((row) =>
-        row.invoice_number === inv.invoice_number &&
-        row.business_name === inv.business_name
-          ? { ...row, status }
-          : row
-      )
+      prev.map((row) => (rowKey(row) === key ? { ...row, status } : row))
     );
     setSavingKey(key);
     try {
-      await updateOmsInvoiceStatus({
+      await updateDirectClientInvoiceStatus({
+        stream: stream.id,
         business_name: inv.business_name,
         invoice_number: inv.invoice_number,
         status,
+        invoice_file_id: inv.invoice_file_id,
       });
       showToast(`${inv.invoice_number} marked ${status}`, "success");
     } catch (e) {
       setInvoices((prev) =>
         prev.map((row) =>
-          row.invoice_number === inv.invoice_number &&
-          row.business_name === inv.business_name
-            ? { ...row, status: previous }
-            : row
+          rowKey(row) === key ? { ...row, status: previous } : row
         )
       );
       showToast(
@@ -136,10 +135,10 @@ export function InvoicingOmsInvoiceTable({ token }: Props) {
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stroke px-4 py-3 dark:border-dark-3">
         <div>
           <h2 className="text-sm font-bold text-dark dark:text-white">
-            1 Month Savings invoices
+            {stream.title} invoices
           </h2>
           <p className="text-xs text-gray-500 dark:text-gray-400">
-            Change status here — same Generated / Sent / Paid list as CRM.
+            Change status here — Generated / Sent / Paid.
           </p>
         </div>
         <div className="relative w-full sm:max-w-xs">
@@ -162,7 +161,7 @@ export function InvoicingOmsInvoiceTable({ token }: Props) {
           const count =
             filter === "All"
               ? invoices.length
-              : counts[filter as OmsInvoiceStatus];
+              : counts[filter as DirectInvoiceStatus];
           const isActive = statusFilter === filter;
           return (
             <button
@@ -203,7 +202,7 @@ export function InvoicingOmsInvoiceTable({ token }: Props) {
         <p className="px-4 py-8 text-sm text-gray-500">
           {query.trim() || statusFilter !== "All"
             ? "No invoices match this filter."
-            : "No 1 Month Savings invoices found."}
+            : `No ${stream.title} invoices found.`}
         </p>
       ) : (
         <div className="max-h-[min(52vh,560px)] overflow-auto">
@@ -220,7 +219,7 @@ export function InvoicingOmsInvoiceTable({ token }: Props) {
             </thead>
             <tbody className="divide-y divide-stroke dark:divide-dark-3">
               {visible.map((inv) => {
-                const key = `${inv.business_name}::${inv.invoice_number}`;
+                const key = rowKey(inv);
                 const saving = savingKey === key;
                 const status = normalizeStatus(inv.status);
                 const solutions = (inv.line_items || [])
@@ -244,14 +243,17 @@ export function InvoicingOmsInvoiceTable({ token }: Props) {
                       {inv.due_date || "—"}
                     </td>
                     <td className="px-4 py-2.5 tabular-nums text-xs font-semibold text-dark dark:text-white">
-                      {formatAud(inv.total_amount)}
+                      {inv.total_amount ? formatAud(inv.total_amount) : "—"}
                     </td>
                     <td className="px-4 py-2.5">
                       <select
                         value={status}
                         disabled={saving}
                         onChange={(e) =>
-                          void onStatusChange(inv, e.target.value as OmsInvoiceStatus)
+                          void onStatusChange(
+                            inv,
+                            e.target.value as DirectInvoiceStatus
+                          )
                         }
                         className={cn(
                           "rounded-md border px-2 py-1 text-[11px] font-medium focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-60",
