@@ -7,6 +7,7 @@ export const STOP_REASON_LABELS: Record<string, string> = {
   unsubscribed: "Unsubscribed",
   step_error: "Step error",
   needs_human_review: "Needs human review",
+  undeliverable: "Undeliverable",
 };
 
 export function stopReasonLabel(reason: string | null | undefined): string {

@@ -189,12 +189,13 @@ function uniqueById(rows: AutonomousRunRow[]) {
   return out;
 }
 
-type AttentionBucket = "errored" | "drafts" | "negative" | "overdue";
+type AttentionBucket = "errored" | "drafts" | "negative" | "overdue" | "undeliverable";
 
 const ATTENTION_BUCKETS: { id: AttentionBucket; singular: string; plural: string }[] = [
   { id: "errored", singular: "error", plural: "errors" },
   { id: "drafts", singular: "draft", plural: "drafts" },
   { id: "negative", singular: "negative", plural: "negative" },
+  { id: "undeliverable", singular: "undeliverable", plural: "undeliverable" },
   { id: "overdue", singular: "overdue", plural: "overdue" },
 ];
 
@@ -206,6 +207,8 @@ function inAttentionBucket(run: AutonomousRunRow, bucket: AttentionBucket) {
       return Boolean(run.ack_draft_pending);
     case "negative":
       return run.stop_reason === "negative_sentiment_stop";
+    case "undeliverable":
+      return run.stop_reason === "undeliverable";
     case "overdue":
       return isOverdue(run);
   }
@@ -216,6 +219,7 @@ function countAttentionBuckets(rows: AutonomousRunRow[]) {
     errored: rows.filter((row) => inAttentionBucket(row, "errored")).length,
     drafts: rows.filter((row) => inAttentionBucket(row, "drafts")).length,
     negative: rows.filter((row) => inAttentionBucket(row, "negative")).length,
+    undeliverable: rows.filter((row) => inAttentionBucket(row, "undeliverable")).length,
     overdue: rows.filter((row) => inAttentionBucket(row, "overdue")).length,
   };
 }
@@ -225,8 +229,9 @@ function stitchAttention(running: AutonomousRunRow[], finished: AutonomousRunRow
   const overdue = running.filter((row) => isOverdue(row, now));
   const errored = finished.filter((row) => row.run_status === "errored");
   const negative = finished.filter((row) => row.stop_reason === "negative_sentiment_stop");
+  const undeliverable = finished.filter((row) => row.stop_reason === "undeliverable");
   const drafts = [...running, ...finished].filter((row) => row.ack_draft_pending);
-  return sortByNextStep(uniqueById([...errored, ...overdue, ...drafts, ...negative]));
+  return sortByNextStep(uniqueById([...errored, ...overdue, ...drafts, ...negative, ...undeliverable]));
 }
 
 const PAGE_SIZE = 20;
@@ -1217,7 +1222,7 @@ export default function AutonomousAgentPage() {
     tab === "needs_attention"
       ? attentionFilter
         ? `No ${ATTENTION_BUCKETS.find((bucket) => bucket.id === attentionFilter)?.plural ?? "items"} in this list.`
-        : "Nothing needs attention. Errors, overdue steps, negative stops and unreviewed drafts land here."
+        : "Nothing needs attention. Errors, overdue steps, negative stops, undeliverable addresses and unreviewed drafts land here."
       : tab === "running"
       ? "No active autonomous sequences. Start a test run from Sequence templates, or generate the linked comparison."
       : tab === "errored"
@@ -1253,7 +1258,7 @@ export default function AutonomousAgentPage() {
         : SEQUENCE_TABS.find((item) => item.id === tab)?.label || "Sequences";
   const queueDescription =
     tab === "needs_attention"
-      ? "Errors, overdue next steps, negative-sentiment stops, and acknowledgement drafts waiting for review."
+      ? "Errors, overdue next steps, negative-sentiment stops, undeliverable first-touch addresses, and acknowledgement drafts waiting for review."
       : tab === "running"
         ? "Every live sequence, follow-up and campaign together. Sorted by what fires next."
         : "Follow-up and campaign sequences in this bucket.";

@@ -30,6 +30,8 @@ interface RetellAgentPrompt {
   agent_name: string;
   response_engine_type: string | null;
   llm_id: string | null;
+  version?: number | null;
+  is_published?: boolean | null;
   prompt_editable: boolean;
   general_prompt: string | null;
   begin_message: string | null;
@@ -424,6 +426,16 @@ export default function RetellVoicePromptPanel({
               {agentsLoading && !agentLabel ? "Loading agent…" : agentLabel}
             </p>
             <p className="text-[11px] font-mono text-gray-400 mt-0.5">{agentId}</p>
+            {prompt && (prompt.version != null || prompt.is_published != null) ? (
+              <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                Version {prompt.version ?? "?"}
+                {prompt.is_published === true
+                  ? " · published"
+                  : prompt.is_published === false
+                    ? " · draft (callers still hear the last published version)"
+                    : ""}
+              </p>
+            ) : null}
           </div>
         )}
         {retellAgentCopied && (
