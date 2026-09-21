@@ -24,6 +24,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   quote_request: "Quote requests",
   signed_agreement: "Signed agreement lodgement",
   alinta_gas: "Alinta gas agreement",
+  alinta_electricity: "Alinta electricity agreement",
   share_folder: "Shared folder",
 };
 

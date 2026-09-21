@@ -2,6 +2,7 @@
 
 import type React from "react";
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useSession } from "next-auth/react";
 import { FileLink } from "../shared/FileLink";
 import { cn, getApiBaseUrl } from "@/lib/utils";
@@ -12,7 +13,7 @@ import { formatBackendErrorBody } from "@/lib/api-errors";
 import { useToast } from "@/components/ui/toast";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Badge } from "@/components/ui/badge";
-import { FileText } from "lucide-react";
+import { FileText, Flame, Zap } from "lucide-react";
 import {
   fetchSitePhotos,
   uploadSitePhotos,
@@ -223,22 +224,44 @@ function DocLinkBtn({
 
 // ─── Modal ────────────────────────────────────────────────────────────────────
 
-function Modal({ open, onClose, title, children }: {
-  open: boolean; onClose: () => void; title: string; children: React.ReactNode;
+function Modal({ open, onClose, title, children, wide }: {
+  open: boolean; onClose: () => void; title: string; children: React.ReactNode; wide?: boolean;
 }) {
-  if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-[2px]" onClick={onClose}>
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [open, onClose]);
+
+  if (!open || typeof document === "undefined") return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/30 p-4 backdrop-blur-[2px]"
+      onClick={onClose}
+    >
       <div
-        className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 w-full max-w-md mx-4 overflow-hidden"
+        className={cn(
+          "max-h-[calc(100dvh-2rem)] w-full overflow-y-auto rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900",
+          wide ? "max-w-lg" : "max-w-md",
+        )}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-800">
+        <div className="border-b border-gray-100 px-6 py-4 dark:border-gray-800">
           <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{title}</h3>
         </div>
-        <div className="px-6 py-5 space-y-4">{children}</div>
+        <div className="space-y-4 px-6 py-5">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -380,6 +403,7 @@ export function DocumentsTab({
   const efRef = useRef<HTMLInputElement>(null);
   const [efLoading, setEfLoading] = useState(false);
   const [efResult, setEfResult] = useState("");
+  const [showLodgeEfModal, setShowLodgeEfModal] = useState(false);
 
   const { showToast } = useToast();
   const driveUrl = (info?.gdrive?.folder_url as string) || "";
@@ -646,21 +670,48 @@ export function DocumentsTab({
   const utilityType = (k: string) =>
     ["C&I Electricity","SME Electricity","C&I Gas","SME Gas","Waste","DMA","Other"].includes(k) ? k : null;
 
+  const linkedIdentifierList = (k: string): string[] => {
+    const raw = (info?.Linked_Details as any)?.linked_utilities?.[k];
+    if (!raw) return [];
+    if (typeof raw === "string") {
+      return raw.split(",").map((s: string) => s.trim()).filter(Boolean);
+    }
+    if (Array.isArray(raw)) {
+      return raw.map((v) => String(v ?? "").trim()).filter(Boolean);
+    }
+    return [];
+  };
+
   const getIdentifier = (k: string): { type: "nmi"|"mirn"|null; value: string } => {
-    const linked = (info?.Linked_Details as any)?.linked_utilities ?? {};
-    const raw = linked[k];
-    if (["C&I Electricity","SME Electricity","DMA"].includes(k) && raw)
-      return { type: "nmi", value: typeof raw === "string" ? raw.split(",")[0].trim() : String(raw[0]||"") };
-    if (["C&I Gas","SME Gas"].includes(k) && raw)
-      return { type: "mirn", value: typeof raw === "string" ? raw.split(",")[0].trim() : String(raw[0]||"") };
+    const values = linkedIdentifierList(k);
+    if (["C&I Electricity","SME Electricity","DMA"].includes(k) && values.length)
+      return { type: "nmi", value: values[0] };
+    if (["C&I Gas","SME Gas"].includes(k) && values.length)
+      return { type: "mirn", value: values[0] };
     return { type: null, value: "" };
   };
 
-  const alintaAgreementHref = () => {
+  const lodgeEfHref = (kind: "gas" | "electricity") => {
     const p = new URLSearchParams();
     if (clientId != null && Number.isFinite(clientId)) p.set("clientId", String(clientId));
+    if (kind === "electricity") {
+      const nmis = linkedIdentifierList("C&I Electricity");
+      if (nmis.length) p.set("nmis", nmis.join(","));
+    }
+    const path =
+      kind === "gas"
+        ? "/alinta-gas-agreement-request"
+        : "/alinta-electricity-agreement-request";
     const qs = p.toString();
-    return qs ? `/alinta-gas-agreement-request?${qs}` : "/alinta-gas-agreement-request";
+    return qs ? `${path}?${qs}` : path;
+  };
+
+  const alintaAgreementHref = () => lodgeEfHref("gas");
+  const alintaElectricityHref = () => lodgeEfHref("electricity");
+
+  const openLodgeEf = (kind: "gas" | "electricity") => {
+    window.open(lodgeEfHref(kind), "_blank", "noopener,noreferrer");
+    setShowLodgeEfModal(false);
   };
 
   // ── Upload handlers ────────────────────────────────────────────────────────
@@ -1356,9 +1407,9 @@ export function DocumentsTab({
               variant="ghost"
               size="sm"
               radius="md"
-              onClick={() => window.open(alintaAgreementHref(), "_blank", "noopener,noreferrer")}
+              onClick={() => setShowLodgeEfModal(true)}
             >
-              Lodge Alinta EF for agreement generation
+              Lodge EF
             </Button>
           </div>
         </div>
@@ -1424,18 +1475,7 @@ export function DocumentsTab({
                                 status={contractStatusBadge(undefined, false)}
                                 muted
                                 actions={
-                                  <>
-                                    <DocSecondaryBtn onClick={openFileModal}>File</DocSecondaryBtn>
-                                    {c.key === "C&I Gas" ? (
-                                      <DocSecondaryBtn
-                                        onClick={() =>
-                                          window.open(alintaAgreementHref(), "_blank", "noopener,noreferrer")
-                                        }
-                                      >
-                                        Alinta EF
-                                      </DocSecondaryBtn>
-                                    ) : null}
-                                  </>
+                                  <DocSecondaryBtn onClick={openFileModal}>File</DocSecondaryBtn>
                                 }
                               />
                             );
@@ -1498,19 +1538,6 @@ export function DocumentsTab({
                                       {idx === 0 ? (
                                         <DocSecondaryBtn onClick={openFileModal}>
                                           File
-                                        </DocSecondaryBtn>
-                                      ) : null}
-                                      {c.key === "C&I Gas" && idx === 0 ? (
-                                        <DocSecondaryBtn
-                                          onClick={() =>
-                                            window.open(
-                                              alintaAgreementHref(),
-                                              "_blank",
-                                              "noopener,noreferrer",
-                                            )
-                                          }
-                                        >
-                                          Alinta EF
                                         </DocSecondaryBtn>
                                       ) : null}
                                     </>
@@ -1709,6 +1736,54 @@ export function DocumentsTab({
         </div>
       </Panel>
 
+      <Modal
+        open={showLodgeEfModal}
+        onClose={() => setShowLodgeEfModal(false)}
+        title="Lodge engagement form"
+        wide
+      >
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          Choose the signed EF type. We extract the details and send an agreement request to data.quote.
+        </p>
+        <div className="space-y-2">
+          <button
+            type="button"
+            onClick={() => openLodgeEf("gas")}
+            className="flex w-full items-start gap-3 rounded-xl border border-gray-200 bg-white px-3.5 py-3 text-left transition-colors hover:border-orange-300 hover:bg-orange-50/60 dark:border-gray-700 dark:bg-gray-900 dark:hover:border-orange-800 dark:hover:bg-orange-950/30"
+          >
+            <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-orange-50 text-orange-600 dark:bg-orange-950/50 dark:text-orange-300">
+              <Flame className="h-4 w-4" />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-sm font-semibold text-gray-900 dark:text-gray-100">
+                Alinta Gas EF
+              </span>
+              <span className="mt-0.5 block text-xs text-gray-500 dark:text-gray-400">
+                C&I gas agreement request. Looks up the MIRN on the signed gas sheet.
+              </span>
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => openLodgeEf("electricity")}
+            className="flex w-full items-start gap-3 rounded-xl border border-gray-200 bg-white px-3.5 py-3 text-left transition-colors hover:border-amber-300 hover:bg-amber-50/60 dark:border-gray-700 dark:bg-gray-900 dark:hover:border-amber-800 dark:hover:bg-amber-950/30"
+          >
+            <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-600 dark:bg-amber-950/50 dark:text-amber-300">
+              <Zap className="h-4 w-4" />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-sm font-semibold text-gray-900 dark:text-gray-100">
+                Alinta Electricity EF
+              </span>
+              <span className="mt-0.5 block text-xs text-gray-500 dark:text-gray-400">
+                C&I electricity agreement request. Supports one NMI, or two on the same form.
+              </span>
+            </span>
+          </button>
+        </div>
+        <MFooter onCancel={() => setShowLodgeEfModal(false)} label="Cancel" />
+      </Modal>
+
       {/* ── Drive filing modal ── */}
       <Modal open={showDriveModal} onClose={() => !driveLoading && resetDrive()} title="File in Drive">
         <MField label="Business">
@@ -1820,6 +1895,18 @@ export function DocumentsTab({
                   className="text-xs font-semibold text-primary hover:underline"
                 >
                   Send Alinta gas agreement →
+                </a>
+              </div>
+            )}
+            {driveContractKey === "C&I Electricity" && (
+              <div className="mt-2">
+                <a
+                  href={alintaElectricityHref()}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs font-semibold text-primary hover:underline"
+                >
+                  Send Alinta electricity agreement →
                 </a>
               </div>
             )}

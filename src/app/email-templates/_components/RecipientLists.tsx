@@ -10,6 +10,7 @@ const FLOW_LABELS: Record<string, string> = {
   data_request: "Data requests",
   quote_request: "Quote requests",
   alinta_gas: "Alinta gas agreement",
+  alinta_electricity: "Alinta electricity agreement",
 };
 
 type RecipientListsProps = {

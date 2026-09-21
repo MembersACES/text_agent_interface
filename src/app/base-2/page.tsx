@@ -159,7 +159,7 @@ interface UtilityComparison {
   /** Future contract period (YYYY-MM-DD). Start defaults to the day after current end. */
   ciGasFutureStartDate?: string;
   ciGasFutureEndDate?: string;
-  /** Required for C&I electricity comparison / DMA ($/kWh, Origin sheet units). */
+  /** Required for C&I electricity comparison and RSL agent ($/kWh, Origin sheet units). Not used for DMA. */
   ciElectricityCommissionAudPerKwh?: number;
   /** Required for C&I gas and SME → C&I gas (`ci_offer`) comparison ($/GJ). */
   ciGasCommissionAudPerGj?: number;
@@ -2566,7 +2566,7 @@ export default function Base2Page() {
     const utilitiesToProcess = generateAll ? utilityComparisons.filter((u) => { if (u.utilityType !== comparison.utilityType || u.loading || u.error) return false; if (comparison.utilityType === "SME Gas") { const m = comparison.smeGasComparisonMode ?? "invoice_blocks"; const um = u.smeGasComparisonMode ?? "invoice_blocks"; return m === um; } if (comparison.utilityType === "SME Electricity") { const m = comparison.smeElecComparisonMode ?? "invoice_blocks"; const um = u.smeElecComparisonMode ?? "invoice_blocks"; return m === um; } return true; }) : [comparison];
     if (utilitiesToProcess.length === 0) { alert('No utilities available to generate'); return; }
     for (const u of utilitiesToProcess) {
-      if (u.utilityType === "C&I Electricity") {
+      if (action !== "dma" && u.utilityType === "C&I Electricity") {
         const c = u.ciElectricityCommissionAudPerKwh;
         if (c == null || !Number.isFinite(c) || c <= 0) {
           alert(`C&I electricity: commission ($/kWh) is required for NMI ${u.identifier}.`);
@@ -2620,9 +2620,6 @@ export default function Base2Page() {
           payload.metering_rate = (util.currentMeterDaily ?? util.currentMeteringDaily ?? 0).toFixed(2); payload.metering_rate_annual = (util.currentMeterAnnual ?? util.currentMeteringAnnual ?? 0).toFixed(2); payload.vas_rate = (util.currentVasDaily ?? 0).toFixed(2); payload.vas_rate_annual = (util.currentVasAnnual ?? 0).toFixed(2); payload.combined_annual_cost = (util.currentMeteringAnnual ?? 0).toFixed(2);
           payload.comparison_meter_annual = (util.comparisonMeterAnnual ?? 600).toFixed(2); payload.comparison_vas_annual = (util.comparisonVasAnnual ?? 300).toFixed(2); payload.comparison_meter_daily = (util.comparisonMeterDaily ?? 600 / 365).toFixed(4); payload.comparison_vas_daily = (util.comparisonVasDaily ?? 300 / 365).toFixed(4); payload.dma_price = (util.comparisonMeterAnnual ?? 600).toFixed(2); payload.vas_price = (util.comparisonVasAnnual ?? 300).toFixed(2); payload.proposed_annual_cost = (util.comparisonMeteringAnnual ?? 900).toFixed(2);
           if (util.currentMeteringAnnual != null && util.comparisonMeteringAnnual != null) payload.annual_savings = (util.currentMeteringAnnual - util.comparisonMeteringAnnual).toFixed(2);
-          payload.commission_aud_per_kwh = util.ciElectricityCommissionAudPerKwh!.toFixed(6);
-          payload.commission_aud_per_mwh = audPerKwhToAudPerMwh(util.ciElectricityCommissionAudPerKwh!).toFixed(4);
-          payload.commission_unit_electricity = "$/MWh";
           payload.retailer = fullData['Retailer'] || details?.retailer || '';
           {
             const startDate = new Date().toISOString().split('T')[0];
@@ -3391,7 +3388,7 @@ export default function Base2Page() {
           <tr key="commission-kwh" className="hover:bg-gray-50/50">
             <td className={labelTd}>
               Commission <span className="text-gray-400">($/kWh)</span>
-              <span className="ml-1 text-rose-600 font-semibold" title={smeElecCi ? "Required before generating comparison" : "Required before generating comparison or DMA"}>
+              <span className="ml-1 text-rose-600 font-semibold" title={smeElecCi ? "Required before generating comparison" : "Required before generating comparison or RSL Agent"}>
                 *
               </span>
             </td>
