@@ -69,6 +69,7 @@ export const WORKFLOW_CARD_GROUPS: { label: string; cards: WorkflowCard[] }[] = 
     cards: [
       { title: "Document Generation", description: "Create and manage member documents", href: "/document-generation", icon: FileCheck, color: "from-orange-500 to-amber-600" },
       { title: "Signed Agreement Lodgement", description: "Lodge signed agreements", href: "/signed-agreement-lodgement", icon: FileUp, color: "from-emerald-500 to-teal-600" },
+      { title: "Agreement Follow Up", description: "Email the member an agreement PDF and start autonomous signing follow-up", href: "/autonomous-agent/agreement-follow-up", icon: FileSignature, color: "from-indigo-500 to-violet-600" },
       { title: "Send Alinta gas agreement", description: "Upload signed Alinta EF, look up MIRN, email LOA + agreement", href: "/alinta-gas-agreement-request", icon: Flame, color: "from-orange-500 to-red-600" },
       { title: "Send Alinta electricity agreement", description: "Upload signed Alinta electricity EF, look up NMI(s), email LOA + agreement", href: "/alinta-electricity-agreement-request", icon: Zap, color: "from-amber-500 to-yellow-600" },
       { title: "1st Month Savings Invoice", description: "First month savings invoicing", href: "/one-month-savings", icon: Receipt, color: "from-cyan-500 to-blue-600" },

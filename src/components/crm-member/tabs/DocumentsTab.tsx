@@ -1411,6 +1411,31 @@ export function DocumentsTab({
             >
               Lodge EF
             </Button>
+            {clientId != null && Number.isFinite(clientId) ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                radius="md"
+                onClick={() => {
+                  const p = new URLSearchParams();
+                  p.set("clientId", String(clientId));
+                  const name = String(rep.contact_name || "").trim();
+                  const email = String(contact.email || "").trim();
+                  const phone = String(contact.telephone || "").trim();
+                  if (name) p.set("contactName", name);
+                  if (email) p.set("contactEmail", email);
+                  if (phone) p.set("contactPhone", phone);
+                  window.open(
+                    `/autonomous-agent/agreement-follow-up?${p.toString()}`,
+                    "_blank",
+                    "noopener,noreferrer",
+                  );
+                }}
+              >
+                Agreement follow-up
+              </Button>
+            ) : null}
           </div>
         </div>
 

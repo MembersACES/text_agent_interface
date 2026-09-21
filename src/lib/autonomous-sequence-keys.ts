@@ -7,6 +7,7 @@ export const AUTONOMOUS_SEQUENCE_FUTURE_GAS = "future_gas_base2_followup_v1";
 export const AUTONOMOUS_SEQUENCE_CI_ELECTRICITY_OFFER = "ci_electricity_offer";
 export const AUTONOMOUS_SEQUENCE_SOLAR_FOLLOWUP = "solar_panel_cleaning_followup_v1";
 export const AUTONOMOUS_SEQUENCE_SOLAR_ENGAGEMENT = "solar_panel_cleaning_engagement_form_v1";
+export const AUTONOMOUS_SEQUENCE_AGREEMENT_FOLLOWUP = "agreement_followup_v1";
 
 export type AutonomousSequenceLink = {
   sequence_type: string;
@@ -56,6 +57,12 @@ export const SEQUENCE_LINK_SOLAR_ENGAGEMENT: AutonomousSequenceLink = {
   startsWhen: "Send Solar Panel Cleaning engagement form",
 };
 
+export const SEQUENCE_LINK_AGREEMENT_FOLLOWUP: AutonomousSequenceLink = {
+  sequence_type: AUTONOMOUS_SEQUENCE_AGREEMENT_FOLLOWUP,
+  label: "Agreement follow-up",
+  startsWhen: "Send agreement PDF for signing",
+};
+
 export const BASE2_SEQUENCE_LINKS: AutonomousSequenceLink[] = [
   SEQUENCE_LINK_CI_GAS,
   SEQUENCE_LINK_CI_ELECTRICITY,
@@ -88,6 +95,7 @@ export const WIRED_SEQUENCE_TYPE_LABELS: Record<string, string> = {
   [AUTONOMOUS_SEQUENCE_CI_ELECTRICITY_OFFER]: "Utility Invoice Info — C&I Electricity",
   [AUTONOMOUS_SEQUENCE_SOLAR_FOLLOWUP]: "Solar cleaning quote",
   [AUTONOMOUS_SEQUENCE_SOLAR_ENGAGEMENT]: "Document Generation — engagement form",
+  [AUTONOMOUS_SEQUENCE_AGREEMENT_FOLLOWUP]: "Agreement Follow Up",
 };
 
 export function isWiredSequenceType(sequenceType: string): boolean {
@@ -107,6 +115,7 @@ export const COMPARISON_TRIGGERS: AutonomousSequenceLink[] = [
   SEQUENCE_LINK_CI_ELECTRICITY_OFFER,
   SEQUENCE_LINK_SOLAR_FOLLOWUP,
   SEQUENCE_LINK_SOLAR_ENGAGEMENT,
+  SEQUENCE_LINK_AGREEMENT_FOLLOWUP,
 ];
 
 export function templateCoversFlow(
