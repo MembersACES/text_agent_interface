@@ -717,13 +717,84 @@ function isSmeElecCiOffer(c: UtilityComparison): boolean {
   return c.utilityType === "SME Electricity" && (c.smeElecComparisonMode ?? "invoice_blocks") === "ci_offer";
 }
 
-function firstPositiveNumber(...vals: unknown[]): number | undefined {
+function firstNumber(...vals: unknown[]): number | undefined {
   for (const v of vals) {
     if (v == null || v === "") continue;
     const n = typeof v === "number" ? v : parseFloat(String(v).replace(/,/g, "").replace(/[^\d.+-]/g, ""));
-    if (Number.isFinite(n) && n > 0) return n;
+    if (Number.isFinite(n)) return n;
   }
   return undefined;
+}
+
+function firstPositiveNumber(...vals: unknown[]): number | undefined {
+  const n = firstNumber(...vals);
+  return n != null && n > 0 ? n : undefined;
+}
+
+function dailyFromAnnual(annual: number): number {
+  return parseFloat((annual / 365).toFixed(6));
+}
+
+function vasDailyFromRaw(raw: number): number {
+  return raw >= 10 ? raw / 100 : raw;
+}
+
+/** Current meter / VAS / DMA annual from the C&I invoice payload (invoice daily rates, then Airtable DMA fields). */
+function extractCiElectricityMetering(
+  details: Record<string, unknown> | undefined,
+  fullData: Record<string, unknown>,
+): Pick<
+  UtilityComparison,
+  | "currentMeterDaily"
+  | "currentMeterAnnual"
+  | "currentVasDaily"
+  | "currentVasAnnual"
+  | "currentMeteringDaily"
+  | "currentMeteringAnnual"
+> {
+  const invoiceMeterDaily = firstPositiveNumber(
+    details?.metering_rate,
+    fullData["Meter Rate"],
+    fullData["Metering Rate"],
+  );
+  const invoiceVasRaw = firstNumber(
+    details?.vas_rate,
+    fullData["Value Added Service rater in $/Meter/Day"],
+    fullData["VAS Rate"],
+  );
+  const invoiceVasDaily = invoiceVasRaw == null ? undefined : vasDailyFromRaw(invoiceVasRaw);
+
+  const meterAnnualAirtable = firstPositiveNumber(fullData["Metering Services Charge"]);
+  const vasAnnualAirtable = firstPositiveNumber(fullData["VAS Charges"]);
+  const dmaAnnualExGst = firstPositiveNumber(fullData["DMA - Total PA ex. GST"]);
+  const dmaAnnualIncGst = firstPositiveNumber(fullData["Total DMA Cost"]);
+  const invoiceMeteringAnnual = firstPositiveNumber(fullData["Annual Metering Price - Invoice"]);
+
+  const meterAnnual =
+    invoiceMeterDaily != null
+      ? invoiceMeterDaily * 365
+      : meterAnnualAirtable ?? (invoiceVasDaily == null ? invoiceMeteringAnnual : undefined);
+  const vasAnnual = invoiceVasDaily != null ? invoiceVasDaily * 365 : vasAnnualAirtable;
+
+  let totalAnnual = (meterAnnual ?? 0) + (vasAnnual ?? 0);
+  if (!(totalAnnual > 0)) {
+    totalAnnual = dmaAnnualExGst ?? dmaAnnualIncGst ?? invoiceMeteringAnnual ?? 0;
+  }
+
+  if (!(totalAnnual > 0) && meterAnnual == null && vasAnnual == null) return {};
+
+  const resolvedMeterAnnual = meterAnnual ?? (totalAnnual > 0 && vasAnnual == null ? totalAnnual : undefined);
+  const resolvedVasAnnual = vasAnnual ?? 0;
+  const resolvedTotal = totalAnnual > 0 ? totalAnnual : (resolvedMeterAnnual ?? 0) + resolvedVasAnnual;
+
+  return {
+    currentMeterDaily: invoiceMeterDaily ?? (resolvedMeterAnnual != null ? dailyFromAnnual(resolvedMeterAnnual) : undefined),
+    currentMeterAnnual: resolvedMeterAnnual,
+    currentVasDaily: invoiceVasDaily ?? (resolvedVasAnnual > 0 ? dailyFromAnnual(resolvedVasAnnual) : invoiceVasDaily === 0 ? 0 : undefined),
+    currentVasAnnual: resolvedVasAnnual,
+    currentMeteringAnnual: resolvedTotal,
+    currentMeteringDaily: dailyFromAnnual(resolvedTotal),
+  };
 }
 
 function detectAustralianState(text: string | undefined): string | undefined {
@@ -1641,16 +1712,7 @@ export default function Base2Page() {
       rates.offPeakUsage = parseFloat(fullData['Retail Quantity Off-Peak (kWh)'] || details?.offpeak_usage || details?.energy_charges_off_peak_usage_quantity || fullData['Off-Peak Consumption (kWh)'] || fullData['Off-Peak Usage (kWh)'] || '0') || undefined;
       rates.shoulderUsage = parseFloat(fullData['Retail Quantity Shoulder (kWh)'] || details?.shoulder_usage || details?.energy_charges_shoulder_usage_quantity || fullData['Shoulder Consumption (kWh)'] || fullData['Shoulder Usage (kWh)'] || '0') || undefined;
       rates.demandQuantity = parseFloat(fullData['DUOS - Network Demand Charge Quantity (KVA)'] || details?.demand_quantity || '0') || undefined;
-      const meterRate = parseFloat(fullData['Meter Rate'] || '0');
-      const vasRate = parseFloat(fullData['Value Added Service rater in $/Meter/Day'] || '0');
-      if (meterRate > 0 || vasRate > 0) {
-        rates.currentMeteringDaily = meterRate + vasRate;
-        rates.currentMeteringAnnual = (meterRate + vasRate) * 365;
-        rates.currentMeterDaily = meterRate;
-        rates.currentMeterAnnual = meterRate * 365;
-        rates.currentVasDaily = vasRate;
-        rates.currentVasAnnual = vasRate * 365;
-      }
+      Object.assign(rates, extractCiElectricityMetering(details, fullData));
       rates.currentDailySupply = parseFloat(fullData['Daily Supply Charge'] || details?.daily_supply || '0');
       const elecDays = parseInvoiceReviewDays(
         fullData['Invoice Review Number of Days'] ?? details?.invoice_review_days ?? fullData['invoice_review_days'] ?? details?.invoice_period_days
@@ -3114,9 +3176,9 @@ export default function Base2Page() {
       const compTotalAnnual = comparison.comparisonMeteringAnnual ?? 900;
       rows.push(
         <tr key="meter" className="hover:bg-gray-50/50">
-          <td className={labelTd}>Meter</td>
+          <td className={labelTd}>Meter / DMA</td>
           <td className={tdBase}>
-            <input type="number" step="0.01" value={comparison.currentMeterDaily ?? comparison.currentMeteringDaily ?? ''} onChange={(e) => { const daily = parseFloat(e.target.value) || 0; updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentMeterDaily', e.target.value); if (daily > 0) updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentMeterAnnual', (daily * 365).toFixed(2)); else updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentMeterAnnual', ''); }} className={inputCls} placeholder="Daily $/day" />
+            <input type="number" step="0.01" value={comparison.currentMeterDaily ?? ''} onChange={(e) => { const daily = parseFloat(e.target.value) || 0; updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentMeterDaily', e.target.value); if (daily > 0) updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentMeterAnnual', (daily * 365).toFixed(2)); else updateCurrentRate(comparison.utilityType, comparison.identifier, 'currentMeterAnnual', ''); }} className={inputCls} placeholder="Daily $/day" />
             {curMeterAnnual ? <div className="text-[10px] text-gray-400 text-right mt-0.5">${curMeterAnnual.toFixed(2)}/yr</div> : null}
           </td>
           <td className={`${tdBase} text-center text-gray-300 text-xs`}>—</td>
@@ -3146,8 +3208,17 @@ export default function Base2Page() {
       );
       rows.push(
         <tr key="metering-total" className="bg-gray-50/80 hover:bg-gray-50">
-          <td className={`${labelTd} font-semibold text-gray-700`}>Metering (total)</td>
-          <td className={`${tdBase} text-right text-xs font-mono text-gray-700`}>{comparison.currentMeteringAnnual ? `$${comparison.currentMeteringAnnual.toFixed(2)}/yr` : '—'}</td>
+          <td className={`${labelTd} font-semibold text-gray-700`}>Current DMA cost</td>
+          <td className={`${tdBase} text-right text-xs font-mono text-gray-700`}>
+            {comparison.currentMeteringAnnual ? (
+              <>
+                ${comparison.currentMeteringAnnual.toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/yr
+                <div className="text-[10px] font-normal text-gray-400 mt-0.5">ex GST annual</div>
+              </>
+            ) : (
+              "—"
+            )}
+          </td>
           <td className={`${tdBase} text-center text-gray-300 text-xs`}>—</td>
           <td className={`${tdBase} text-right text-xs font-mono text-gray-700`}>${compTotalAnnual.toFixed(2)}/yr</td>
           <td className={`${tdBase} text-right`}>{savingsPill(comparison.currentMeteringAnnual && compTotalAnnual ? comparison.currentMeteringAnnual - compTotalAnnual : undefined)}</td>
