@@ -15,6 +15,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { getApiBaseUrl, formatDateAustralian, formatDateDDMMYYYY, parseDateDDMMYYYYToISO } from "@/lib/utils";
+import { formatBackendErrorBody } from "@/lib/api-errors";
 import { useToast } from "@/components/ui/toast";
 import { Modal } from "@/components/ui/modal";
 import { RefreshCw, AlertCircle, CheckCircle2, CalendarClock, CalendarCheck, HelpCircle, Pencil, AlertTriangle, ChevronDown, ExternalLink } from "lucide-react";
@@ -36,7 +37,27 @@ type ContractItem = {
   phone_type?: PhoneType;
   client_id?: number | null;
   portal_path?: string;
+  loa_record_id?: string;
 };
+
+function classifyPhone(phone: string): PhoneType {
+  let digits = (phone || "").replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.startsWith("61") && digits.length >= 11) digits = digits.slice(2);
+  if (!digits.startsWith("0") && digits.length === 9) digits = `0${digits}`;
+  if (digits.startsWith("04")) return "mobile";
+  if (digits.startsWith("02") || digits.startsWith("03") || digits.startsWith("07") || digits.startsWith("08")) {
+    return "landline";
+  }
+  return "unknown";
+}
+
+function sameMember(a: ContractItem, b: ContractItem): boolean {
+  const loaId = (a.loa_record_id || "").trim();
+  if (loaId && loaId === (b.loa_record_id || "").trim()) return true;
+  const name = (a.business_name || "").trim().toLowerCase();
+  return Boolean(name && name === (b.business_name || "").trim().toLowerCase());
+}
 
 type SyncUpdate = {
   utility_type: string;
@@ -86,6 +107,9 @@ export default function ContractEndingPage() {
   const [activeTab, setActiveTab] = useState<"ending" | "ended" | "undefined">("ending");
   const [editingItem, setEditingItem] = useState<ContractItem | null>(null);
   const [editDateValue, setEditDateValue] = useState("");
+  const [editContactName, setEditContactName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+  const [editTelephone, setEditTelephone] = useState("");
   const [editSaving, setEditSaving] = useState(false);
 
   const today = useMemo(() => {
@@ -244,44 +268,143 @@ export default function ContractEndingPage() {
     return ["", ...Array.from(set).sort()];
   }, [contractsWithEndDate]);
 
+  const applyContactToLists = useCallback((source: ContractItem, next: Pick<ContractItem, "contact_name" | "email" | "telephone">) => {
+    const phoneType = classifyPhone(next.telephone || "");
+    const patch = (c: ContractItem): ContractItem =>
+      sameMember(source, c)
+        ? { ...c, contact_name: next.contact_name, email: next.email, telephone: next.telephone, phone_type: phoneType }
+        : c;
+    setContractsWithEndDate((prev) => prev.map(patch));
+    setEndDatesUndefined((prev) => prev.map(patch));
+  }, []);
+
+  const applyDateToLists = useCallback((item: ContractItem, iso: string) => {
+    const isMatch = (c: ContractItem) =>
+      c.identifier === item.identifier && c.utility_type === item.utility_type;
+    setContractsWithEndDate((prev) => {
+      if (prev.some(isMatch)) {
+        return prev.map((c) => (isMatch(c) ? { ...c, contract_end_date: iso } : c));
+      }
+      return [...prev, { ...item, contract_end_date: iso }];
+    });
+    setEndDatesUndefined((prev) => prev.filter((c) => !isMatch(c)));
+  }, []);
+
   const handleSaveEdit = useCallback(async () => {
     if (!editingItem || !token) return;
-    const iso = parseDateDDMMYYYYToISO(editDateValue);
-    if (!iso) {
-      showToast("Invalid date. Use dd-mm-yyyy (e.g. 31-12-2027).", "error");
+    const nextName = editContactName.trim();
+    const nextEmail = editEmail.trim();
+    const nextPhone = editTelephone.trim();
+    const contactChanged =
+      nextName !== (editingItem.contact_name || "").trim() ||
+      nextEmail !== (editingItem.email || "").trim() ||
+      nextPhone !== (editingItem.telephone || "").trim();
+
+    const dateInput = editDateValue.trim();
+    let nextIso: string | null = null;
+    if (dateInput) {
+      nextIso = parseDateDDMMYYYYToISO(dateInput);
+      if (!nextIso) {
+        showToast("Invalid date. Use dd-mm-yyyy (e.g. 31-12-2027).", "error");
+        return;
+      }
+    }
+    const dateChanged = Boolean(nextIso && nextIso !== (editingItem.contract_end_date || ""));
+
+    if (!contactChanged && !dateChanged) {
+      setEditingItem(null);
       return;
     }
+    if (contactChanged && !(editingItem.loa_record_id || "").trim() && !(editingItem.business_name || "").trim()) {
+      showToast("Cannot update contact: no matching LOA record.", "error");
+      return;
+    }
+
+    const headers = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    };
+    const updatedItem: ContractItem = {
+      ...editingItem,
+      ...(contactChanged
+        ? {
+            contact_name: nextName,
+            email: nextEmail,
+            telephone: nextPhone,
+            phone_type: classifyPhone(nextPhone),
+          }
+        : {}),
+    };
+
     setEditSaving(true);
+    const messages: string[] = [];
     try {
-      const res = await fetch(`${getApiBaseUrl()}/api/resources/contract-ending/update`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          utility_type: editingItem.utility_type,
-          identifier: editingItem.identifier,
-          contract_end_date: iso,
-        }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error((data as { detail?: string }).detail ?? "Update failed");
+      if (contactChanged) {
+        const loaId = (editingItem.loa_record_id || "").trim();
+        const res = await fetch(`${getApiBaseUrl()}/api/business-info`, {
+          method: "PATCH",
+          headers,
+          body: JSON.stringify({
+            ...(loaId ? { record_id: loaId } : {}),
+            business_name: editingItem.business_name || "",
+            contact_name: nextName,
+            email: nextEmail,
+            telephone: nextPhone,
+          }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(formatBackendErrorBody(data) || "Contact update failed");
+        }
+        applyContactToLists(updatedItem, {
+          contact_name: nextName,
+          email: nextEmail,
+          telephone: nextPhone,
+        });
+        messages.push("Contact details updated");
       }
-      showToast("Contract end date updated", "success");
+      if (dateChanged && nextIso) {
+        const res = await fetch(`${getApiBaseUrl()}/api/resources/contract-ending/update`, {
+          method: "PATCH",
+          headers,
+          body: JSON.stringify({
+            utility_type: editingItem.utility_type,
+            identifier: editingItem.identifier,
+            contract_end_date: nextIso,
+          }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(formatBackendErrorBody(data) || "Date update failed");
+        }
+        applyDateToLists(updatedItem, nextIso);
+        messages.push("Contract end date updated");
+      }
+      showToast(messages.join(". "), "success");
       setEditingItem(null);
-      fetchData(false);
     } catch (e) {
       showToast(e instanceof Error ? e.message : "Update failed", "error");
     } finally {
       setEditSaving(false);
     }
-  }, [editingItem, editDateValue, token, showToast, fetchData]);
+  }, [
+    editingItem,
+    editDateValue,
+    editContactName,
+    editEmail,
+    editTelephone,
+    token,
+    showToast,
+    applyContactToLists,
+    applyDateToLists,
+  ]);
 
   const openEdit = useCallback((item: ContractItem) => {
     setEditingItem(item);
     setEditDateValue(formatDateDDMMYYYY(item.contract_end_date));
+    setEditContactName(item.contact_name ?? "");
+    setEditEmail(item.email ?? "");
+    setEditTelephone(item.telephone ?? "");
   }, []);
 
   const tabs = [
@@ -316,31 +439,56 @@ export default function ContractEndingPage() {
             <TableCell className="font-mono text-sm">{row.identifier}</TableCell>
             <TableCell className="whitespace-nowrap">{row.utility_type}</TableCell>
             <TableCell className="text-sm">{row.retailer || "—"}</TableCell>
-            <TableCell>{row.contact_name || "—"}</TableCell>
+            <TableCell>
+              {showEdit ? (
+                <button
+                  type="button"
+                  onClick={() => openEdit(row)}
+                  className="text-left hover:text-primary"
+                  title="Edit contact"
+                >
+                  {row.contact_name || <span className="text-gray-400">—</span>}
+                </button>
+              ) : (
+                row.contact_name || "—"
+              )}
+            </TableCell>
             <TableCell className="min-w-[12rem]">
-              <div className="flex flex-col gap-0.5">
-                {row.email ? (
-                  <a href={`mailto:${row.email}`} className="text-sm text-primary hover:underline break-all">
-                    {row.email}
-                  </a>
-                ) : (
-                  <span className="text-sm text-gray-400">No email</span>
-                )}
-                <div className="flex items-center gap-1.5">
-                  {row.telephone ? (
-                    <a href={`tel:${row.telephone}`} className="text-sm text-gray-700 dark:text-gray-300 hover:underline">
-                      {row.telephone}
+              <div className="flex items-start gap-2">
+                <div className="flex flex-col gap-0.5 min-w-0">
+                  {row.email ? (
+                    <a href={`mailto:${row.email}`} className="text-sm text-primary hover:underline break-all">
+                      {row.email}
                     </a>
                   ) : (
-                    <span className="text-sm text-gray-400">No phone</span>
+                    <span className="text-sm text-gray-400">No email</span>
                   )}
-                  {row.phone_type === "mobile" && (
-                    <Badge intent="info" shape="pill" className="px-1.5 py-0 text-[10px]">Mobile</Badge>
-                  )}
-                  {row.phone_type === "landline" && (
-                    <Badge intent="warning" shape="pill" className="px-1.5 py-0 text-[10px]">Landline</Badge>
-                  )}
+                  <div className="flex items-center gap-1.5">
+                    {row.telephone ? (
+                      <a href={`tel:${row.telephone}`} className="text-sm text-gray-700 dark:text-gray-300 hover:underline">
+                        {row.telephone}
+                      </a>
+                    ) : (
+                      <span className="text-sm text-gray-400">No phone</span>
+                    )}
+                    {row.phone_type === "mobile" && (
+                      <Badge intent="info" shape="pill" className="px-1.5 py-0 text-[10px]">Mobile</Badge>
+                    )}
+                    {row.phone_type === "landline" && (
+                      <Badge intent="warning" shape="pill" className="px-1.5 py-0 text-[10px]">Landline</Badge>
+                    )}
+                  </div>
                 </div>
+                {showEdit && (
+                  <button
+                    type="button"
+                    onClick={() => openEdit(row)}
+                    className="mt-0.5 shrink-0 p-1 rounded text-gray-400 hover:text-primary hover:bg-gray-100 dark:hover:bg-dark-2"
+                    title="Edit contact details"
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </button>
+                )}
               </div>
             </TableCell>
             {showDate && (
@@ -388,7 +536,7 @@ export default function ContractEndingPage() {
             Contract Ending / Expiring
           </h1>
           <p className="text-body-sm text-gray-600 dark:text-gray-400 mt-0.5">
-            C&I Electricity and C&I Gas. Business, state and contact come from Airtable LOA records; Open goes to the member portal.
+            C&I Electricity and C&I Gas. Business, state and contact come from Airtable LOA records. Edit contact or end date from this page; Open goes to the member portal.
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -686,8 +834,8 @@ export default function ContractEndingPage() {
         onClose={() => {
           if (!editSaving) setEditingItem(null);
         }}
-        title="Edit contract end date"
-        size="sm"
+        title="Edit contact and end date"
+        size="default"
         footer={
           <div className="flex justify-end gap-2">
             <button
@@ -709,20 +857,64 @@ export default function ContractEndingPage() {
         }
       >
         {editingItem && (
-          <div className="space-y-3">
+          <div className="space-y-4">
             <p className="text-sm text-gray-600 dark:text-gray-400">
-              <span className="font-mono">{editingItem.identifier}</span> · {editingItem.utility_type}
+              <span className="font-medium text-dark dark:text-white">{editingItem.business_name || "Unknown business"}</span>
+              {" · "}
+              <span className="font-mono">{editingItem.identifier}</span>
+              {" · "}
+              {editingItem.utility_type}
             </p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Contact name, email and phone are stored on the member LOA. Saving them updates every site for this member.
+            </p>
+            <div className="space-y-3">
+              <label className="block text-sm font-medium text-dark dark:text-white">
+                Contact name
+                <input
+                  type="text"
+                  value={editContactName}
+                  onChange={(e) => setEditContactName(e.target.value)}
+                  disabled={!(editingItem.loa_record_id || editingItem.business_name)}
+                  className="mt-1 w-full border border-stroke dark:border-dark-3 rounded-md px-3 py-2 bg-white dark:bg-gray-dark text-dark dark:text-white text-sm font-normal disabled:opacity-50"
+                />
+              </label>
+              <label className="block text-sm font-medium text-dark dark:text-white">
+                Email
+                <input
+                  type="email"
+                  value={editEmail}
+                  onChange={(e) => setEditEmail(e.target.value)}
+                  disabled={!(editingItem.loa_record_id || editingItem.business_name)}
+                  className="mt-1 w-full border border-stroke dark:border-dark-3 rounded-md px-3 py-2 bg-white dark:bg-gray-dark text-dark dark:text-white text-sm font-normal disabled:opacity-50"
+                />
+              </label>
+              <label className="block text-sm font-medium text-dark dark:text-white">
+                Phone
+                <input
+                  type="tel"
+                  value={editTelephone}
+                  onChange={(e) => setEditTelephone(e.target.value)}
+                  disabled={!(editingItem.loa_record_id || editingItem.business_name)}
+                  className="mt-1 w-full border border-stroke dark:border-dark-3 rounded-md px-3 py-2 bg-white dark:bg-gray-dark text-dark dark:text-white text-sm font-normal disabled:opacity-50"
+                />
+              </label>
+              {!(editingItem.loa_record_id || editingItem.business_name) && (
+                <p className="text-xs text-amber-700 dark:text-amber-300">
+                  No matching LOA record, so contact cannot be saved from here.
+                </p>
+              )}
+            </div>
             <label className="block text-sm font-medium text-dark dark:text-white">
               Contract end date (dd-mm-yyyy)
+              <input
+                type="text"
+                value={editDateValue}
+                onChange={(e) => setEditDateValue(e.target.value)}
+                placeholder="e.g. 31-12-2027"
+                className="mt-1 w-full border border-stroke dark:border-dark-3 rounded-md px-3 py-2 bg-white dark:bg-gray-dark text-dark dark:text-white text-sm font-normal"
+              />
             </label>
-            <input
-              type="text"
-              value={editDateValue}
-              onChange={(e) => setEditDateValue(e.target.value)}
-              placeholder="e.g. 31-12-2027"
-              className="w-full border border-stroke dark:border-dark-3 rounded-md px-3 py-2 bg-white dark:bg-gray-dark text-dark dark:text-white text-sm"
-            />
           </div>
         )}
       </Modal>

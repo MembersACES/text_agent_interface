@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import {
+  isPartnerRunAppHost,
+  PARTNER_CANONICAL_HOST,
+} from "@/lib/partner-mode";
 
 const PARTNER_PREFIXES = [
   "/clients",
@@ -14,6 +18,14 @@ const PARTNER_PREFIXES = [
 export function middleware(request: NextRequest) {
   if (process.env.NEXT_PUBLIC_PARTNER_MODE !== "1") {
     return NextResponse.next();
+  }
+  const host = request.headers.get("host") || "";
+  if (isPartnerRunAppHost(host)) {
+    const url = request.nextUrl.clone();
+    url.protocol = "https:";
+    url.hostname = PARTNER_CANONICAL_HOST;
+    url.port = "";
+    return NextResponse.redirect(url, 301);
   }
   const { pathname } = request.nextUrl;
   if (pathname === "/") return NextResponse.next();

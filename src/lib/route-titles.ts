@@ -63,6 +63,7 @@ const ROUTE_TITLES: Record<string, string> = {
   "/signed-agreement-lodgement": "Signed Agreement Lodgement",
   "/email-templates": "Email Templates",
   "/alinta-gas-agreement-request": "Send Alinta gas agreement",
+  "/alinta-electricity-agreement-request": "Send Alinta electricity agreement",
   "/one-month-savings": "1st Month Savings Invoice",
   "/new-revenue": "Discrepancy / New Revenue Invoice",
   "/solar-cleaning-quote": "Solar Panel Cleaning Quote",

@@ -1,5 +1,7 @@
 # Distributor portal Cloud Run. Never deploys the staff interface.
 # Trigger: branch `dev` → _CLOUD_RUN_SERVICE=acespartnerinterfacedev
+# NEXTAUTH_URL is set on the Cloud Run service (https://partners.acesolutions.com.au).
+# Do not pass it here — a deploy must not reset it to the run.app URL.
 
 options:
   logging: CLOUD_LOGGING_ONLY
@@ -40,14 +42,13 @@ steps:
       - |
         set -euo pipefail
         IMAGE="gcr.io/$PROJECT_ID/github.com/membersaces/aces-partner-interface:$COMMIT_SHA"
-        NEXTAUTH_URL="https://${_CLOUD_RUN_SERVICE}-$PROJECT_NUMBER.${_REGION}.run.app"
         gcloud run deploy "${_CLOUD_RUN_SERVICE}" \
           --image "$${IMAGE}" \
           --region "${_REGION}" \
           --platform managed \
           --allow-unauthenticated \
           --project "$PROJECT_ID" \
-          --update-env-vars "PARTNER_MODE=1,NEXTAUTH_URL=$${NEXTAUTH_URL}"
+          --update-env-vars "PARTNER_MODE=1"
 
 images:
   - gcr.io/$PROJECT_ID/github.com/membersaces/aces-partner-interface:$COMMIT_SHA
