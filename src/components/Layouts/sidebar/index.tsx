@@ -22,7 +22,7 @@ import {
 } from "./data";
 import { isPartnerMode } from "@/lib/partner-mode";
 import { MenuItem } from "./menu-item";
-import { navMatchesQuery } from "./nav-utils";
+import { getAllNavEntries, navMatchesQuery } from "./nav-utils";
 import { useSidebarContext } from "./sidebar-context";
 import { useUnsavedLinkHandler } from "@/components/unsaved-changes/nav-guard-context";
 
@@ -95,7 +95,9 @@ export function Sidebar() {
       try {
         const stored = localStorage.getItem(JOB_GROUP_COLLAPSED_KEY_PREFIX + group.title);
         initial[group.title] =
-          group.title === "CRM" ? stored !== "false" : stored === "true";
+          group.title === "CRM" || group.title === "Autonomous Agent"
+            ? stored !== "false"
+            : stored === "true";
       } catch {
         initial[group.title] = group.title === "CRM";
       }
@@ -138,7 +140,15 @@ export function Sidebar() {
 
   function navPathActive(href: string): boolean {
     if (!href) return false;
-    return pathname === href || pathname.startsWith(`${href}/`);
+    if (pathname === href) return true;
+    if (!pathname.startsWith(`${href}/`)) return false;
+    const others = getAllNavEntries()
+      .map((entry) => entry.url)
+      .filter((url) => url && url !== href);
+    return !others.some(
+      (url) =>
+        (pathname === url || pathname.startsWith(`${url}/`)) && url.length > href.length,
+    );
   }
 
   useEffect(() => {

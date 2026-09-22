@@ -910,7 +910,7 @@ export default function AutonomousRunDetailPage() {
         throw new Error(typeof data.detail === "string" ? data.detail : "Delete failed");
       }
       showToast("Sequence deleted.", "success");
-      router.push("/autonomous-agent");
+      router.push("/autonomous-agent?group=running");
     } catch (e: unknown) {
       showToast(e instanceof Error ? e.message : "Delete failed", "error");
     } finally {
@@ -1008,7 +1008,7 @@ export default function AutonomousRunDetailPage() {
           <>
             {/* ── Top bar ── */}
             <div className="flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm px-4 py-3">
-              <Link href="/autonomous-agent" className="text-sm font-medium text-gray-400 hover:text-primary transition">
+              <Link href="/autonomous-agent?group=running" className="text-sm font-medium text-gray-400 hover:text-primary transition">
                 ← Back
               </Link>
               <div className="h-4 w-px bg-gray-200 dark:bg-gray-700" />

@@ -12,11 +12,16 @@ import { Modal } from "@/components/ui/modal";
 import { Textarea } from "@/components/ui/textarea";
 import { getApiBaseUrl, getAutonomousApiBaseUrl } from "@/lib/utils";
 import { formatBackendErrorBody } from "@/lib/api-errors";
+import { Check, FileUp, Plus, X } from "lucide-react";
 
 type AgreementType = {
   id: string;
   label: string;
   utility_type: string;
+  retailer?: string;
+  default_subject?: string;
+  default_body?: string;
+  is_active?: boolean;
 };
 
 type MemberHit = {
@@ -46,6 +51,17 @@ type StartResult = {
   filename?: string;
   detail?: string;
 };
+
+const DEFAULT_UTILITIES = [
+  "C&I Gas",
+  "C&I Electricity",
+  "SME Gas",
+  "SME Electricity",
+  "Waste",
+  "Oil",
+  "DMA",
+  "Other",
+];
 
 const NEW_OFFER = "new";
 
@@ -116,6 +132,15 @@ function AgreementFollowUpInner() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<StartResult | null>(null);
+  const [manageOpen, setManageOpen] = useState(false);
+  const [allTypes, setAllTypes] = useState<AgreementType[]>(FALLBACK_TYPES);
+  const [utilityOptions, setUtilityOptions] = useState<string[]>(DEFAULT_UTILITIES);
+  const [newLabel, setNewLabel] = useState("");
+  const [newUtility, setNewUtility] = useState(DEFAULT_UTILITIES[0]);
+  const [newRetailer, setNewRetailer] = useState("");
+  const [savingType, setSavingType] = useState(false);
+  const [typeError, setTypeError] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
   const emailEditedRef = useRef(false);
   emailEditedRef.current = emailEdited;
   const defaultCopyRef = useRef({ subject: "", body: "" });
@@ -125,24 +150,34 @@ function AgreementFollowUpInner() {
     [token],
   );
 
-  useEffect(() => {
+  const loadTypes = useCallback(async () => {
     if (!token) return;
-    void (async () => {
-      try {
-        const res = await fetch(`${getAutonomousApiBaseUrl()}/api/autonomous/agreement-followup/types`, {
-          headers: authHeaders,
-        });
-        if (!res.ok) return;
-        const data = await res.json();
-        const items = asItems<AgreementType>(data.items ?? data);
-        setTypes(items);
-        if (!agreementType && items[0]) setAgreementType(items[0].id);
-      } catch {
-        /* ignore */
+    try {
+      const res = await fetch(
+        `${getAutonomousApiBaseUrl()}/api/autonomous/agreement-followup/types?include_inactive=true`,
+        { headers: authHeaders },
+      );
+      if (!res.ok) return;
+      const data = await res.json();
+      const items = asItems<AgreementType>(data.items ?? data);
+      if (Array.isArray(data.utility_types) && data.utility_types.length) {
+        setUtilityOptions(data.utility_types.map(String));
       }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
+      setAllTypes(items);
+      const active = items.filter((row) => row.is_active !== false);
+      setTypes(active.length ? active : FALLBACK_TYPES);
+      setAgreementType((current) => {
+        if (current && active.some((row) => row.id === current)) return current;
+        return active[0]?.id || current;
+      });
+    } catch {
+      /* keep fallback */
+    }
+  }, [authHeaders, token]);
+
+  useEffect(() => {
+    void loadTypes();
+  }, [loadTypes]);
 
   const selectMember = useCallback(
     async (hit: MemberHit, prefill?: { name?: string; email?: string; phone?: string }) => {
@@ -325,6 +360,65 @@ function AgreementFollowUpInner() {
     setConfirmOpen(true);
   };
 
+  const createType = async () => {
+    if (!token || !newLabel.trim()) {
+      setTypeError("Give the type a name, e.g. Origin C&I Gas.");
+      return;
+    }
+    setSavingType(true);
+    setTypeError(null);
+    try {
+      const res = await fetch(`${getAutonomousApiBaseUrl()}/api/autonomous/agreement-followup/types`, {
+        method: "POST",
+        headers: { ...authHeaders, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          label: newLabel.trim(),
+          utility_type: newUtility,
+          retailer: newRetailer.trim(),
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as AgreementType & { detail?: string };
+      if (!res.ok) {
+        setTypeError(formatBackendErrorBody(data) || data.detail || "Could not save type");
+        return;
+      }
+      setNewLabel("");
+      setNewRetailer("");
+      await loadTypes();
+      if (data.id) {
+        setAgreementType(data.id);
+        setEmailEdited(false);
+      }
+    } catch (err) {
+      setTypeError(err instanceof Error ? err.message : "Could not save type");
+    } finally {
+      setSavingType(false);
+    }
+  };
+
+  const setTypeActive = async (typeId: string, isActive: boolean) => {
+    if (!token) return;
+    setTypeError(null);
+    try {
+      const res = await fetch(
+        `${getAutonomousApiBaseUrl()}/api/autonomous/agreement-followup/types/${encodeURIComponent(typeId)}`,
+        {
+          method: "PATCH",
+          headers: { ...authHeaders, "Content-Type": "application/json" },
+          body: JSON.stringify({ is_active: isActive }),
+        },
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setTypeError(formatBackendErrorBody(data) || "Could not update type");
+        return;
+      }
+      await loadTypes();
+    } catch (err) {
+      setTypeError(err instanceof Error ? err.message : "Could not update type");
+    }
+  };
+
   const startFollowup = async () => {
     if (!validateStart() || !member || !file) return;
     setLoading(true);
@@ -361,57 +455,106 @@ function AgreementFollowUpInner() {
   };
 
   const selectedLabel = types.find((t) => t.id === agreementType)?.label;
+  const selectedType = types.find((t) => t.id === agreementType);
+  const readyMember = Boolean(member);
+  const readyEmail = Boolean(contactEmail.trim());
+  const readyPdf = Boolean(file);
+  const canSend = readyMember && readyEmail && readyPdf && Boolean(agreementType);
+
+  const takePdf = (next: File | null | undefined) => {
+    if (!next) return;
+    if (next.type && next.type !== "application/pdf" && !next.name.toLowerCase().endsWith(".pdf")) {
+      setError("Upload a PDF.");
+      return;
+    }
+    setFile(next);
+    setError(null);
+  };
 
   return (
     <ToolPageLayout
       pageName="Agreement Follow Up"
       title="Agreement Follow Up"
-      description="Email the member an agreement PDF, then let the autonomous sequence chase the signature. Edit the first email before it goes out; follow-ups reply on the same thread."
-      width="lg"
+      description="Send the agreement PDF now, then let the sequence chase the signature on the same thread. Edit the first email before it goes out."
+      width="2xl"
+      actions={
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          leftIcon={<Plus className="size-3.5" />}
+          onClick={() => setManageOpen(true)}
+        >
+          Add or edit agreement types
+        </Button>
+      }
     >
-      <div className="space-y-5">
-        <Card>
-          <div className="space-y-4">
-            <div className="relative">
-              <Input
-                label="CRM member"
-                value={memberQuery}
-                onChange={(e) => {
-                  setMemberQuery(e.target.value);
-                  setMember(null);
-                  setResult(null);
-                }}
-                placeholder="Search by business name"
-                autoComplete="off"
-              />
-              {memberHits.length > 0 && !member && (
-                <ul className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-900">
-                  {memberHits.map((hit) => (
-                    <li key={hit.id}>
-                      <button
-                        type="button"
-                        className="block w-full px-3 py-2 text-left text-sm hover:bg-gray-50 dark:hover:bg-gray-800"
-                        onClick={() => void selectMember(hit)}
-                      >
-                        <span className="font-medium text-gray-900 dark:text-white">{hit.business_name}</span>
-                        {hit.primary_contact_email ? (
-                          <span className="ml-2 text-xs text-gray-500">{hit.primary_contact_email}</span>
-                        ) : null}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {searching && !member ? (
-                <p className="mt-1 text-xs text-gray-500">Searching…</p>
-              ) : null}
-              {member ? (
-                <p className="mt-1 text-xs text-gray-500">
-                  Member #{member.id}
-                  {member.stage ? ` · ${member.stage.replaceAll("_", " ")}` : ""}
-                </p>
-              ) : null}
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_26rem] lg:items-start">
+        <div className="space-y-5">
+          <Card className="space-y-4 border border-gray-200 dark:border-gray-700">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-primary">1 · Member</p>
+              <h2 className="mt-1 text-base font-semibold text-dark dark:text-white">Who are we sending to?</h2>
             </div>
+            {member ? (
+              <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
+                <div>
+                  <p className="font-semibold text-gray-900 dark:text-white">{member.business_name}</p>
+                  <p className="mt-0.5 text-xs text-gray-500">
+                    Member #{member.id}
+                    {member.stage ? ` · ${member.stage.replaceAll("_", " ")}` : ""}
+                    {offers.length ? ` · ${offers.length} offer${offers.length === 1 ? "" : "s"}` : ""}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-800 dark:hover:text-gray-200"
+                  onClick={() => {
+                    setMember(null);
+                    setMemberQuery("");
+                    setOffers([]);
+                    setOfferId(NEW_OFFER);
+                    setResult(null);
+                  }}
+                >
+                  <X className="size-3.5" />
+                  Change
+                </button>
+              </div>
+            ) : (
+              <div className="relative">
+                <Input
+                  label="Search CRM members"
+                  value={memberQuery}
+                  onChange={(e) => {
+                    setMemberQuery(e.target.value);
+                    setMember(null);
+                    setResult(null);
+                  }}
+                  placeholder="Search by business name"
+                  autoComplete="off"
+                />
+                {memberHits.length > 0 && (
+                  <ul className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-900">
+                    {memberHits.map((hit) => (
+                      <li key={hit.id}>
+                        <button
+                          type="button"
+                          className="block w-full px-3 py-2 text-left text-sm hover:bg-gray-50 dark:hover:bg-gray-800"
+                          onClick={() => void selectMember(hit)}
+                        >
+                          <span className="font-medium text-gray-900 dark:text-white">{hit.business_name}</span>
+                          {hit.primary_contact_email ? (
+                            <span className="ml-2 text-xs text-gray-500">{hit.primary_contact_email}</span>
+                          ) : null}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {searching ? <p className="mt-1 text-xs text-gray-500">Searching…</p> : null}
+              </div>
+            )}
 
             <div>
               <label className="mb-1 block text-sm font-medium text-dark dark:text-white">Offer</label>
@@ -433,37 +576,6 @@ function AgreementFollowUpInner() {
               </p>
             </div>
 
-            <fieldset>
-              <legend className="mb-2 text-sm font-medium text-dark dark:text-white">Agreement type</legend>
-              <div className="grid gap-2 sm:grid-cols-2">
-                {types.map((row) => (
-                  <label
-                    key={row.id}
-                    className={`flex cursor-pointer items-start gap-2 rounded-xl border px-3 py-2.5 text-sm ${
-                      agreementType === row.id
-                        ? "border-primary bg-primary/5"
-                        : "border-gray-200 dark:border-gray-700"
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="agreement_type"
-                      className="mt-0.5"
-                      checked={agreementType === row.id}
-                      onChange={() => {
-                        setAgreementType(row.id);
-                        setEmailEdited(false);
-                      }}
-                    />
-                    <span>
-                      <span className="block font-medium text-gray-900 dark:text-white">{row.label}</span>
-                      <span className="text-xs text-gray-500">{row.utility_type}</span>
-                    </span>
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-
             <div className="grid gap-3 sm:grid-cols-2">
               <Input
                 label="Member email"
@@ -477,7 +589,7 @@ function AgreementFollowUpInner() {
                 value={contactName}
                 onChange={(e) => setContactName(e.target.value)}
                 placeholder="From LOA / member profile"
-                hint="Pulled from the member LOA. Edit if this send should greet someone else."
+                hint="Greeting uses first name only."
               />
             </div>
             <Input
@@ -486,26 +598,103 @@ function AgreementFollowUpInner() {
               onChange={(e) => setContactPhone(e.target.value)}
               placeholder="Optional — used if a voice step is added later"
             />
+          </Card>
+
+          <Card className="space-y-4 border border-gray-200 dark:border-gray-700">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-primary">2 · Agreement</p>
+                <h2 className="mt-1 text-base font-semibold text-dark dark:text-white">Type and PDF</h2>
+              </div>
+              <button
+                type="button"
+                className="text-xs font-medium text-primary hover:underline"
+                onClick={() => setManageOpen(true)}
+              >
+                Add or edit types
+              </button>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {types.length === 0 ? (
+                <p className="sm:col-span-2 text-sm text-gray-500">
+                  No active agreement types. Use Add or edit agreement types to create one.
+                </p>
+              ) : null}
+              {types.map((row) => {
+                const selected = agreementType === row.id;
+                return (
+                  <button
+                    key={row.id}
+                    type="button"
+                    onClick={() => {
+                      setAgreementType(row.id);
+                      setEmailEdited(false);
+                    }}
+                    className={`rounded-xl border px-3 py-3 text-left text-sm transition ${
+                      selected
+                        ? "border-primary bg-primary/5 shadow-sm"
+                        : "border-gray-200 hover:border-gray-300 dark:border-gray-700"
+                    }`}
+                  >
+                    <span className="flex items-start justify-between gap-2">
+                      <span>
+                        <span className="block font-medium text-gray-900 dark:text-white">{row.label}</span>
+                        <span className="mt-0.5 block text-xs text-gray-500">
+                          {row.utility_type}
+                          {row.retailer ? ` · ${row.retailer}` : ""}
+                        </span>
+                      </span>
+                      {selected ? <Check className="mt-0.5 size-4 shrink-0 text-primary" /> : null}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
 
             <div>
-              <label className="mb-1 block text-sm font-medium text-dark dark:text-white">Agreement PDF</label>
-              <input
-                type="file"
-                accept="application/pdf,.pdf"
-                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-                className="block w-full text-sm text-gray-600 file:mr-3 file:rounded-md file:border-0 file:bg-gray-100 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-gray-700 hover:file:bg-gray-200 dark:text-gray-300 dark:file:bg-gray-800 dark:file:text-gray-200"
-              />
-              {file ? <p className="mt-1 text-xs text-gray-500">{file.name}</p> : null}
+              <p className="mb-1 text-sm font-medium text-dark dark:text-white">Agreement PDF</p>
+              <label
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDragOver(true);
+                }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDragOver(false);
+                  takePdf(e.dataTransfer.files?.[0]);
+                }}
+                className={`flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed px-4 py-6 text-center transition ${
+                  dragOver
+                    ? "border-primary bg-primary/5"
+                    : file
+                      ? "border-emerald-300 bg-emerald-50/70 dark:border-emerald-800 dark:bg-emerald-950/20"
+                      : "border-gray-300 hover:border-gray-400 dark:border-gray-600"
+                }`}
+              >
+                <FileUp className="mb-2 size-6 text-gray-400" />
+                <span className="text-sm font-medium text-gray-800 dark:text-gray-100">
+                  {file ? file.name : "Drop the PDF here, or click to choose"}
+                </span>
+                <span className="mt-1 text-xs text-gray-500">PDF only · max 15 MB · attached on the first email</span>
+                <input
+                  type="file"
+                  accept="application/pdf,.pdf"
+                  className="sr-only"
+                  onChange={(e) => takePdf(e.target.files?.[0])}
+                />
+              </label>
             </div>
-          </div>
-        </Card>
+          </Card>
+        </div>
 
-        {previewSubject || previewBody ? (
-          <Card>
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                First email
-              </p>
+        <div className="space-y-5 lg:sticky lg:top-24">
+          <Card className="space-y-4 border border-gray-200 dark:border-gray-700">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-primary">3 · First email</p>
+                <h2 className="mt-1 text-base font-semibold text-dark dark:text-white">Edit before send</h2>
+              </div>
               {emailEdited ? (
                 <button
                   type="button"
@@ -520,30 +709,27 @@ function AgreementFollowUpInner() {
                 </button>
               ) : null}
             </div>
-            <div className="space-y-3">
-              <Input
-                label="Subject"
-                value={previewSubject}
-                onChange={(e) => {
-                  setEmailEdited(true);
-                  setPreviewSubject(e.target.value);
-                }}
-              />
-              <Textarea
-                label="Body"
-                value={previewBody}
-                onChange={(e) => {
-                  setEmailEdited(true);
-                  setPreviewBody(e.target.value);
-                }}
-                rows={10}
-                hint="Greeting uses first name only. The ACES team signature is appended automatically."
-                className="min-h-[220px] font-sans"
-              />
-            </div>
+            <Input
+              label="Subject"
+              value={previewSubject}
+              onChange={(e) => {
+                setEmailEdited(true);
+                setPreviewSubject(e.target.value);
+              }}
+            />
+            <Textarea
+              label="Body"
+              value={previewBody}
+              onChange={(e) => {
+                setEmailEdited(true);
+                setPreviewBody(e.target.value);
+              }}
+              rows={10}
+              className="min-h-[220px] font-sans"
+            />
             {previewBody.trim() ? (
-              <div className="mt-4 rounded-lg border border-gray-100 bg-gray-50 px-3 py-3 dark:border-gray-800 dark:bg-gray-900/40">
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+              <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-3 dark:border-gray-800 dark:bg-gray-900/40">
+                <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
                   How it will look
                 </p>
                 <div
@@ -551,56 +737,139 @@ function AgreementFollowUpInner() {
                   dangerouslySetInnerHTML={{ __html: bodyPreviewHtml(previewBody) }}
                 />
                 <p className="mt-3 text-xs text-gray-500">
-                  Signature: The Team · Australian Circular Economy Solutions
+                  Signature appended automatically · The Team, ACES
                 </p>
               </div>
-            ) : null}
-            <p className="mt-3 text-xs text-gray-500">
-              This send attaches the PDF via n8n. Follow-ups (days 1, 3, 5, 7) reply on the same
-              Gmail thread and do not re-attach. Edit those step prompts on{" "}
-              <Link className="font-medium text-primary hover:underline" href="/autonomous-agent?tab=templates">
-                Autonomous Agent → Sequence templates
-              </Link>
-              .
-            </p>
+            ) : (
+              <p className="text-xs text-gray-500">Select a member and type to load the default email.</p>
+            )}
           </Card>
-        ) : null}
 
-        {error ? (
-          <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
-            {error}
-          </p>
-        ) : null}
-
-        {result?.ok ? (
-          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200">
-            <p className="font-medium">
-              Sent {result.agreement_label} to {result.to} and started run #{result.run_id}.
+          <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-dark">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Ready to send</p>
+            <ul className="mt-3 space-y-1.5 text-sm">
+              {[
+                { ok: readyMember, label: member ? member.business_name : "Pick a CRM member" },
+                { ok: Boolean(selectedType), label: selectedLabel || "Choose an agreement type" },
+                { ok: readyEmail, label: readyEmail ? contactEmail : "Member email required" },
+                { ok: readyPdf, label: file ? file.name : "Attach the agreement PDF" },
+              ].map((item) => (
+                <li key={item.label} className="flex items-start gap-2">
+                  <Check className={`mt-0.5 size-4 shrink-0 ${item.ok ? "text-emerald-600" : "text-gray-300"}`} />
+                  <span className={item.ok ? "text-gray-800 dark:text-gray-100" : "text-gray-400"}>{item.label}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-3 text-xs text-gray-500">
+              Follow-ups on days 1, 3, 5 and 7 reply on the same Gmail thread.{" "}
+              <Link className="font-medium text-primary hover:underline" href="/autonomous-agent/templates">
+                Edit sequence copy
+              </Link>
             </p>
-            {result.n8n_mode === "placeholder" ? (
-              <p className="mt-1 text-amber-800 dark:text-amber-200">
-                n8n webhook is not set, so the PDF was not actually emailed. Add{" "}
-                <code>N8N_AGREEMENT_FOLLOWUP_EMAIL_WEBHOOK_URL</code> on the backend.
+            {error ? (
+              <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
+                {error}
               </p>
             ) : null}
-            <p className="mt-2">
-              <Link className="font-semibold text-primary hover:underline" href={`/autonomous-agent/${result.run_id}`}>
-                Open autonomous run →
-              </Link>
-            </p>
+            {result?.ok ? (
+              <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200">
+                <p className="font-medium">
+                  Sent {result.agreement_label} to {result.to} · run #{result.run_id}
+                </p>
+                <Link className="mt-1 inline-block font-semibold text-primary hover:underline" href={`/autonomous-agent/${result.run_id}`}>
+                  Open run →
+                </Link>
+              </div>
+            ) : null}
+            <Button
+              type="button"
+              className="mt-4 w-full"
+              onClick={openConfirm}
+              disabled={loading || !canSend}
+            >
+              {`Send ${selectedLabel || "agreement"} & start follow-up`}
+            </Button>
           </div>
-        ) : null}
-
-        <div className="flex justify-end">
-          <Button
-            type="button"
-            onClick={openConfirm}
-            disabled={loading || !member || !file || !agreementType}
-          >
-            {`Start follow-up${selectedLabel ? ` · ${selectedLabel}` : ""}`}
-          </Button>
         </div>
       </div>
+
+      <Modal
+        open={manageOpen}
+        onClose={() => setManageOpen(false)}
+        title="Add or edit agreement types"
+        size="lg"
+        footer={
+          <div className="flex justify-end">
+            <Button type="button" variant="secondary" onClick={() => setManageOpen(false)}>
+              Done
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-4 text-sm text-gray-700 dark:text-gray-300">
+          <p>
+            Add Origin, Simply, or any other retailer agreement here. New types use the same PDF send
+            and signing follow-up. You do not need a backend change.
+          </p>
+          <div className="space-y-2">
+            {allTypes.map((row) => (
+              <div
+                key={row.id}
+                className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 px-3 py-2 dark:border-gray-700"
+              >
+                <div>
+                  <p className="font-medium text-gray-900 dark:text-white">{row.label}</p>
+                  <p className="text-xs text-gray-500">
+                    {row.utility_type}
+                    {row.retailer ? ` · ${row.retailer}` : ""}
+                    {row.is_active === false ? " · hidden" : ""}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="text-xs font-medium text-primary hover:underline"
+                  onClick={() => void setTypeActive(row.id, row.is_active === false)}
+                >
+                  {row.is_active === false ? "Show" : "Hide"}
+                </button>
+              </div>
+            ))}
+          </div>
+          <div className="space-y-3 rounded-lg border border-dashed border-gray-300 px-3 py-3 dark:border-gray-600">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Add a type</p>
+            <Input
+              label="Name"
+              value={newLabel}
+              onChange={(e) => setNewLabel(e.target.value)}
+              placeholder="Origin C&I Gas"
+            />
+            <div>
+              <label className="mb-1 block text-sm font-medium text-dark dark:text-white">Utility</label>
+              <select
+                className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-dark dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                value={newUtility}
+                onChange={(e) => setNewUtility(e.target.value)}
+              >
+                {utilityOptions.map((utility) => (
+                  <option key={utility} value={utility}>
+                    {utility}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <Input
+              label="Retailer"
+              value={newRetailer}
+              onChange={(e) => setNewRetailer(e.target.value)}
+              placeholder="Optional — Origin, Simply, Alinta…"
+            />
+            {typeError ? <p className="text-xs text-red-600">{typeError}</p> : null}
+            <Button type="button" onClick={() => void createType()} loading={savingType}>
+              {savingType ? "Saving…" : "Add type"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       <Modal
         open={confirmOpen}
