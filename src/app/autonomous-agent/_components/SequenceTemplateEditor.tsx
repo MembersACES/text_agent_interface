@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import {
   COMPARISON_TRIGGERS,
@@ -118,6 +118,26 @@ function uniqueCallKey(base: string, templates: SequenceTemplate[], excludeId: n
   return `${slug}_${i}`;
 }
 
+function SetupSection({
+  title,
+  hint,
+  children,
+}: {
+  title: string;
+  hint?: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="space-y-3 rounded-xl border border-gray-200 bg-gray-50/70 p-4 dark:border-gray-700 dark:bg-gray-950/40">
+      <div>
+        <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{title}</h4>
+        {hint ? <p className="mt-0.5 text-[11px] font-normal text-gray-400">{hint}</p> : null}
+      </div>
+      {children}
+    </section>
+  );
+}
+
 interface SequenceTemplateEditorProps {
   template: SequenceTemplate;
   templates: SequenceTemplate[];
@@ -199,6 +219,13 @@ export default function SequenceTemplateEditor({
   const orderedSteps = [...template.steps].sort((a, b) => a.step_index - b.step_index);
   const savingTemplate = savingTemplateId === template.id;
   const linkedKeys = template.linked_flow_keys ?? [];
+  const linkedFlows = COMPARISON_TRIGGERS.filter((flow) => templateCoversFlow(template, flow.sequence_type));
+  const validityLabel =
+    (template.validity_mode ?? "fixed_days") === "none"
+      ? "No validity window"
+      : (template.validity_mode ?? "fixed_days") === "retailer_date"
+        ? "Retailer expiry date"
+        : `${template.validity_days ?? 7}-day validity`;
 
   const toggleComparisonLink = (flowKey: string) => {
     const linked = templateCoversFlow(template, flowKey);
@@ -346,105 +373,63 @@ export default function SequenceTemplateEditor({
             </button>
           ))}
         </div>
+        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+          {orderedSteps.length === 0 ? (
+            <span className="text-[11px] text-gray-400">No steps yet — add them on the Steps tab.</span>
+          ) : (
+            orderedSteps.map((s) => {
+              const meta = channelMeta(s.channel);
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => setTab("cadence")}
+                  className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-2.5 py-0.5 text-[11px] font-medium text-gray-600 hover:border-indigo-300 hover:text-indigo-700 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-300"
+                >
+                  <span>{meta.icon}</span>
+                  Day {s.day_number} · {meta.label}
+                </button>
+              );
+            })
+          )}
+          <span className="inline-flex items-center rounded-full border border-gray-200 bg-white px-2.5 py-0.5 text-[11px] font-medium text-gray-500 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-400">
+            {validityLabel}
+          </span>
+          {linkedFlows.length > 0 ? (
+            <span className="inline-flex items-center rounded-full border border-indigo-100 bg-indigo-50 px-2.5 py-0.5 text-[11px] font-medium text-indigo-700 dark:border-indigo-900 dark:bg-indigo-950/40 dark:text-indigo-300">
+              Starts from {linkedFlows.map((f) => f.label).join(", ")}
+            </span>
+          ) : null}
+        </div>
       </div>
 
       {tab === "setup" && (
         <div className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <label className={labelCls}>
-              Display name
-              <input
-                type="text"
-                value={template.display_name}
-                onChange={(e) => updateTemplateLocal(template.id, { display_name: e.target.value })}
-                className={inputCls}
-              />
-              <span className="mt-1 block text-[11px] font-normal normal-case tracking-normal text-gray-400">
-                Shown in the template list and on Base 2.
-              </span>
-            </label>
-            <label className={labelCls}>
-              Call key
-              <input
-                type="text"
-                value={template.sequence_type}
-                onChange={(e) => updateTemplateLocal(template.id, { sequence_type: e.target.value })}
-                className={cn(inputCls, "font-mono")}
-                spellCheck={false}
-              />
-              <span className="mt-1 block text-[11px] font-normal normal-case tracking-normal text-gray-400">
-                How the app starts this sequence. Letters, numbers, dots, underscores, hyphens.
-              </span>
-            </label>
-            {isWiredSequenceType(template.sequence_type) &&
-              template.sequence_type.trim() === originalSequenceTypeRef.current && (
-              <p className="md:col-span-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                This call key is wired to <strong>{WIRED_SEQUENCE_TYPE_LABELS[template.sequence_type]}</strong>.
-                Change the display name if you only want a clearer label. Changing the key will stop that page from finding this template.
-              </p>
-            )}
-            {isWiredSequenceType(originalSequenceTypeRef.current) &&
-              template.sequence_type.trim() !== originalSequenceTypeRef.current && (
-              <p className="md:col-span-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                Saving will disconnect <strong>{WIRED_SEQUENCE_TYPE_LABELS[originalSequenceTypeRef.current]}</strong> from this template.
-                Existing runs keep the new key; that page will look for <span className="font-mono">{originalSequenceTypeRef.current}</span> and miss it.
-              </p>
-            )}
-            {!sequenceTypeLooksValid(template.sequence_type) && (
-              <p className="md:col-span-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                This placeholder key will not save until you replace it with a slug such as{" "}
-                <span className="font-mono">ci_electricity_offer_draft</span>.
-              </p>
-            )}
-            <div className="md:col-span-2 rounded-lg border border-indigo-100 bg-indigo-50/50 px-3 py-3 dark:border-indigo-900/40 dark:bg-indigo-950/20">
-              <div className="text-xs font-semibold uppercase tracking-wide text-indigo-800 dark:text-indigo-300">
-                Linked comparison types
-              </div>
-              <p className="mt-1 text-[11px] font-normal normal-case tracking-normal text-gray-500">
-                Which product pages start this sequence. Save after changing. A type can only be linked to one template.
-              </p>
-              <div className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-                {COMPARISON_TRIGGERS.map((flow) => {
-                  const checked = templateCoversFlow(template, flow.sequence_type);
-                  const owner = templates.find(
-                    (t) => t.id !== template.id && templateCoversFlow(t, flow.sequence_type),
-                  );
-                  return (
-                    <label
-                      key={flow.sequence_type}
-                      className="flex items-start gap-2 rounded-md px-1 py-1 text-sm font-medium text-gray-700 dark:text-gray-200 cursor-pointer select-none"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        disabled={!checked && owner != null}
-                        onChange={() => toggleComparisonLink(flow.sequence_type)}
-                        className="mt-0.5 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 disabled:opacity-40"
-                      />
-                      <span className="min-w-0">
-                        <span className="block leading-snug">{flow.label}</span>
-                        <span className="block text-[11px] font-normal text-gray-400">
-                          {owner ? `Linked on ${owner.display_name}` : flow.startsWhen}
-                        </span>
-                      </span>
-                    </label>
-                  );
-                })}
-              </div>
+          <SetupSection title="Basics" hint="Name and talking points staff see when they start this chase.">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <label className={labelCls}>
+                Display name
+                <input
+                  type="text"
+                  value={template.display_name}
+                  onChange={(e) => updateTemplateLocal(template.id, { display_name: e.target.value })}
+                  className={inputCls}
+                />
+                <span className="mt-1 block text-[11px] font-normal normal-case tracking-normal text-gray-400">
+                  Shown in the template list and on Base 2.
+                </span>
+              </label>
+              <label className={labelCls}>
+                Description
+                <input
+                  type="text"
+                  value={template.description ?? ""}
+                  onChange={(e) => updateTemplateLocal(template.id, { description: e.target.value })}
+                  className={inputCls}
+                  placeholder="What this sequence chases"
+                />
+              </label>
             </div>
-            <label className={labelCls}>
-              Timezone
-              <input type="text" value={formatScheduleZone(template.timezone)} readOnly className={cn(inputCls, "bg-gray-50 dark:bg-gray-900 text-gray-500")} />
-            </label>
-            <label className={cn(labelCls, "md:col-span-2")}>
-              Description
-              <input
-                type="text"
-                value={template.description ?? ""}
-                onChange={(e) => updateTemplateLocal(template.id, { description: e.target.value })}
-                className={inputCls}
-              />
-            </label>
             <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer select-none">
               <input
                 type="checkbox"
@@ -452,85 +437,91 @@ export default function SequenceTemplateEditor({
                 onChange={(e) => updateTemplateLocal(template.id, { is_restartable: e.target.checked })}
                 className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
               />
-              Restartable
+              Restartable — can start again after it stops
             </label>
-            <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={(template.validity_mode ?? "fixed_days") !== "none"}
-                onChange={(e) =>
-                  updateTemplateLocal(template.id, {
-                    validity_mode: e.target.checked ? "fixed_days" : "none",
-                  })
-                }
-                className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+            <label className={labelCls}>
+              Extra context
+              <textarea
+                value={template.extra_context ?? ""}
+                onChange={(e) => updateTemplateLocal(template.id, { extra_context: e.target.value })}
+                rows={4}
+                className={textareaCls}
+                placeholder="Talking points injected into every email, SMS, and voice call as {{extra_context}}. Add {{extra_context}} to the Retell prompt if the agent should say this."
               />
-              Offer has a validity date
             </label>
-            {(template.validity_mode ?? "fixed_days") !== "none" && (
-              <>
-                <label className={labelCls}>
-                  Validity source
-                  <select
-                    value={template.validity_mode ?? "fixed_days"}
-                    onChange={(e) => updateTemplateLocal(template.id, { validity_mode: e.target.value })}
-                    className={inputCls}
-                  >
-                    <option value="fixed_days">Fixed window from send</option>
-                    <option value="retailer_date">Retailer&apos;s expiry date (entered per offer)</option>
-                  </select>
-                </label>
-                {(template.validity_mode ?? "fixed_days") === "fixed_days" && (
+            <label className={labelCls}>
+              Figures in follow-up emails
+              <select
+                value={template.figures_mode ?? "comparison"}
+                onChange={(e) => updateTemplateLocal(template.id, { figures_mode: e.target.value })}
+                className={inputCls}
+              >
+                <option value="comparison">Comparison — quote verified savings, else refer to the proposal</option>
+                <option value="none">None — no figures, no proposal</option>
+              </select>
+            </label>
+          </SetupSection>
+
+          <SetupSection title="Timing" hint="All steps run in AEST. Validity is what the agent is allowed to quote.">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <label className={labelCls}>
+                Timezone
+                <input type="text" value={formatScheduleZone(template.timezone)} readOnly className={cn(inputCls, "bg-gray-50 dark:bg-gray-900 text-gray-500")} />
+              </label>
+              <label className="inline-flex items-center gap-2 self-end pb-2 text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={(template.validity_mode ?? "fixed_days") !== "none"}
+                  onChange={(e) =>
+                    updateTemplateLocal(template.id, {
+                      validity_mode: e.target.checked ? "fixed_days" : "none",
+                    })
+                  }
+                  className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                />
+                Offer has a validity date
+              </label>
+              {(template.validity_mode ?? "fixed_days") !== "none" && (
+                <>
                   <label className={labelCls}>
-                    Validity period (days)
-                    <input
-                      type="number"
-                      min={1}
-                      max={365}
-                      value={template.validity_days ?? 7}
-                      onChange={(e) =>
-                        updateTemplateLocal(template.id, {
-                          validity_days: Math.min(365, Math.max(1, Number(e.target.value) || 7)),
-                        })
-                      }
+                    Validity source
+                    <select
+                      value={template.validity_mode ?? "fixed_days"}
+                      onChange={(e) => updateTemplateLocal(template.id, { validity_mode: e.target.value })}
                       className={inputCls}
-                    />
+                    >
+                      <option value="fixed_days">Fixed window from send</option>
+                      <option value="retailer_date">Retailer&apos;s expiry date (entered per offer)</option>
+                    </select>
                   </label>
-                )}
-                <p className="md:col-span-2 text-xs text-gray-500 dark:text-gray-400">
-                  {(template.validity_mode ?? "fixed_days") === "retailer_date"
-                    ? "The agent quotes only a date supplied with the offer. If none is supplied it says nothing about validity rather than inventing a deadline."
-                    : `The agent asks for a response within ${template.validity_days ?? 7} day(s) of sending. This is our review window, not the retailer's expiry.`}
-                </p>
-              </>
-            )}
-          </div>
-          <label className={labelCls}>
-            Extra context
-            <textarea
-              value={template.extra_context ?? ""}
-              onChange={(e) => updateTemplateLocal(template.id, { extra_context: e.target.value })}
-              rows={5}
-              className={textareaCls}
-              placeholder="Talking points injected into every email, SMS, and voice call as {{extra_context}}. Add {{extra_context}} to the Retell prompt if the agent should say this."
-            />
-          </label>
-          <label className={labelCls}>
-            Figures in follow-up emails
-            <select
-              value={template.figures_mode ?? "comparison"}
-              onChange={(e) => updateTemplateLocal(template.id, { figures_mode: e.target.value })}
-              className={inputCls}
-            >
-              <option value="comparison">Comparison — quote verified savings, else refer to the proposal</option>
-              <option value="none">None — no figures, no proposal</option>
-            </select>
-          </label>
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-3 space-y-3">
-            <p className={labelCls}>Stop when</p>
-            <p className="text-[11px] font-normal normal-case tracking-normal text-gray-400">
-              Negative sentiment always stops the run and never drafts a reply. Other reasons only apply if checked.
-            </p>
+                  {(template.validity_mode ?? "fixed_days") === "fixed_days" && (
+                    <label className={labelCls}>
+                      Validity period (days)
+                      <input
+                        type="number"
+                        min={1}
+                        max={365}
+                        value={template.validity_days ?? 7}
+                        onChange={(e) =>
+                          updateTemplateLocal(template.id, {
+                            validity_days: Math.min(365, Math.max(1, Number(e.target.value) || 7)),
+                          })
+                        }
+                        className={inputCls}
+                      />
+                    </label>
+                  )}
+                  <p className="md:col-span-2 text-xs text-gray-500 dark:text-gray-400">
+                    {(template.validity_mode ?? "fixed_days") === "retailer_date"
+                      ? "The agent quotes only a date supplied with the offer. If none is supplied it says nothing about validity rather than inventing a deadline."
+                      : `The agent asks for a response within ${template.validity_days ?? 7} day(s) of sending. This is our review window, not the retailer's expiry.`}
+                  </p>
+                </>
+              )}
+            </div>
+          </SetupSection>
+
+          <SetupSection title="Stop when" hint="Negative sentiment always stops the run and never drafts a reply.">
             {([
               { id: "agreement_signed", label: "Agreement signed" },
               { id: "invoice_received", label: "Invoice received" },
@@ -562,8 +553,9 @@ export default function SequenceTemplateEditor({
               <input type="checkbox" checked readOnly className="h-4 w-4 rounded border-gray-300" />
               Negative sentiment (always on)
             </label>
-          </div>
-          <div className="space-y-4">
+          </SetupSection>
+
+          <SetupSection title="Acknowledgement emails" hint="Sent after a signed agreement or invoice reply, if those stop reasons are on.">
             <AckTemplateEditor
               title="Ack — agreement signed"
               subject={template.ack_template_signed?.subject ?? ""}
@@ -586,7 +578,102 @@ export default function SequenceTemplateEditor({
                 })
               }
             />
-          </div>
+          </SetupSection>
+
+          {isWiredSequenceType(originalSequenceTypeRef.current) &&
+            template.sequence_type.trim() !== originalSequenceTypeRef.current && (
+            <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              Saving will disconnect <strong>{WIRED_SEQUENCE_TYPE_LABELS[originalSequenceTypeRef.current]}</strong> from this template.
+              Open Advanced if you intended to change the call key.
+            </p>
+          )}
+          {!sequenceTypeLooksValid(template.sequence_type) && (
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              This placeholder key will not save until you replace it in Advanced with a slug such as{" "}
+              <span className="font-mono">ci_electricity_offer_draft</span>.
+            </p>
+          )}
+
+          <details className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-950/40">
+            <summary className="cursor-pointer text-sm font-semibold text-gray-900 dark:text-gray-100">
+              Advanced — call key & product links
+            </summary>
+            <p className="mt-1 text-[11px] text-gray-400">
+              Only change these if a page is starting the wrong sequence. A product type can only be linked to one template.
+            </p>
+            <div className="mt-3 grid grid-cols-1 gap-3">
+              <label className={labelCls}>
+                Call key
+                <input
+                  type="text"
+                  value={template.sequence_type}
+                  onChange={(e) => updateTemplateLocal(template.id, { sequence_type: e.target.value })}
+                  className={cn(inputCls, "font-mono")}
+                  spellCheck={false}
+                />
+                <span className="mt-1 block text-[11px] font-normal normal-case tracking-normal text-gray-400">
+                  How the app starts this sequence. Letters, numbers, dots, underscores, hyphens.
+                </span>
+              </label>
+              {isWiredSequenceType(template.sequence_type) &&
+                template.sequence_type.trim() === originalSequenceTypeRef.current && (
+                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  This call key is wired to <strong>{WIRED_SEQUENCE_TYPE_LABELS[template.sequence_type]}</strong>.
+                  Change the display name if you only want a clearer label. Changing the key will stop that page from finding this template.
+                </p>
+              )}
+              {isWiredSequenceType(originalSequenceTypeRef.current) &&
+                template.sequence_type.trim() !== originalSequenceTypeRef.current && (
+                <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  Saving will disconnect <strong>{WIRED_SEQUENCE_TYPE_LABELS[originalSequenceTypeRef.current]}</strong> from this template.
+                  Existing runs keep the new key; that page will look for <span className="font-mono">{originalSequenceTypeRef.current}</span> and miss it.
+                </p>
+              )}
+              {!sequenceTypeLooksValid(template.sequence_type) && (
+                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  This placeholder key will not save until you replace it with a slug such as{" "}
+                  <span className="font-mono">ci_electricity_offer_draft</span>.
+                </p>
+              )}
+              <div className="rounded-lg border border-indigo-100 bg-indigo-50/50 px-3 py-3 dark:border-indigo-900/40 dark:bg-indigo-950/20">
+                <div className="text-xs font-semibold uppercase tracking-wide text-indigo-800 dark:text-indigo-300">
+                  Linked comparison types
+                </div>
+                <p className="mt-1 text-[11px] font-normal normal-case tracking-normal text-gray-500">
+                  Which product pages start this sequence. Save after changing.
+                </p>
+                <div className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                  {COMPARISON_TRIGGERS.map((flow) => {
+                    const checked = templateCoversFlow(template, flow.sequence_type);
+                    const owner = templates.find(
+                      (t) => t.id !== template.id && templateCoversFlow(t, flow.sequence_type),
+                    );
+                    return (
+                      <label
+                        key={flow.sequence_type}
+                        className="flex items-start gap-2 rounded-md px-1 py-1 text-sm font-medium text-gray-700 dark:text-gray-200 cursor-pointer select-none"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={!checked && owner != null}
+                          onChange={() => toggleComparisonLink(flow.sequence_type)}
+                          className="mt-0.5 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 disabled:opacity-40"
+                        />
+                        <span className="min-w-0">
+                          <span className="block leading-snug">{flow.label}</span>
+                          <span className="block text-[11px] font-normal text-gray-400">
+                            {owner ? `Linked on ${owner.display_name}` : flow.startsWhen}
+                          </span>
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </details>
+
           <button
             type="button"
             onClick={() => onDeleteTemplate(template.id)}

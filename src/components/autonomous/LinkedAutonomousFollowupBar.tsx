@@ -119,8 +119,8 @@ export function LinkedAutonomousFollowupBar({
               <Link
                 href={
                   tpl
-                    ? `/autonomous-agent?tab=templates&type=${encodeURIComponent(link.sequence_type)}`
-                    : "/autonomous-agent?tab=templates"
+                    ? `/autonomous-agent/templates?type=${encodeURIComponent(link.sequence_type)}`
+                    : "/autonomous-agent/templates"
                 }
                 className="shrink-0 text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 dark:text-indigo-400"
               >

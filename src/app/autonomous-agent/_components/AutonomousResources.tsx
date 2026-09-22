@@ -837,7 +837,7 @@ function Drafting() {
           <Code>sms_example</Code> and a <Code>retell_agent_id</Code>{" "}
           (<Code>AutonomousSequenceType</Code> <Ref>db/models.py:22</Ref>). These feed the drafting
           agents as the system prompt and a worked example — this is the backend side of the
-          &ldquo;Sequence templates&rdquo; tab.
+          &ldquo;Sequence templates&rdquo; page.
         </P>
       </Card>
 
