@@ -332,6 +332,7 @@ function CreateLoop() {
           head={["Comparison", "Sequence type", "Starts a run?"]}
           rows={[
             ["Base 2 C&I Gas / SME→C&I Gas", <Code key="c">gas_base2_followup_v1</Code>, "Yes"],
+            ["Base 2 SME → SME Gas", <Code key="c">sme_gas_base2_followup_v1</Code>, "Yes — after you create the template"],
             ["Base 2 C&I Electricity", <Code key="c">ci_electricity_base2_followup_v1</Code>, "Yes"],
             ["Base 2 B&E Gas", <Code key="c">bne_gas_base2_followup_v1</Code>, "Yes — after you create the template"],
             ["Base 2 Future Contract", <Code key="c">future_gas_base2_followup_v1</Code>, "Yes — after you create the template"],
@@ -628,6 +629,7 @@ function Scheduling() {
             [<Code key="c">ci_electricity_offer</Code>, "5", "Standard (Day 1–3)"],
             [<Code key="c">bne_gas_base2_followup_v1</Code>, "5", "Standard — create via + New, then Base 2 B&E or test run"],
             [<Code key="c">future_gas_base2_followup_v1</Code>, "5", "Standard — create via + New, then Base 2 Future Contract or test run"],
+            [<Code key="c">sme_gas_base2_followup_v1</Code>, "5", "Standard — create via + New, then Base 2 SME vs SME or test run"],
             [<Code key="c">solar_panel_cleaning_followup_v1</Code>, "5", "Standard (Day 1–3)"],
             [
               <Code key="c">solar_panel_cleaning_engagement_form_v1</Code>,

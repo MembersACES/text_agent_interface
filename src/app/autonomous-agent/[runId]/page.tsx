@@ -295,8 +295,8 @@ function SequenceMetricsSidebar({ run, offer }: { run: RunDetail; offer: Offer |
   }
 
   // Gas Base 2 (and legacy runs without snapshot): prefer snapshot then offer.
-  if (run.sequence_type === "gas_base2_followup_v1") {
-    const useSnap = lane === "ci_gas" && snap;
+  if (run.sequence_type === "gas_base2_followup_v1" || run.sequence_type === "sme_gas_base2_followup_v1") {
+    const useSnap = (lane === "ci_gas" || lane === "sme_gas") && snap;
     const sav = (useSnap ? numFromUnknown(snap?.annual_savings) : null) ?? offer?.annual_savings ?? null;
     const usageGj = (useSnap ? numFromUnknown(snap?.annual_usage_gj) : null) ?? offer?.annual_usage_gj ?? null;
     const ec = (useSnap ? numFromUnknown(snap?.energy_charge_pct) : null) ?? offer?.energy_charge_pct ?? null;
