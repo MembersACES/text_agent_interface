@@ -9,6 +9,7 @@ import {
   FileText,
   FolderOpen,
   FolderPlus,
+  KeyRound,
   Loader2,
   RefreshCw,
   Search,
@@ -371,6 +372,13 @@ function DistributorsPageInner() {
               leftIcon={<RefreshCw className="h-4 w-4" />}
             >
               Refresh
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => router.push("/distributors/partners")}
+              leftIcon={<KeyRound className="h-4 w-4" />}
+            >
+              Partner access
             </Button>
             <Button
               onClick={() => router.push("/distributor-folder-creation")}

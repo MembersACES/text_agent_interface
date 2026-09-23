@@ -76,6 +76,7 @@ interface AutonomousRunRow {
   steps_total: number;
   ack_draft_pending?: boolean;
   ack_draft_thread_id?: string | null;
+  shared_thread_with_run_id?: number | null;
   campaign_id?: number | null;
   campaign_name?: string | null;
   is_test?: boolean;
@@ -191,13 +192,14 @@ function uniqueById(rows: AutonomousRunRow[]) {
   return out;
 }
 
-type AttentionBucket = "errored" | "drafts" | "negative" | "overdue" | "undeliverable";
+type AttentionBucket = "errored" | "drafts" | "negative" | "overdue" | "undeliverable" | "shared";
 
 const ATTENTION_BUCKETS: { id: AttentionBucket; singular: string; plural: string }[] = [
   { id: "errored", singular: "error", plural: "errors" },
   { id: "drafts", singular: "draft", plural: "drafts" },
   { id: "negative", singular: "negative", plural: "negative" },
   { id: "undeliverable", singular: "undeliverable", plural: "undeliverable" },
+  { id: "shared", singular: "shared thread", plural: "shared threads" },
   { id: "overdue", singular: "overdue", plural: "overdue" },
 ];
 
@@ -211,6 +213,8 @@ function inAttentionBucket(run: AutonomousRunRow, bucket: AttentionBucket) {
       return run.stop_reason === "negative_sentiment_stop";
     case "undeliverable":
       return run.stop_reason === "undeliverable";
+    case "shared":
+      return typeof run.shared_thread_with_run_id === "number";
     case "overdue":
       return isOverdue(run);
   }
@@ -222,6 +226,7 @@ function countAttentionBuckets(rows: AutonomousRunRow[]) {
     drafts: rows.filter((row) => inAttentionBucket(row, "drafts")).length,
     negative: rows.filter((row) => inAttentionBucket(row, "negative")).length,
     undeliverable: rows.filter((row) => inAttentionBucket(row, "undeliverable")).length,
+    shared: rows.filter((row) => inAttentionBucket(row, "shared")).length,
     overdue: rows.filter((row) => inAttentionBucket(row, "overdue")).length,
   };
 }
@@ -232,8 +237,11 @@ function stitchAttention(running: AutonomousRunRow[], finished: AutonomousRunRow
   const errored = finished.filter((row) => row.run_status === "errored");
   const negative = finished.filter((row) => row.stop_reason === "negative_sentiment_stop");
   const undeliverable = finished.filter((row) => row.stop_reason === "undeliverable");
+  const shared = running.filter((row) => typeof row.shared_thread_with_run_id === "number");
   const drafts = [...running, ...finished].filter((row) => row.ack_draft_pending);
-  return sortByNextStep(uniqueById([...errored, ...overdue, ...drafts, ...negative, ...undeliverable]));
+  return sortByNextStep(
+    uniqueById([...errored, ...overdue, ...drafts, ...negative, ...undeliverable, ...shared]),
+  );
 }
 
 const PAGE_SIZE = 20;
@@ -503,6 +511,11 @@ function RunsQueueTable({
                       {isOverdue(r) ? (
                         <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
                           Overdue
+                        </span>
+                      ) : null}
+                      {typeof r.shared_thread_with_run_id === "number" ? (
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                          Sharing a thread with run #{r.shared_thread_with_run_id}
                         </span>
                       ) : null}
                       {r.ack_draft_pending && (
@@ -1152,6 +1165,7 @@ export default function AutonomousAgentWorkspace({ view }: { view: AutonomousAge
             row.id !== runId ||
             row.run_status === "errored" ||
             row.stop_reason === "negative_sentiment_stop" ||
+            typeof row.shared_thread_with_run_id === "number" ||
             isOverdue(row),
         );
       });
@@ -1223,7 +1237,7 @@ export default function AutonomousAgentWorkspace({ view }: { view: AutonomousAge
     tab === "needs_attention"
       ? attentionFilter
         ? `No ${ATTENTION_BUCKETS.find((bucket) => bucket.id === attentionFilter)?.plural ?? "items"} in this list.`
-        : "Nothing needs attention. Errors, overdue steps, negative stops, undeliverable addresses and unreviewed drafts land here."
+        : "Nothing needs attention. Errors, overdue steps, negative stops, undeliverable addresses, shared Gmail threads and unreviewed drafts land here."
       : tab === "running"
       ? "No active autonomous sequences. Start a test run from Sequence templates, or generate the linked comparison."
       : tab === "errored"
@@ -1269,7 +1283,7 @@ export default function AutonomousAgentWorkspace({ view }: { view: AutonomousAge
         : RUN_GROUPS.find((item) => item.id === tab)?.label || "Sequences";
   const queueDescription =
     tab === "needs_attention"
-      ? "Errors, overdue next steps, negative-sentiment stops, undeliverable first-touch addresses, and acknowledgement drafts waiting for review."
+      ? "Errors, overdue next steps, negative-sentiment stops, undeliverable first-touch addresses, agreement runs sharing one Gmail thread, and acknowledgement drafts waiting for review."
       : tab === "running"
         ? "Every live sequence, follow-up and campaign together. Sorted by what fires next."
         : "Follow-up and campaign sequences in this bucket.";

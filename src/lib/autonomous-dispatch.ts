@@ -1,5 +1,9 @@
 import { getAutonomousApiBaseUrl } from "@/lib/utils";
-import { isSuccessfulWorkerDispatch, workerFailureMessage } from "@/lib/autonomous-runner-trigger";
+import {
+  isSuccessfulWorkerDispatch,
+  workerDispatchFailureDetail,
+  workerFailureMessage,
+} from "@/lib/autonomous-runner-trigger";
 
 function apiError(data: unknown, fallback: string): string {
   if (data && typeof data === "object") {
@@ -43,7 +47,12 @@ export async function dispatchStepNow(opts: {
 
   const res = await fetch(`/api/autonomous/trigger-flows/step/${stepId}`, { method: "POST" });
   const data = await res.json().catch(() => ({}));
-  if (res.ok && isSuccessfulWorkerDispatch(data)) {
+  if (res.ok) {
+    if (!isSuccessfulWorkerDispatch(data)) {
+      const detail = workerDispatchFailureDetail(data);
+      await markDispatched(base, token, runId, stepId, false, detail);
+      throw new Error(detail);
+    }
     await markDispatched(base, token, runId, stepId, true, JSON.stringify(data));
     return `Step #${stepId} sent.`;
   }
@@ -66,7 +75,12 @@ export async function dispatchStepNow(opts: {
     body: JSON.stringify(exported),
   });
   const dispatched = await dispatchRes.json().catch(() => ({}));
-  if (dispatchRes.ok && isSuccessfulWorkerDispatch(dispatched)) {
+  if (dispatchRes.ok) {
+    if (!isSuccessfulWorkerDispatch(dispatched)) {
+      const detail = workerDispatchFailureDetail(dispatched);
+      await markDispatched(base, token, runId, stepId, false, detail);
+      throw new Error(detail);
+    }
     await markDispatched(base, token, runId, stepId, true, JSON.stringify(dispatched));
     return `Step #${stepId} sent.`;
   }
@@ -79,12 +93,15 @@ export async function dispatchStepNow(opts: {
     },
   );
   const local = await localRes.json().catch(() => ({}));
-  if (!localRes.ok) {
+  if (!localRes.ok || (local && typeof local === "object" && (local as { ok?: unknown }).ok === false)) {
+    const detail = workerDispatchFailureDetail(local);
     throw new Error(
-      apiError(
-        local,
-        workerFailureMessage(dispatched, workerFailureMessage(data, "Step was not sent")),
-      ),
+      detail !== "Step was not sent"
+        ? detail
+        : apiError(
+            local,
+            workerFailureMessage(dispatched, workerFailureMessage(data, "Step was not sent")),
+          ),
     );
   }
   return `Step #${stepId} sent.`;
@@ -97,6 +114,20 @@ export async function dispatchRunNow(opts: {
 }): Promise<string> {
   const res = await fetch(`/api/autonomous/trigger-flows/run/${opts.runId}`, { method: "POST" });
   const data = await res.json().catch(() => ({}));
+  if (res.ok && !isSuccessfulWorkerDispatch(data)) {
+    const detail = workerDispatchFailureDetail(data);
+    if (opts.firstReadyStepId) {
+      await markDispatched(
+        getAutonomousApiBaseUrl(),
+        opts.token,
+        opts.runId,
+        opts.firstReadyStepId,
+        false,
+        detail,
+      );
+    }
+    throw new Error(detail);
+  }
   if (res.ok && isSuccessfulWorkerDispatch(data)) {
     if (opts.firstReadyStepId) {
       try {

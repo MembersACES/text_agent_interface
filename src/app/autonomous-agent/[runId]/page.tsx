@@ -295,8 +295,8 @@ function SequenceMetricsSidebar({ run, offer }: { run: RunDetail; offer: Offer |
   }
 
   // Gas Base 2 (and legacy runs without snapshot): prefer snapshot then offer.
-  if (run.sequence_type === "gas_base2_followup_v1") {
-    const useSnap = lane === "ci_gas" && snap;
+  if (run.sequence_type === "gas_base2_followup_v1" || run.sequence_type === "sme_gas_base2_followup_v1") {
+    const useSnap = (lane === "ci_gas" || lane === "sme_gas") && snap;
     const sav = (useSnap ? numFromUnknown(snap?.annual_savings) : null) ?? offer?.annual_savings ?? null;
     const usageGj = (useSnap ? numFromUnknown(snap?.annual_usage_gj) : null) ?? offer?.annual_usage_gj ?? null;
     const ec = (useSnap ? numFromUnknown(snap?.energy_charge_pct) : null) ?? offer?.energy_charge_pct ?? null;
@@ -1212,6 +1212,11 @@ export default function AutonomousRunDetailPage() {
                             <span className="text-xs font-semibold text-gray-600 dark:text-gray-300 capitalize flex-1 truncate">{s.channel.replace(/_/g, " ")}</span>
                             <StepStatusPill status={s.step_status} />
                           </div>
+                          {s.step_status === "error" && s.last_outcome_summary ? (
+                            <p className="mb-2 text-[11px] leading-snug text-red-700 dark:text-red-300">
+                              {s.last_outcome_summary}
+                            </p>
+                          ) : null}
                           {editable ? (
                             <div className="space-y-2">
                               <label className="block text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">

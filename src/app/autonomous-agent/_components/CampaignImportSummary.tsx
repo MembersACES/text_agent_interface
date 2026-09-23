@@ -20,6 +20,20 @@ import {
   type CampaignRowFilter,
 } from "./CampaignControls";
 
+function recipientHumanKeys(rows: CampaignRowPayload[]): Set<string> {
+  const keys = new Set<string>();
+  for (const row of rows) {
+    const key = (row.recipient_key || "").trim().toLowerCase();
+    if (row.human_only && key) keys.add(key);
+  }
+  return keys;
+}
+
+function rowShowsHumanOnly(row: CampaignRowPayload, humanKeys: Set<string>): boolean {
+  const key = (row.recipient_key || "").trim().toLowerCase();
+  return row.human_only || Boolean(key && humanKeys.has(key));
+}
+
 function uniqueRecipientRows(rows: CampaignRowPayload[]): CampaignRowPayload[] {
   const seen = new Set<string>();
   const out: CampaignRowPayload[] = [];
@@ -37,11 +51,7 @@ function filterRows(
   rows: CampaignRowPayload[],
   filter: CampaignRowFilter,
 ): CampaignRowPayload[] {
-  const humanKeys = new Set(
-    rows
-      .filter((row) => row.human_only && (row.recipient_key || "").trim())
-      .map((row) => (row.recipient_key || "").trim()),
-  );
+  const humanKeys = recipientHumanKeys(rows);
   switch (filter) {
     case "distinct":
       return uniqueRecipientRows(rows);
@@ -50,14 +60,13 @@ function filterRows(
         rows.filter(
           (row) =>
             row.row_status === "pending" &&
-            !row.human_only &&
+            !rowShowsHumanOnly(row, humanKeys) &&
             !row.run_id &&
-            !(row.recipient_key && humanKeys.has(row.recipient_key.trim())) &&
             (row.shape_warnings || []).length === 0,
         ),
       );
     case "human_only":
-      return rows.filter((row) => row.human_only);
+      return rows.filter((row) => rowShowsHumanOnly(row, humanKeys));
     case "warnings":
       return rows.filter((row) => (row.shape_warnings || []).length > 0);
     default:
@@ -160,6 +169,7 @@ export function CampaignRowList() {
     () => filterRows(serverRows, rowFilter),
     [serverRows, rowFilter],
   );
+  const humanKeys = useMemo(() => recipientHumanKeys(serverRows), [serverRows]);
 
   if (!rowCounts) return null;
 
@@ -259,7 +269,7 @@ export function CampaignRowList() {
                         <label className="flex cursor-pointer items-center gap-2 text-xs">
                           <input
                             type="checkbox"
-                            checked={row.human_only}
+                            checked={rowShowsHumanOnly(row, humanKeys)}
                             disabled={rowLocked}
                             onChange={(event) =>
                               void onSetHumanOnly(
