@@ -44,6 +44,9 @@ type StartResult = {
   ok?: boolean;
   run_id?: number;
   offer_id?: number;
+  client_id?: number;
+  created_offer?: boolean;
+  test?: boolean;
   to?: string;
   subject?: string;
   agreement_label?: string;
@@ -112,6 +115,15 @@ function AgreementFollowUpInner() {
   const { data: session } = useSession();
   const searchParams = useSearchParams();
   const token = sessionToken(session);
+  const testMode = searchParams.get("test") === "1";
+
+  const testHref = (on: boolean) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (on) params.set("test", "1");
+    else params.delete("test");
+    const q = params.toString();
+    return q ? `?${q}` : "/autonomous-agent/agreement-follow-up";
+  };
 
   const [types, setTypes] = useState<AgreementType[]>(FALLBACK_TYPES);
   const [agreementType, setAgreementType] = useState(FALLBACK_TYPES[0].id);
@@ -141,6 +153,8 @@ function AgreementFollowUpInner() {
   const [savingType, setSavingType] = useState(false);
   const [typeError, setTypeError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [purging, setPurging] = useState(false);
+  const offerTouchedRef = useRef(false);
   const emailEditedRef = useRef(false);
   emailEditedRef.current = emailEdited;
   const defaultCopyRef = useRef({ subject: "", body: "" });
@@ -191,6 +205,8 @@ function AgreementFollowUpInner() {
       setConfirmOpen(false);
       setResult(null);
       setError(null);
+      offerTouchedRef.current = false;
+      setOfferId(NEW_OFFER);
       if (!token) return;
 
       void (async () => {
@@ -201,6 +217,7 @@ function AgreementFollowUpInner() {
           const data = res.ok ? await res.json() : [];
           const list = asItems<OfferHit>(data);
           setOffers(list);
+          if (offerTouchedRef.current) return;
           const preferred =
             list.find((o) =>
               ["engagement_form_signed", "contract_requested", "contract_received"].includes(
@@ -258,6 +275,7 @@ function AgreementFollowUpInner() {
         const c = (await res.json()) as MemberHit;
         await selectMember(c, { name: urlName, email: urlEmail, phone: urlPhone });
         if (offerIdRaw && Number.isFinite(Number(offerIdRaw))) {
+          offerTouchedRef.current = true;
           setOfferId(String(Number(offerIdRaw)));
         }
       } catch {
@@ -433,7 +451,11 @@ function AgreementFollowUpInner() {
       fd.append("contact_phone", contactPhone.trim());
       fd.append("subject", previewSubject.trim());
       fd.append("body_text", previewBody.trim());
-      if (offerId !== NEW_OFFER) fd.append("offer_id", offerId);
+      if (testMode) {
+        fd.append("test_mode", "true");
+      } else if (offerId !== NEW_OFFER) {
+        fd.append("offer_id", offerId);
+      }
       fd.append("file", file);
       const res = await fetch(`${getAutonomousApiBaseUrl()}/api/autonomous/agreement-followup/start`, {
         method: "POST",
@@ -471,11 +493,43 @@ function AgreementFollowUpInner() {
     setError(null);
   };
 
+  const purgeTestStubs = async () => {
+    if (!token) return;
+    setPurging(true);
+    setError(null);
+    try {
+      const res = await fetch(
+        `${getAutonomousApiBaseUrl()}/api/autonomous/agreement-followup/test-stubs/purge`,
+        { method: "POST", headers: authHeaders },
+      );
+      const data = (await res.json().catch(() => ({}))) as {
+        offers?: number;
+        runs?: number;
+        detail?: string;
+      };
+      if (!res.ok) {
+        setError(formatBackendErrorBody(data) || data.detail || "Could not purge test stubs");
+        return;
+      }
+      setResult(null);
+      setError(null);
+      window.alert(`Removed ${data.runs ?? 0} test run(s) and ${data.offers ?? 0} stub offer(s).`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not purge test stubs");
+    } finally {
+      setPurging(false);
+    }
+  };
+
   return (
     <ToolPageLayout
       pageName="Agreement Follow Up"
       title="Agreement Follow Up"
-      description="Send the agreement PDF now, then let the sequence chase the signature on the same thread. Edit the first email before it goes out."
+      description={
+        testMode
+          ? "TEST MODE — sends a real email, but uses a throwaway stub offer that never appears in the Offers pipeline."
+          : "Send the agreement PDF now, then let the sequence chase the signature on the same thread. Edit the first email before it goes out."
+      }
       width="2xl"
       actions={
         <Button
@@ -489,6 +543,35 @@ function AgreementFollowUpInner() {
         </Button>
       }
     >
+      {testMode ? (
+        <div className="mb-5 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+          <p className="font-semibold">Test mode</p>
+          <p className="mt-1 text-xs leading-relaxed text-amber-900/90 dark:text-amber-100/80">
+            This is for inbox and sequence testing only. The send still goes to the member email you
+            type, but the offer behind the run is a hidden stub (same hide rule as campaign rows).
+            It will not appear on Offers and will not move a real pipeline.{" "}
+            <Link className="font-semibold underline" href={testHref(false)}>
+              Exit test mode
+            </Link>
+            {" · "}
+            <button
+              type="button"
+              className="font-semibold underline disabled:opacity-40"
+              onClick={() => void purgeTestStubs()}
+              disabled={purging || !token}
+            >
+              {purging ? "Purging…" : "Purge test stubs"}
+            </button>
+          </p>
+        </div>
+      ) : (
+        <p className="mb-4 text-xs text-gray-400">
+          Testing the sequence without touching a real offer?{" "}
+          <Link className="font-medium text-primary hover:underline" href={testHref(true)}>
+            Open test mode
+          </Link>
+        </p>
+      )}
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_26rem] lg:items-start">
         <div className="space-y-5">
           <Card className="space-y-4 border border-gray-200 dark:border-gray-700">
@@ -514,6 +597,7 @@ function AgreementFollowUpInner() {
                     setMemberQuery("");
                     setOffers([]);
                     setOfferId(NEW_OFFER);
+                    offerTouchedRef.current = false;
                     setResult(null);
                   }}
                 >
@@ -556,12 +640,23 @@ function AgreementFollowUpInner() {
               </div>
             )}
 
+            {testMode ? (
+              <div className="rounded-xl border border-amber-200 bg-amber-50/80 px-3 py-3 text-sm dark:border-amber-800 dark:bg-amber-950/30">
+                <p className="font-medium text-amber-950 dark:text-amber-100">Throwaway test stub</p>
+                <p className="mt-1 text-xs text-amber-900/80 dark:text-amber-100/70">
+                  No real offer is used. A hidden stub is created for this run only, then you can purge it.
+                </p>
+              </div>
+            ) : (
             <div>
               <label className="mb-1 block text-sm font-medium text-dark dark:text-white">Offer</label>
               <select
                 className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-dark dark:border-gray-600 dark:bg-gray-800 dark:text-white"
                 value={offerId}
-                onChange={(e) => setOfferId(e.target.value)}
+                onChange={(e) => {
+                  offerTouchedRef.current = true;
+                  setOfferId(e.target.value);
+                }}
                 disabled={!member}
               >
                 <option value={NEW_OFFER}>Create a new offer</option>
@@ -573,8 +668,11 @@ function AgreementFollowUpInner() {
               </select>
               <p className="mt-1 text-xs text-gray-500">
                 Prefer the offer that already has the signed engagement form / Alinta request.
+                Create a new offer only when that pipeline should start from this send — it will stay
+                selected even after offers finish loading.
               </p>
             </div>
+            )}
 
             <div className="grid gap-3 sm:grid-cols-2">
               <Input
@@ -746,13 +844,18 @@ function AgreementFollowUpInner() {
           </Card>
 
           <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-dark">
-            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Ready to send</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+              {testMode ? "Ready to send a test" : "Ready to send"}
+            </p>
             <ul className="mt-3 space-y-1.5 text-sm">
               {[
                 { ok: readyMember, label: member ? member.business_name : "Pick a CRM member" },
                 { ok: Boolean(selectedType), label: selectedLabel || "Choose an agreement type" },
                 { ok: readyEmail, label: readyEmail ? contactEmail : "Member email required" },
                 { ok: readyPdf, label: file ? file.name : "Attach the agreement PDF" },
+                ...(testMode
+                  ? [{ ok: true, label: "Throwaway stub offer (hidden from Offers)" }]
+                  : []),
               ].map((item) => (
                 <li key={item.label} className="flex items-start gap-2">
                   <Check className={`mt-0.5 size-4 shrink-0 ${item.ok ? "text-emerald-600" : "text-gray-300"}`} />
@@ -774,6 +877,7 @@ function AgreementFollowUpInner() {
             {result?.ok ? (
               <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200">
                 <p className="font-medium">
+                  {result.test ? "TEST · " : ""}
                   Sent {result.agreement_label} to {result.to} · run #{result.run_id}
                 </p>
                 <Link className="mt-1 inline-block font-semibold text-primary hover:underline" href={`/autonomous-agent/${result.run_id}`}>
@@ -787,7 +891,9 @@ function AgreementFollowUpInner() {
               onClick={openConfirm}
               disabled={loading || !canSend}
             >
-              {`Send ${selectedLabel || "agreement"} & start follow-up`}
+              {testMode
+                ? `Send TEST ${selectedLabel || "agreement"}`
+                : `Send ${selectedLabel || "agreement"} & start follow-up`}
             </Button>
           </div>
         </div>
@@ -876,7 +982,7 @@ function AgreementFollowUpInner() {
         onClose={() => {
           if (!loading) setConfirmOpen(false);
         }}
-        title="Send agreement now?"
+        title={testMode ? "Send TEST agreement?" : "Send agreement now?"}
         size="lg"
         footer={
           <div className="flex justify-end gap-2">
@@ -889,15 +995,20 @@ function AgreementFollowUpInner() {
               Cancel
             </Button>
             <Button type="button" onClick={() => void startFollowup()} loading={loading}>
-              {loading ? "Sending…" : "Send email & start sequence"}
+              {loading
+                ? "Sending…"
+                : testMode
+                  ? "Send test email & start sequence"
+                  : "Send email & start sequence"}
             </Button>
           </div>
         }
       >
         <div className="space-y-3 text-sm text-gray-700 dark:text-gray-300">
           <p>
-            This sends the first email immediately with the PDF attached. There is no draft inbox
-            and no undo after Confirm.
+            {testMode
+              ? "This still sends a real email with the PDF. The offer behind the run is a hidden test stub — it will not show on Offers or move a real pipeline."
+              : "This sends the first email immediately with the PDF attached. There is no draft inbox and no undo after Confirm."}
           </p>
           <dl className="space-y-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 dark:border-gray-700 dark:bg-gray-900/40">
             <div>
@@ -906,7 +1017,11 @@ function AgreementFollowUpInner() {
             </div>
             <div>
               <dt className="text-xs font-semibold uppercase tracking-wide text-gray-500">Subject</dt>
-              <dd>{previewSubject.trim() || "—"}</dd>
+              <dd>
+                {testMode && !previewSubject.trim().toUpperCase().startsWith("[TEST]")
+                  ? `[TEST] ${previewSubject.trim() || "—"}`
+                  : previewSubject.trim() || "—"}
+              </dd>
             </div>
             <div>
               <dt className="text-xs font-semibold uppercase tracking-wide text-gray-500">Agreement</dt>

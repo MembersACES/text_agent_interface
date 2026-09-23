@@ -78,6 +78,7 @@ interface AutonomousRunRow {
   ack_draft_thread_id?: string | null;
   campaign_id?: number | null;
   campaign_name?: string | null;
+  is_test?: boolean;
 }
 
 function apiDetail(data: unknown, fallback: string): string {
@@ -153,6 +154,7 @@ function sequenceTypeLabel(sequenceType: string) {
 }
 
 function sourceLabel(run: AutonomousRunRow) {
+  if (run.is_test) return "TEST";
   if (run.campaign_id) {
     return run.campaign_name?.trim() ? `Campaign · ${run.campaign_name.trim()}` : "Campaign";
   }
@@ -458,7 +460,9 @@ function RunsQueueTable({
                     <span
                       className={cn(
                         "inline-flex max-w-[14rem] truncate rounded-full border px-2 py-0.5 text-[11px] font-semibold",
-                        r.campaign_id
+                        r.is_test
+                          ? "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
+                          : r.campaign_id
                           ? "border-indigo-200 bg-indigo-50 text-indigo-800 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-200"
                           : "border-gray-200 bg-gray-50 text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300",
                       )}

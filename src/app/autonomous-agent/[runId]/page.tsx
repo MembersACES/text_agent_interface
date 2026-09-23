@@ -963,6 +963,7 @@ export default function AutonomousRunDetailPage() {
   };
 
   const isRunning = run?.run_status === "running";
+  const isTestRun = Boolean(run?.context?.agreement_test);
   const base2Trigger = run ? strField(run.context, "base2_trigger") : "";
 
   const orderedSteps = useMemo((): StepRow[] => {
@@ -986,12 +987,22 @@ export default function AutonomousRunDetailPage() {
         title={run ? `Sequence #${run.id}` : "Sequence"}
         description={
           run
-            ? `${run.sequence_type} · Offer #${run.offer_id}${run.business_name ? ` · ${run.business_name}` : ""}`
+            ? `${isTestRun ? "TEST · " : ""}${run.sequence_type} · Offer #${run.offer_id}${run.business_name ? ` · ${run.business_name}` : ""}`
             : "Autonomous follow-up steps for this offer."
         }
       />
 
       <div className="mt-4 space-y-4">
+
+        {isTestRun && (
+          <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+            <p className="font-semibold">Test run</p>
+            <p className="mt-0.5 text-xs">
+              This is attached to a throwaway stub offer, not a real Offers-pipeline row. Purge stubs from
+              Agreement Follow Up test mode when you are done.
+            </p>
+          </div>
+        )}
 
         {error && (
           <div className="rounded-lg bg-red-50 border border-red-200 text-sm text-red-700 dark:bg-red-950/30 dark:border-red-800 dark:text-red-300 px-4 py-3">
@@ -1194,7 +1205,9 @@ export default function AutonomousRunDetailPage() {
                           className="flex-shrink-0 w-full sm:w-[calc(50%-0.375rem)] xl:w-[220px] rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3.5 py-3 shadow-sm"
                         >
                           <div className="flex items-center gap-2 mb-2">
-                            <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 text-xs font-bold text-gray-500">{s.day_number}</span>
+                            <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 px-1 text-[10px] font-bold text-gray-500">
+                              {s.day_number === 0 ? "Now" : s.day_number}
+                            </span>
                             <span className="text-base leading-none"><ChannelIcon channel={s.channel} /></span>
                             <span className="text-xs font-semibold text-gray-600 dark:text-gray-300 capitalize flex-1 truncate">{s.channel.replace(/_/g, " ")}</span>
                             <StepStatusPill status={s.step_status} />
