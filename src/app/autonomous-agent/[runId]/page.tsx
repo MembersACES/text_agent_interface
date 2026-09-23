@@ -1212,6 +1212,11 @@ export default function AutonomousRunDetailPage() {
                             <span className="text-xs font-semibold text-gray-600 dark:text-gray-300 capitalize flex-1 truncate">{s.channel.replace(/_/g, " ")}</span>
                             <StepStatusPill status={s.step_status} />
                           </div>
+                          {s.step_status === "error" && s.last_outcome_summary ? (
+                            <p className="mb-2 text-[11px] leading-snug text-red-700 dark:text-red-300">
+                              {s.last_outcome_summary}
+                            </p>
+                          ) : null}
                           {editable ? (
                             <div className="space-y-2">
                               <label className="block text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">

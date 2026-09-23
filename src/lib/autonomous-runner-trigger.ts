@@ -39,7 +39,26 @@ export async function postAutonomousRunner(
 }
 
 export function isSuccessfulWorkerDispatch(payload: unknown): boolean {
-  return Array.isArray(payload) && payload.length > 0;
+  const items = workerDispatchItems(payload);
+  return items.length > 0 && items.every((item) => item.success === true);
+}
+
+export function workerDispatchFailureDetail(payload: unknown): string {
+  for (const item of workerDispatchItems(payload)) {
+    if (item.success === false) {
+      const detail = item.detail;
+      if (typeof detail === "string" && detail.trim()) return detail.trim();
+    }
+  }
+  return workerFailureMessage(payload, "Step was not sent");
+}
+
+function workerDispatchItems(payload: unknown): Record<string, unknown>[] {
+  if (Array.isArray(payload)) {
+    return payload.filter((item): item is Record<string, unknown> => !!item && typeof item === "object");
+  }
+  if (payload && typeof payload === "object") return [payload as Record<string, unknown>];
+  return [];
 }
 
 export function workerFailureMessage(payload: unknown, fallback: string): string {

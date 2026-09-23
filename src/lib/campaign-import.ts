@@ -209,7 +209,6 @@ export function mappingCounts(columnMap: Record<string, string>): {
 export function allowedFieldsFromMap(
   columnMap: Record<string, string>,
 ): MergeField[] {
-  return [...mappedKeys(columnMap)].map(
-    (key) => MERGE_FIELD_BY_KEY[key] ?? { key, label: key },
-  );
+  const keys = mappedKeys(columnMap);
+  return MERGE_FIELDS.filter((field) => keys.has(field.key));
 }

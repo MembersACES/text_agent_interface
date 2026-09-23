@@ -88,6 +88,9 @@ const MergeTemplateEditor = forwardRef<
               role="textbox"
               aria-label="Campaign email body"
               onInput={emitHtml}
+              onPaste={() => {
+                window.setTimeout(() => emitHtml(), 0);
+              }}
               onBlur={emitHtml}
               onFocus={onFocus}
               className="min-h-full text-[13px] leading-[1.45] text-[#222] outline-none [&_a]:text-[#1a73e8]"

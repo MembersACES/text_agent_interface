@@ -35,7 +35,6 @@ import {
   extractTokens,
   initialColumnMap,
   isFirstNameDerived,
-  mappedMergeFields,
   renderTemplate,
   validateTemplate,
 } from "@/lib/merge-template";
@@ -112,7 +111,7 @@ export default function CampaignPreviewPage() {
   );
 
   const allowed = useMemo(() => allowedFieldsFromMap(columnMap), [columnMap]);
-  const tokenFields = useMemo(() => mappedMergeFields(columnMap), [columnMap]);
+  const tokenFields = allowed;
   const counts = useMemo(() => mappingCounts(columnMap), [columnMap]);
   const shapeWarnings = useMemo(
     () => (parsed ? columnShapeWarnings(headers, rawRows, columnMap) : []),
@@ -680,7 +679,7 @@ function ComposeSection({
   coverage,
 }: {
   enabled: boolean;
-  tokenFields: ReturnType<typeof mappedMergeFields>;
+  tokenFields: ReturnType<typeof allowedFieldsFromMap>;
   insertToken: (key: string) => void;
   subject: string;
   setSubject: (value: string) => void;
@@ -745,6 +744,11 @@ function ComposeSection({
               label="Subject"
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
+              onPaste={(e) => {
+                const input = e.currentTarget;
+                window.setTimeout(() => setSubject(input.value), 0);
+              }}
+              onBlur={(e) => setSubject(e.currentTarget.value)}
               onFocus={() => setLastFocus("subject")}
               placeholder="2027-2029 gas allocation — recent invoices for review"
               className="px-3 py-2"

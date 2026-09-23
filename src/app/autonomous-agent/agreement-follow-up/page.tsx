@@ -53,6 +53,8 @@ type StartResult = {
   n8n_mode?: string | null;
   filename?: string;
   detail?: string;
+  warning?: string | null;
+  shared_thread_with_run_id?: number | null;
 };
 
 const DEFAULT_UTILITIES = [
@@ -884,6 +886,11 @@ function AgreementFollowUpInner() {
                   Open run →
                 </Link>
               </div>
+            ) : null}
+            {result?.ok && result.warning ? (
+              <p className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+                {result.warning}
+              </p>
             ) : null}
             <Button
               type="button"
