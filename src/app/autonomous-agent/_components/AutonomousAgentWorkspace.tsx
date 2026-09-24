@@ -237,10 +237,11 @@ function stitchAttention(running: AutonomousRunRow[], finished: AutonomousRunRow
   const errored = finished.filter((row) => row.run_status === "errored");
   const negative = finished.filter((row) => row.stop_reason === "negative_sentiment_stop");
   const undeliverable = finished.filter((row) => row.stop_reason === "undeliverable");
+  const review = finished.filter((row) => row.stop_reason === "needs_human_review");
   const shared = running.filter((row) => typeof row.shared_thread_with_run_id === "number");
   const drafts = [...running, ...finished].filter((row) => row.ack_draft_pending);
   return sortByNextStep(
-    uniqueById([...errored, ...overdue, ...drafts, ...negative, ...undeliverable, ...shared]),
+    uniqueById([...errored, ...overdue, ...drafts, ...negative, ...undeliverable, ...review, ...shared]),
   );
 }
 
