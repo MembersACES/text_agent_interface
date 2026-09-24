@@ -1,6 +1,7 @@
 import {
   INTELLIGENCE_SENTINEL,
   MERGE_FIELD_BY_KEY,
+  MERGE_FIELDS,
   mappedKeys,
   type MergeField,
 } from "./merge-template";
