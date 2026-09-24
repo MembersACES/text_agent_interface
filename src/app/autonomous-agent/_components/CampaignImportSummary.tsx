@@ -251,6 +251,11 @@ export function CampaignRowList() {
                       </td>
                       <td className="px-3 py-2">
                         <Badge intent="neutral">{row.row_status}</Badge>
+                        {row.suppression_reason ? (
+                          <div className="mt-1 max-w-[16rem] text-xs leading-snug text-gray-500 dark:text-gray-400">
+                            {row.suppression_reason}
+                          </div>
+                        ) : null}
                       </td>
                       <td className="px-3 py-2">
                         {flags.length === 0 ? (

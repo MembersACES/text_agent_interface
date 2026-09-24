@@ -772,6 +772,19 @@ export default function AutonomousRunDetailPage() {
     return false;
   }, [run, scheduleDrafts]);
 
+  // A step sends the SAVED context, not what is typed on screen. Editing the
+  // address and pressing Start now without saving silently sends to the old one.
+  const contextDirty = useMemo(() => {
+    if (!run) return false;
+    const ctx = run.context || {};
+    return (
+      contactName.trim() !== strField(ctx, "contact_name").trim() ||
+      businessNameCtx.trim() !== strField(ctx, "business_name").trim() ||
+      contactEmail.trim() !== strField(ctx, "contact_email").trim() ||
+      contactPhone.trim() !== strField(ctx, "contact_phone").trim()
+    );
+  }, [run, contactName, businessNameCtx, contactEmail, contactPhone]);
+
   const applyContextFromRun = (data: RunDetail) => {
     setRun(data);
     const ctx = data.context || {};
@@ -844,6 +857,13 @@ export default function AutonomousRunDetailPage() {
     const firstReady = orderedSteps.find((s) => s.step_status === "ready" || s.step_status === "to_start");
     // Same synchronous latch as handleStartStepNow — the disabled prop alone loses
     // a double-click, because it only takes effect after the next render.
+    if (contextDirty) {
+      showToast(
+        "Save context first. This step would send to the saved details, not what is on screen.",
+        "error",
+      );
+      return;
+    }
     if (stepStartInFlight.current) return;
     stepStartInFlight.current = true;
     setStartingNow(true);
@@ -870,6 +890,13 @@ export default function AutonomousRunDetailPage() {
 
   const handleStartStepNow = async (stepId: number) => {
     if (!token || !runId || !run || run.run_status !== "running") return;
+    if (contextDirty) {
+      showToast(
+        "Save context first. This step would send to the saved details, not what is on screen.",
+        "error",
+      );
+      return;
+    }
     if (stepStartInFlight.current) return;
     stepStartInFlight.current = true;
     setStartingStepId(stepId);
@@ -1269,7 +1296,13 @@ export default function AutonomousRunDetailPage() {
                   >
                     Save context
                   </Button>
-                  <span className="text-xs text-gray-400 dark:text-gray-500">Changes take effect on the next scheduled step</span>
+                  {contextDirty ? (
+                    <span className="text-xs font-semibold text-amber-700 dark:text-amber-400">
+                      Unsaved changes. Steps send the saved details until you save.
+                    </span>
+                  ) : (
+                    <span className="text-xs text-gray-400 dark:text-gray-500">Saved. Changes take effect on the next scheduled step</span>
+                  )}
                 </div>
               </div>
 

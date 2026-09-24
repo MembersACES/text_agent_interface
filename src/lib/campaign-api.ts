@@ -17,6 +17,7 @@ export type CampaignRowPayload = {
   intelligence_json: Record<string, string>;
   recipient_key: string | null;
   row_status: string;
+  suppression_reason: string | null;
   human_only: boolean;
   human_only_reason: string | null;
   shape_warnings: string[];
