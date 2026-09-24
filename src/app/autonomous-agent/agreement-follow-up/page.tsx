@@ -10,19 +10,49 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { Textarea } from "@/components/ui/textarea";
+import { useToast } from "@/components/ui/toast";
 import { getApiBaseUrl, getAutonomousApiBaseUrl } from "@/lib/utils";
 import { formatBackendErrorBody } from "@/lib/api-errors";
+import {
+  AGREEMENT_COPY_FIELDS,
+  blankTypeDraft,
+  DEFAULT_TYPE_BODY,
+  DEFAULT_TYPE_SUBJECT,
+  parseChaseDays,
+  type AgreementTypeDraft,
+  typeDraftProblem,
+} from "@/lib/agreement-type-copy";
 import { Check, FileUp, Plus, X } from "lucide-react";
 
 type AgreementType = {
   id: string;
   label: string;
+  display_name?: string;
   utility_type: string;
   retailer?: string;
   default_subject?: string;
   default_body?: string;
+  first_email_subject?: string;
+  first_email_body?: string;
+  chase_body?: string;
+  chase_days?: number[];
   is_active?: boolean;
 };
+
+type TypeDraft = AgreementTypeDraft;
+
+function draftFromType(row: AgreementType): TypeDraft {
+  return {
+    id: row.id,
+    label: row.display_name || row.label,
+    utility: row.utility_type || "",
+    retailer: row.retailer || "",
+    subject: row.first_email_subject || row.default_subject || DEFAULT_TYPE_SUBJECT,
+    body: row.first_email_body || row.default_body || DEFAULT_TYPE_BODY,
+    chaseBody: row.chase_body || "",
+    chaseDays: (row.chase_days?.length ? row.chase_days : [1, 3, 5, 7]).join(", "),
+  };
+}
 
 type MemberHit = {
   id: number;
@@ -115,6 +145,7 @@ function bodyPreviewHtml(body: string): string {
 
 function AgreementFollowUpInner() {
   const { data: session } = useSession();
+  const { showToast } = useToast();
   const searchParams = useSearchParams();
   const token = sessionToken(session);
   const testMode = searchParams.get("test") === "1";
@@ -149,9 +180,8 @@ function AgreementFollowUpInner() {
   const [manageOpen, setManageOpen] = useState(false);
   const [allTypes, setAllTypes] = useState<AgreementType[]>(FALLBACK_TYPES);
   const [utilityOptions, setUtilityOptions] = useState<string[]>(DEFAULT_UTILITIES);
-  const [newLabel, setNewLabel] = useState("");
-  const [newUtility, setNewUtility] = useState(DEFAULT_UTILITIES[0]);
-  const [newRetailer, setNewRetailer] = useState("");
+  const [typeDraft, setTypeDraft] = useState<TypeDraft>(blankTypeDraft);
+  const [copyTarget, setCopyTarget] = useState<"subject" | "body" | "chaseBody">("body");
   const [savingType, setSavingType] = useState(false);
   const [typeError, setTypeError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -380,37 +410,71 @@ function AgreementFollowUpInner() {
     setConfirmOpen(true);
   };
 
-  const createType = async () => {
-    if (!token || !newLabel.trim()) {
-      setTypeError("Give the type a name, e.g. Origin C&I Gas.");
+  const noteDraftProblem = (draft: TypeDraft) => {
+    setTypeError(typeDraftProblem(draft));
+  };
+
+  const saveType = async () => {
+    const problem = typeDraftProblem(typeDraft);
+    if (!token || problem) {
+      const message = problem || "Give the type a name, e.g. Origin C&I Gas.";
+      setTypeError(message);
+      showToast(message, "error");
+      return;
+    }
+    const days = parseChaseDays(typeDraft.chaseDays);
+    if (!days.ok) {
+      setTypeError(days.error);
+      showToast(days.error, "error");
       return;
     }
     setSavingType(true);
     setTypeError(null);
+    const payload = {
+      label: typeDraft.label.trim(),
+      display_name: typeDraft.label.trim(),
+      utility_type: typeDraft.utility,
+      retailer: typeDraft.retailer.trim(),
+      first_email_subject: typeDraft.subject,
+      first_email_body: typeDraft.body,
+      chase_body: typeDraft.chaseBody,
+      chase_days: days.days,
+    };
+    const editing = Boolean(typeDraft.id);
     try {
-      const res = await fetch(`${getAutonomousApiBaseUrl()}/api/autonomous/agreement-followup/types`, {
-        method: "POST",
-        headers: { ...authHeaders, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          label: newLabel.trim(),
-          utility_type: newUtility,
-          retailer: newRetailer.trim(),
-        }),
-      });
+      const res = await fetch(
+        editing
+          ? `${getAutonomousApiBaseUrl()}/api/autonomous/agreement-followup/types/${encodeURIComponent(typeDraft.id || "")}`
+          : `${getAutonomousApiBaseUrl()}/api/autonomous/agreement-followup/types`,
+        {
+          method: editing ? "PATCH" : "POST",
+          headers: { ...authHeaders, "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      );
       const data = (await res.json().catch(() => ({}))) as AgreementType & { detail?: string };
       if (!res.ok) {
-        setTypeError(formatBackendErrorBody(data) || data.detail || "Could not save type");
+        const message = formatBackendErrorBody(data) || data.detail || "Could not save type";
+        setTypeError(message);
+        setManageOpen(false);
+        showToast(message, "error");
         return;
       }
-      setNewLabel("");
-      setNewRetailer("");
+      const name = (data.label || typeDraft.label).trim();
+      setTypeDraft(blankTypeDraft());
+      setTypeError(null);
+      setManageOpen(false);
+      showToast(editing ? `Saved ${name}.` : `Created ${name}.`, "success");
       await loadTypes();
-      if (data.id) {
+      if (data.id && data.id !== agreementType) {
         setAgreementType(data.id);
         setEmailEdited(false);
       }
     } catch (err) {
-      setTypeError(err instanceof Error ? err.message : "Could not save type");
+      const message = err instanceof Error ? err.message : "Could not save type";
+      setTypeError(message);
+      setManageOpen(false);
+      showToast(message, "error");
     } finally {
       setSavingType(false);
     }
@@ -480,6 +544,7 @@ function AgreementFollowUpInner() {
 
   const selectedLabel = types.find((t) => t.id === agreementType)?.label;
   const selectedType = types.find((t) => t.id === agreementType);
+  const chaseDayLabel = (selectedType?.chase_days?.length ? selectedType.chase_days : [1, 3, 5, 7]).join(", ");
   const readyMember = Boolean(member);
   const readyEmail = Boolean(contactEmail.trim());
   const readyPdf = Boolean(file);
@@ -866,10 +931,8 @@ function AgreementFollowUpInner() {
               ))}
             </ul>
             <p className="mt-3 text-xs text-gray-500">
-              Follow-ups on days 1, 3, 5 and 7 reply on the same Gmail thread.{" "}
-              <Link className="font-medium text-primary hover:underline" href="/autonomous-agent/templates">
-                Edit sequence copy
-              </Link>
+              Follow-ups on days {chaseDayLabel} reply on the same Gmail thread. Changing the email on
+              this page does not change the type.
             </p>
             {error ? (
               <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
@@ -911,6 +974,7 @@ function AgreementFollowUpInner() {
         onClose={() => setManageOpen(false)}
         title="Add or edit agreement types"
         size="lg"
+        className="max-w-3xl"
         footer={
           <div className="flex justify-end">
             <Button type="button" variant="secondary" onClick={() => setManageOpen(false)}>
@@ -921,8 +985,9 @@ function AgreementFollowUpInner() {
       >
         <div className="space-y-4 text-sm text-gray-700 dark:text-gray-300">
           <p>
-            Add Origin, Simply, or any other retailer agreement here. New types use the same PDF send
-            and signing follow-up. You do not need a backend change.
+            Each type carries its own first email, chase email, and chase days. Stop rules stay the
+            same for every type: a signed agreement, a request to stop, or a hard bounce ends the
+            run. An invoice does not.
           </p>
           <div className="space-y-2">
             {allTypes.map((row) => (
@@ -933,36 +998,67 @@ function AgreementFollowUpInner() {
                 <div>
                   <p className="font-medium text-gray-900 dark:text-white">{row.label}</p>
                   <p className="text-xs text-gray-500">
-                    {row.utility_type}
+                    {row.utility_type || "No utility"}
                     {row.retailer ? ` · ${row.retailer}` : ""}
+                    {row.chase_days?.length ? ` · days ${row.chase_days.join(", ")}` : ""}
                     {row.is_active === false ? " · hidden" : ""}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  className="text-xs font-medium text-primary hover:underline"
-                  onClick={() => void setTypeActive(row.id, row.is_active === false)}
-                >
-                  {row.is_active === false ? "Show" : "Hide"}
-                </button>
+                <div className="flex shrink-0 gap-3">
+                  <button
+                    type="button"
+                    className="text-xs font-medium text-primary hover:underline"
+                    onClick={() => {
+                      setTypeDraft(draftFromType(row));
+                      setTypeError(null);
+                    }}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    className="text-xs font-medium text-primary hover:underline"
+                    onClick={() => void setTypeActive(row.id, row.is_active === false)}
+                  >
+                    {row.is_active === false ? "Show" : "Hide"}
+                  </button>
+                </div>
               </div>
             ))}
           </div>
           <div className="space-y-3 rounded-lg border border-dashed border-gray-300 px-3 py-3 dark:border-gray-600">
-            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Add a type</p>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                {typeDraft.id ? `Edit ${typeDraft.label || "type"}` : "New type"}
+              </p>
+              {typeDraft.id ? (
+                <button
+                  type="button"
+                  className="text-xs font-medium text-primary hover:underline"
+                  onClick={() => {
+                    setTypeDraft(blankTypeDraft());
+                    setTypeError(null);
+                  }}
+                >
+                  New type
+                </button>
+              ) : null}
+            </div>
             <Input
               label="Name"
-              value={newLabel}
-              onChange={(e) => setNewLabel(e.target.value)}
+              value={typeDraft.label}
+              onChange={(e) => setTypeDraft((current) => ({ ...current, label: e.target.value }))}
+              onBlur={() => noteDraftProblem(typeDraft)}
               placeholder="Origin C&I Gas"
             />
             <div>
               <label className="mb-1 block text-sm font-medium text-dark dark:text-white">Utility</label>
               <select
                 className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-dark dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-                value={newUtility}
-                onChange={(e) => setNewUtility(e.target.value)}
+                value={typeDraft.utility}
+                onChange={(e) => setTypeDraft((current) => ({ ...current, utility: e.target.value }))}
               >
+                <option value="">Optional</option>
                 {utilityOptions.map((utility) => (
                   <option key={utility} value={utility}>
                     {utility}
@@ -972,13 +1068,73 @@ function AgreementFollowUpInner() {
             </div>
             <Input
               label="Retailer"
-              value={newRetailer}
-              onChange={(e) => setNewRetailer(e.target.value)}
+              value={typeDraft.retailer}
+              onChange={(e) => setTypeDraft((current) => ({ ...current, retailer: e.target.value }))}
               placeholder="Optional — Origin, Simply, Alinta…"
             />
+            <div className="flex flex-wrap gap-1.5">
+              {AGREEMENT_COPY_FIELDS.map((field) => (
+                <button
+                  key={field.key}
+                  type="button"
+                  className="rounded-full border border-gray-200 px-2 py-0.5 text-[11px] text-gray-600 hover:border-primary hover:text-primary dark:border-gray-600 dark:text-gray-300"
+                  onClick={() =>
+                    setTypeDraft((current) => ({
+                      ...current,
+                      [copyTarget]: `${current[copyTarget]}{{${field.key}}}`,
+                    }))
+                  }
+                >
+                  {field.label}
+                </button>
+              ))}
+            </div>
+            <Input
+              label="First email subject"
+              value={typeDraft.subject}
+              onFocus={() => setCopyTarget("subject")}
+              onChange={(e) => setTypeDraft((current) => ({ ...current, subject: e.target.value }))}
+              onBlur={(e) => noteDraftProblem({ ...typeDraft, subject: e.target.value })}
+              onPaste={(e) => {
+                const el = e.currentTarget;
+                window.setTimeout(() => noteDraftProblem({ ...typeDraft, subject: el.value }), 0);
+              }}
+            />
+            <Textarea
+              label="First email body"
+              value={typeDraft.body}
+              rows={8}
+              onFocus={() => setCopyTarget("body")}
+              onChange={(e) => setTypeDraft((current) => ({ ...current, body: e.target.value }))}
+              onBlur={(e) => noteDraftProblem({ ...typeDraft, body: e.target.value })}
+              onPaste={(e) => {
+                const el = e.currentTarget;
+                window.setTimeout(() => noteDraftProblem({ ...typeDraft, body: el.value }), 0);
+              }}
+            />
+            <Textarea
+              label="Chase email"
+              hint="Leave blank and the system writes each chase. Fill this in and the same text is sent on every chase day."
+              value={typeDraft.chaseBody}
+              rows={6}
+              onFocus={() => setCopyTarget("chaseBody")}
+              onChange={(e) => setTypeDraft((current) => ({ ...current, chaseBody: e.target.value }))}
+              onBlur={(e) => noteDraftProblem({ ...typeDraft, chaseBody: e.target.value })}
+              onPaste={(e) => {
+                const el = e.currentTarget;
+                window.setTimeout(() => noteDraftProblem({ ...typeDraft, chaseBody: el.value }), 0);
+              }}
+            />
+            <Input
+              label="Chase days"
+              value={typeDraft.chaseDays}
+              onChange={(e) => setTypeDraft((current) => ({ ...current, chaseDays: e.target.value }))}
+              onBlur={(e) => noteDraftProblem({ ...typeDraft, chaseDays: e.target.value })}
+              hint="Comma-separated, ascending, 1–30, at most 5. Default 1, 3, 5, 7."
+            />
             {typeError ? <p className="text-xs text-red-600">{typeError}</p> : null}
-            <Button type="button" onClick={() => void createType()} loading={savingType}>
-              {savingType ? "Saving…" : "Add type"}
+            <Button type="button" onClick={() => void saveType()} loading={savingType}>
+              {savingType ? "Saving…" : typeDraft.id ? "Save type" : "Add type"}
             </Button>
           </div>
         </div>
@@ -1039,8 +1195,8 @@ function AgreementFollowUpInner() {
             </div>
           </dl>
           <p className="text-xs text-gray-500">
-            After this, the sequence keeps chasing on days 1, 3, 5 and 7 on the same Gmail thread
-            unless they sign or you stop the run.
+            After this, the sequence keeps chasing on days {chaseDayLabel} on the same Gmail thread
+            unless they sign or you stop the run. The wording on this send is not written back to the type.
           </p>
           {error ? (
             <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
