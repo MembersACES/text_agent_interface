@@ -1528,13 +1528,25 @@ export function CampaignSendCard() {
 
 export function CampaignSuppressionsCard() {
   const { suppressions, suppressionsError, onDeleteSuppression, busy } = useCampaign();
+  const [reasonFilter, setReasonFilter] = useState("all");
+  const reasons = useMemo(() => {
+    const found = new Set<string>();
+    for (const row of suppressions) {
+      found.add(row.reason || "unspecified");
+    }
+    return [...found].sort();
+  }, [suppressions]);
+  const visible = suppressions.filter(
+    (row) => reasonFilter === "all" || (row.reason || "unspecified") === reasonFilter,
+  );
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Unsubscribed addresses</CardTitle>
+        <CardTitle>Suppressed addresses</CardTitle>
         <CardDescription>
-          Recipients who unsubscribed. Remove a row to allow that address on the next upload or start.
+          Addresses that will not be emailed. The reason says whether it was an unsubscribe or a
+          deliverability problem. Remove a row to allow that address on the next upload or start.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -1542,27 +1554,46 @@ export function CampaignSuppressionsCard() {
         {suppressions.length === 0 && !suppressionsError ? (
           <p className="text-sm text-gray-500">No suppressions.</p>
         ) : (
-          <ul className="divide-y divide-gray-100 rounded-lg border border-gray-200 dark:divide-gray-800 dark:border-gray-700">
-            {suppressions.map((row) => (
-              <li key={row.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
-                <span className="min-w-0">
-                  <span className="block truncate font-medium">{row.email}</span>
-                  <span className="text-xs text-gray-500">
-                    {row.reason || "unsubscribed"}
-                    {row.source ? ` · ${row.source}` : ""}
-                  </span>
-                </span>
-                <Button
-                  variant="secondary"
-                  onClick={() => void onDeleteSuppression(row.id)}
-                  disabled={busy !== null}
-                  loading={busy === "suppression"}
-                >
-                  Remove
-                </Button>
-              </li>
-            ))}
-          </ul>
+          <>
+            <Select
+              label="Reason"
+              value={reasonFilter}
+              onChange={(event) => setReasonFilter(event.target.value)}
+              wrapperClassName="max-w-xs"
+            >
+              <option value="all">All reasons ({suppressions.length})</option>
+              {reasons.map((reason) => (
+                <option key={reason} value={reason}>
+                  {reason} ({suppressions.filter((row) => (row.reason || "unspecified") === reason).length})
+                </option>
+              ))}
+            </Select>
+            {visible.length === 0 ? (
+              <p className="text-sm text-gray-500">No addresses with that reason.</p>
+            ) : (
+              <ul className="divide-y divide-gray-100 rounded-lg border border-gray-200 dark:divide-gray-800 dark:border-gray-700">
+                {visible.map((row) => (
+                  <li key={row.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+                    <span className="min-w-0">
+                      <span className="block truncate font-medium">{row.email}</span>
+                      <span className="text-xs text-gray-500">
+                        {row.reason || "unspecified"}
+                        {row.source ? ` · ${row.source}` : ""}
+                      </span>
+                    </span>
+                    <Button
+                      variant="secondary"
+                      onClick={() => void onDeleteSuppression(row.id)}
+                      disabled={busy !== null}
+                      loading={busy === "suppression"}
+                    >
+                      Remove
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
         )}
       </CardContent>
     </Card>
