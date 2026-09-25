@@ -147,6 +147,16 @@ const RESOURCES: Resource[] = [
     category: "Supplier Portal",
     portalGroup: "Blue SME Portal",
   },
+  {
+    name: "Plus ES Portal",
+    link: "https://brokerxchange.pluses.com.au/broker/s/",
+    email: "angela.f@e-b-g-group.com",
+    password: "Pluses8520!",
+    notes: "Plus ES broker portal login.",
+    env: "production",
+    category: "Supplier Portal",
+    portalGroup: "Plus ES Portal",
+  },
 ];
 
 
