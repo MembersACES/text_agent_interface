@@ -38,6 +38,7 @@ import {
   quoteAlintaSmeGas,
   smeInvoiceDailySupplyAud,
 } from "@/lib/alinta-sme-gas";
+import { SmeGasStepsTable, SmeGasBillBlock, SmeGasBackendFlag, smeGasRateFromBlocks } from "@/components/base2/SmeGasStepsTable";
 
 /** SME Gas comparison: invoice blocks, SME → C&I, or SME → SME. */
 type SmeGasComparisonMode = "invoice_blocks" | "ci_offer" | "sme_offer";
@@ -130,6 +131,8 @@ interface UtilityComparison {
   smeAlintaMatch?: string;
   smeAlintaListedName?: string;
   smeAlintaSlices?: AlintaPriceSlice[];
+  /** SME → SME gas: bill blocks as edited on the step table. Undefined = as extracted. */
+  smeGasBillBlocksOverride?: SmeGasBillBlock[];
   smeElecComparisonMode?: SmeElecComparisonMode;
   smeElecTariffShape?: SmeElecTariffShape;
   smeElecPostcode?: string;
@@ -415,6 +418,10 @@ function resolveGasAnnualUsageGJ(comparison: UtilityComparison): number | undefi
       : comparison.smeGasAnnualConsumptionGJ;
   if (userAnnual != null && userAnnual > 0 && Number.isFinite(userAnnual)) return userAnnual;
 
+  // SME gas: the backend sums every invoice for this MIRN from the sheet. Prefer it.
+  const sheetAnnual = comparison.utilityType === "SME Gas" ? Number(comparison.invoiceData?.normalised?.annual_gj) : NaN;
+  if (Number.isFinite(sheetAnnual) && sheetAnnual > 0) return sheetAnnual;
+
   if (
     comparison.utilityType === "SME Gas" &&
     comparison.smeAirtableAnnualBillDaysGJ != null &&
@@ -681,6 +688,8 @@ function RateUsageTotalHint({
 const AU_GST_DIVISOR = 1.1;
 let DEFAULT_CI_GAS_COMPARISON_RATE_PER_GJ = 17.8;
 let DEFAULT_CI_GAS_COMMISSION_AUD_PER_GJ = 3.00;
+/** SME → SME gas (Alinta BusinessDeal Flex) broker commission. Fixed; not the C&I default. */
+const SME_SME_GAS_COMMISSION_AUD_PER_GJ = 1.5;
 let DEFAULT_OIL_COMPARISON_RATE_PER_L = 3.30;
 
 let activeBase2Defaults: Base2Defaults = DEFAULT_BASE2_DEFAULTS;
@@ -726,47 +735,74 @@ interface SmeGasBlockLines {
   block1RateCPerMj?: number;
   block2Consumption?: number;
   block2RateCPerMj?: number;
+  /** Every block on the bill (1-4), latest price period. */
+  blocks: SmeGasBillBlock[];
+  /** Backend checks on the latest invoice (e.g. block_amount_mismatch). */
+  flags: SmeGasBackendFlag[];
+  priceChange?: boolean;
+  retailer?: string;
+  periodLabel?: string;
+  supplyDays?: number;
 }
 
-/** Weighted block rate from an SME gas invoice. Block rates on the bill are c/MJ; $/GJ = c/MJ × 10. */
-function readSmeGasBlockLines(invoiceData: { gas_sme_invoicedetails?: Record<string, any> } | null | undefined): SmeGasBlockLines {
+/**
+ * SME gas invoice → current rates. Block rates on the bill are c/MJ; $/GJ = c/MJ × 10.
+ * Uses the backend's checked figures (`normalised.latest`) when present, else the printed
+ * block amounts ÷ MJ, else the weighted block rates. Reads all four blocks.
+ */
+function readSmeGasBlockLines(invoiceData: { gas_sme_invoicedetails?: Record<string, any>; normalised?: any } | null | undefined): SmeGasBlockLines {
   const sme = invoiceData?.gas_sme_invoicedetails;
-  if (!sme) return {};
+  if (!sme) return { blocks: [], flags: [] };
+  const norm = invoiceData?.normalised?.latest;
   const supplyCharge = sme.supply_charge || {};
   const usageData = sme.usage || {};
-  const generalUsageMJ = parseFloat(usageData.general_usage_quantity || "0");
-  const gasQuantityGJ = generalUsageMJ > 0 ? generalUsageMJ / 1000 : 0;
-  const block1Consumption = parseFloat(usageData.block_1?.consumption ?? "");
-  const block1Rate = parseFloat(usageData.block_1?.rate ?? "");
-  const block2Consumption = parseFloat(usageData.block_2?.consumption ?? "");
-  const block2Rate = parseFloat(usageData.block_2?.rate ?? "");
-  let weightedRate = 0;
-  let totalConsumption = 0;
-  if (Number.isFinite(block1Consumption) && block1Consumption > 0 && Number.isFinite(block1Rate)) {
-    weightedRate += block1Consumption * block1Rate;
-    totalConsumption += block1Consumption;
+  const num = (v: unknown) => { const n = parseFloat(String(v ?? "")); return Number.isFinite(n) ? n : undefined; };
+
+  const blocks: SmeGasBillBlock[] = [];
+  for (let n = 1; n <= 4; n++) {
+    const b = usageData[`block_${n}`];
+    const mj = num(b?.consumption);
+    if (!b || mj == null || mj <= 0) continue;
+    const rate = num(b.rate);
+    const amount = num(b.amount) ?? (rate != null ? (mj * rate) / 100 : undefined);
+    blocks.push({ block: n, mj, rateCPerMj: rate, amountAud: amount, threshold: typeof b.threshold === "string" ? b.threshold : undefined });
   }
-  if (Number.isFinite(block2Consumption) && block2Consumption > 0 && Number.isFinite(block2Rate)) {
-    weightedRate += block2Consumption * block2Rate;
-    totalConsumption += block2Consumption;
-  }
-  const avgRateCperMJ = totalConsumption > 0 ? weightedRate / totalConsumption : 0;
-  const gasRate = avgRateCperMJ * 10;
-  const supplyRate = parseFloat(supplyCharge.rate || "0");
-  const supplyDays = parseFloat(supplyCharge.quantity_days || sme.invoice_review_days || "0");
-  const dailySupply = smeInvoiceDailySupplyAud(supplyRate, supplyDays) ?? 0;
-  const invoiceDays = parseFloat(sme.invoice_review_days || String(supplyDays) || "0");
-  const estimatedAnnual = invoiceDays > 0 && gasQuantityGJ > 0 ? (gasQuantityGJ / invoiceDays) * 365 : undefined;
+  const blockMj = blocks.reduce((sum, b) => sum + b.mj, 0);
+  const allAmounts = blocks.length > 0 && blocks.every((b) => b.amountAud != null);
+  const blockAud = blocks.reduce((sum, b) => sum + (b.amountAud ?? 0), 0);
+  const weightedC = blockMj > 0 ? blocks.reduce((sum, b) => sum + b.mj * (b.rateCPerMj ?? 0), 0) / blockMj : 0;
+
+  const normRate = num(norm?.energy_rate_aud_per_gj);
+  const gasRate = normRate ?? (allAmounts && blockMj > 0 ? (blockAud / blockMj) * 1000 : weightedC * 10);
+
+  const generalUsageMJ = num(usageData.general_usage_quantity) ?? 0;
+  const periodMj = generalUsageMJ > 0 ? generalUsageMJ : blockMj;
+  const gasQuantityGJ = periodMj > 0 ? periodMj / 1000 : 0;
+
+  const supplyRate = num(supplyCharge.rate) ?? 0;
+  const supplyDays = num(supplyCharge.quantity_days) ?? num(sme.invoice_review_days) ?? 0;
+  const dailySupply = num(norm?.supply_aud_per_day) ?? smeInvoiceDailySupplyAud(supplyRate, supplyDays) ?? 0;
+  const invoiceDays = num(sme.invoice_review_days) ?? supplyDays;
+  const normAnnual = num(invoiceData?.normalised?.annual_gj);
+  const estimatedAnnual = normAnnual ?? (invoiceDays > 0 && gasQuantityGJ > 0 ? (gasQuantityGJ / invoiceDays) * 365 : undefined);
+  const b1 = blocks.find((b) => b.block === 1);
+  const b2 = blocks.find((b) => b.block === 2);
   return {
     currentGasRate: gasRate > 0 ? parseFloat(gasRate.toFixed(4)) : undefined,
     periodGj: gasQuantityGJ > 0 ? gasQuantityGJ : undefined,
-    dailySupply: dailySupply > 0 ? dailySupply : undefined,
+    dailySupply: dailySupply > 0 ? parseFloat(dailySupply.toFixed(5)) : undefined,
     invoiceDays: invoiceDays > 0 ? invoiceDays : undefined,
     estimatedAnnual,
-    block1Consumption: Number.isFinite(block1Consumption) && block1Consumption > 0 ? block1Consumption : undefined,
-    block1RateCPerMj: Number.isFinite(block1Rate) && block1Rate > 0 ? block1Rate : undefined,
-    block2Consumption: Number.isFinite(block2Consumption) && block2Consumption > 0 ? block2Consumption : undefined,
-    block2RateCPerMj: Number.isFinite(block2Rate) && block2Rate > 0 ? block2Rate : undefined,
+    block1Consumption: b1?.mj,
+    block1RateCPerMj: b1?.rateCPerMj,
+    block2Consumption: b2?.mj,
+    block2RateCPerMj: b2?.rateCPerMj,
+    blocks,
+    flags: Array.isArray(norm?.flags) ? norm.flags : [],
+    priceChange: sme.price_change_on_invoice === true,
+    retailer: typeof sme.retailer === "string" ? sme.retailer : undefined,
+    periodLabel: typeof sme.invoice_review_period === "string" ? sme.invoice_review_period : undefined,
+    supplyDays: supplyDays > 0 ? supplyDays : undefined,
   };
 }
 
@@ -809,7 +845,7 @@ function applyAlintaSmeOffer(u: UtilityComparison): UtilityComparison {
     next.comparisonDailySupply = undefined;
   }
   if (next.ciGasCommissionAudPerGj == null) {
-    next.ciGasCommissionAudPerGj = DEFAULT_CI_GAS_COMMISSION_AUD_PER_GJ;
+    next.ciGasCommissionAudPerGj = SME_SME_GAS_COMMISSION_AUD_PER_GJ;
   }
   return next;
 }
@@ -823,7 +859,9 @@ function withSmeGasSmeOfferRates(u: UtilityComparison): UtilityComparison {
   const fromCi = (u.smeGasComparisonMode ?? "invoice_blocks") === "ci_offer";
   const blocks = readSmeGasBlockLines(u.invoiceData);
   const next: UtilityComparison = { ...u, smeGasComparisonMode: "sme_offer" };
-  if (blocks.currentGasRate != null) next.currentGasRate = blocks.currentGasRate;
+  const edited = u.smeGasBillBlocksOverride?.length ? smeGasRateFromBlocks(u.smeGasBillBlocksOverride) : undefined;
+  if (edited != null) next.currentGasRate = parseFloat(edited.toFixed(4));
+  else if (blocks.currentGasRate != null) next.currentGasRate = blocks.currentGasRate;
   else if (fromCi) next.currentGasRate = undefined;
   if (blocks.periodGj != null) {
     next.gasUsage = blocks.periodGj;
@@ -838,6 +876,7 @@ function withSmeGasSmeOfferRates(u: UtilityComparison): UtilityComparison {
   else if (fromCi) next.currentDailySupply = undefined;
   if (blocks.invoiceDays != null) next.smeGasInvoiceReviewDays = blocks.invoiceDays;
   if (blocks.estimatedAnnual != null) next.estimatedAnnualUsage = blocks.estimatedAnnual;
+  next.ciGasCommissionAudPerGj = SME_SME_GAS_COMMISSION_AUD_PER_GJ;
   return applyAlintaSmeOffer(next);
 }
 
@@ -1308,7 +1347,7 @@ function offerComparisonButtonLabel(c: UtilityComparison): string {
 const BNE_GAS_WEBHOOK_URL = 'https://membersaces.app.n8n.cloud/webhook/generate-gas-ci-comparaison-b%26e';
 const FUTURE_GAS_WEBHOOK_URL = 'https://membersaces.app.n8n.cloud/webhook/generate-gas-ci-comparaison-future-contract';
 const SME_ELEC_CI_WEBHOOK_URL = 'https://membersaces.app.n8n.cloud/webhook/generate-electricity-sme-ci-comparaison-b2';
-const SME_GAS_SME_WEBHOOK_URL = 'https://membersaces.app.n8n.cloud/webhook-test/generate-gas-sme-sme-comparaison-b2';
+const SME_GAS_SME_WEBHOOK_URL = 'https://membersaces.app.n8n.cloud/webhook/generate-gas-smetosme-comparaison-b2';
 
 function applyCiGasOfferPeriod(
   payload: Record<string, unknown>,
@@ -1984,32 +2023,16 @@ export default function Base2Page() {
       }
       if (invoiceData?.gas_sme_invoicedetails) {
         const smeDetails = invoiceData.gas_sme_invoicedetails;
-        const usage = smeDetails.supply_charge || {};
-        const supplyCharge = smeDetails.supply_charge || {};
-        const usageData = smeDetails.usage || {};
-        const generalUsageMJ = parseFloat(usageData.general_usage_quantity || '0');
-        const gasQuantityGJ = generalUsageMJ > 0 ? generalUsageMJ / 1000 : 0;
-        let weightedRate = 0;
-        let totalConsumption = 0;
-        if (usageData.block_1 && usageData.block_1.consumption && usageData.block_1.rate) {
-          const block1Consumption = parseFloat(usageData.block_1.consumption);
-          const block1Rate = parseFloat(usageData.block_1.rate);
-          weightedRate += (block1Consumption * block1Rate);
-          totalConsumption += block1Consumption;
-        }
-        if (usageData.block_2 && usageData.block_2.consumption && usageData.block_2.rate) {
-          const block2Consumption = parseFloat(usageData.block_2.consumption);
-          const block2Rate = parseFloat(usageData.block_2.rate);
-          weightedRate += (block2Consumption * block2Rate);
-          totalConsumption += block2Consumption;
-        }
-        const avgRateCperMJ = totalConsumption > 0 ? (weightedRate / totalConsumption) : 0;
-        const gasRate = avgRateCperMJ * 10;
-        const supplyRate = parseFloat(supplyCharge.rate || '0');
-        const supplyDays = parseFloat(supplyCharge.quantity_days || smeDetails.invoice_review_days || '0');
-        const dailySupply = smeInvoiceDailySupplyAud(supplyRate, supplyDays) ?? 0;
-        const invoiceDays = parseFloat(smeDetails.invoice_review_days || supplyDays || '0');
-        const estimatedAnnualUsageGJ = invoiceDays > 0 && gasQuantityGJ > 0 ? (gasQuantityGJ / invoiceDays) * 365 : undefined;
+        const read = readSmeGasBlockLines(invoiceData);
+        const gasQuantityGJ = read.periodGj ?? 0;
+        const gasRate = read.currentGasRate ?? 0;
+        const dailySupply = read.dailySupply ?? 0;
+        const invoiceDays = read.invoiceDays ?? 0;
+        const estimatedAnnualUsageGJ = read.estimatedAnnual;
+        const generalUsageMJ = gasQuantityGJ * 1000;
+        const avgRateCperMJ = gasRate / 10;
+        const supplyRate = parseFloat(smeDetails.supply_charge?.rate || '0');
+        const supplyDays = read.supplyDays ?? 0;
         rates.currentGasRate = gasRate > 0 ? gasRate : undefined;
         rates.gasUsage = gasQuantityGJ > 0 ? gasQuantityGJ : undefined;
         rates.monthlyUsage = gasQuantityGJ > 0 ? gasQuantityGJ : undefined;
@@ -2190,7 +2213,7 @@ export default function Base2Page() {
           if (response.ok) {
             const data = await response.json();
             const extractedRates = extractCurrentRates(data, comparison.utilityType, comparison.identifier);
-            return { identifier: comparison.identifier, update: { ...extractedRates, invoiceData: data, loading: false, error: null } };
+            return { identifier: comparison.identifier, update: { ...extractedRates, invoiceData: data, smeGasBillBlocksOverride: undefined, loading: false, error: null } };
           }
           throw new Error("Failed to fetch invoice data");
         } catch (err: unknown) {
@@ -2391,6 +2414,18 @@ export default function Base2Page() {
     }
     setUtilityComparisons((prev) =>
       prev.map((u) => (u.utilityType === utilityType && u.identifier === identifier ? { ...u, ...patch } : u)),
+    );
+  };
+
+  /** SME → SME gas step table: edit the bill's blocks. The current $/GJ follows the amounts. */
+  const updateSmeGasBillBlocks = (identifier: string, blocks: SmeGasBillBlock[] | undefined) => {
+    setUtilityComparisons((prev) =>
+      prev.map((u) => {
+        if (u.utilityType !== "SME Gas" || u.identifier !== identifier) return u;
+        const source = blocks ?? readSmeGasBlockLines(u.invoiceData).blocks;
+        const rate = smeGasRateFromBlocks(source);
+        return { ...u, smeGasBillBlocksOverride: blocks, currentGasRate: rate != null ? parseFloat(rate.toFixed(4)) : u.currentGasRate };
+      }),
     );
   };
 
@@ -3021,8 +3056,8 @@ export default function Base2Page() {
           payload.offer1Type = "smoothed";
           payload.offer1PeriodYears = "1";
           payload.offer1StartDate = new Date().toISOString().split("T")[0];
-          payload.current_daily_supply = util.currentDailySupply?.toFixed(2) || "0";
-          payload.comparison_daily_supply = util.comparisonDailySupply?.toFixed(2) || "0";
+          payload.current_daily_supply = util.currentDailySupply?.toFixed(5) || "0";
+          payload.comparison_daily_supply = util.comparisonDailySupply?.toFixed(5) || "0";
           payload.sme_gas_sme_comparison = true;
           payload.sme_gas_offer_source = "alinta_businessdeal_flex_group_1";
           payload.sme_gas_network = util.smeAlintaNetworkLabel ?? "";
@@ -3036,6 +3071,21 @@ export default function Base2Page() {
             mj: Number(slice.mj.toFixed(3)),
             energy_aud: Number(slice.energyAud.toFixed(2)),
             supply_aud: Number(slice.supplyAud.toFixed(2)),
+            steps: slice.steps.map((step) => ({
+              from_mj_per_day: step.fromMjPerDay,
+              to_mj_per_day: step.toMjPerDay,
+              mj_per_day: Number(step.mjPerDay.toFixed(3)),
+              mj: Number(step.mj.toFixed(3)),
+              rate_c_per_mj: step.rateCPerMj,
+              amount_aud: Number(step.aud.toFixed(2)),
+            })),
+          }));
+          payload.sme_gas_bill_blocks = (util.smeGasBillBlocksOverride ?? blocks.blocks).map((b) => ({
+            block: b.block,
+            threshold: b.threshold ?? "",
+            mj: b.mj,
+            rate_c_per_mj: b.rateCPerMj ?? null,
+            amount_aud: b.amountAud ?? null,
           }));
           payload.sme_gas_block_rate_unit = "c/MJ";
           if (blocks.block1Consumption != null) payload.sme_gas_block_1_consumption = blocks.block1Consumption.toFixed(3);
@@ -3824,7 +3874,8 @@ export default function Base2Page() {
       }
     }
 
-    if (isGas) {
+    // SME → SME gas shows the energy line on the step table above, so this row is hidden.
+    if (isGas && !isSmeGasSmeOffer(comparison)) {
       rows.push(
         <tr key="gas-rate" className="hover:bg-gray-50/50">
           <td className={`${labelTd} font-semibold`}>Gas Rate <span className="font-normal text-gray-400">($/GJ)</span></td>
@@ -4471,15 +4522,37 @@ export default function Base2Page() {
                                 />
                               </div>
                             </div>
-                            {(comparison.smeAlintaSlices ?? []).length > 0 && (
-                              <ul className="space-y-1 font-mono text-[11px] text-gray-600">
-                                {(comparison.smeAlintaSlices ?? []).map((slice) => (
-                                  <li key={slice.seasonId}>
-                                    {slice.seasonLabel}: {slice.days} days, {slice.mj.toLocaleString("en-AU", { maximumFractionDigits: 0 })} MJ, energy {formatAud(slice.energyAud)}, supply {formatAud(slice.supplyAud)}
-                                  </li>
-                                ))}
-                              </ul>
-                            )}
+                            {(() => {
+                              const bill = readSmeGasBlockLines(comparison.invoiceData);
+                              const s = calculateSavings(comparison);
+                              return (
+                                <SmeGasStepsTable
+                                  retailer={bill.retailer}
+                                  billBlocks={comparison.smeGasBillBlocksOverride ?? bill.blocks}
+                                  billDays={bill.supplyDays}
+                                  billPeriodLabel={bill.periodLabel}
+                                  priceChange={bill.priceChange}
+                                  edited={comparison.smeGasBillBlocksOverride != null}
+                                  onBlocksChange={(blocks) => updateSmeGasBillBlocks(comparison.identifier, blocks)}
+                                  onResetBlocks={() => updateSmeGasBillBlocks(comparison.identifier, undefined)}
+                                  networkLabel={comparison.smeAlintaNetworkLabel}
+                                  slices={comparison.smeAlintaSlices ?? []}
+                                  offerUsageGj={comparison.smeGasInvoicePeriodGJ ?? comparison.gasUsage}
+                                  onOfferUsageChange={(value) => updateUsage(comparison.utilityType, comparison.identifier, "gasUsage", value)}
+                                  currentRatePerGj={comparison.currentGasRate}
+                                  offerRatePerGj={comparison.comparisonGasRate}
+                                  annualGj={s?.annualUsageGJ}
+                                  annualEnergySaving={s?.gasUsageSavingsAnnual}
+                                  currentSupplyPerDay={comparison.currentDailySupply}
+                                  offerSupplyPerDay={comparison.comparisonDailySupply}
+                                  onCurrentSupplyChange={(value) => updateCurrentRate(comparison.utilityType, comparison.identifier, "currentDailySupply", value)}
+                                  onOfferSupplyChange={(value) => updateComparisonRate(comparison.utilityType, comparison.identifier, "comparisonDailySupply", value)}
+                                  annualSupplySaving={s?.supplySavings}
+                                  commissionPerGj={comparison.ciGasCommissionAudPerGj}
+                                  annualCommission={s?.estimatedAnnualCommission}
+                                />
+                              );
+                            })()}
                           </div>
                         )}
                         {(comparison.smeGasComparisonMode ?? "invoice_blocks") === "ci_offer" && (

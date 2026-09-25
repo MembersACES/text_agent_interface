@@ -178,6 +178,11 @@ export interface AlintaPriceStep {
   mj: number;
   rateCPerMj: number;
   aud: number;
+  /** The MJ/day band this step prices, e.g. 0–250. `toMjPerDay` null is the open top block. */
+  fromMjPerDay: number;
+  toMjPerDay: number | null;
+  /** MJ/day of this bill that falls in the band. */
+  mjPerDay: number;
 }
 
 export interface AlintaPriceSlice {
@@ -254,6 +259,13 @@ function isoFromParts(year: number, month: number, day: number): string | null {
 
 export function parseDateRange(raw: string): { start: string; end: string } | null {
   const text = raw.replace(/\s+/g, " ").trim();
+  // Invoice sheet format: "27/03/2026-24/06/2026", no spaces around the dash.
+  const packed = text.match(/^(\d{1,2}[\/.]\d{1,2}[\/.]\d{4})\s*[-–—]\s*(\d{1,2}[\/.]\d{1,2}[\/.]\d{4})$/);
+  if (packed) {
+    const start = parseLooseDate(packed[1]);
+    const end = parseLooseDate(packed[2]);
+    return start && end && start <= end ? { start, end } : null;
+  }
   const parts = text.split(/\s+(?:to|–|—|-)\s+/i);
   if (parts.length < 2) return null;
   const start = parseLooseDate(parts[0]);
@@ -301,18 +313,25 @@ function inclusiveDays(startIso: string, endIso: string): number {
 function priceSteps(mj: number, days: number, blocks: AlintaBlock[]): AlintaPriceStep[] {
   if (days <= 0 || mj <= 0) return [];
   let remainingDaily = mj / days;
+  let bandStart = 0;
   const steps: AlintaPriceStep[] = [];
   for (const block of blocks) {
     if (remainingDaily <= 1e-9) break;
     const takeDaily = block.mjPerDay == null ? remainingDaily : Math.min(remainingDaily, block.mjPerDay);
-    if (takeDaily <= 1e-9) continue;
-    const takeMj = takeDaily * days;
-    steps.push({
-      mj: takeMj,
-      rateCPerMj: block.rateCPerMj,
-      aud: takeMj * block.rateCPerMj / 100,
-    });
-    remainingDaily -= takeDaily;
+    const bandEnd = block.mjPerDay == null ? null : bandStart + block.mjPerDay;
+    if (takeDaily > 1e-9) {
+      const takeMj = takeDaily * days;
+      steps.push({
+        mj: takeMj,
+        rateCPerMj: block.rateCPerMj,
+        aud: takeMj * block.rateCPerMj / 100,
+        fromMjPerDay: bandStart,
+        toMjPerDay: bandEnd,
+        mjPerDay: takeDaily,
+      });
+      remainingDaily -= takeDaily;
+    }
+    if (bandEnd != null) bandStart = bandEnd;
   }
   return steps;
 }
@@ -401,6 +420,18 @@ export function quoteAlintaSmeGas(input: {
       detail: "It is not on the Alinta Group 1 sheet, and the prefix is not 531, 532, or 533. Choose Multinet, Australian Gas Networks, or AusNet to price an offer. Nothing was applied automatically.",
     });
     return emptyQuote(flags, "none", input.periodStart ?? null, input.periodEnd ?? null);
+  }
+
+  // Every card on the Group 1 sheet is a Victorian network. A non-VIC MIRN (e.g. 55 = SA)
+  // must not be priced on Victorian rates, even when a network is picked manually.
+  if (mirn && !mirn.startsWith("53")) {
+    flags.push({
+      id: "non-vic-mirn",
+      level: "error",
+      title: "No Alinta rates for this state",
+      detail: `MIRN ${mirn} is not a Victorian meter (VIC MIRNs start with 53). The Group 1 sheet only has Victorian networks, so ${ALINTA_SME_GAS_NETWORKS[networkId].label} rates would be wrong here. Nothing was priced.`,
+    });
+    return emptyQuote(flags, match, input.periodStart ?? null, input.periodEnd ?? null);
   }
 
   const card = ALINTA_SME_GAS_NETWORKS[networkId];
