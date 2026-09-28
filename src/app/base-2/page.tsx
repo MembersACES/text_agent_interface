@@ -1348,6 +1348,7 @@ const BNE_GAS_WEBHOOK_URL = 'https://membersaces.app.n8n.cloud/webhook/generate-
 const FUTURE_GAS_WEBHOOK_URL = 'https://membersaces.app.n8n.cloud/webhook/generate-gas-ci-comparaison-future-contract';
 const SME_ELEC_CI_WEBHOOK_URL = 'https://membersaces.app.n8n.cloud/webhook/generate-electricity-sme-ci-comparaison-b2';
 const SME_GAS_SME_WEBHOOK_URL = 'https://membersaces.app.n8n.cloud/webhook/generate-gas-smetosme-comparaison-b2';
+const SME_GAS_SME_RSL_WEBHOOK_URL = 'https://membersaces.app.n8n.cloud/webhook/generate-gas-smetosme-comparaison-b2-rsl';
 
 function applyCiGasOfferPeriod(
   payload: Record<string, unknown>,
@@ -2712,8 +2713,9 @@ export default function Base2Page() {
     .toLowerCase()
     .includes('rsl');
 
-  // RSL path: run the C&I electricity comparison via the rsl.vic webhook and, on
-  // success, enrol the member in the RSL voice-agent follow-up (no autonomous popup).
+  // RSL path: run the comparison via the RSL webhook (same payload, different
+  // sender mailbox) and, on success, enrol the member in the RSL voice-agent
+  // follow-up (no autonomous popup). C&I electricity and SME → SME gas.
   const handleRslClick = (comparison: UtilityComparison) => {
     // Always confirm the contact (name/email/phone) before enrolling — this is who
     // the Day 0 call, Day 3 email and Day 7 call go to. Prevents enrolling a live
@@ -3036,7 +3038,7 @@ export default function Base2Page() {
             applyCiGasOfferPeriod(payload, util.ciGasFutureStartDate, util.ciGasFutureEndDate);
           }
         } else if (util.utilityType === "SME Gas" && util.smeGasComparisonMode === "sme_offer") {
-          webhookUrl = SME_GAS_SME_WEBHOOK_URL;
+          webhookUrl = isRsl ? SME_GAS_SME_RSL_WEBHOOK_URL : SME_GAS_SME_WEBHOOK_URL;
           const sme = util.invoiceData?.gas_sme_invoicedetails;
           const blocks = readSmeGasBlockLines(util.invoiceData);
           payload.mrin = util.identifier;
@@ -3344,28 +3346,39 @@ export default function Base2Page() {
                   // instead of showing the autonomous popup. Token stays server-side
                   // in the /api/rsl/base2-followup Next route.
                   const elec = successResults.find(({ util }) => util.utilityType === 'C&I Electricity');
-                  if (elec) {
-                    const r = elec.result as Record<string, unknown>;
-                    const offer = {
-                      annual_savings: normalizeMoneyToNumber(r.annual_savings),
-                      current_cost: normalizeMoneyToNumber(r.current_cost),
-                      new_cost: normalizeMoneyToNumber(r.new_cost),
-                      current_peak_rate: elec.util.currentPeakRate ?? null,
-                      new_peak_rate: elec.util.comparisonPeakRate ?? null,
-                      current_offpeak_rate: elec.util.currentOffPeakRate ?? null,
-                      new_offpeak_rate: elec.util.comparisonOffPeakRate ?? null,
-                    };
+                  const smeGas = successResults.find(({ util }) => isSmeGasSmeOffer(util));
+                  const rslTarget = elec ?? smeGas;
+                  if (rslTarget) {
+                    const r = rslTarget.result as Record<string, unknown>;
+                    const gas = isSmeGasSmeOffer(rslTarget.util);
+                    const offer = gas
+                      ? {
+                          annual_savings: normalizeMoneyToNumber(r.annual_savings),
+                          current_cost: normalizeMoneyToNumber(r.current_cost),
+                          new_cost: normalizeMoneyToNumber(r.new_cost),
+                          current_gas_rate: rslTarget.util.currentGasRate ?? null,
+                          new_gas_rate: rslTarget.util.comparisonGasRate ?? null,
+                        }
+                      : {
+                          annual_savings: normalizeMoneyToNumber(r.annual_savings),
+                          current_cost: normalizeMoneyToNumber(r.current_cost),
+                          new_cost: normalizeMoneyToNumber(r.new_cost),
+                          current_peak_rate: rslTarget.util.currentPeakRate ?? null,
+                          new_peak_rate: rslTarget.util.comparisonPeakRate ?? null,
+                          current_offpeak_rate: rslTarget.util.currentOffPeakRate ?? null,
+                          new_offpeak_rate: rslTarget.util.comparisonOffPeakRate ?? null,
+                        };
                     try {
                       const rslRes = await fetch('/api/rsl/base2-followup', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                         body: JSON.stringify({
                           company_name: businessName || businessInfo?.name || '',
-                          nmi: elec.util.identifier,
+                          nmi: rslTarget.util.identifier,
                           contact_name: webhookRecipient?.contactName ?? businessInfo?.contact_name ?? null,
                           email: webhookRecipient?.contactEmail ?? businessInfo?.email ?? null,
                           phone: webhookRecipient?.contactPhone ?? businessInfo?.telephone ?? null,
-                          sequence_type: 'ci_electricity',
+                          sequence_type: gas ? 'sme_gas' : 'ci_electricity',
                           email_id: (r.email_ID ?? r.email_id) as string | undefined,
                           offer,
                         }),
@@ -5060,11 +5073,13 @@ export default function Base2Page() {
                             Future Contract
                           </button>
                         )}
-                        {comparison.utilityType === 'C&I Electricity' && (
+                        {(comparison.utilityType === 'C&I Electricity' || isSmeGasSmeOffer(comparison)) && (
                           <button
                             onClick={() => handleRslClick(comparison)}
                             disabled={sending !== null && sending.includes(`${comparison.utilityType}-${comparison.identifier}-comparison`)}
-                            title="Run the RSL comparison (emails from rsl.vic) and start the RSL voice-agent follow-up"
+                            title={isSmeGasSmeOffer(comparison)
+                              ? "Run the SME → SME gas comparison from the RSL mailbox and start the RSL voice-agent follow-up"
+                              : "Run the RSL comparison (emails from rsl.vic) and start the RSL voice-agent follow-up"}
                             className={isRslMember
                               ? "inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                               : "inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium border transition-all disabled:opacity-50 disabled:cursor-not-allowed"}
