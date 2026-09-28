@@ -96,6 +96,21 @@ function numFromUnknown(v: unknown, digits?: number): number | null {
   return n;
 }
 
+/** Saving implied by the two annual costs. A stored annual_savings that does not match them is not shown. */
+function reconciledAnnualSavings(
+  stated: number | null,
+  current: number | null,
+  next: number | null,
+): number | null {
+  if (current != null && next != null) {
+    const derived = Math.round((current - next) * 100) / 100;
+    if (stated == null || Math.abs(stated - derived) > Math.max(1, Math.abs(derived) * 0.02)) {
+      return derived;
+    }
+  }
+  return stated;
+}
+
 function formatCpkwh(v: number | null | undefined, digits = 2): string {
   if (v == null || !Number.isFinite(Number(v))) return "—";
   return `${Number(v).toLocaleString("en-AU", { minimumFractionDigits: digits, maximumFractionDigits: digits })} c/kWh`;
@@ -214,9 +229,13 @@ function SequenceMetricsSidebar({ run, offer }: { run: RunDetail; offer: Offer |
     run.sequence_type === "ci_electricity_offer";
 
   if (isCiElectricitySeq && lane === "ci_electricity") {
-    const sav = numFromUnknown(snap?.annual_savings) ?? offer?.annual_savings ?? null;
     const cur = numFromUnknown(snap?.current_cost) ?? offer?.current_cost ?? null;
     const neu = numFromUnknown(snap?.new_cost) ?? offer?.new_cost ?? null;
+    const sav = reconciledAnnualSavings(
+      numFromUnknown(snap?.annual_savings) ?? offer?.annual_savings ?? null,
+      cur,
+      neu,
+    );
     const annKwh = numFromUnknown(snap?.annual_usage_kwh);
     const billKwh = numFromUnknown(snap?.bill_period_usage_kwh);
     const pkI = numFromUnknown(snap?.current_peak_cpkwh);
@@ -297,13 +316,17 @@ function SequenceMetricsSidebar({ run, offer }: { run: RunDetail; offer: Offer |
   // Gas Base 2 (and legacy runs without snapshot): prefer snapshot then offer.
   if (run.sequence_type === "gas_base2_followup_v1" || run.sequence_type === "sme_gas_base2_followup_v1") {
     const useSnap = (lane === "ci_gas" || lane === "sme_gas") && snap;
-    const sav = (useSnap ? numFromUnknown(snap?.annual_savings) : null) ?? offer?.annual_savings ?? null;
+    const cur = (useSnap ? numFromUnknown(snap?.current_cost) : null) ?? offer?.current_cost ?? null;
+    const neu = (useSnap ? numFromUnknown(snap?.new_cost) : null) ?? offer?.new_cost ?? null;
+    const sav = reconciledAnnualSavings(
+      (useSnap ? numFromUnknown(snap?.annual_savings) : null) ?? offer?.annual_savings ?? null,
+      cur,
+      neu,
+    );
     const usageGj = (useSnap ? numFromUnknown(snap?.annual_usage_gj) : null) ?? offer?.annual_usage_gj ?? null;
     const ec = (useSnap ? numFromUnknown(snap?.energy_charge_pct) : null) ?? offer?.energy_charge_pct ?? null;
     const cr = (useSnap ? numFromUnknown(snap?.contracted_rate) : null) ?? offer?.contracted_rate ?? null;
     const or = (useSnap ? numFromUnknown(snap?.offer_rate) : null) ?? offer?.offer_rate ?? null;
-    const cur = (useSnap ? numFromUnknown(snap?.current_cost) : null) ?? offer?.current_cost ?? null;
-    const neu = (useSnap ? numFromUnknown(snap?.new_cost) : null) ?? offer?.new_cost ?? null;
     if (sav == null && usageGj == null && ec == null && cr == null && or == null && cur == null && neu == null) {
       return (
         <div className="rounded-xl border border-dashed border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-5 text-sm text-gray-500 dark:text-gray-400 xl:sticky xl:top-4">
