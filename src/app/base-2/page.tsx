@@ -1216,12 +1216,15 @@ function buildComparisonSnapshot(
 ): Record<string, unknown> | undefined {
   if (!laneSuccess.length) return undefined;
   const { util, result } = laneSuccess[0];
+  // The on-screen figure is signed (a cost increase stays negative). The electricity
+  // webhook returns an unsigned magnitude, which the follow-up then calls a saving.
+  const webhookAnnual = normalizeMoneyToNumber(result.annual_savings) ?? null;
+  const uiAnnual =
+    fallbackAnnualSavings != null && Number.isFinite(fallbackAnnualSavings)
+      ? Number(fallbackAnnualSavings.toFixed(2))
+      : null;
   const fin = {
-    annual_savings:
-      normalizeMoneyToNumber(result.annual_savings)
-      ?? (fallbackAnnualSavings != null && Number.isFinite(fallbackAnnualSavings)
-        ? Number(fallbackAnnualSavings.toFixed(2))
-        : null),
+    annual_savings: uiAnnual ?? webhookAnnual,
     current_cost: normalizeMoneyToNumber(result.current_cost) ?? null,
     new_cost: normalizeMoneyToNumber(result.new_cost) ?? null,
   };
@@ -1243,15 +1246,25 @@ function buildComparisonSnapshot(
   const offU = util.offPeakUsage != null ? Number(util.offPeakUsage) : 0;
   const shoulderU = util.shoulderUsage != null ? Number(util.shoulderUsage) : 0;
   const periodKwh = peakU + offU + shoulderU;
+  const reviewDays =
+    util.elecInvoiceReviewDays != null && util.elecInvoiceReviewDays > 0
+      ? util.elecInvoiceReviewDays
+      : null;
   return {
     lane,
     ...fin,
     annual_usage_kwh: normalizeMoneyToNumber(result.annual_usage_kwh) ?? normalizeMoneyToNumber(result.annual_kwh) ?? null,
     bill_period_usage_kwh: periodKwh > 0 ? Math.round(periodKwh * 100) / 100 : null,
+    peak_usage_kwh: peakU > 0 ? Math.round(peakU * 100) / 100 : null,
+    offpeak_usage_kwh: offU > 0 ? Math.round(offU * 100) / 100 : null,
+    shoulder_usage_kwh: shoulderU > 0 ? Math.round(shoulderU * 100) / 100 : null,
+    invoice_review_days: reviewDays,
     current_peak_cpkwh: util.currentPeakRate ?? normalizeMoneyToNumber(result.peak_rate_invoice) ?? null,
     current_offpeak_cpkwh: util.currentOffPeakRate ?? normalizeMoneyToNumber(result.off_peak_rate_invoice) ?? null,
+    current_shoulder_cpkwh: util.currentShoulderRate ?? null,
     offer_peak_cpkwh: util.comparisonPeakRate ?? normalizeMoneyToNumber(result.offer1PeakRate) ?? null,
     offer_offpeak_cpkwh: util.comparisonOffPeakRate ?? normalizeMoneyToNumber(result.offer1OffPeakRate) ?? null,
+    offer_shoulder_cpkwh: util.comparisonShoulderRate ?? null,
     commission_aud_per_kwh:
       util.ciElectricityCommissionAudPerKwh != null && Number.isFinite(util.ciElectricityCommissionAudPerKwh)
         ? util.ciElectricityCommissionAudPerKwh
@@ -3274,8 +3287,11 @@ export default function Base2Page() {
                 const metadata: Record<string, any> = { utility_type: utilityType, [identifierKey]: util.identifier, comparison_type: slug, source: 'base2_page' };
                 if (util.utilityType === "SME Gas" && util.smeGasComparisonMode === "sme_offer") metadata.comparison_channel = "sme_to_sme";
                 const uiAnnual = calculateSavings(util)?.totalAnnualSavings;
-                const normAnnual = normalizeMoneyToNumber((result as any).annual_savings)
-                  ?? (typeof uiAnnual === "number" && Number.isFinite(uiAnnual) ? Number(uiAnnual.toFixed(2)) : null);
+                const webhookAnnual = normalizeMoneyToNumber((result as any).annual_savings);
+                const normAnnual =
+                  typeof uiAnnual === "number" && Number.isFinite(uiAnnual)
+                    ? Number(uiAnnual.toFixed(2))
+                    : webhookAnnual;
                 if (normAnnual != null) metadata.annual_savings = normAnnual;
                 const normCurrent = normalizeMoneyToNumber((result as any).current_cost); if (normCurrent != null) metadata.current_cost = normCurrent;
                 const normNew = normalizeMoneyToNumber((result as any).new_cost); if (normNew != null) metadata.new_cost = normNew;
