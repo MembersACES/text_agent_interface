@@ -2713,13 +2713,10 @@ export default function Base2Page() {
     .toLowerCase()
     .includes('rsl');
 
-  // RSL path: run the comparison via the RSL webhook (same payload, different
-  // sender mailbox) and, on success, enrol the member in the RSL voice-agent
-  // follow-up (no autonomous popup). C&I electricity and SME → SME gas.
+  // RSL path: send the comparison from the RSL mailbox, then enrol follow-up
+  // (no autonomous popup). C&I electricity is the voice cadence. SME → SME gas
+  // is email only: the offer goes now, then business-day 1, 3 and 5 emails.
   const handleRslClick = (comparison: UtilityComparison) => {
-    // Always confirm the contact (name/email/phone) before enrolling — this is who
-    // the Day 0 call, Day 3 email and Day 7 call go to. Prevents enrolling a live
-    // member on their real details by accident; lets the operator enter test details.
     openRecipientConfirmModal(comparison, 'comparison', false, true);
   };
 
@@ -2805,7 +2802,8 @@ export default function Base2Page() {
   const handleRecipientConfirmSubmit = () => {
     const { comparison, action, generateAll, contactName, contactEmail, contactPhone, isRsl } = recipientConfirmModal;
     if (!comparison) return;
-    if (isRsl && !contactPhone.trim()) { alert('Enter a phone number — this is the number the RSL voice agent will call.'); return; }
+    const smeGasRsl = isRsl && isSmeGasSmeOffer(comparison);
+    if (isRsl && !smeGasRsl && !contactPhone.trim()) { alert('Enter a phone number — this is the number the RSL voice agent will call.'); return; }
   
     const freshComparison =
       utilityComparisonsRef.current.find(
@@ -5078,7 +5076,7 @@ export default function Base2Page() {
                             onClick={() => handleRslClick(comparison)}
                             disabled={sending !== null && sending.includes(`${comparison.utilityType}-${comparison.identifier}-comparison`)}
                             title={isSmeGasSmeOffer(comparison)
-                              ? "Run the SME → SME gas comparison from the RSL mailbox and start the RSL voice-agent follow-up"
+                              ? "Send the SME → SME gas offer from the RSL mailbox, then schedule business-day 1, 3 and 5 follow-up emails"
                               : "Run the RSL comparison (emails from rsl.vic) and start the RSL voice-agent follow-up"}
                             className={isRslMember
                               ? "inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
@@ -5179,7 +5177,9 @@ export default function Base2Page() {
               {recipientConfirmModal.isRsl ? "RSL follow-up contact" : `${recipientConfirmModal.action === "dma" ? "DMA Review" : "Comparison"} recipient`}
             </h3>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-              {recipientConfirmModal.isRsl
+              {recipientConfirmModal.isRsl && isSmeGasSmeOffer(recipientConfirmModal.comparison)
+                ? "The offer email goes out now. Follow-up emails are scheduled for business day 1, 3 and 5. No calls. For testing, enter your own email."
+                : recipientConfirmModal.isRsl
                 ? "These details receive the Day 0 call, Day 3 email and Day 7 call. For testing, enter your own phone and email so nothing goes live to the client."
                 : "Confirm or edit the client contact before sending."}
             </p>
@@ -5192,7 +5192,7 @@ export default function Base2Page() {
                 <label htmlFor="b2-recipient-email" className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Email</label>
                 <input id="b2-recipient-email" type="email" value={recipientConfirmModal.contactEmail} onChange={(e) => setRecipientConfirmModal((prev) => ({ ...prev, contactEmail: e.target.value }))} className="w-full px-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-400" placeholder="name@example.com" autoComplete="email" />
               </div>
-              {recipientConfirmModal.isRsl && (
+              {recipientConfirmModal.isRsl && !isSmeGasSmeOffer(recipientConfirmModal.comparison) && (
                 <div>
                   <label htmlFor="b2-recipient-phone" className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Phone — the voice agent calls this number</label>
                   <input id="b2-recipient-phone" type="tel" value={recipientConfirmModal.contactPhone} onChange={(e) => setRecipientConfirmModal((prev) => ({ ...prev, contactPhone: e.target.value }))} className="w-full px-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-400" placeholder="+61 4XX XXX XXX" autoComplete="tel" />
@@ -5202,7 +5202,11 @@ export default function Base2Page() {
             <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
               <button type="button" onClick={() => setRecipientConfirmModal((prev) => ({ ...prev, open: false }))} className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors order-2 sm:order-1">Cancel</button>
               <button type="button" onClick={handleRecipientConfirmSubmit} className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-colors order-1 sm:order-2" style={{ backgroundColor: '#1696CF' }}>
-                {recipientConfirmModal.isRsl ? "Confirm & enrol in RSL follow-up" : recipientConfirmModal.action === "dma" ? "Send DMA Review" : "Send Comparison"}
+                {recipientConfirmModal.isRsl && isSmeGasSmeOffer(recipientConfirmModal.comparison)
+                  ? "Send offer & schedule emails"
+                  : recipientConfirmModal.isRsl
+                  ? "Confirm & enrol in RSL follow-up"
+                  : recipientConfirmModal.action === "dma" ? "Send DMA Review" : "Send Comparison"}
               </button>
             </div>
           </div>
