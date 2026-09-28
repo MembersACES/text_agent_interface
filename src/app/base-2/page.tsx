@@ -1171,23 +1171,6 @@ function normalizeDocumentLink(link: string | undefined): string | undefined {
   return (s.startsWith("http://") || s.startsWith("https://")) ? s : undefined;
 }
 
-/** Annual saving is the gap between the two annual costs when a stored figure does not match them. */
-function annualSavingsMatchingCosts(
-  stated: number | null | undefined,
-  current: number | null | undefined,
-  next: number | null | undefined,
-): number | null {
-  const derived =
-    current != null && next != null && Number.isFinite(current) && Number.isFinite(next)
-      ? Math.round((current - next) * 100) / 100
-      : null;
-  const given = stated != null && Number.isFinite(stated) ? stated : null;
-  if (derived != null && (given == null || Math.abs(given - derived) > Math.max(1, Math.abs(derived) * 0.02))) {
-    return derived;
-  }
-  return given ?? derived;
-}
-
 function normalizeMoneyToNumber(value: unknown): number | undefined {
   if (value == null || value === "") return undefined;
   if (typeof value === "number") return value;
@@ -1233,17 +1216,14 @@ function buildComparisonSnapshot(
 ): Record<string, unknown> | undefined {
   if (!laneSuccess.length) return undefined;
   const { util, result } = laneSuccess[0];
-  const currentCost = normalizeMoneyToNumber(result.current_cost) ?? null;
-  const newCost = normalizeMoneyToNumber(result.new_cost) ?? null;
-  const statedAnnual =
-    normalizeMoneyToNumber(result.annual_savings)
-    ?? (fallbackAnnualSavings != null && Number.isFinite(fallbackAnnualSavings)
-      ? Number(fallbackAnnualSavings.toFixed(2))
-      : null);
   const fin = {
-    annual_savings: annualSavingsMatchingCosts(statedAnnual, currentCost, newCost),
-    current_cost: currentCost,
-    new_cost: newCost,
+    annual_savings:
+      normalizeMoneyToNumber(result.annual_savings)
+      ?? (fallbackAnnualSavings != null && Number.isFinite(fallbackAnnualSavings)
+        ? Number(fallbackAnnualSavings.toFixed(2))
+        : null),
+    current_cost: normalizeMoneyToNumber(result.current_cost) ?? null,
+    new_cost: normalizeMoneyToNumber(result.new_cost) ?? null,
   };
   if (lane === "ci_gas" || lane === "bne_gas" || lane === "future_gas" || lane === "sme_gas") {
     return {
@@ -3294,14 +3274,11 @@ export default function Base2Page() {
                 const metadata: Record<string, any> = { utility_type: utilityType, [identifierKey]: util.identifier, comparison_type: slug, source: 'base2_page' };
                 if (util.utilityType === "SME Gas" && util.smeGasComparisonMode === "sme_offer") metadata.comparison_channel = "sme_to_sme";
                 const uiAnnual = calculateSavings(util)?.totalAnnualSavings;
-                const statedAnnual = normalizeMoneyToNumber((result as any).annual_savings)
+                const normAnnual = normalizeMoneyToNumber((result as any).annual_savings)
                   ?? (typeof uiAnnual === "number" && Number.isFinite(uiAnnual) ? Number(uiAnnual.toFixed(2)) : null);
-                const normCurrent = normalizeMoneyToNumber((result as any).current_cost);
-                const normNew = normalizeMoneyToNumber((result as any).new_cost);
-                const normAnnual = annualSavingsMatchingCosts(statedAnnual, normCurrent, normNew);
                 if (normAnnual != null) metadata.annual_savings = normAnnual;
-                if (normCurrent != null) metadata.current_cost = normCurrent;
-                if (normNew != null) metadata.new_cost = normNew;
+                const normCurrent = normalizeMoneyToNumber((result as any).current_cost); if (normCurrent != null) metadata.current_cost = normCurrent;
+                const normNew = normalizeMoneyToNumber((result as any).new_cost); if (normNew != null) metadata.new_cost = normNew;
                 const normAnnualUsage = normalizeMoneyToNumber((result as any).annual_usage_gj); if (normAnnualUsage != null) metadata.annual_usage_gj = normAnnualUsage;
                 const normEnergyChargePct = normalizeMoneyToNumber((result as any).energy_charge_pct); if (normEnergyChargePct != null) metadata.energy_charge_pct = normEnergyChargePct;
                 const normContractedRate = normalizeMoneyToNumber((result as any).contracted_rate); if (normContractedRate != null) metadata.contracted_rate = normContractedRate;
