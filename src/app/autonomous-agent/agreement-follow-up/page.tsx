@@ -21,6 +21,7 @@ import {
   parseChaseDays,
   type AgreementTypeDraft,
   typeDraftProblem,
+  unknownTokenMessage,
 } from "@/lib/agreement-type-copy";
 import { Check, FileUp, Plus, X } from "lucide-react";
 
@@ -182,6 +183,14 @@ function AgreementFollowUpInner() {
   const [utilityOptions, setUtilityOptions] = useState<string[]>(DEFAULT_UTILITIES);
   const [typeDraft, setTypeDraft] = useState<TypeDraft>(blankTypeDraft);
   const [copyTarget, setCopyTarget] = useState<"subject" | "body" | "chaseBody">("body");
+  // Create and edit used to share one form, so it was easy to overwrite a type
+  // when you meant to add one. They are now two clearly different screens.
+  const [editorMode, setEditorMode] = useState<"list" | "create" | "edit">("list");
+  const [triedSave, setTriedSave] = useState(false);
+  const [draftBaseline, setDraftBaseline] = useState<string>(() => JSON.stringify(blankTypeDraft()));
+  const subjectFieldRef = useRef<HTMLInputElement>(null);
+  const bodyFieldRef = useRef<HTMLTextAreaElement>(null);
+  const chaseFieldRef = useRef<HTMLTextAreaElement>(null);
   const [savingType, setSavingType] = useState(false);
   const [typeError, setTypeError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -410,11 +419,84 @@ function AgreementFollowUpInner() {
     setConfirmOpen(true);
   };
 
-  const noteDraftProblem = (draft: TypeDraft) => {
-    setTypeError(typeDraftProblem(draft));
+  const typeDirty = JSON.stringify(typeDraft) !== draftBaseline;
+
+  // Every keystroke and every paste goes through the same check, so a token
+  // typed in and a token pasted in are treated identically.
+  // A token this lane cannot fill is flagged the moment it appears. The rest
+  // (missing name, subject, days) waits until someone actually tries to save,
+  // so a half-written draft is not shouting at you.
+  const updateDraft = (next: TypeDraft) => {
+    setTypeDraft(next);
+    setTypeError(
+      unknownTokenMessage([next.subject, next.body, next.chaseBody]) ||
+        (triedSave ? typeDraftProblem(next) : null),
+    );
+  };
+
+  const loadDraft = (draft: TypeDraft, mode: "create" | "edit") => {
+    setTypeDraft(draft);
+    setDraftBaseline(JSON.stringify(draft));
+    setTypeError(null);
+    setTriedSave(false);
+    setEditorMode(mode);
+  };
+
+  const discardDraft = () => {
+    const blank = blankTypeDraft();
+    setTypeDraft(blank);
+    setDraftBaseline(JSON.stringify(blank));
+    setTypeError(null);
+    setTriedSave(false);
+    setEditorMode("list");
+  };
+
+  // Closing the window keeps whatever was typed. Reopening picks it back up.
+  const openCreateType = () => {
+    if (!(typeDirty && editorMode === "create")) loadDraft(blankTypeDraft(), "create");
+    setManageOpen(true);
+  };
+
+  const openManageTypes = () => {
+    if (!typeDirty) setEditorMode("list");
+    setManageOpen(true);
+  };
+
+  const startEditType = (row: AgreementType) => {
+    if (typeDirty && typeDraft.id === row.id) {
+      setEditorMode("edit");
+      return;
+    }
+    if (
+      typeDirty &&
+      !window.confirm("You have unsaved changes to another type. Discard them and edit this one?")
+    ) {
+      return;
+    }
+    loadDraft(draftFromType(row), "edit");
+  };
+
+  const insertField = (key: string) => {
+    const token = `{{${key}}}`;
+    const field =
+      copyTarget === "subject"
+        ? subjectFieldRef.current
+        : copyTarget === "body"
+          ? bodyFieldRef.current
+          : chaseFieldRef.current;
+    const value = typeDraft[copyTarget];
+    const start = field?.selectionStart ?? value.length;
+    const end = field?.selectionEnd ?? value.length;
+    updateDraft({ ...typeDraft, [copyTarget]: value.slice(0, start) + token + value.slice(end) });
+    const caret = start + token.length;
+    window.requestAnimationFrame(() => {
+      field?.focus();
+      field?.setSelectionRange(caret, caret);
+    });
   };
 
   const saveType = async () => {
+    setTriedSave(true);
     const problem = typeDraftProblem(typeDraft);
     if (!token || problem) {
       const message = problem || "Give the type a name, e.g. Origin C&I Gas.";
@@ -456,13 +538,11 @@ function AgreementFollowUpInner() {
       if (!res.ok) {
         const message = formatBackendErrorBody(data) || data.detail || "Could not save type";
         setTypeError(message);
-        setManageOpen(false);
         showToast(message, "error");
         return;
       }
       const name = (data.label || typeDraft.label).trim();
-      setTypeDraft(blankTypeDraft());
-      setTypeError(null);
+      discardDraft();
       setManageOpen(false);
       showToast(editing ? `Saved ${name}.` : `Created ${name}.`, "success");
       await loadTypes();
@@ -473,7 +553,6 @@ function AgreementFollowUpInner() {
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not save type";
       setTypeError(message);
-      setManageOpen(false);
       showToast(message, "error");
     } finally {
       setSavingType(false);
@@ -599,15 +678,20 @@ function AgreementFollowUpInner() {
       }
       width="2xl"
       actions={
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          leftIcon={<Plus className="size-3.5" />}
-          onClick={() => setManageOpen(true)}
-        >
-          Add or edit agreement types
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            leftIcon={<Plus className="size-3.5" />}
+            onClick={openCreateType}
+          >
+            New agreement type
+          </Button>
+          <Button type="button" variant="secondary" size="sm" onClick={openManageTypes}>
+            Edit existing types
+          </Button>
+        </div>
       }
     >
       {testMode ? (
@@ -771,13 +855,22 @@ function AgreementFollowUpInner() {
                 <p className="text-xs font-semibold uppercase tracking-wide text-primary">2 · Agreement</p>
                 <h2 className="mt-1 text-base font-semibold text-dark dark:text-white">Type and PDF</h2>
               </div>
-              <button
-                type="button"
-                className="text-xs font-medium text-primary hover:underline"
-                onClick={() => setManageOpen(true)}
-              >
-                Add or edit types
-              </button>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  className="text-xs font-medium text-primary hover:underline"
+                  onClick={openCreateType}
+                >
+                  New type
+                </button>
+                <button
+                  type="button"
+                  className="text-xs font-medium text-primary hover:underline"
+                  onClick={openManageTypes}
+                >
+                  Edit types
+                </button>
+              </div>
             </div>
             <div className="grid gap-2 sm:grid-cols-2">
               {types.length === 0 ? (
@@ -972,83 +1065,125 @@ function AgreementFollowUpInner() {
       <Modal
         open={manageOpen}
         onClose={() => setManageOpen(false)}
-        title="Add or edit agreement types"
+        title={
+          editorMode === "create"
+            ? "Create a new agreement type"
+            : editorMode === "edit"
+              ? `Editing: ${typeDraft.label || "agreement type"}`
+              : "Agreement types"
+        }
         size="lg"
         className="max-w-3xl"
         footer={
           <div className="flex justify-end">
             <Button type="button" variant="secondary" onClick={() => setManageOpen(false)}>
-              Done
+              Close
             </Button>
           </div>
         }
       >
-        <div className="space-y-4 text-sm text-gray-700 dark:text-gray-300">
-          <p>
-            Each type carries its own first email, chase email, and chase days. Stop rules stay the
-            same for every type: a signed agreement, a request to stop, or a hard bounce ends the
-            run. An invoice does not.
-          </p>
-          <div className="space-y-2">
-            {allTypes.map((row) => (
-              <div
-                key={row.id}
-                className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 px-3 py-2 dark:border-gray-700"
-              >
-                <div>
-                  <p className="font-medium text-gray-900 dark:text-white">{row.label}</p>
-                  <p className="text-xs text-gray-500">
-                    {row.utility_type || "No utility"}
-                    {row.retailer ? ` · ${row.retailer}` : ""}
-                    {row.chase_days?.length ? ` · days ${row.chase_days.join(", ")}` : ""}
-                    {row.is_active === false ? " · hidden" : ""}
-                  </p>
-                </div>
-                <div className="flex shrink-0 gap-3">
+        {editorMode === "list" ? (
+          <div className="space-y-4 text-sm text-gray-700 dark:text-gray-300">
+            {typeDirty ? (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100">
+                <span>
+                  You have unsaved changes to {typeDraft.id ? typeDraft.label || "a type" : "a new type"}.
+                </span>
+                <span className="flex gap-3">
                   <button
                     type="button"
-                    className="text-xs font-medium text-primary hover:underline"
-                    onClick={() => {
-                      setTypeDraft(draftFromType(row));
-                      setTypeError(null);
-                    }}
+                    className="font-semibold hover:underline"
+                    onClick={() => setEditorMode(typeDraft.id ? "edit" : "create")}
                   >
-                    Edit
+                    Carry on editing
                   </button>
-                  <button
-                    type="button"
-                    className="text-xs font-medium text-primary hover:underline"
-                    onClick={() => void setTypeActive(row.id, row.is_active === false)}
-                  >
-                    {row.is_active === false ? "Show" : "Hide"}
+                  <button type="button" className="hover:underline" onClick={discardDraft}>
+                    Discard
                   </button>
-                </div>
+                </span>
               </div>
-            ))}
-          </div>
-          <div className="space-y-3 rounded-lg border border-dashed border-gray-300 px-3 py-3 dark:border-gray-600">
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                {typeDraft.id ? `Edit ${typeDraft.label || "type"}` : "New type"}
-              </p>
-              {typeDraft.id ? (
-                <button
-                  type="button"
-                  className="text-xs font-medium text-primary hover:underline"
-                  onClick={() => {
-                    setTypeDraft(blankTypeDraft());
-                    setTypeError(null);
-                  }}
+            ) : null}
+            <p>
+              Each type carries its own first email, chase email and chase days. Stop rules are the
+              same for every type: a signed agreement, a request to stop, or a hard bounce ends the
+              run. An invoice does not.
+            </p>
+            <div className="space-y-2">
+              {allTypes.map((row) => (
+                <div
+                  key={row.id}
+                  className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 px-3 py-2 dark:border-gray-700"
                 >
-                  New type
-                </button>
-              ) : null}
+                  <div>
+                    <p className="font-medium text-gray-900 dark:text-white">{row.label}</p>
+                    <p className="text-xs text-gray-500">
+                      {row.utility_type || "No utility"}
+                      {row.retailer ? ` · ${row.retailer}` : ""}
+                      {row.chase_days?.length ? ` · days ${row.chase_days.join(", ")}` : ""}
+                      {row.is_active === false ? " · hidden" : ""}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 gap-3">
+                    <button
+                      type="button"
+                      className="text-xs font-medium text-primary hover:underline"
+                      onClick={() => startEditType(row)}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="text-xs font-medium text-primary hover:underline"
+                      onClick={() => void setTypeActive(row.id, row.is_active === false)}
+                    >
+                      {row.is_active === false ? "Show" : "Hide"}
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
+            <Button
+              type="button"
+              variant="secondary"
+              leftIcon={<Plus className="size-3.5" />}
+              onClick={() => {
+                if (
+                  typeDirty &&
+                  !window.confirm("You have unsaved changes. Discard them and start a new type?")
+                ) {
+                  return;
+                }
+                loadDraft(blankTypeDraft(), "create");
+              }}
+            >
+              Create a new type instead
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-3 text-sm text-gray-700 dark:text-gray-300">
+            <button
+              type="button"
+              className="text-xs font-medium text-primary hover:underline"
+              onClick={() => setEditorMode("list")}
+            >
+              ← All agreement types
+            </button>
+            {editorMode === "edit" ? (
+              <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100">
+                <b>You are changing an existing type.</b> New runs use the new wording. Runs already
+                going keep the wording they started with.
+              </div>
+            ) : (
+              <div className="rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-2 text-xs text-indigo-900 dark:border-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-100">
+                <b>This creates a brand new type.</b> It appears as a new tile on the send page. None
+                of the existing types are touched.
+              </div>
+            )}
+            {typeError ? <p className="text-xs font-medium text-red-600">{typeError}</p> : null}
             <Input
               label="Name"
               value={typeDraft.label}
-              onChange={(e) => setTypeDraft((current) => ({ ...current, label: e.target.value }))}
-              onBlur={() => noteDraftProblem(typeDraft)}
+              onChange={(e) => updateDraft({ ...typeDraft, label: e.target.value })}
               placeholder="Origin C&I Gas"
             />
             <div>
@@ -1056,7 +1191,7 @@ function AgreementFollowUpInner() {
               <select
                 className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-dark dark:border-gray-600 dark:bg-gray-800 dark:text-white"
                 value={typeDraft.utility}
-                onChange={(e) => setTypeDraft((current) => ({ ...current, utility: e.target.value }))}
+                onChange={(e) => updateDraft({ ...typeDraft, utility: e.target.value })}
               >
                 <option value="">Optional</option>
                 {utilityOptions.map((utility) => (
@@ -1069,75 +1204,87 @@ function AgreementFollowUpInner() {
             <Input
               label="Retailer"
               value={typeDraft.retailer}
-              onChange={(e) => setTypeDraft((current) => ({ ...current, retailer: e.target.value }))}
+              onChange={(e) => updateDraft({ ...typeDraft, retailer: e.target.value })}
               placeholder="Optional — Origin, Simply, Alinta…"
             />
-            <div className="flex flex-wrap gap-1.5">
-              {AGREEMENT_COPY_FIELDS.map((field) => (
-                <button
-                  key={field.key}
-                  type="button"
-                  className="rounded-full border border-gray-200 px-2 py-0.5 text-[11px] text-gray-600 hover:border-primary hover:text-primary dark:border-gray-600 dark:text-gray-300"
-                  onClick={() =>
-                    setTypeDraft((current) => ({
-                      ...current,
-                      [copyTarget]: `${current[copyTarget]}{{${field.key}}}`,
-                    }))
-                  }
-                >
-                  {field.label}
-                </button>
-              ))}
+            <div className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2.5">
+              <p className="text-xs font-semibold text-dark dark:text-white">Insert a field</p>
+              <p className="mb-2 text-[11px] text-gray-500 dark:text-gray-400">
+                Click a field to drop it in where your cursor is. Adding to:{" "}
+                <b>
+                  {copyTarget === "subject"
+                    ? "First email subject"
+                    : copyTarget === "body"
+                      ? "First email body"
+                      : "Chase email"}
+                </b>
+                . Click into a different box to change that.
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {AGREEMENT_COPY_FIELDS.map((field) => (
+                  <button
+                    key={field.key}
+                    type="button"
+                    title={field.label}
+                    className="rounded-full border border-gray-300 bg-white px-2 py-0.5 font-mono text-[11px] text-gray-700 hover:border-primary hover:text-primary dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => insertField(field.key)}
+                  >
+                    {`{{${field.key}}}`}
+                    <span className="ml-1 font-sans text-gray-400">{field.label}</span>
+                  </button>
+                ))}
+              </div>
             </div>
             <Input
+              ref={subjectFieldRef}
               label="First email subject"
               value={typeDraft.subject}
               onFocus={() => setCopyTarget("subject")}
-              onChange={(e) => setTypeDraft((current) => ({ ...current, subject: e.target.value }))}
-              onBlur={(e) => noteDraftProblem({ ...typeDraft, subject: e.target.value })}
-              onPaste={(e) => {
-                const el = e.currentTarget;
-                window.setTimeout(() => noteDraftProblem({ ...typeDraft, subject: el.value }), 0);
-              }}
+              onChange={(e) => updateDraft({ ...typeDraft, subject: e.target.value })}
             />
             <Textarea
+              ref={bodyFieldRef}
               label="First email body"
               value={typeDraft.body}
               rows={8}
               onFocus={() => setCopyTarget("body")}
-              onChange={(e) => setTypeDraft((current) => ({ ...current, body: e.target.value }))}
-              onBlur={(e) => noteDraftProblem({ ...typeDraft, body: e.target.value })}
-              onPaste={(e) => {
-                const el = e.currentTarget;
-                window.setTimeout(() => noteDraftProblem({ ...typeDraft, body: el.value }), 0);
-              }}
+              onChange={(e) => updateDraft({ ...typeDraft, body: e.target.value })}
             />
             <Textarea
+              ref={chaseFieldRef}
               label="Chase email"
               hint="Leave blank and the system writes each chase. Fill this in and the same text is sent on every chase day."
               value={typeDraft.chaseBody}
               rows={6}
               onFocus={() => setCopyTarget("chaseBody")}
-              onChange={(e) => setTypeDraft((current) => ({ ...current, chaseBody: e.target.value }))}
-              onBlur={(e) => noteDraftProblem({ ...typeDraft, chaseBody: e.target.value })}
-              onPaste={(e) => {
-                const el = e.currentTarget;
-                window.setTimeout(() => noteDraftProblem({ ...typeDraft, chaseBody: el.value }), 0);
-              }}
+              onChange={(e) => updateDraft({ ...typeDraft, chaseBody: e.target.value })}
             />
             <Input
               label="Chase days"
               value={typeDraft.chaseDays}
-              onChange={(e) => setTypeDraft((current) => ({ ...current, chaseDays: e.target.value }))}
-              onBlur={(e) => noteDraftProblem({ ...typeDraft, chaseDays: e.target.value })}
+              onChange={(e) => updateDraft({ ...typeDraft, chaseDays: e.target.value })}
               hint="Comma-separated, ascending, 1–30, at most 5. Default 1, 3, 5, 7."
             />
             {typeError ? <p className="text-xs text-red-600">{typeError}</p> : null}
-            <Button type="button" onClick={() => void saveType()} loading={savingType}>
-              {savingType ? "Saving…" : typeDraft.id ? "Save type" : "Add type"}
-            </Button>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button type="button" onClick={() => void saveType()} loading={savingType}>
+                {savingType
+                  ? "Saving…"
+                  : editorMode === "edit"
+                    ? `Save changes to ${typeDraft.label || "this type"}`
+                    : "Create type"}
+              </Button>
+              <button
+                type="button"
+                className="text-xs text-gray-500 hover:underline"
+                onClick={discardDraft}
+              >
+                {editorMode === "edit" ? "Discard changes" : "Cancel"}
+              </button>
+            </div>
           </div>
-        </div>
+        )}
       </Modal>
 
       <Modal

@@ -51,11 +51,21 @@ export function Modal({
       if (e.key === "Escape") onCloseRef.current();
     };
 
+    // A drag that starts inside the panel (selecting text) and ends outside it
+    // fires "click" on the overlay, their shared parent. That used to close the
+    // modal mid-edit and lose what was typed. Only close when the press also
+    // started on the overlay itself.
+    let pressStartedOnOverlay = false;
+    const handlePress = (e: MouseEvent) => {
+      pressStartedOnOverlay = e.target === overlay;
+    };
     const handleBackdrop = (e: MouseEvent) => {
-      if (e.target === overlay) onCloseRef.current();
+      if (e.target === overlay && pressStartedOnOverlay) onCloseRef.current();
+      pressStartedOnOverlay = false;
     };
 
     document.addEventListener("keydown", handleEscape);
+    overlay?.addEventListener("mousedown", handlePress);
     overlay?.addEventListener("click", handleBackdrop);
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -70,6 +80,7 @@ export function Modal({
 
     return () => {
       document.removeEventListener("keydown", handleEscape);
+      overlay?.removeEventListener("mousedown", handlePress);
       overlay?.removeEventListener("click", handleBackdrop);
       document.body.style.overflow = prevOverflow;
       previousActive.current?.focus();
