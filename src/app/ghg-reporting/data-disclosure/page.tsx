@@ -11,6 +11,7 @@ import {
   ChevronRight,
   CircleSlash,
   FileQuestion,
+  Mail,
   RefreshCw,
 } from "lucide-react";
 import { PageHeader } from "@/components/Layouts/PageHeader";
@@ -18,6 +19,15 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  DataRequestConfirmModal,
+  DataRequestResultModal,
+} from "@/components/DataRequestConfirmModal";
+import {
+  buildGapDataRequestSummary,
+  canRequestDataForUtility,
+  type DataRequestSummary,
+} from "@/lib/data-request";
 import { getApiBaseUrl } from "@/lib/utils";
 
 /* ---------------------------------------------------------------- types ---- */
@@ -35,6 +45,8 @@ interface GapSite {
   activity_types: string[];
   months_present: string[];
   months_missing: string[];
+  months_missing_labels?: string[];
+  sample_invoice_url?: string | null;
   coverage_pct: number;
   severity: Severity;
   headline: string;
@@ -143,6 +155,61 @@ export default function DataDisclosurePage() {
   const [openSlug, setOpenSlug] = useState<string | null>(null);
   const [detail, setDetail] = useState<Record<string, EntityGapReport>>({});
   const [detailLoading, setDetailLoading] = useState<string | null>(null);
+
+  // Chasing a gap by email: one modal, reused by every row.
+  const [request, setRequest] = useState<DataRequestSummary | null>(null);
+  const [requestLoading, setRequestLoading] = useState(false);
+  const [requestResult, setRequestResult] = useState<string | null>(null);
+
+  const openRequest = useCallback((entityId: string, s: GapSite) => {
+    const months = s.months_missing_labels?.length
+      ? s.months_missing_labels
+      : s.months_missing;
+    setRequest(
+      buildGapDataRequestSummary({
+        businessName: s.member_business_name || entityId,
+        utilityType: s.utility_type,
+        identifier: s.identifier,
+        retailer: s.retailer,
+        missingMonths: months,
+        invoiceUrl: s.sample_invoice_url,
+        context: `From the ${entityId} coverage report - ${s.headline}`,
+      }),
+    );
+  }, []);
+
+  const sendRequest = useCallback(async () => {
+    if (!request || !token) return;
+    setRequestLoading(true);
+    try {
+      const body: Record<string, unknown> = {
+        business_name: request.businessName,
+        supplier_name: request.retailer,
+        request_type: request.requestType,
+        details: request.identifier,
+        missing_months: request.missingMonths ?? [],
+        invoice_url: request.invoiceUrl ?? null,
+      };
+      const res = await fetch(`${getApiBaseUrl()}/api/data-request`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(body),
+      });
+      const payload = (await res.json().catch(() => ({}))) as { message?: string; detail?: string };
+      if (!res.ok) {
+        throw new Error(payload.detail || `Request failed (${res.status})`);
+      }
+      setRequestResult(payload.message ?? JSON.stringify(payload));
+    } catch (e) {
+      setRequestResult(`Error: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setRequest(null);
+      setRequestLoading(false);
+    }
+  }, [request, token]);
 
   const fetchRoster = useCallback(async () => {
     if (!token) return;
@@ -385,6 +452,7 @@ export default function DataDisclosurePage() {
                                 <th className="px-3 py-2 font-medium text-right">Records</th>
                                 <th className="px-3 py-2 font-medium">Months covered</th>
                                 <th className="px-3 py-2 font-medium">What to do</th>
+                                <th className="px-3 py-2 font-medium text-right">Chase</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -438,6 +506,21 @@ export default function DataDisclosurePage() {
                                     <td className="px-3 py-2 text-xs text-gray-600 dark:text-gray-400">
                                       {s.headline}
                                     </td>
+                                    <td className="whitespace-nowrap px-3 py-2 text-right">
+                                      {(s.severity === "month_gaps" ||
+                                        s.severity === "nothing_staged") &&
+                                      canRequestDataForUtility(s.utility_type) ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => openRequest(e.entity_id, s)}
+                                          className="inline-flex items-center gap-1 rounded-md border border-stroke px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-dark-3 dark:text-gray-200 dark:hover:bg-dark-3"
+                                          title="Email the retailer for the missing invoices"
+                                        >
+                                          <Mail className="size-3" aria-hidden />
+                                          Request data
+                                        </button>
+                                      ) : null}
+                                    </td>
                                   </tr>
                                 );
                               })}
@@ -490,6 +573,20 @@ export default function DataDisclosurePage() {
           </Card>
         </div>
       )}
+
+      <DataRequestConfirmModal
+        summary={request}
+        loading={requestLoading}
+        onClose={() => setRequest(null)}
+        onConfirm={sendRequest}
+        onRetailerChange={(retailer) =>
+          setRequest((s) => (s ? { ...s, retailer } : s))
+        }
+      />
+      <DataRequestResultModal
+        result={requestResult}
+        onClose={() => setRequestResult(null)}
+      />
     </div>
   );
 }
