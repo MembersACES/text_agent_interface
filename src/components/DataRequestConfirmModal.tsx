@@ -3,6 +3,7 @@
 import { Modal } from "@/components/ui/modal";
 import {
   CI_DATA_REQUEST_RETAILERS,
+  DATA_REQUEST_INTERNAL_CC,
   SME_DATA_REQUEST_RETAILERS,
   WASTE_DATA_REQUEST_RETAILERS,
   type DataRequestSummary,
@@ -144,6 +145,66 @@ export function DataRequestConfirmModal({
           <div>
             <span className="font-semibold">Request Type:</span>{" "}
             <span className="ml-2">{summary.requestType}</span>
+          </div>
+
+          {summary.context ? (
+            <div className="text-xs text-gray-500 dark:text-gray-400">{summary.context}</div>
+          ) : null}
+
+          {summary.missingMonths && summary.missingMonths.length > 0 ? (
+            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-900/50 dark:bg-amber-950/30">
+              <div className="font-semibold text-amber-900 dark:text-amber-200">
+                Asking for {summary.missingMonths.length} missing month
+                {summary.missingMonths.length === 1 ? "" : "s"}
+              </div>
+              <div className="mt-1 flex flex-wrap gap-1">
+                {summary.missingMonths.map((m) => (
+                  <span
+                    key={m}
+                    className="rounded bg-white px-1.5 py-0.5 text-xs font-mono text-amber-900 dark:bg-amber-900/40 dark:text-amber-100"
+                  >
+                    {m}
+                  </span>
+                ))}
+              </div>
+              <div className="mt-2 text-xs text-amber-800 dark:text-amber-300">
+                These periods are named in the email, so the retailer knows exactly what to send.
+              </div>
+            </div>
+          ) : null}
+
+          <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-800/50">
+            <div className="font-semibold">This email will</div>
+            <ul className="mt-1 list-disc space-y-0.5 pl-5 text-xs">
+              <li>
+                go to{" "}
+                <span className="font-medium">{summary.retailer || "(pick a retailer)"}</span>
+              </li>
+              <li>
+                copy in <span className="font-mono">{DATA_REQUEST_INTERNAL_CC}</span>
+              </li>
+              <li>attach the Letter of Authority on file</li>
+              <li>
+                {summary.invoiceUrl ? (
+                  <>
+                    invoice on file for this meter{" "}
+                    <a
+                      href={summary.invoiceUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-blue-600 underline dark:text-blue-400"
+                    >
+                      (preview)
+                    </a>
+                    . The email does not attach it yet
+                  </>
+                ) : (
+                  <span className="text-gray-500 dark:text-gray-400">
+                    no invoice on file for this meter — letter of authority only
+                  </span>
+                )}
+              </li>
+            </ul>
           </div>
         </div>
       )}
