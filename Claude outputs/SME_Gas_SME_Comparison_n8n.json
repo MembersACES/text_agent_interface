@@ -1,0 +1,1714 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "generate-gas-sme-sme-comparaison-b2",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": false
+        }
+      },
+      "id": "fba841ab-a56a-470a-a7b0-2c21c1837cb8",
+      "name": "Generate E SME to C&I Comparaison1",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -704,
+        6336
+      ],
+      "webhookId": "b3c323ea-58a8-48c0-96ba-fc85b353f54a"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1l_ShkAcpS1HBqX8EdXLEVmn3pkliVGwsskkkI0GlLho",
+          "mode": "list",
+          "cachedResultName": "Member ACES Automation Master",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1l_ShkAcpS1HBqX8EdXLEVmn3pkliVGwsskkkI0GlLho/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1051195256,
+          "mode": "list",
+          "cachedResultName": "Airtable Data Requests",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1l_ShkAcpS1HBqX8EdXLEVmn3pkliVGwsskkkI0GlLho/edit#gid=1051195256"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "NMI / MRIN",
+              "lookupValue": "={{ $json.body.full_invoice_data.gas_sme_invoicedetails.mrin }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -496,
+        6336
+      ],
+      "id": "c45847ed-050e-4c65-8c07-d9af0693059f",
+      "name": "Get row(s) in sheet21",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "uAhx7UUqoSM2Ai8V",
+          "name": "Google Sheets account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1l_ShkAcpS1HBqX8EdXLEVmn3pkliVGwsskkkI0GlLho",
+          "mode": "list",
+          "cachedResultName": "Member ACES Automation Master",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1l_ShkAcpS1HBqX8EdXLEVmn3pkliVGwsskkkI0GlLho/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 2036128846,
+          "mode": "list",
+          "cachedResultName": "Data from Airtable",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1l_ShkAcpS1HBqX8EdXLEVmn3pkliVGwsskkkI0GlLho/edit#gid=2036128846"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "Business Name",
+              "lookupValue": "={{ $json['Business Name'] }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -336,
+        6336
+      ],
+      "id": "70786fa4-8e56-4599-a696-c4f69448b19d",
+      "name": "Get row(s) in sheet7",
+      "executeOnce": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "uAhx7UUqoSM2Ai8V",
+          "name": "Google Sheets account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Replaces the network Switch. One template serves every network: the AGN, Multinet and AusNet\n// templates are identical apart from two header cells, and the offer rate already comes from Base 2.\n// To use a separate copy for a network, paste its file ID below. Make it with File > Make a copy of\n// the default template so the tab gids below still match.\nconst body = $('Generate E SME to C&I Comparaison1').first().json.body || {};\nconst row = $('Get row(s) in sheet7').first().json;\n\nconst DEFAULT_TEMPLATE_ID = '1vxMA8cFU_z8Dot5cSISknP5-Xm8EkuZguJsK89WZd9E';\nconst TEMPLATE_BY_NETWORK = {\n  'Australian Gas Networks': DEFAULT_TEMPLATE_ID,\n  'Multinet': DEFAULT_TEMPLATE_ID,\n  'AusNet': DEFAULT_TEMPLATE_ID,\n};\n\nconst network = String(body.sme_gas_network || '').trim();\nconst templateId = TEMPLATE_BY_NETWORK[network];\nif (!templateId) {\n  throw new Error(`No SME gas template for network \"${network}\". Choose Multinet, Australian Gas Networks or AusNet in Base 2.`);\n}\nif (!(Number(body.offer1GasRate) > 0)) {\n  throw new Error('No Alinta offer rate was sent from Base 2, so the comparison would be wrong. Check the network and bill usage.');\n}\n\nreturn [{\n  json: {\n    ...row,\n    network,\n    template_id: templateId,\n    gid_summary: 457052602,\n    gid_offers_report: 730527680,\n    gid_engagement_form: 1871010394,\n  },\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -112,
+        6336
+      ],
+      "id": "f5d1566e-2c8a-4bbb-b674-2dc55bd6aaa1",
+      "name": "Pick SME Gas Template"
+    },
+    {
+      "parameters": {
+        "operation": "copy",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $json.template_id }}",
+          "mode": "id"
+        },
+        "name": "=SME Gas Comparison Base 2 - {{ $('Get row(s) in sheet7').first().json['Business Name'] }} MRIN: {{ $('Get row(s) in sheet21').first().json['NMI / MRIN'] }}",
+        "sameFolder": false,
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "={{ $json['Google Drive Folder Link'] }}",
+          "mode": "url"
+        },
+        "options": {}
+      },
+      "id": "99424925-b8db-44e7-926f-3a219fd3472e",
+      "name": "Copy file template27",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        160,
+        6224
+      ],
+      "executeOnce": true,
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "8oGCokpsKm6pR39W",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $json.id }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Airtable Data Sheet",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "MRIN": "={{ $('Generate E SME to C&I Comparaison1').first().json.body.full_invoice_data.gas_sme_invoicedetails.mrin }}",
+            "Customer Name": "={{ $('Generate E SME to C&I Comparaison1').first().json.body.business_name }}",
+            "Retailer": "={{ $('Generate E SME to C&I Comparaison1').first().json.body.full_invoice_data.gas_sme_invoicedetails.retailer }}",
+            "Invoice Review Period": "={{ $('Generate E SME to C&I Comparaison1').first().json.body.full_invoice_data.gas_sme_invoicedetails.invoice_review_period }}",
+            "Invoice Review Number of Days": "={{ $('Generate E SME to C&I Comparaison1').first().json.body.invoice_review_days || $('Generate E SME to C&I Comparaison1').first().json.body.full_invoice_data.gas_sme_invoicedetails.invoice_review_days }}",
+            "Site Address:": "={{ $('Generate E SME to C&I Comparaison1').first().json.body.full_invoice_data.gas_sme_invoicedetails.site_address }}",
+            "Total Invoice Cost:": "={{ $('Generate E SME to C&I Comparaison1').first().json.body.full_invoice_data.gas_sme_invoicedetails.total_invoice_cost }}",
+            "Link to LOA": "={{ $('Generate E SME to C&I Comparaison1').first().json.body.business_name }}",
+            "Bus Name Copy (from Link to LOA)": "={{ $('Generate E SME to C&I Comparaison1').first().json.body.business_name }}",
+            "Trading As": "={{ $('Generate E SME to C&I Comparaison1').first().json.body.business_trading_name }}",
+            "ABN": "={{ $('Generate E SME to C&I Comparaison1').first().json.body.business_abn }}",
+            "Postal Address": "={{ $('Generate E SME to C&I Comparaison1').first().json.body.postal_address }}",
+            "Telephone": "={{ $('Generate E SME to C&I Comparaison1').first().json.body.contact_phone }}",
+            "Contact Name": "={{ $('Generate E SME to C&I Comparaison1').first().json.body.contact_name }}",
+            "Email": "={{ $('Generate E SME to C&I Comparaison1').first().json.body.client_email }}",
+            "Gas Invoice Rate": "={{ $('Generate E SME to C&I Comparaison1').first().json.body.gas_rate_invoice }}",
+            "Gas Invoice Usage": "={{ $('Generate E SME to C&I Comparaison1').first().json.body.gas_usage_invoice }}",
+            "Current Supply Charge": "={{ $('Generate E SME to C&I Comparaison1').first().json.body.current_daily_supply }}",
+            "New Supply Charge": "={{ $('Generate E SME to C&I Comparaison1').first().json.body.comparison_daily_supply }}",
+            "SME Invoice ex GST": "={{ $('Generate E SME to C&I Comparaison1').first().json.body.full_invoice_data.gas_sme_invoicedetails.total_invoice_cost }}",
+            "Offer Rate": "={{ $('Generate E SME to C&I Comparaison1').first().json.body.offer1GasRate }}",
+            "Contracted Rate:": "={{ $('Generate E SME to C&I Comparaison1').first().json.body.offer1GasRate }}",
+            "Monthly Usage": "={{ Number($('Generate E SME to C&I Comparaison1').first().json.body.annual_usage_gj) > 0 ? (Number($('Generate E SME to C&I Comparaison1').first().json.body.annual_usage_gj) / 12).toFixed(4) : '' }}",
+            "Commission": "={{ Number($('Generate E SME to C&I Comparaison1').first().json.body.commission_aud_per_gj || 0).toFixed(2) }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "MRIN",
+              "displayName": "MRIN",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Customer Name",
+              "displayName": "Customer Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Retailer",
+              "displayName": "Retailer",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Invoice Review Period",
+              "displayName": "Invoice Review Period",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Invoice Review Number of Days",
+              "displayName": "Invoice Review Number of Days",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Site Address:",
+              "displayName": "Site Address:",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Total Invoice Cost:",
+              "displayName": "Total Invoice Cost:",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Link to LOA",
+              "displayName": "Link to LOA",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Bus Name Copy (from Link to LOA)",
+              "displayName": "Bus Name Copy (from Link to LOA)",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Trading As",
+              "displayName": "Trading As",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "ABN",
+              "displayName": "ABN",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Postal Address",
+              "displayName": "Postal Address",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Telephone",
+              "displayName": "Telephone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Contact Name",
+              "displayName": "Contact Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Gas Invoice Rate",
+              "displayName": "Gas Invoice Rate",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Gas Invoice Usage",
+              "displayName": "Gas Invoice Usage",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Current Supply Charge",
+              "displayName": "Current Supply Charge",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "New Supply Charge",
+              "displayName": "New Supply Charge",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "SME Invoice ex GST",
+              "displayName": "SME Invoice ex GST",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Offer Rate",
+              "displayName": "Offer Rate",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Contracted Rate:",
+              "displayName": "Contracted Rate:",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Monthly Usage",
+              "displayName": "Monthly Usage",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Commission",
+              "displayName": "Commission",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "b13497b3-ff1d-417e-acd0-e5aff9ab3b1b",
+      "name": "Google Sheets184",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [
+        320,
+        6224
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "uAhx7UUqoSM2Ai8V",
+          "name": "Google Sheets account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://docs.google.com/spreadsheets/d/{{ $('Copy file template27').first().json.id }}/export?format=pdf&gid={{ $('Pick SME Gas Template').first().json.gid_summary }}&portrait=true&gridlines=false",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {}
+      },
+      "id": "4d22bea2-7191-441e-ac63-bb001ee5a9e5",
+      "name": "HTTP Request47",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        6336
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "8oGCokpsKm6pR39W",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://docs.google.com/spreadsheets/d/{{ $('Copy file template27').first().json.id }}/export?format=pdf&gid={{ $('Pick SME Gas Template').first().json.gid_offers_report }}&portrait=false&gridlines=false",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {}
+      },
+      "id": "00432e3a-5530-453c-b28a-ae7508c79ee0",
+      "name": "HTTP Request33",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        624,
+        6336
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "8oGCokpsKm6pR39W",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://docs.google.com/spreadsheets/d/{{ $('Copy file template27').first().json.id }}/export?format=pdf&gid={{ $('Pick SME Gas Template').first().json.gid_engagement_form }}&portrait=true&gridlines=false",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {}
+      },
+      "id": "18e44854-a4c3-4cc3-a475-032ce67a59f2",
+      "name": "HTTP Request53",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        784,
+        6336
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "8oGCokpsKm6pR39W",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "mode": "url",
+          "value": "={{ $('Generate E SME to C&I Comparaison1').first().json.body.full_invoice_data.gas_sme_invoicedetails.invoice_link || ('https://drive.google.com/file/d/' + $('Get row(s) in sheet21').first().json['invoice ID'] + '/view') }}"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        944,
+        6336
+      ],
+      "id": "3041bc80-b2b1-47a3-b0be-6fc678d3db80",
+      "name": "Download file2",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "8oGCokpsKm6pR39W",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// SME GAS PDF PACK: 1. Comparison Summary, 2. Offer Report, 3. Engagement Form\nconst summaryBinary = $node[\"HTTP Request47\"].binary?.data;\nconst offerReportBinary = $node[\"HTTP Request33\"].binary?.data;\nconst engagementFormBinary = $node[\"HTTP Request53\"].binary?.data;\n\nconst businessName = $('Get row(s) in sheet7').first().json['Business Name'] || 'UnknownBusiness';\nconst mrin = $('Get row(s) in sheet21').first().json['NMI / MRIN'] || 'UnknownMRIN';\nconst userEmail = $('Generate E SME to C&I Comparaison1').first().json?.body?.user_email || 'UnknownUser';\n\nif (!summaryBinary || !offerReportBinary || !engagementFormBinary) {\n  return [{ json: {\n    message: 'Missing one or more SME gas PDFs',\n    user_email: userEmail,\n    gasComparisonSummary: summaryBinary ? 'Present' : 'Missing',\n    gasOfferReport: offerReportBinary ? 'Present' : 'Missing',\n    engagementForm: engagementFormBinary ? 'Present' : 'Missing',\n  } }];\n}\n\nsummaryBinary.fileName = `Gas Comparison Summary for ${businessName} MRIN ${mrin}.pdf`;\nofferReportBinary.fileName = `Gas Offer Report for ${businessName} MRIN ${mrin}.pdf`;\nengagementFormBinary.fileName = `Gas Engagement Form for ${businessName} MRIN ${mrin}.pdf`;\n\n// Binary keys kept as-is: Merge PDFs6 reads these names.\nreturn [{\n  json: { message: 'SME gas PDFs ready', user_email: userEmail, business_name: businessName, mrin },\n  binary: {\n    GasComparisonSummaryFile: summaryBinary,\n    gasofferreportFile: offerReportBinary,\n    engagementformFile: engagementFormBinary,\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1088,
+        6336
+      ],
+      "id": "c935dc9e-dc76-4e45-833a-f4de7e00c930",
+      "name": "Code in JavaScript13"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://aces-invoice-api-672026052958.australia-southeast2.run.app/v1/pdf/merge",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "name",
+              "value": "=SME Gas Comparison Base 2 - {{ $('Get row(s) in sheet7').first().json['Business Name'] }} MRIN: {{ $('Get row(s) in sheet21').first().json['NMI / MRIN'] }}"
+            },
+            {
+              "name": "async",
+              "value": "false"
+            },
+            {
+              "parameterType": "formBinaryData",
+              "name": "files",
+              "inputDataFieldName": "GasComparisonSummaryFile"
+            },
+            {
+              "parameterType": "formBinaryData",
+              "name": "files",
+              "inputDataFieldName": "gasofferreportFile"
+            },
+            {
+              "parameterType": "formBinaryData",
+              "name": "files",
+              "inputDataFieldName": "engagementformFile"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1232,
+        6336
+      ],
+      "id": "82642498-1381-468b-bccb-217235ba99cf",
+      "name": "Merge PDFs6"
+    },
+    {
+      "parameters": {
+        "name": "=SME Gas Comparison Base 2 - {{ $('Get row(s) in sheet7').first().json['Business Name'] }} MRIN: {{ $('Get row(s) in sheet21').first().json['NMI / MRIN'] }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "={{ $('Get row(s) in sheet7').first().json['Google Drive Folder Link'] }}",
+          "mode": "url"
+        },
+        "options": {}
+      },
+      "id": "3f2d0540-0fca-4990-8f93-8a28e1070602",
+      "name": "Google Drive133",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1360,
+        6336
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "8oGCokpsKm6pR39W",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Copy file template27').item.json.id }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 457052602,
+          "mode": "list",
+          "cachedResultName": "Gas Comparison Summary",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1pqSXl_aPCkT6gGDULM8QN_ycgptL70-gf6PGldoeO2Q/edit#gid=457052602"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1520,
+        6336
+      ],
+      "id": "672d3e21-a563-404f-aca7-322197e3c7f3",
+      "name": "Get row(s) in sheet19",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "uAhx7UUqoSM2Ai8V",
+          "name": "Google Sheets account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Run Once for All Items\n// Client-ready HTML email for SME to SME gas reviews (Alinta BusinessDeal Flex).\n// Figures come from the \"Gas Comparison Summary\" tab, so the email matches the attached PDF.\n\nconst rows = items\n  .map(item => item.json)\n  .filter(Boolean)\n  .sort((a, b) => Number(a.row_number ?? 0) - Number(b.row_number ?? 0));\n\nconst sourceBody = $('Generate E SME to C&I Comparaison1').first()?.json?.body ?? {};\nconst invoice = sourceBody.full_invoice_data?.gas_sme_invoicedetails ?? {};\n\nfunction clean(value) { return String(value ?? '').replace(/\\s+/g, ' ').trim(); }\nfunction esc(value) {\n  return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;').replace(/'/g, '&#039;');\n}\nfunction firstNonBlank(...values) {\n  for (const value of values) { const c = clean(value); if (c) return c; }\n  return '';\n}\nfunction getFirstName(value) {\n  const c = clean(value);\n  if (!c || c.includes('@')) return 'there';\n  return c.split(/\\s+/)[0];\n}\nfunction parseNumber(value) {\n  if (value === undefined || value === null || value === '') return null;\n  if (typeof value === 'number' && Number.isFinite(value)) return value;\n  const c = String(value).replace(/[$,%]/g, '').trim();\n  if (!c || c.startsWith('#')) return null;\n  const n = Number(c);\n  return Number.isFinite(n) ? n : null;\n}\nfunction formatCurrency(value) {\n  const n = parseNumber(value);\n  if (n === null) return 'N/A';\n  return n.toLocaleString('en-AU', { style: 'currency', currency: 'AUD', minimumFractionDigits: 2, maximumFractionDigits: 2 });\n}\nfunction extractMoneyValues(value) {\n  return [...String(value ?? '').matchAll(/\\$?\\s*(-?[\\d,]+(?:\\.\\d{1,4})?)/g)]\n    .map(m => Number(m[1].replace(/,/g, ''))).filter(Number.isFinite);\n}\n\n// Sheet lookups: column 1 is the label, col_2 the value.\nconst reservedKeys = new Set(['row_number', 'col_2']);\nconst textKey = Object.keys(rows[0] ?? {}).find(k => !reservedKeys.has(k)) ?? 'Text';\nconst getText = row => clean(row?.[textKey]);\nconst getVal = row => clean(row?.col_2);\nconst findRow = label => rows.find(r => getText(r).toLowerCase() === clean(label).toLowerCase());\nconst findVal = label => { const r = findRow(label); return r ? getVal(r) : ''; };\nconst findTextIncludes = needle => {\n  const r = rows.find(row => getText(row).toLowerCase().includes(clean(needle).toLowerCase()));\n  return r ? getText(r) : '';\n};\nfunction rowAfterHeading(heading) {\n  const i = rows.findIndex(r => getText(r).toLowerCase() === clean(heading).toLowerCase());\n  if (i === -1) return '';\n  const next = rows.slice(i + 1).find(r => getText(r) || getVal(r));\n  return next ? (getText(next) || getVal(next)) : '';\n}\n\n// Details\nconst businessName = firstNonBlank(sourceBody.business_name, invoice.client_name, 'the client');\nconst firstName = getFirstName(firstNonBlank(sourceBody.contact_name, sourceBody.contact_email, sourceBody.client_email));\nconst siteAddress = firstNonBlank(invoice.site_address, sourceBody.site_address) || 'N/A';\nconst mrin = firstNonBlank(invoice.mrin, sourceBody.mrin) || 'N/A';\nconst currentRetailer = firstNonBlank(invoice.retailer, sourceBody.retailer) || 'N/A';\nconst proposedRetailer = firstNonBlank(sourceBody.offer1Retailer) || 'Alinta Energy';\nconst network = firstNonBlank(sourceBody.sme_gas_network);\n\n// Costs from the summary tab\nconst annualLine = findVal('Annual Energy Cost');\nconst monthlyLine = findVal('Monthly Energy Cost');\nconst differenceLine = findVal('Year 1 Cost Difference');\nconst [currentAnnualCost = null, proposedAnnualCost = null] = extractMoneyValues(annualLine);\nconst [currentMonthlyCost = null, proposedMonthlyCost = null] = extractMoneyValues(monthlyLine);\nconst currentRate = firstNonBlank(findVal('Current Energy Rate')) || 'N/A';\nconst proposedRate = firstNonBlank(findVal('New Energy Rate')) || 'N/A';\nconst outcomePctLine = firstNonBlank(\n  findTextIncludes('reduction in estimated annual energy cost'),\n  findTextIncludes('increase in estimated annual energy cost'),\n  findTextIncludes('no material change in estimated annual energy cost'),\n);\n\nlet savings = null;\nif (Number.isFinite(currentAnnualCost) && Number.isFinite(proposedAnnualCost)) {\n  savings = currentAnnualCost - proposedAnnualCost;\n} else {\n  const d = extractMoneyValues(differenceLine)[0];\n  if (Number.isFinite(d)) savings = /increase|higher|additional/i.test(differenceLine) ? -Math.abs(d) : Math.abs(d);\n}\n\nconst outcome = savings === null\n  ? { label: 'Estimated Year 1 Outcome', value: differenceLine || 'Refer to attached comparison', status: 'Gas Comparison Completed',\n      background: '#f8faf9', border: '#dce5e2', colour: '#0f3d3e', outcomeText: differenceLine || 'Refer to attached comparison', outcomeColour: '#48615b' }\n  : savings > 0\n    ? { label: 'Estimated Year 1 Saving', value: formatCurrency(savings), status: 'Estimated Saving Identified',\n        background: '#edf7f4', border: '#a9d2c8', colour: '#0f6b5f', outcomeText: `${formatCurrency(savings)} saving`, outcomeColour: '#0f6b5f' }\n    : savings < 0\n      ? { label: 'Estimated Year 1 Increase', value: formatCurrency(Math.abs(savings)), status: 'Cost Increase Identified',\n          background: '#fff4df', border: '#e8bd72', colour: '#8a5200', outcomeText: `${formatCurrency(Math.abs(savings))} increase`, outcomeColour: '#a33a2b' }\n      : { label: 'Estimated Year 1 Outcome', value: formatCurrency(0), status: 'Comparable Cost Outcome',\n          background: '#f8faf9', border: '#dce5e2', colour: '#48615b', outcomeText: 'No material change', outcomeColour: '#48615b' };\nconst outcomeSubtext = outcomePctLine || 'Estimated across the first year of the proposed gas agreement';\n\nconst recommendedNextStep = firstNonBlank(\n  rowAfterHeading('Recommended Next Step'),\n  'Please review the attached gas comparison and engagement form and let us know if you would like to proceed with the proposed offer.',\n);\n\nconst importantNotes = [];\nconst notesIndex = rows.findIndex(r => getText(r).toLowerCase() === 'important notes');\nif (notesIndex !== -1) {\n  for (const row of rows.slice(notesIndex + 1)) {\n    const t = getText(row);\n    if (!t) continue;\n    if (/^ESG \\(Environmental, Social, and Governance\\) Impact$/i.test(t) || /^GHG Impact:?$/i.test(t) || /^\u00a9/.test(t)) break;\n    importantNotes.push(t);\n    if (importantNotes.length === 3) break;\n  }\n}\n\nconst td = 'padding:10px; border:1px solid #dce5e2;';\nconst tdLabel = 'padding:10px; background:#f8faf9; border:1px solid #dce5e2;';\nconst detailRow = (label, value) => `<tr><td style=\"${tdLabel} width:40%;\"><strong>${esc(label)}</strong></td><td style=\"${td}\">${esc(value)}</td></tr>`;\n\nconst html = `\n<html>\n<body style=\"margin:0; padding:0; background:#f4f7f6; font-family:Arial, Helvetica, sans-serif; color:#1f2933;\">\n<table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f4f7f6; padding:24px 0;\"><tr><td align=\"center\">\n<table width=\"680\" cellpadding=\"0\" cellspacing=\"0\" style=\"width:680px; max-width:100%; background:#ffffff; border-radius:12px; overflow:hidden; border:1px solid #dce5e2;\">\n\n<tr><td style=\"background:#0f3d3e; padding:24px 28px; color:#ffffff; text-align:center;\">\n<div style=\"font-size:13px; letter-spacing:0.5px; text-transform:uppercase; color:#b7d8cf;\">Gas Agreement Review</div>\n<div style=\"font-size:24px; font-weight:bold; margin-top:6px; line-height:1.25;\">${esc(outcome.status)}</div>\n<div style=\"font-size:14px; color:#d7ebe5; margin-top:8px;\">${esc(businessName)}</div>\n</td></tr>\n\n<tr><td style=\"padding:28px;\">\n<p style=\"margin:0 0 16px; font-size:15px; line-height:1.5;\">Hi ${esc(firstName)},</p>\n<p style=\"margin:0 0 20px; font-size:15px; line-height:1.6;\">I hope you are well. We have reviewed your current gas arrangement against the proposed ${esc(proposedRetailer)} offer. Below is a summary of the estimated gas costs, energy rates and overall Year 1 outcome.</p>\n\n<table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border-collapse:collapse; margin-bottom:24px; font-size:14px;\">\n${detailRow('Business', businessName)}\n${detailRow('Site Address', siteAddress)}\n${detailRow('MRIN', mrin)}\n${detailRow('Current Retailer', currentRetailer)}\n${detailRow('Proposed Retailer', proposedRetailer)}\n${network ? detailRow('Gas Network', network) : ''}\n</table>\n\n<table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"margin:0 0 24px; background:${outcome.background}; border:1px solid ${outcome.border}; border-radius:10px;\">\n<tr><td style=\"padding:22px; text-align:center;\">\n<div style=\"font-size:13px; color:${outcome.colour}; text-transform:uppercase; letter-spacing:0.4px; font-weight:bold;\">${esc(outcome.label)}</div>\n<div style=\"font-size:32px; color:${outcome.colour}; font-weight:bold; margin-top:6px;\">${esc(outcome.value)}</div>\n<div style=\"font-size:13px; color:${outcome.colour}; margin-top:7px;\">${esc(outcomeSubtext)}</div>\n</td></tr></table>\n\n<div style=\"font-size:17px; font-weight:bold; color:#0f3d3e; margin-bottom:10px;\">Current vs Proposed Gas Cost</div>\n<table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border-collapse:collapse; margin-bottom:8px; font-size:13px;\">\n<tr>\n<th align=\"left\" style=\"padding:10px; background:#f1f5f4; border:1px solid #dce5e2;\">Cost Measure</th>\n<th align=\"right\" style=\"padding:10px; background:#f1f5f4; border:1px solid #dce5e2;\">Current</th>\n<th align=\"right\" style=\"padding:10px; background:#f1f5f4; border:1px solid #dce5e2;\">Proposed</th>\n<th align=\"right\" style=\"padding:10px; background:#f1f5f4; border:1px solid #dce5e2;\">Outcome</th>\n</tr>\n<tr><td style=\"${td} font-weight:bold;\">Average Monthly Gas Cost</td><td align=\"right\" style=\"${td}\">${esc(formatCurrency(currentMonthlyCost))}</td><td align=\"right\" style=\"${td}\">${esc(formatCurrency(proposedMonthlyCost))}</td><td align=\"right\" style=\"${td} color:#48615b;\">Estimated</td></tr>\n<tr><td style=\"${td} font-weight:bold;\">Estimated Annual Gas Cost</td><td align=\"right\" style=\"${td}\">${esc(formatCurrency(currentAnnualCost))}</td><td align=\"right\" style=\"${td}\">${esc(formatCurrency(proposedAnnualCost))}</td><td align=\"right\" style=\"${td} color:${outcome.outcomeColour}; font-weight:bold;\">${esc(outcome.outcomeText)}</td></tr>\n</table>\n<p style=\"margin:0 0 24px; font-size:12px; line-height:1.5; color:#667a75;\">Annual costs include the gas energy charges and the daily supply charge, based on your current invoice usage.</p>\n\n<div style=\"font-size:17px; font-weight:bold; color:#0f3d3e; margin-bottom:10px;\">Gas Energy Rate Comparison</div>\n<table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border-collapse:collapse; margin-bottom:8px; font-size:13px;\">\n<tr><td style=\"${td} font-weight:bold;\">Current Energy Rate</td><td style=\"${td}\">${esc(currentRate)}</td></tr>\n<tr><td style=\"${td} font-weight:bold;\">Proposed Energy Rate</td><td style=\"${td} font-weight:bold; color:#0f6b5f;\">${esc(proposedRate)}</td></tr>\n</table>\n<p style=\"margin:0 0 24px; font-size:12px; line-height:1.5; color:#667a75;\">Rates are shown in dollars per gigajoule ($/GJ), including GST. Your usage is priced through each retailer's usage steps, so these are the average rates for your site.</p>\n\n${importantNotes.length ? `\n<table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f8faf9; border:1px solid #dce5e2; border-radius:10px; margin-bottom:24px;\"><tr><td style=\"padding:18px;\">\n<div style=\"font-size:15px; font-weight:bold; color:#0f3d3e; margin-bottom:8px;\">Important Notes</div>\n<div style=\"font-size:13px; line-height:1.65; color:#48615b;\">${importantNotes.map(n => `&bull; ${esc(n)}`).join('<br>')}</div>\n</td></tr></table>` : ''}\n\n<table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f8faf9; border:1px solid #dce5e2; border-radius:10px; margin-bottom:24px;\"><tr><td style=\"padding:18px;\">\n<div style=\"font-size:15px; font-weight:bold; color:#0f3d3e; margin-bottom:8px;\">Attached for Review</div>\n<div style=\"font-size:14px; line-height:1.7;\">&bull; SME Gas Comparison Pack<br>&bull; Copy of the current gas invoice</div>\n</td></tr></table>\n\n<table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#edf7f4; border:1px solid #a9d2c8; border-radius:10px; margin-bottom:24px;\"><tr><td style=\"padding:18px;\">\n<div style=\"font-size:16px; font-weight:bold; color:#0f3d3e; margin-bottom:10px;\">Next Steps</div>\n<div style=\"font-size:14px; line-height:1.7; color:#304f48;\">${esc(recommendedNextStep)}<br><br>Once confirmed, our team will coordinate the new gas agreement and provide any required documentation for review and signature.</div>\n</td></tr></table>\n\n<p style=\"margin:0 0 14px; font-size:14px;\">Kind regards,</p>\n<p style=\"margin:0; font-size:14px; line-height:1.5;\"><b>The Team</b><br>Australian Circular Economy Solutions</p>\n<p style=\"margin:18px 0 0; font-size:14px; line-height:1.6;\"><b>Carbon Zero Australasia</b><br>Australian Circular Economy Solutions Division<br>Direct: 0468 050 399<br>\nEmail: <a href=\"mailto:business@acesolutions.com.au\" style=\"color:#0f6b5f;\">business@acesolutions.com.au</a><br>\n470 St Kilda Road, Melbourne VIC 3004<br>\nWebsite: <a href=\"https://acesolutions.com.au\" style=\"color:#0f6b5f;\">acesolutions.com.au</a></p>\n</td></tr>\n</table>\n</td></tr></table>\n</body>\n</html>`.trim();\n\nreturn [{\n  json: {\n    subject: `Gas Agreement Review for ${businessName}`,\n    html,\n    businessName, firstName, siteAddress, mrin, network,\n    currentRetailer, proposedRetailer,\n    current_cost: currentAnnualCost ?? 0,\n    new_cost: proposedAnnualCost ?? 0,\n    annual_savings: savings ?? 0,\n    currentMonthlyCost: currentMonthlyCost ?? 0,\n    proposedMonthlyCost: proposedMonthlyCost ?? 0,\n    currentAnnualCost: currentAnnualCost ?? 0,\n    proposedAnnualCost: proposedAnnualCost ?? 0,\n    currentRates: currentRate,\n    proposedRates: proposedRate,\n    recommendationStatus: outcome.status,\n    year1CostDifference: outcome.outcomeText,\n    importantNotes,\n  },\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1664,
+        6336
+      ],
+      "id": "59f07116-7f8b-44ef-a5bb-0ef8a9fe3a13",
+      "name": "Code in JavaScript15"
+    },
+    {
+      "parameters": {
+        "jsCode": "// FINAL SME GAS EMAIL ATTACHMENTS: 1. merged comparison pack, 2. the invoice that was compared\nconst mergedBinary = $node[\"Merge PDFs6\"].binary?.data;\nconst invoiceBinary = $node[\"Download file2\"].binary?.data;\nconst businessName = $('Get row(s) in sheet7').first().json['Business Name'] || 'UnknownBusiness';\nconst mrin = $('Get row(s) in sheet21').first().json['NMI / MRIN'] || 'UnknownMRIN';\nconst userEmail = $('Generate E SME to C&I Comparaison1').first().json?.body?.user_email || 'UnknownUser';\n\nif (!mergedBinary || !invoiceBinary) {\n  return [{ json: {\n    message: 'Missing binary data for merged gas pack or invoice',\n    user_email: userEmail,\n    mergedBinary: mergedBinary ? 'Present' : 'Missing',\n    invoiceBinary: invoiceBinary ? 'Present' : 'Missing',\n  } }];\n}\n\nconst mergedFileName = `SME Gas Comparison - ${businessName} - MRIN ${mrin}.pdf`;\nconst invoiceFileName = `Gas Invoice - ${businessName} - MRIN ${mrin}.pdf`;\nmergedBinary.fileName = mergedFileName;\ninvoiceBinary.fileName = invoiceFileName;\n\nreturn [{\n  json: {\n    message: 'SME gas comparison pack and invoice ready',\n    user_email: userEmail,\n    business_name: businessName,\n    mrin,\n    files: {\n      mergedPack: { fileName: mergedFileName, mimeType: mergedBinary.mimeType || 'application/pdf' },\n      invoiceFile: { fileName: invoiceFileName, mimeType: invoiceBinary.mimeType || 'application/pdf' },\n    },\n  },\n  binary: { mergedPack: mergedBinary, invoiceFile: invoiceBinary },\n}];"
+      },
+      "id": "48eceb44-93a5-4a35-b70c-b262f35a3c52",
+      "name": "Code139",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1808,
+        6336
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Generate E SME to C&I Comparaison1').first().json.body.contact_email }}",
+        "subject": "={{ $('Code in JavaScript15').item.json.subject }}",
+        "message": "={{ $('Code in JavaScript15').item.json.html }}",
+        "options": {
+          "appendAttribution": false,
+          "attachmentsUi": {
+            "attachmentsBinary": [
+              {
+                "property": "mergedPack"
+              },
+              {
+                "property": "invoiceFile"
+              }
+            ]
+          },
+          "ccList": ""
+        }
+      },
+      "id": "22a54ffa-f5f0-4067-b3bb-e69b66f7511c",
+      "name": "Gmail39",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1952,
+        6336
+      ],
+      "webhookId": "3d554265-b3a3-4807-a2d7-ccea86579e95",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "3E3tdVcX4zvrQKqH",
+          "name": "Business ACES Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={{\n{\n  pdf_document_link: $('Google Drive133').first()?.json?.webViewLink || '',\n  spreadsheet_document_link: 'https://docs.google.com/spreadsheets/d/' + ($('Copy file template27').first()?.json?.id || ''),\n  current_cost: $('Code in JavaScript15').first()?.json?.current_cost ?? null,\n  new_cost: $('Code in JavaScript15').first()?.json?.new_cost ?? null,\n  annual_savings: $('Code in JavaScript15').first()?.json?.annual_savings ?? null,\n  annual_usage_gj: $('Generate E SME to C&I Comparaison1').first()?.json?.body?.annual_usage_gj ?? null,\n  current_rates: $('Code in JavaScript15').first()?.json?.currentRates ?? '',\n  proposed_rates: $('Code in JavaScript15').first()?.json?.proposedRates ?? '',\n  email_ID: $json.id\n}\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2080,
+        6336
+      ],
+      "id": "1410614b-7460-4978-9e20-733d4f7397b3",
+      "name": "Edit Fields10"
+    },
+    {
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {}
+      },
+      "id": "3b05e70a-ec13-46af-b9ff-921a4acac53d",
+      "name": "Respond to Webhook100",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2224,
+        6336
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1l_ShkAcpS1HBqX8EdXLEVmn3pkliVGwsskkkI0GlLho",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 2036128846,
+          "mode": "list",
+          "cachedResultName": "Data from Airtable",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1l_ShkAcpS1HBqX8EdXLEVmn3pkliVGwsskkkI0GlLho/edit#gid=2036128846"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "Business Name",
+              "lookupValue": "={{ $('Get row(s) in sheet7').first().json['Business Name'] }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        2384,
+        6336
+      ],
+      "id": "256ce03b-93d0-4086-9010-dd2629ca597a",
+      "name": "Google Sheets187",
+      "executeOnce": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "uAhx7UUqoSM2Ai8V",
+          "name": "Google Sheets account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Comparison name, links and today's date (dd/mm/yy) for the logs\nconst comparisonName = $('Code139').first().json.files?.mergedPack?.fileName || '';\nconst pdfLink = $('Google Drive133').first().json.webViewLink || '';\nconst spreadsheetLink = 'https://docs.google.com/spreadsheets/d/' + ($('Copy file template27').first().json.id || '');\nconst today = new Date();\nconst formattedDate = `${String(today.getDate()).padStart(2, '0')}/${String(today.getMonth() + 1).padStart(2, '0')}/${String(today.getFullYear()).slice(2)}`;\nreturn [{ json: { comparisonName, pdfLink, spreadsheetLink, formattedDate } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2560,
+        6336
+      ],
+      "id": "462c36e9-b514-4733-957c-66ad6bb53c59",
+      "name": "Code106"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Google Sheets187').item.json.WIP }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1154693379,
+          "mode": "list",
+          "cachedResultName": "Comparisons Completed",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/102Vh_oKLxKWkh8WfeSOKsWk_Z4vfEsduq-Sos1k6eLE/edit#gid=1154693379"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Comparison Name": "={{ $('Google Drive133').first().json.name }}",
+            "Comparison Date": "={{ $json.formattedDate }}",
+            "PDF:": "={{ $json.pdfLink }}",
+            "Excel:": "={{ $json.spreadsheetLink }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Comparison Name",
+              "displayName": "Comparison Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Comparison Date",
+              "displayName": "Comparison Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "PDF:",
+              "displayName": "PDF:",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Excel:",
+              "displayName": "Excel:",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        2704,
+        6336
+      ],
+      "id": "50a79cd3-059c-4cdc-9740-e30fc9110ed2",
+      "name": "Google Sheets188",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "uAhx7UUqoSM2Ai8V",
+          "name": "Google Sheets account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Google Sheets187').item.json.WIP }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Comparisons Strategies Sent",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Comparison Name": "={{ $json['Comparison Name'] }}",
+            "Comparison Date": "={{ $json['Comparison Date'] }}",
+            "Current Cost (p.a)": "={{ $('Respond to Webhook100').item.json.current_cost }}",
+            "New Cost (p.a)": "={{ $('Respond to Webhook100').item.json.new_cost }}",
+            "Savings (p.a)": "={{ $('Respond to Webhook100').item.json.annual_savings }}",
+            "PDF:": "={{ $json['PDF:'] }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Comparison Name",
+              "displayName": "Comparison Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Comparison Date",
+              "displayName": "Comparison Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Current Cost (p.a)",
+              "displayName": "Current Cost (p.a)",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "New Cost (p.a)",
+              "displayName": "New Cost (p.a)",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Savings (p.a)",
+              "displayName": "Savings (p.a)",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "PDF:",
+              "displayName": "PDF:",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        2848,
+        6336
+      ],
+      "id": "f77f36d7-1541-4f91-a640-e145c9488d84",
+      "name": "Google Sheets189",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "uAhx7UUqoSM2Ai8V",
+          "name": "Google Sheets account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "=19s08RACpp4L2S7S5nceZxC_4__9SzjjFipfJ96cmVKs",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Base 2 SME Gas Comparisons Generated",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Business Name": "={{ $('Google Sheets187').item.json['Business Name'] }}",
+            "Comparison Name": "={{ $json['Comparison Name'] }}",
+            "Date": "={{ $('Code106').item.json.formattedDate }}",
+            "Spreadsheet Link": "={{ $('Code106').item.json.spreadsheetLink }}",
+            "Sent to": "={{ $('Generate E SME to C&I Comparaison1').first().json.body.user_email }}",
+            "Annual Savings": "={{ '$' + Number($('Code in JavaScript15').item.json.annual_savings).toFixed(2) }}",
+            "Current Rate": "={{ $('Code in JavaScript15').item.json.currentRates }}",
+            "New Rate": "={{ $('Code in JavaScript15').item.json.proposedRates }}"
+          },
+          "matchingColumns": [
+            "Business Name"
+          ],
+          "schema": [
+            {
+              "id": "Business Name",
+              "displayName": "Business Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Comparison Name",
+              "displayName": "Comparison Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Sent to",
+              "displayName": "Sent to",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Current Rate",
+              "displayName": "Current Rate",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "New Rate",
+              "displayName": "New Rate",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Annual Savings",
+              "displayName": "Annual Savings",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Spreadsheet Link",
+              "displayName": "Spreadsheet Link",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        3008,
+        6336
+      ],
+      "id": "dea56021-1a4a-4151-af40-bdc13a37506d",
+      "name": "Google Sheets190",
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "uAhx7UUqoSM2Ai8V",
+          "name": "Google Sheets account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "fileFolder",
+        "queryString": "Comparisons",
+        "filter": {
+          "folderId": {
+            "__rl": true,
+            "value": "={{ $('Google Sheets187').item.json['Google Drive Folder Link'] }}",
+            "mode": "url"
+          }
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        3264,
+        6336
+      ],
+      "id": "7be5b049-cd7d-4e95-bc61-59b9dcba584c",
+      "name": "Search files and folders33",
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "8oGCokpsKm6pR39W",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "76b7d5ce-8eac-4aed-b8c3-fc9ed5a4f684",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3392,
+        6336
+      ],
+      "id": "e53181fd-2aa8-4cca-ae9d-9667a1ee2551",
+      "name": "If46"
+    },
+    {
+      "parameters": {
+        "resource": "fileFolder",
+        "queryString": "={{ $('Google Sheets189').item.json['Comparison Name'].replace(/\\.pdf$/i, '') }}",
+        "returnAll": true,
+        "filter": {
+          "folderId": {
+            "__rl": true,
+            "value": "={{ $('Google Sheets187').item.json['Google Drive Folder Link'] }}",
+            "mode": "url"
+          }
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        3600,
+        6272
+      ],
+      "id": "b77bc336-920d-467d-aee4-513cc804b431",
+      "name": "Search files and folders26",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "8oGCokpsKm6pR39W",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "move",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $json.id }}",
+          "mode": "id"
+        },
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "={{ $('Search files and folders33').item.json.id }}",
+          "mode": "id"
+        }
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        3920,
+        6272
+      ],
+      "id": "e2536618-0b96-4d2c-8ca2-0d77f04260a6",
+      "name": "Move file20",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "8oGCokpsKm6pR39W",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "folder",
+        "name": "Comparisons",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "={{ $('Google Sheets187').item.json['Google Drive Folder Link'] }}",
+          "mode": "url"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        3600,
+        6432
+      ],
+      "id": "a964ba2b-0f7a-4bb3-ae81-12d5209891c6",
+      "name": "Create folder12",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "8oGCokpsKm6pR39W",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "fileFolder",
+        "queryString": "={{ $('Google Sheets189').item.json['Comparison Name'].replace(/\\.pdf$/i, '') }}",
+        "returnAll": true,
+        "filter": {
+          "folderId": {
+            "__rl": true,
+            "value": "={{ $('Google Sheets187').item.json['Google Drive Folder Link'] }}",
+            "mode": "url"
+          }
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        3808,
+        6432
+      ],
+      "id": "da9712ec-750d-4aff-bf66-b462961f0be4",
+      "name": "Search files and folders27",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "8oGCokpsKm6pR39W",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "move",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $json.id }}",
+          "mode": "id"
+        },
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "={{ $('Create folder12').item.json.id }}",
+          "mode": "id"
+        }
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        4128,
+        6432
+      ],
+      "id": "b06fc81b-10c5-4732-8121-a165e3491db2",
+      "name": "Move file21",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "8oGCokpsKm6pR39W",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## Generate SME Gas Comparison (SME to SME, Alinta BusinessDeal Flex)\nOne template for every network. Pick SME Gas Template chooses it and stops the run if no offer rate was sent.",
+        "height": 488,
+        "width": 5012
+      },
+      "id": "2a25fde0-ab07-46e6-bb0a-15a26de8bb45",
+      "name": "Sticky Note50",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -784,
+        6176
+      ]
+    }
+  ],
+  "connections": {
+    "Generate E SME to C&I Comparaison1": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet21",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet21": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet7",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet7": {
+      "main": [
+        [
+          {
+            "node": "Pick SME Gas Template",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pick SME Gas Template": {
+      "main": [
+        [
+          {
+            "node": "Copy file template27",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Copy file template27": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets184",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets184": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request47",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request47": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request33",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request33": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request53",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request53": {
+      "main": [
+        [
+          {
+            "node": "Download file2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download file2": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript13",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript13": {
+      "main": [
+        [
+          {
+            "node": "Merge PDFs6",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge PDFs6": {
+      "main": [
+        [
+          {
+            "node": "Google Drive133",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Drive133": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet19",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet19": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript15",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript15": {
+      "main": [
+        [
+          {
+            "node": "Code139",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code139": {
+      "main": [
+        [
+          {
+            "node": "Gmail39",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail39": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields10",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields10": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook100",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond to Webhook100": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets187",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets187": {
+      "main": [
+        [
+          {
+            "node": "Code106",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code106": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets188",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets188": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets189",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets189": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets190",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets190": {
+      "main": [
+        [
+          {
+            "node": "Search files and folders33",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search files and folders33": {
+      "main": [
+        [
+          {
+            "node": "If46",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If46": {
+      "main": [
+        [
+          {
+            "node": "Search files and folders26",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create folder12",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search files and folders26": {
+      "main": [
+        [
+          {
+            "node": "Move file20",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create folder12": {
+      "main": [
+        [
+          {
+            "node": "Search files and folders27",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search files and folders27": {
+      "main": [
+        [
+          {
+            "node": "Move file21",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "06a74bd2159c7a4aae6a5033e4d6417adde3bb2eeea28b5f97ec8f22dde09d3a"
+  }
+}

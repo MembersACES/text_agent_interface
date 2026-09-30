@@ -87,7 +87,7 @@ const RESOURCES: Resource[] = [
   {
     name: "Pudu Multilanguage",
     link: "https://pudu-chatbot-672026052958.australia-southeast2.run.app/",
-    password: "PuduAgent1!2@!",
+    password: "PuduAgent1!2@!1",
     notes: "A maintence chatbot (text or voice) for Pudu robots to answer maintenance related questions in 10 languages. ",
     env: "production",
     category: "Chatbot",
