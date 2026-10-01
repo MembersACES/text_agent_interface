@@ -826,9 +826,13 @@ function isSmeGasCiOffer(c: UtilityComparison): boolean {
   return c.utilityType === "SME Gas" && (c.smeGasComparisonMode ?? "invoice_blocks") === "ci_offer";
 }
 
+function isSmeToSmeRslEmail(c: UtilityComparison): boolean {
+  return isSmeGasSmeOffer(c) || isSmeElecSmeOffer(c);
+}
+
 function rslSmeTemplateLabel(c: UtilityComparison): string | null {
   if (isSmeGasCiOffer(c)) return "SME - C&I";
-  if (isSmeGasSmeOffer(c)) return "SME - SME";
+  if (isSmeToSmeRslEmail(c)) return "SME - SME";
   return null;
 }
 
@@ -836,11 +840,29 @@ function isCiGasRslOffer(c: UtilityComparison): boolean {
   return c.utilityType === "C&I Gas" || isSmeGasCiOffer(c);
 }
 
-function rslSequenceType(util: UtilityComparison): "sme_gas" | "ci_gas" | "ci_electricity" | null {
+function rslSequenceType(util: UtilityComparison): "sme_gas" | "sme_electricity" | "ci_gas" | "ci_electricity" | null {
   if (isSmeGasSmeOffer(util)) return "sme_gas";
+  if (isSmeElecSmeOffer(util)) return "sme_electricity";
   if (isCiGasRslOffer(util)) return "ci_gas";
   if (util.utilityType === "C&I Electricity") return "ci_electricity";
   return null;
+}
+
+function smeElecRslRates(draft: SmeElecOfferDraft): {
+  current_peak_rate: number | null;
+  new_peak_rate: number | null;
+  current_offpeak_rate: number | null;
+  new_offpeak_rate: number | null;
+} {
+  const line = (id: string) => draft.usageLines.find((row) => row.id === id);
+  const peak = line("peak") ?? line("general");
+  const offPeak = line("off_peak");
+  return {
+    current_peak_rate: peak?.currentCPerKwh ?? null,
+    new_peak_rate: peak?.offerCPerKwh ?? null,
+    current_offpeak_rate: offPeak?.currentCPerKwh ?? null,
+    new_offpeak_rate: offPeak?.offerCPerKwh ?? null,
+  };
 }
 
 /** Enrol one successful RSL comparison. Returns an error string when no cadence was created. */
@@ -863,6 +885,7 @@ async function enrolRslBase2Followup(args: {
     return `${util.identifier}: RSL follow-up was not enrolled. The offer email went out, but the webhook returned no email id, so the voice agent would have no comparison figures.`;
   }
   const gas = sequenceType === "sme_gas" || sequenceType === "ci_gas";
+  const priced = sequenceType === "sme_electricity" && util.smeElecOffer ? priceSmeElectricity(util.smeElecOffer) : null;
   const offer = gas
     ? {
         annual_savings: normalizeMoneyToNumber(args.result.annual_savings),
@@ -872,13 +895,17 @@ async function enrolRslBase2Followup(args: {
         new_gas_rate: util.comparisonGasRate ?? null,
       }
     : {
-        annual_savings: normalizeMoneyToNumber(args.result.annual_savings),
-        current_cost: normalizeMoneyToNumber(args.result.current_cost),
-        new_cost: normalizeMoneyToNumber(args.result.new_cost),
-        current_peak_rate: util.currentPeakRate ?? null,
-        new_peak_rate: util.comparisonPeakRate ?? null,
-        current_offpeak_rate: util.currentOffPeakRate ?? null,
-        new_offpeak_rate: util.comparisonOffPeakRate ?? null,
+        annual_savings: normalizeMoneyToNumber(args.result.annual_savings) ?? priced?.annualSavings ?? null,
+        current_cost: normalizeMoneyToNumber(args.result.current_cost) ?? priced?.currentAnnual ?? null,
+        new_cost: normalizeMoneyToNumber(args.result.new_cost) ?? priced?.offerAnnual ?? null,
+        ...(sequenceType === "sme_electricity" && util.smeElecOffer
+          ? smeElecRslRates(util.smeElecOffer)
+          : {
+              current_peak_rate: util.currentPeakRate ?? null,
+              new_peak_rate: util.comparisonPeakRate ?? null,
+              current_offpeak_rate: util.currentOffPeakRate ?? null,
+              new_offpeak_rate: util.comparisonOffPeakRate ?? null,
+            }),
       };
   try {
     const rslRes = await fetch("/api/rsl/base2-followup", {
@@ -1454,6 +1481,7 @@ const BNE_GAS_WEBHOOK_URL = 'https://membersaces.app.n8n.cloud/webhook/generate-
 const FUTURE_GAS_WEBHOOK_URL = 'https://membersaces.app.n8n.cloud/webhook/generate-gas-ci-comparaison-future-contract';
 const SME_ELEC_CI_WEBHOOK_URL = 'https://membersaces.app.n8n.cloud/webhook/generate-electricity-sme-ci-comparaison-b2';
 const SME_ELEC_SME_WEBHOOK_URL = 'https://membersaces.app.n8n.cloud/webhook/generate-electricity-smetosme-comparaison-b2';
+const SME_ELEC_SME_RSL_WEBHOOK_URL = 'https://membersaces.app.n8n.cloud/webhook/generate-electricity-smetosme-comparaison-b2-rsl';
 const SME_GAS_SME_WEBHOOK_URL = 'https://membersaces.app.n8n.cloud/webhook/generate-gas-smetosme-comparaison-b2';
 const SME_GAS_SME_RSL_WEBHOOK_URL = 'https://membersaces.app.n8n.cloud/webhook/generate-gas-smetosme-comparaison-b2-rsl';
 const SME_GAS_CI_RSL_WEBHOOK_URL = 'https://membersaces.app.n8n.cloud/webhook/generate-gas-sme-ci-comparaison-b2-rsl';
@@ -2882,7 +2910,7 @@ export default function Base2Page() {
 
   // RSL path: send from the RSL mailbox and skip the autonomous popup.
   // C&I electricity enrols ci_electricity. C&I gas and SME → C&I gas enrol
-  // ci_gas. SME → SME gas enrols the email cadence.
+  // ci_gas. SME → SME gas and SME → SME electricity enrol the email cadence.
   const handleRslClick = (comparison: UtilityComparison) => {
     if (comparison.utilityType === "SME Gas") {
       const mode = comparison.smeGasComparisonMode ?? "invoice_blocks";
@@ -2890,6 +2918,11 @@ export default function Base2Page() {
         alert('PDF generation for invoice block rates is not wired yet. Choose "SME vs SME" or "C&I-style comparison (SME → C&I)" to generate.');
         return;
       }
+    }
+    if (isSmeElecSmeOffer(comparison)) {
+      const fresh = utilityComparisonsRef.current.find((u) => u.utilityType === "SME Electricity" && u.identifier === comparison.identifier) ?? comparison;
+      const blockers = fresh.smeElecOffer ? priceSmeElectricity(fresh.smeElecOffer).generateBlockers : ["Bill charges are still loading."];
+      if (blockers.length > 0) { alert(blockers.join("\n")); return; }
     }
     openRecipientConfirmModal(comparison, 'comparison', false, true);
   };
@@ -3349,7 +3382,7 @@ export default function Base2Page() {
             }
           }
         } else if (isSmeElecSmeOffer(util) && util.smeElecOffer) {
-          webhookUrl = SME_ELEC_SME_WEBHOOK_URL;
+          webhookUrl = isRsl ? SME_ELEC_SME_RSL_WEBHOOK_URL : SME_ELEC_SME_WEBHOOK_URL;
           payload.nmi = util.identifier;
           Object.assign(payload, smeElecSmeWebhookFields(util.smeElecOffer));
         } else if (util.utilityType === "Oil") {
@@ -5266,12 +5299,14 @@ export default function Base2Page() {
                             Future Contract
                           </button>
                         )}
-                        {(comparison.utilityType === 'C&I Electricity' || comparison.utilityType === 'C&I Gas' || isSmeGasSmeOffer(comparison) || isSmeGasCiOffer(comparison)) && (
+                        {(comparison.utilityType === 'C&I Electricity' || comparison.utilityType === 'C&I Gas' || isSmeGasSmeOffer(comparison) || isSmeGasCiOffer(comparison) || isSmeElecSmeOffer(comparison)) && (
                           <button
                             onClick={() => handleRslClick(comparison)}
                             disabled={sending !== null && sending.includes(`${comparison.utilityType}-${comparison.identifier}-comparison`)}
                             title={isSmeGasSmeOffer(comparison)
                               ? "Send the SME → SME gas offer from the RSL mailbox, then schedule business-day 1, 3 and 5 follow-up emails"
+                              : isSmeElecSmeOffer(comparison)
+                              ? "Send the SME → SME electricity offer from the RSL mailbox, then schedule business-day 1, 3 and 5 follow-up emails"
                               : isCiGasRslOffer(comparison)
                               ? "Send the gas offer from the RSL mailbox and start the C&I gas voice follow-up (Day 0 call, Day 3 email, Day 7 call)"
                               : "Run the RSL comparison (emails from rsl.vic) and start the RSL voice-agent follow-up"}
@@ -5374,7 +5409,7 @@ export default function Base2Page() {
               {recipientConfirmModal.isRsl ? "RSL follow-up contact" : `${recipientConfirmModal.action === "dma" ? "DMA Review" : "Comparison"} recipient`}
             </h3>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-              {recipientConfirmModal.isRsl && isSmeGasSmeOffer(recipientConfirmModal.comparison)
+              {recipientConfirmModal.isRsl && isSmeToSmeRslEmail(recipientConfirmModal.comparison)
                 ? "The offer email goes out now. Follow-up emails are scheduled for business day 1, 3 and 5. No calls. For testing, enter your own email."
                 : recipientConfirmModal.isRsl
                 ? "These details receive the Day 0 call, Day 3 email and Day 7 call. For testing, enter your own phone and email so nothing goes live to the client."
@@ -5406,7 +5441,7 @@ export default function Base2Page() {
             <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
               <button type="button" onClick={() => setRecipientConfirmModal((prev) => ({ ...prev, open: false }))} className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors order-2 sm:order-1">Cancel</button>
               <button type="button" onClick={handleRecipientConfirmSubmit} className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-colors order-1 sm:order-2" style={{ backgroundColor: '#1696CF' }}>
-                {recipientConfirmModal.isRsl && isSmeGasSmeOffer(recipientConfirmModal.comparison)
+                {recipientConfirmModal.isRsl && isSmeToSmeRslEmail(recipientConfirmModal.comparison)
                   ? "Send offer & schedule emails"
                   : recipientConfirmModal.isRsl
                   ? "Confirm & enrol in RSL follow-up"
