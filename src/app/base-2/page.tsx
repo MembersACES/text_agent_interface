@@ -39,12 +39,20 @@ import {
   smeInvoiceDailySupplyAud,
 } from "@/lib/alinta-sme-gas";
 import { SmeGasStepsTable, SmeGasBillBlock, SmeGasBackendFlag, smeGasRateFromBlocks } from "@/components/base2/SmeGasStepsTable";
+import { SmeElecOfferTable } from "@/components/base2/SmeElecOfferTable";
+import {
+  extractSmeElecOffer,
+  latestSmeElecInvoiceRow,
+  priceSmeElectricity,
+  smeElecSmeWebhookFields,
+  type SmeElecOfferDraft,
+} from "@/lib/sme-electricity-offer";
 
 /** SME Gas comparison: invoice blocks, SME → C&I, or SME → SME. */
 type SmeGasComparisonMode = "invoice_blocks" | "ci_offer" | "sme_offer";
 
-/** SME Electricity → C&I comparison: same product modes as SME Gas */
-type SmeElecComparisonMode = "invoice_blocks" | "ci_offer" | "sme_benchmark_stub";
+/** SME Electricity: invoice lines, SME → C&I, or SME vs SME (offer rates typed in). */
+type SmeElecComparisonMode = "invoice_blocks" | "ci_offer" | "sme_offer";
 type SmeElecTariffShape = "tou" | "stepped" | "flat" | "unknown";
 
 /** From GET /api/base2/sme-gas-airtable-annual-usage when bills are aggregated */
@@ -134,6 +142,10 @@ interface UtilityComparison {
   /** SME → SME gas: bill blocks as edited on the step table. Undefined = as extracted. */
   smeGasBillBlocksOverride?: SmeGasBillBlock[];
   smeElecComparisonMode?: SmeElecComparisonMode;
+  /** SME vs SME: bill charges and hand-typed offer rates. */
+  smeElecOffer?: SmeElecOfferDraft;
+  smeElecOfferLoading?: boolean;
+  smeElecOfferError?: string | null;
   smeElecTariffShape?: SmeElecTariffShape;
   smeElecPostcode?: string;
   smeElecState?: string;
@@ -814,9 +826,13 @@ function isSmeGasCiOffer(c: UtilityComparison): boolean {
   return c.utilityType === "SME Gas" && (c.smeGasComparisonMode ?? "invoice_blocks") === "ci_offer";
 }
 
+function isSmeToSmeRslEmail(c: UtilityComparison): boolean {
+  return isSmeGasSmeOffer(c) || isSmeElecSmeOffer(c);
+}
+
 function rslSmeTemplateLabel(c: UtilityComparison): string | null {
   if (isSmeGasCiOffer(c)) return "SME - C&I";
-  if (isSmeGasSmeOffer(c)) return "SME - SME";
+  if (isSmeToSmeRslEmail(c)) return "SME - SME";
   return null;
 }
 
@@ -824,11 +840,29 @@ function isCiGasRslOffer(c: UtilityComparison): boolean {
   return c.utilityType === "C&I Gas" || isSmeGasCiOffer(c);
 }
 
-function rslSequenceType(util: UtilityComparison): "sme_gas" | "ci_gas" | "ci_electricity" | null {
+function rslSequenceType(util: UtilityComparison): "sme_gas" | "sme_electricity" | "ci_gas" | "ci_electricity" | null {
   if (isSmeGasSmeOffer(util)) return "sme_gas";
+  if (isSmeElecSmeOffer(util)) return "sme_electricity";
   if (isCiGasRslOffer(util)) return "ci_gas";
   if (util.utilityType === "C&I Electricity") return "ci_electricity";
   return null;
+}
+
+function smeElecRslRates(draft: SmeElecOfferDraft): {
+  current_peak_rate: number | null;
+  new_peak_rate: number | null;
+  current_offpeak_rate: number | null;
+  new_offpeak_rate: number | null;
+} {
+  const line = (id: string) => draft.usageLines.find((row) => row.id === id);
+  const peak = line("peak") ?? line("general");
+  const offPeak = line("off_peak");
+  return {
+    current_peak_rate: peak?.currentCPerKwh ?? null,
+    new_peak_rate: peak?.offerCPerKwh ?? null,
+    current_offpeak_rate: offPeak?.currentCPerKwh ?? null,
+    new_offpeak_rate: offPeak?.offerCPerKwh ?? null,
+  };
 }
 
 /** Enrol one successful RSL comparison. Returns an error string when no cadence was created. */
@@ -851,6 +885,7 @@ async function enrolRslBase2Followup(args: {
     return `${util.identifier}: RSL follow-up was not enrolled. The offer email went out, but the webhook returned no email id, so the voice agent would have no comparison figures.`;
   }
   const gas = sequenceType === "sme_gas" || sequenceType === "ci_gas";
+  const priced = sequenceType === "sme_electricity" && util.smeElecOffer ? priceSmeElectricity(util.smeElecOffer) : null;
   const offer = gas
     ? {
         annual_savings: normalizeMoneyToNumber(args.result.annual_savings),
@@ -860,13 +895,17 @@ async function enrolRslBase2Followup(args: {
         new_gas_rate: util.comparisonGasRate ?? null,
       }
     : {
-        annual_savings: normalizeMoneyToNumber(args.result.annual_savings),
-        current_cost: normalizeMoneyToNumber(args.result.current_cost),
-        new_cost: normalizeMoneyToNumber(args.result.new_cost),
-        current_peak_rate: util.currentPeakRate ?? null,
-        new_peak_rate: util.comparisonPeakRate ?? null,
-        current_offpeak_rate: util.currentOffPeakRate ?? null,
-        new_offpeak_rate: util.comparisonOffPeakRate ?? null,
+        annual_savings: normalizeMoneyToNumber(args.result.annual_savings) ?? priced?.annualSavings ?? null,
+        current_cost: normalizeMoneyToNumber(args.result.current_cost) ?? priced?.currentAnnual ?? null,
+        new_cost: normalizeMoneyToNumber(args.result.new_cost) ?? priced?.offerAnnual ?? null,
+        ...(sequenceType === "sme_electricity" && util.smeElecOffer
+          ? smeElecRslRates(util.smeElecOffer)
+          : {
+              current_peak_rate: util.currentPeakRate ?? null,
+              new_peak_rate: util.comparisonPeakRate ?? null,
+              current_offpeak_rate: util.currentOffPeakRate ?? null,
+              new_offpeak_rate: util.comparisonOffPeakRate ?? null,
+            }),
       };
   try {
     const rslRes = await fetch("/api/rsl/base2-followup", {
@@ -981,6 +1020,10 @@ function withSmeGasCiDerivedRates(u: UtilityComparison): UtilityComparison {
 
 function isSmeElecCiOffer(c: UtilityComparison): boolean {
   return c.utilityType === "SME Electricity" && (c.smeElecComparisonMode ?? "invoice_blocks") === "ci_offer";
+}
+
+function isSmeElecSmeOffer(c: UtilityComparison): boolean {
+  return c.utilityType === "SME Electricity" && c.smeElecComparisonMode === "sme_offer";
 }
 
 function firstNumber(...vals: unknown[]): number | undefined {
@@ -1425,6 +1468,7 @@ function offerComparisonKindLabel(c: UtilityComparison): string {
   }
   if (isSmeGasSmeOffer(c)) return "SME → SME Gas Offer Comparison";
   if (isSmeElecCiOffer(c)) return "SME E → C&I Offer Comparison";
+  if (isSmeElecSmeOffer(c)) return "SME → SME Electricity Offer Comparison";
   if (c.utilityType === "Oil") return "Oil Offer Comparison";
   return "Comparison";
 }
@@ -1436,6 +1480,8 @@ function offerComparisonButtonLabel(c: UtilityComparison): string {
 const BNE_GAS_WEBHOOK_URL = 'https://membersaces.app.n8n.cloud/webhook/generate-gas-ci-comparaison-b%26e';
 const FUTURE_GAS_WEBHOOK_URL = 'https://membersaces.app.n8n.cloud/webhook/generate-gas-ci-comparaison-future-contract';
 const SME_ELEC_CI_WEBHOOK_URL = 'https://membersaces.app.n8n.cloud/webhook/generate-electricity-sme-ci-comparaison-b2';
+const SME_ELEC_SME_WEBHOOK_URL = 'https://membersaces.app.n8n.cloud/webhook/generate-electricity-smetosme-comparaison-b2';
+const SME_ELEC_SME_RSL_WEBHOOK_URL = 'https://membersaces.app.n8n.cloud/webhook/generate-electricity-smetosme-comparaison-b2-rsl';
 const SME_GAS_SME_WEBHOOK_URL = 'https://membersaces.app.n8n.cloud/webhook/generate-gas-smetosme-comparaison-b2';
 const SME_GAS_SME_RSL_WEBHOOK_URL = 'https://membersaces.app.n8n.cloud/webhook/generate-gas-smetosme-comparaison-b2-rsl';
 const SME_GAS_CI_RSL_WEBHOOK_URL = 'https://membersaces.app.n8n.cloud/webhook/generate-gas-sme-ci-comparaison-b2-rsl';
@@ -2617,6 +2663,62 @@ export default function Base2Page() {
     }));
   };
 
+  const loadSmeElecOffer = async (identifier: string, force = false) => {
+    const existing = utilityComparisonsRef.current.find(
+      (u) => u.utilityType === "SME Electricity" && u.identifier === identifier,
+    );
+    if (!existing) return;
+    if (!force && existing.smeElecOffer) return;
+    setUtilityComparisons((prev) => prev.map((u) => (
+      u.utilityType === "SME Electricity" && u.identifier === identifier
+        ? { ...u, smeElecOfferLoading: true, smeElecOfferError: null }
+        : u
+    )));
+    const apply = (draft: SmeElecOfferDraft, error: string | null) => {
+      const details = existing.invoiceData?.electricity_sme_invoice_details || existing.invoiceData?.electricity_ci_invoice_details || {};
+      if (!draft.invoiceLink && typeof details.invoice_link === "string") draft.invoiceLink = details.invoice_link;
+      if (!draft.retailer && typeof details.retailer === "string") draft.retailer = details.retailer;
+      setUtilityComparisons((prev) => prev.map((u) => (
+        u.utilityType === "SME Electricity" && u.identifier === identifier
+          ? { ...u, smeElecOffer: draft, smeElecOfferLoading: false, smeElecOfferError: error }
+          : u
+      )));
+    };
+    try {
+      if (!token) throw new Error("Sign in to load the SME electricity bill charges.");
+      const res = await fetch(`${getApiBaseUrl()}/api/utility-invoice-rows`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          utility_type: "SME Electricity",
+          identifier,
+          max_records: 40,
+          offset: 0,
+          sort_dir: "desc",
+          match_strategy: "exact",
+          fallback_fields: [],
+        }),
+      });
+      if (!res.ok) {
+        const payload = (await res.json().catch(() => ({}))) as { detail?: string };
+        apply(extractSmeElecOffer(existing.invoiceData), payload.detail || "Invoice rows could not be loaded. Showing the NMI summary only.");
+        return;
+      }
+      const payload = (await res.json()) as { rows?: Record<string, unknown>[] };
+      const row = latestSmeElecInvoiceRow(Array.isArray(payload.rows) ? payload.rows : []);
+      apply(extractSmeElecOffer(row ?? existing.invoiceData), row ? null : "No invoice rows were linked to this NMI. Showing the NMI summary only.");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Could not load SME electricity charges.";
+      apply(extractSmeElecOffer(existing.invoiceData), message);
+    }
+  };
+
+  const updateSmeElecOffer = (identifier: string, draft: SmeElecOfferDraft) => {
+    setUtilityComparisons((prev) => prev.map((u) => (
+      u.utilityType === "SME Electricity" && u.identifier === identifier ? { ...u, smeElecOffer: draft } : u
+    )));
+  };
+
   const setSmeElecComparisonModeFor = (identifier: string, mode: SmeElecComparisonMode) => {
     setUtilityComparisons((prev) => prev.map((u) => {
       if (u.utilityType !== "SME Electricity" || u.identifier !== identifier) return u;
@@ -2636,6 +2738,7 @@ export default function Base2Page() {
       }
       return next;
     }));
+    if (mode === "sme_offer") void loadSmeElecOffer(identifier);
   };
 
   const updateSmeElecBillModeling = (
@@ -2680,7 +2783,7 @@ export default function Base2Page() {
   const calculateSavings = (comparison: UtilityComparison) => {
     const savings: any = {};
     if (comparison.utilityType.includes('Electricity')) {
-      if (comparison.utilityType === "SME Electricity" && comparison.smeElecComparisonMode === "sme_benchmark_stub") return savings;
+      if (comparison.utilityType === "SME Electricity" && comparison.smeElecComparisonMode === "sme_offer") return savings;
       const smeElecCi = isSmeElecCiOffer(comparison);
       let peakUsage = comparison.peakUsage || (comparison.monthlyUsage ? comparison.monthlyUsage * 0.4 : 0);
       let offPeakUsage = comparison.offPeakUsage || (comparison.monthlyUsage ? comparison.monthlyUsage * (smeElecCi ? 0.6 : 0.3) : 0);
@@ -2807,7 +2910,7 @@ export default function Base2Page() {
 
   // RSL path: send from the RSL mailbox and skip the autonomous popup.
   // C&I electricity enrols ci_electricity. C&I gas and SME → C&I gas enrol
-  // ci_gas. SME → SME gas enrols the email cadence.
+  // ci_gas. SME → SME gas and SME → SME electricity enrol the email cadence.
   const handleRslClick = (comparison: UtilityComparison) => {
     if (comparison.utilityType === "SME Gas") {
       const mode = comparison.smeGasComparisonMode ?? "invoice_blocks";
@@ -2815,6 +2918,11 @@ export default function Base2Page() {
         alert('PDF generation for invoice block rates is not wired yet. Choose "SME vs SME" or "C&I-style comparison (SME → C&I)" to generate.');
         return;
       }
+    }
+    if (isSmeElecSmeOffer(comparison)) {
+      const fresh = utilityComparisonsRef.current.find((u) => u.utilityType === "SME Electricity" && u.identifier === comparison.identifier) ?? comparison;
+      const blockers = fresh.smeElecOffer ? priceSmeElectricity(fresh.smeElecOffer).generateBlockers : ["Bill charges are still loading."];
+      if (blockers.length > 0) { alert(blockers.join("\n")); return; }
     }
     openRecipientConfirmModal(comparison, 'comparison', false, true);
   };
@@ -2878,8 +2986,12 @@ export default function Base2Page() {
     }
     if (comparison.utilityType === "SME Electricity") {
       const mode = comparison.smeElecComparisonMode ?? "invoice_blocks";
-      if (mode === "sme_benchmark_stub") { alert("SME vs SME benchmark comparison is not available yet."); return; }
-      if (mode === "invoice_blocks") { alert('PDF generation for invoice block rates is not wired yet. Choose "C&I-style comparison (SME → C&I)" to generate.'); return; }
+      if (mode === "invoice_blocks") { alert('PDF generation for invoice block rates is not wired yet. Choose "SME vs SME" or "C&I-style comparison (SME → C&I)" to generate.'); return; }
+      if (mode === "sme_offer") {
+        const fresh = utilityComparisonsRef.current.find((u) => u.utilityType === "SME Electricity" && u.identifier === comparison.identifier) ?? comparison;
+        const blockers = fresh.smeElecOffer ? priceSmeElectricity(fresh.smeElecOffer).generateBlockers : ["Bill charges are still loading."];
+        if (blockers.length > 0) { alert(blockers.join("\n")); return; }
+      }
     }
     const matchingUtilities = utilityComparisons.filter((u) => {
       if (u.utilityType !== comparison.utilityType || u.loading || u.error) return false;
@@ -2973,6 +3085,13 @@ export default function Base2Page() {
         const c = u.ciElectricityCommissionAudPerKwh;
         if (c == null || !Number.isFinite(c) || c <= 0) {
           alert(`SME → C&I electricity: commission ($/kWh) is required for NMI ${u.identifier}.`);
+          return;
+        }
+      }
+      if (isSmeElecSmeOffer(u)) {
+        const blockers = u.smeElecOffer ? priceSmeElectricity(u.smeElecOffer).generateBlockers : ["Bill charges are still loading."];
+        if (blockers.length > 0) {
+          alert(blockers.join("\n"));
           return;
         }
       }
@@ -3262,6 +3381,10 @@ export default function Base2Page() {
               }
             }
           }
+        } else if (isSmeElecSmeOffer(util) && util.smeElecOffer) {
+          webhookUrl = isRsl ? SME_ELEC_SME_RSL_WEBHOOK_URL : SME_ELEC_SME_WEBHOOK_URL;
+          payload.nmi = util.identifier;
+          Object.assign(payload, smeElecSmeWebhookFields(util.smeElecOffer));
         } else if (util.utilityType === "Oil") {
           webhookUrl = "https://membersaces.app.n8n.cloud/webhook/generate-oil-comparaison-review-b2";
           const details = util.invoiceData?.oil_invoice_details || util.invoiceData || {};
@@ -3410,6 +3533,14 @@ export default function Base2Page() {
                 if (normAnnual != null) metadata.annual_savings = normAnnual;
                 if (normCurrent != null) metadata.current_cost = normCurrent;
                 if (normNew != null) metadata.new_cost = normNew;
+                if (isSmeElecSmeOffer(util) && util.smeElecOffer) {
+                  metadata.comparison_channel = "sme_to_sme";
+                  const screen = priceSmeElectricity(util.smeElecOffer);
+                  if (metadata.current_cost == null && screen.currentAnnual != null) metadata.current_cost = screen.currentAnnual;
+                  if (metadata.new_cost == null && screen.offerAnnual != null) metadata.new_cost = screen.offerAnnual;
+                  if (metadata.annual_savings == null && screen.annualSavings != null) metadata.annual_savings = screen.annualSavings;
+                  metadata.offer_rates = smeElecSmeWebhookFields(util.smeElecOffer);
+                }
                 const normAnnualUsage = normalizeMoneyToNumber((result as any).annual_usage_gj); if (normAnnualUsage != null) metadata.annual_usage_gj = normAnnualUsage;
                 const normEnergyChargePct = normalizeMoneyToNumber((result as any).energy_charge_pct); if (normEnergyChargePct != null) metadata.energy_charge_pct = normEnergyChargePct;
                 const normContractedRate = normalizeMoneyToNumber((result as any).contracted_rate); if (normContractedRate != null) metadata.contracted_rate = normContractedRate;
@@ -4454,7 +4585,10 @@ export default function Base2Page() {
                 <span className="text-xs text-gray-400">{typeComparisons.length} site{typeComparisons.length === 1 ? "" : "s"}</span>
               </div>
               {typeComparisons.map((comparison) => {
-          const savings = calculateSavings(comparison);
+          const smeOfferPrice = isSmeElecSmeOffer(comparison) && comparison.smeElecOffer ? priceSmeElectricity(comparison.smeElecOffer) : null;
+          const savings = smeOfferPrice
+            ? { totalAnnualSavings: smeOfferPrice.generateBlockers.length === 0 ? (smeOfferPrice.annualSavings ?? undefined) : undefined }
+            : calculateSavings(comparison);
           const isElectricity = comparison.utilityType.includes('Electricity');
           const isGas = comparison.utilityType.includes('Gas');
           const cfg = getUtilityConfig(comparison.utilityType);
@@ -4860,11 +4994,24 @@ export default function Base2Page() {
                         <div className="mb-2.5 text-xs font-semibold text-gray-700 uppercase tracking-wide">Comparison Type — SME Electricity</div>
                         <select value={comparison.smeElecComparisonMode ?? "invoice_blocks"} onChange={(e) => setSmeElecComparisonModeFor(comparison.identifier, e.target.value as SmeElecComparisonMode)} className="w-full max-w-md rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400">
                           <option value="invoice_blocks">Invoice rates (tariff lines from bill)</option>
+                          <option value="sme_offer">SME vs SME</option>
                           <option value="ci_offer">C&I-style comparison (SME → C&I)</option>
-                          <option value="sme_benchmark_stub">SME vs SME benchmark (coming soon)</option>
                         </select>
-                        {(comparison.smeElecComparisonMode ?? "invoice_blocks") === "sme_benchmark_stub" && (
-                          <p className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">This comparison mode is not yet available.</p>
+                        {isSmeElecSmeOffer(comparison) && (
+                          <div className="mt-3 text-xs text-gray-700">
+                            {comparison.smeElecOfferLoading && <p className="text-gray-500">Loading bill charges…</p>}
+                            {comparison.smeElecOfferError && (
+                              <p className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900">{comparison.smeElecOfferError}</p>
+                            )}
+                            {comparison.smeElecOffer && (
+                              <>
+                                <div className="mb-2 flex justify-end">
+                                  <button type="button" onClick={() => void loadSmeElecOffer(comparison.identifier, true)} className="text-[11px] font-medium text-indigo-700 underline">Reload invoice</button>
+                                </div>
+                                <SmeElecOfferTable draft={comparison.smeElecOffer} onChange={(draft) => updateSmeElecOffer(comparison.identifier, draft)} />
+                              </>
+                            )}
+                          </div>
                         )}
                         {(comparison.smeElecComparisonMode ?? "invoice_blocks") === "ci_offer" && (
                           <div className="mt-3 space-y-3 text-xs text-gray-700">
@@ -5086,7 +5233,8 @@ export default function Base2Page() {
                         This SME bill has <strong>one</strong> implied energy rate (bundled ¢/kWh × energy share), not separate peak/off-peak current tariffs. Peak and off-peak usage exist only so the C&I offer rates can be applied to a load shape.
                       </p>
                     )}
-                    {/* Comparison Table */}
+                    {/* Comparison Table. SME vs SME uses SmeElecOfferTable above, not the discount-factor grid. */}
+                    {!isSmeElecSmeOffer(comparison) && (
                     <div className="overflow-x-auto rounded-xl border border-gray-200 mb-4">
                       <table className="w-full text-sm border-collapse">
                         <thead>
@@ -5104,9 +5252,10 @@ export default function Base2Page() {
                         </tbody>
                       </table>
                     </div>
+                    )}
 
                     {/* Action Buttons */}
-                    {(comparison.utilityType === 'C&I Electricity' || comparison.utilityType === 'C&I Gas' || comparison.utilityType === 'Oil' || (comparison.utilityType === 'SME Gas' && (comparison.smeGasComparisonMode ?? 'invoice_blocks') === 'ci_offer') || isSmeGasSmeOffer(comparison) || isSmeElecCiOffer(comparison)) && (
+                    {(comparison.utilityType === 'C&I Electricity' || comparison.utilityType === 'C&I Gas' || comparison.utilityType === 'Oil' || (comparison.utilityType === 'SME Gas' && (comparison.smeGasComparisonMode ?? 'invoice_blocks') === 'ci_offer') || isSmeGasSmeOffer(comparison) || isSmeElecCiOffer(comparison) || isSmeElecSmeOffer(comparison)) && (
                       <div className="flex flex-wrap justify-end gap-2.5 pt-1">
                         {comparison.utilityType === 'C&I Electricity' && (
                           <button
@@ -5120,7 +5269,7 @@ export default function Base2Page() {
                             ) : (<>📊 Generate DMA Review</>)}
                           </button>
                         )}
-                        {(comparison.utilityType === 'C&I Electricity' || comparison.utilityType === 'C&I Gas' || comparison.utilityType === 'Oil' || (comparison.utilityType === 'SME Gas' && (comparison.smeGasComparisonMode ?? 'invoice_blocks') === 'ci_offer') || isSmeGasSmeOffer(comparison) || isSmeElecCiOffer(comparison)) && (
+                        {(comparison.utilityType === 'C&I Electricity' || comparison.utilityType === 'C&I Gas' || comparison.utilityType === 'Oil' || (comparison.utilityType === 'SME Gas' && (comparison.smeGasComparisonMode ?? 'invoice_blocks') === 'ci_offer') || isSmeGasSmeOffer(comparison) || isSmeElecCiOffer(comparison) || isSmeElecSmeOffer(comparison)) && (
                           <button
                             onClick={() => handleGenerateClick(comparison, 'comparison')}
                             disabled={sending !== null && sending.includes(`${comparison.utilityType}-${comparison.identifier}-comparison`)}
@@ -5150,12 +5299,14 @@ export default function Base2Page() {
                             Future Contract
                           </button>
                         )}
-                        {(comparison.utilityType === 'C&I Electricity' || comparison.utilityType === 'C&I Gas' || isSmeGasSmeOffer(comparison) || isSmeGasCiOffer(comparison)) && (
+                        {(comparison.utilityType === 'C&I Electricity' || comparison.utilityType === 'C&I Gas' || isSmeGasSmeOffer(comparison) || isSmeGasCiOffer(comparison) || isSmeElecSmeOffer(comparison)) && (
                           <button
                             onClick={() => handleRslClick(comparison)}
                             disabled={sending !== null && sending.includes(`${comparison.utilityType}-${comparison.identifier}-comparison`)}
                             title={isSmeGasSmeOffer(comparison)
                               ? "Send the SME → SME gas offer from the RSL mailbox, then schedule business-day 1, 3 and 5 follow-up emails"
+                              : isSmeElecSmeOffer(comparison)
+                              ? "Send the SME → SME electricity offer from the RSL mailbox, then schedule business-day 1, 3 and 5 follow-up emails"
                               : isCiGasRslOffer(comparison)
                               ? "Send the gas offer from the RSL mailbox and start the C&I gas voice follow-up (Day 0 call, Day 3 email, Day 7 call)"
                               : "Run the RSL comparison (emails from rsl.vic) and start the RSL voice-agent follow-up"}
@@ -5258,7 +5409,7 @@ export default function Base2Page() {
               {recipientConfirmModal.isRsl ? "RSL follow-up contact" : `${recipientConfirmModal.action === "dma" ? "DMA Review" : "Comparison"} recipient`}
             </h3>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-              {recipientConfirmModal.isRsl && isSmeGasSmeOffer(recipientConfirmModal.comparison)
+              {recipientConfirmModal.isRsl && isSmeToSmeRslEmail(recipientConfirmModal.comparison)
                 ? "The offer email goes out now. Follow-up emails are scheduled for business day 1, 3 and 5. No calls. For testing, enter your own email."
                 : recipientConfirmModal.isRsl
                 ? "These details receive the Day 0 call, Day 3 email and Day 7 call. For testing, enter your own phone and email so nothing goes live to the client."
@@ -5290,7 +5441,7 @@ export default function Base2Page() {
             <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
               <button type="button" onClick={() => setRecipientConfirmModal((prev) => ({ ...prev, open: false }))} className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors order-2 sm:order-1">Cancel</button>
               <button type="button" onClick={handleRecipientConfirmSubmit} className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-colors order-1 sm:order-2" style={{ backgroundColor: '#1696CF' }}>
-                {recipientConfirmModal.isRsl && isSmeGasSmeOffer(recipientConfirmModal.comparison)
+                {recipientConfirmModal.isRsl && isSmeToSmeRslEmail(recipientConfirmModal.comparison)
                   ? "Send offer & schedule emails"
                   : recipientConfirmModal.isRsl
                   ? "Confirm & enrol in RSL follow-up"
