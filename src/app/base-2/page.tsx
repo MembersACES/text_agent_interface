@@ -2411,7 +2411,7 @@ export default function Base2Page() {
           if (response.ok) {
             const data = await response.json();
             const extractedRates = extractCurrentRates(data, comparison.utilityType, comparison.identifier);
-            const update: Partial<UtilityComparison> = { ...extractedRates, invoiceData: data, smeGasBillBlocksOverride: undefined, loading: false, error: null };
+            const update: Partial<UtilityComparison> & { loading: boolean; error: null } = { ...extractedRates, invoiceData: data, smeGasBillBlocksOverride: undefined, loading: false, error: null };
             if (comparison.utilityType === "SME Electricity") {
               const offer = await loadSmeElecOfferDraft(token, comparison.identifier, data);
               const details = data?.electricity_sme_invoice_details || data?.electricity_ci_invoice_details || {};
