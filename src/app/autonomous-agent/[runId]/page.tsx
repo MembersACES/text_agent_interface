@@ -248,9 +248,10 @@ function SequenceMetricsSidebar({ run, offer }: { run: RunDetail; offer: Offer |
 
   const isCiElectricitySeq =
     run.sequence_type === "ci_electricity_base2_followup_v1" ||
-    run.sequence_type === "ci_electricity_offer";
+    run.sequence_type === "ci_electricity_offer" ||
+    run.sequence_type === "sme_electricity_base2_followup_v1";
 
-  if (isCiElectricitySeq && lane === "ci_electricity") {
+  if (isCiElectricitySeq && (lane === "ci_electricity" || lane === "sme_electricity")) {
     const cur = numFromUnknown(snap?.current_cost) ?? offer?.current_cost ?? null;
     const neu = numFromUnknown(snap?.new_cost) ?? offer?.new_cost ?? null;
     const sav = annualFromWebhookCosts(

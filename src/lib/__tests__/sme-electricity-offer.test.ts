@@ -96,6 +96,8 @@ describe("smeElecSmeWebhookFields", () => {
     expect(fields.current_fit_c_per_kwh).toBe("5");
     expect(fields.comparison_fit_c_per_kwh).toBe("4");
     expect(fields.offer_basis).toBe("manual");
+    expect(fields.vdo_percent_diff).toBe("");
+    expect(fields.lowest_annual_price).toBe("");
     expect(fields.annual_savings_ui).toBe("581.26");
     expect(fields.current_annual_cost).toBe("11929.44");
     expect(fields.offer_annual_cost).toBe("11348.18");
@@ -104,6 +106,15 @@ describe("smeElecSmeWebhookFields", () => {
       { label: "Shoulder", kwh: 1000, current_c_per_kwh: 30, offer_c_per_kwh: 28.5 },
       { label: "Off peak", kwh: 2000, current_c_per_kwh: 22, offer_c_per_kwh: 20.9 },
     ]);
+  });
+
+  it("sends the VDO percent and the lowest annual price typed on the card", () => {
+    const draft = workedExample();
+    draft.vdoPercentDiff = -12.5;
+    draft.lowestAnnualPrice = 1840;
+    const fields = smeElecSmeWebhookFields(draft);
+    expect(fields.vdo_percent_diff).toBe("-12.5");
+    expect(fields.lowest_annual_price).toBe("1840");
   });
 });
 

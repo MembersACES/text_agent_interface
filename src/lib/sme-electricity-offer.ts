@@ -60,6 +60,13 @@ export interface SmeElecOfferDraft {
   invoiceLink?: string;
   network?: string;
   networkTariffCode?: string;
+  /**
+   * Signed % vs the reference price (DMO) or Victorian Default Offer (VDO).
+   * Negative means the plan is less than that price.
+   */
+  vdoPercentDiff?: number;
+  /** Lowest annual price for this plan, $/year, including GST. */
+  lowestAnnualPrice?: number;
 }
 
 export interface SmeElecPrice {
@@ -643,6 +650,8 @@ export function smeElecSmeWebhookFields(draft: SmeElecOfferDraft): Record<string
     comparison_fit_c_per_kwh: draft.feedIn?.offerFitIsZero ? "0" : webhookNumber(draft.feedIn?.offerCPerKwh),
     commission_c_per_kwh: "0",
     offer_basis: "manual",
+    vdo_percent_diff: draft.vdoPercentDiff != null && Number.isFinite(draft.vdoPercentDiff) ? String(draft.vdoPercentDiff) : "",
+    lowest_annual_price: draft.lowestAnnualPrice != null && Number.isFinite(draft.lowestAnnualPrice) ? String(draft.lowestAnnualPrice) : "",
     annual_savings_ui: priced.annualSavings != null ? priced.annualSavings.toFixed(2) : "",
     current_annual_cost: priced.currentAnnual != null ? priced.currentAnnual.toFixed(2) : "",
     offer_annual_cost: priced.offerAnnual != null ? priced.offerAnnual.toFixed(2) : "",
