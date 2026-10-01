@@ -42,6 +42,60 @@ function AmountCell({ amount }: { amount: SmeElecBillAmount | undefined }) {
   );
 }
 
+function referencePricePhrase(percent: number | undefined): string {
+  if (percent == null || !Number.isFinite(percent)) return "____ than";
+  if (percent === 0) return "the same as";
+  const amount = Math.abs(percent).toLocaleString("en-AU", { maximumFractionDigits: 2 });
+  return percent < 0 ? `${amount}% less than` : `${amount}% more than`;
+}
+
+function ReferencePriceFields({
+  draft,
+  onChange,
+}: {
+  draft: SmeElecOfferDraft;
+  onChange: (next: SmeElecOfferDraft) => void;
+}) {
+  const price =
+    draft.lowestAnnualPrice != null && Number.isFinite(draft.lowestAnnualPrice)
+      ? draft.lowestAnnualPrice.toLocaleString("en-AU", { style: "currency", currency: "AUD" })
+      : "$0.00";
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white px-3 py-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <label className="text-[11px] text-gray-600">
+          % difference from the VDO / DMO
+          <input
+            type="number"
+            step="0.01"
+            className={`${inputCls} mt-1`}
+            value={draft.vdoPercentDiff ?? ""}
+            onChange={(e) => onChange({ ...draft, vdoPercentDiff: parseOptional(e.target.value) })}
+            aria-label="% difference from the VDO or DMO"
+            placeholder="-12"
+          />
+          <span className="mt-1 block text-[10px] font-normal text-gray-400">Negative means the plan is less than the reference price.</span>
+        </label>
+        <label className="text-[11px] text-gray-600">
+          Lowest annual price ($/year, including GST)
+          <input
+            type="number"
+            step="0.01"
+            className={`${inputCls} mt-1`}
+            value={draft.lowestAnnualPrice ?? ""}
+            onChange={(e) => onChange({ ...draft, lowestAnnualPrice: parseOptional(e.target.value) })}
+            aria-label="Lowest annual price including GST"
+            placeholder="0.00"
+          />
+        </label>
+      </div>
+      <p className="mt-3 text-[11px] leading-snug text-gray-600">
+        Based on the state that this site is located, Alinta Energy&apos;s Business Deal electricity plan is {referencePricePhrase(draft.vdoPercentDiff)} the reference price (DMO) or Victorian Default Offer (VDO). The lowest annual price for this plan per year is {price} including GST.
+      </p>
+    </div>
+  );
+}
+
 export function SmeElecOfferTable({
   draft,
   onChange,
@@ -245,6 +299,7 @@ export function SmeElecOfferTable({
           </tbody>
         </table>
       </div>
+      <ReferencePriceFields draft={draft} onChange={patch} />
       {bill.status === "match" && (
         <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-900">
           Calculated bill {aud(bill.currentTotal)} matches the invoice total {aud(bill.invoiceTotal)}.

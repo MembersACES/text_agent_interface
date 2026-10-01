@@ -45,6 +45,7 @@ const COMPARISON_HINT: Record<string, string> = {
   bne_gas_base2_followup_v1: "Base 2 — B&E Gas comparison",
   future_gas_base2_followup_v1: "Base 2 — Future Contract gas comparison",
   sme_gas_base2_followup_v1: "Base 2 — SME → SME Gas comparison",
+  sme_electricity_base2_followup_v1: "Base 2 — SME → SME Electricity comparison",
   solar_panel_cleaning_followup_v1: "Solar cleaning quote sent",
   solar_panel_cleaning_engagement_form_v1: "Document Generation — engagement form",
 };
