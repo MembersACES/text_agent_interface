@@ -4,7 +4,7 @@ import { FileText } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
-import { TESTIMONIAL_STATUSES } from "@/constants/crm";
+import { SOCIAL_POST_STATUSES, TESTIMONIAL_STATUSES, type SocialPostFilter } from "@/constants/crm";
 import { SOLUTION_TYPE_LABELS } from "@/lib/testimonial-solution-content";
 import { cn, formatDateAustralian } from "@/lib/utils";
 
@@ -22,6 +22,7 @@ export type ExampleItem = {
   testimonial_solution_type_id?: string | null;
   invoice_number?: string | null;
   status?: string | null;
+  social_status?: string | null;
   source?: string | null;
   created_at?: string | null;
 };
@@ -73,6 +74,20 @@ export function invoiceState(row: ExampleItem): InvoiceState {
   if (hasLinkedInvoice(row)) return "linked";
   if (isNoInvoiceSentinel(row.invoice_number) || typeExpectsNoInvoice(row)) return "none";
   return "missing";
+}
+
+export function isApprovedTestimonial(row: ExampleItem): boolean {
+  return row.status === "Approved";
+}
+
+export function isSocialNotStarted(row: ExampleItem): boolean {
+  return isApprovedTestimonial(row) && !(row.social_status || "").trim();
+}
+
+export function matchesSocialFilter(row: ExampleItem, filter: SocialPostFilter): boolean {
+  if (filter === "all") return true;
+  if (filter === "not_started") return isSocialNotStarted(row);
+  return row.social_status === filter;
 }
 
 export function matchesInvoiceFilter(row: ExampleItem, filter: InvoiceFilter): boolean {
@@ -165,6 +180,8 @@ export function TestimonialRecordsPanel({
   onSearch,
   statusFilter,
   onStatusFilter,
+  socialFilter,
+  onSocialFilter,
   invoiceFilter,
   onInvoiceFilter,
   typeFilter,
@@ -173,6 +190,7 @@ export function TestimonialRecordsPanel({
   solutionTypes,
   onTypeChange,
   onStatusChange,
+  onSocialStatusChange,
   onDelete,
   onLinkInvoice,
   onUnlinkInvoice,
@@ -194,6 +212,8 @@ export function TestimonialRecordsPanel({
   onSearch: (value: string) => void;
   statusFilter: "all" | (typeof TESTIMONIAL_STATUSES)[number];
   onStatusFilter: (value: "all" | (typeof TESTIMONIAL_STATUSES)[number]) => void;
+  socialFilter: SocialPostFilter;
+  onSocialFilter: (value: SocialPostFilter) => void;
   invoiceFilter: InvoiceFilter;
   onInvoiceFilter: (value: InvoiceFilter) => void;
   typeFilter?: string;
@@ -202,6 +222,7 @@ export function TestimonialRecordsPanel({
   solutionTypes?: TypeOption[];
   onTypeChange?: (id: number, typeId: string) => void;
   onStatusChange: (id: number, status: string) => void;
+  onSocialStatusChange: (id: number, socialStatus: string) => void;
   onDelete: (row: ExampleItem) => void;
   onLinkInvoice: (row: ExampleItem) => void;
   onUnlinkInvoice: (row: ExampleItem) => void;
@@ -214,6 +235,11 @@ export function TestimonialRecordsPanel({
     invoiceFilter === "all" ? countSource : countSource.filter((row) => matchesInvoiceFilter(row, invoiceFilter));
   const afterStatus =
     statusFilter === "all" ? countSource : countSource.filter((row) => row.status === statusFilter);
+  const socialCountSource = countSource.filter((row) => {
+    if (statusFilter !== "all" && row.status !== statusFilter) return false;
+    return matchesInvoiceFilter(row, invoiceFilter);
+  });
+  const socialNotStartedCount = socialCountSource.filter((row) => isSocialNotStarted(row)).length;
   const withCount = afterStatus.filter((row) => invoiceState(row) === "linked").length;
   const withoutCount = afterStatus.filter((row) => invoiceState(row) === "missing").length;
   const noneCount = afterStatus.filter((row) => invoiceState(row) === "none").length;
@@ -280,6 +306,30 @@ export function TestimonialRecordsPanel({
             No invoice recorded {noneCount}
           </FilterChip>
         </div>
+        <div className="flex flex-nowrap items-center gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:thin]">
+          <span className="shrink-0 text-[10.5px] font-bold uppercase tracking-wider text-gray-400">Social post</span>
+          <FilterChip pressed={socialFilter === "all"} onClick={() => onSocialFilter("all")}>
+            All {socialCountSource.length}
+          </FilterChip>
+          <FilterChip
+            pressed={socialFilter === "not_started"}
+            onClick={() => onSocialFilter(socialFilter === "not_started" ? "all" : "not_started")}
+          >
+            Not started {socialNotStartedCount}
+          </FilterChip>
+          {SOCIAL_POST_STATUSES.map((status) => {
+            const n = socialCountSource.filter((row) => row.social_status === status).length;
+            return (
+              <FilterChip
+                key={status}
+                pressed={socialFilter === status}
+                onClick={() => onSocialFilter(socialFilter === status ? "all" : status)}
+              >
+                {status} {n}
+              </FilterChip>
+            );
+          })}
+        </div>
       </div>
 
       {loading ? (
@@ -305,7 +355,7 @@ export function TestimonialRecordsPanel({
           }
           description={
             filteredEmpty
-              ? "Clear the invoice or status filter, or search a different name."
+              ? "Clear the invoice, status, or social post filter, or search a different name."
               : emptyDescription
           }
         />
@@ -321,6 +371,7 @@ export function TestimonialRecordsPanel({
                 <col style={{ width: "11rem" }} />
                 {showAdded ? <col style={{ width: "6rem" }} /> : null}
                 <col style={{ width: "7.5rem" }} />
+                <col style={{ width: "10.5rem" }} />
               </colgroup>
               <thead className="border-b border-gray-200 bg-gray-50 text-[10.5px] font-bold uppercase tracking-wider text-gray-400 dark:border-gray-700 dark:bg-gray-800/60">
                 <tr>
@@ -331,6 +382,7 @@ export function TestimonialRecordsPanel({
                   <th className="px-3 py-2 font-bold">Invoice</th>
                   {showAdded ? <th className="px-3 py-2 font-bold">Added</th> : null}
                   <th className="px-3 py-2 font-bold"> </th>
+                  <th className="px-3 py-2 font-bold">Social post</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -487,6 +539,27 @@ export function TestimonialRecordsPanel({
                             </button>
                           )}
                         </div>
+                      </td>
+                      <td className="px-3 py-2.5">
+                        {isApprovedTestimonial(ex) ? (
+                          <select
+                            value={ex.social_status ?? ""}
+                            onChange={(e) => onSocialStatusChange(ex.id, e.target.value)}
+                            aria-label={`Social post for ${ex.business_name}`}
+                            className="max-w-full rounded-full border border-gray-200 bg-white px-2 py-1 text-xs dark:border-gray-600 dark:bg-gray-800"
+                          >
+                            <option value="">Not started</option>
+                            {SOCIAL_POST_STATUSES.map((status) => (
+                              <option key={status} value={status}>
+                                {status}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span className="text-xs text-gray-400" title="Approve the testimonial before tracking a social post">
+                            —
+                          </span>
+                        )}
                       </td>
                     </tr>
                   );
