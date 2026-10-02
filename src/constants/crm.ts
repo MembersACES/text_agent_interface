@@ -135,4 +135,11 @@ export type TestimonialStatus = (typeof TESTIMONIAL_STATUSES)[number];
 
 export const DEFAULT_TESTIMONIAL_STATUS: TestimonialStatus = "Draft";
 
+/** Social post progress. Separate from testimonial approval. Blank means not started. */
+export const SOCIAL_POST_STATUSES = ["Drafted", "Ready to post", "Posted"] as const;
+
+export type SocialPostStatus = (typeof SOCIAL_POST_STATUSES)[number];
+
+export type SocialPostFilter = "all" | "not_started" | SocialPostStatus;
+
 

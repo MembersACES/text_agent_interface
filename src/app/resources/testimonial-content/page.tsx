@@ -16,7 +16,12 @@ import {
   type TestimonialSolutionContentItem,
 } from "@/lib/testimonial-solution-content";
 import { TESTIMONIAL_CONTENT_SOURCE_HEADER, type TestimonialContentSource } from "@/lib/testimonial-content-source";
-import { DEFAULT_TESTIMONIAL_STATUS, TESTIMONIAL_STATUSES, type TestimonialStatus } from "@/constants/crm";
+import {
+  DEFAULT_TESTIMONIAL_STATUS,
+  TESTIMONIAL_STATUSES,
+  type SocialPostFilter,
+  type TestimonialStatus,
+} from "@/constants/crm";
 import { useToast } from "@/components/ui/toast";
 import { cn, getApiBaseUrl } from "@/lib/utils";
 import { useDirtyRecord } from "@/hooks/useDirtyRecord";
@@ -40,6 +45,7 @@ import {
   extractDriveFileId,
   invoiceState,
   matchesInvoiceFilter,
+  matchesSocialFilter,
   NO_INVOICE_RECORDED,
   rowSolutionTypeId,
   typeLabel,
@@ -96,6 +102,7 @@ function mapExample(t: Record<string, unknown>): ExampleItem {
     testimonial_solution_type_id: (t.testimonial_solution_type_id as string | null) ?? null,
     invoice_number: (t.invoice_number as string | null) ?? null,
     status: (t.status as string | null) ?? null,
+    social_status: (t.social_status as string | null) ?? null,
     source: (t.source as string | null) ?? null,
     created_at: typeof t.created_at === "string" ? t.created_at : null,
   };
@@ -613,6 +620,7 @@ export default function TestimonialContentPage() {
 
   const [recSearch, setRecSearch] = useState("");
   const [recFilter, setRecFilter] = useState<"all" | (typeof TESTIMONIAL_STATUSES)[number]>("all");
+  const [socialFilter, setSocialFilter] = useState<SocialPostFilter>("all");
   const [invoiceFilter, setInvoiceFilter] = useState<InvoiceFilter>("all");
   const [allTypeFilter, setAllTypeFilter] = useState("all");
   const [bulkMoveTypeId, setBulkMoveTypeId] = useState("ci_gas");
@@ -1111,6 +1119,26 @@ export default function TestimonialContentPage() {
     }
   };
 
+  const handleSocialStatusChange = async (id: number, socialStatus: string) => {
+    try {
+      const res = await fetch(`/api/testimonials/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ social_status: socialStatus }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const detail = typeof data.error === "string" ? data.error : "Failed to update social post.";
+        showToast(detail, "error");
+        return;
+      }
+      applyPatchedRow(id, data as Record<string, unknown>);
+      showToast(socialStatus ? "Social post updated." : "Social post cleared.", "success");
+    } catch {
+      showToast("Failed to update social post.", "error");
+    }
+  };
+
   const patchType = async (id: number, typeId: string) => {
     const label =
       typeOptions.find((opt) => opt.id === typeId)?.label ?? SOLUTION_TYPE_LABELS[typeId] ?? typeId;
@@ -1377,6 +1405,7 @@ export default function TestimonialContentPage() {
       const q = recSearch.trim().toLowerCase();
       return list.filter((row) => {
         if (recFilter !== "all" && row.status !== recFilter) return false;
+        if (!matchesSocialFilter(row, socialFilter)) return false;
         if (!matchesInvoiceFilter(row, invoiceFilter)) return false;
         if (!q) return true;
         const haystack = [
@@ -1390,7 +1419,7 @@ export default function TestimonialContentPage() {
         return haystack.includes(q);
       });
     },
-    [recFilter, recSearch, invoiceFilter]
+    [recFilter, socialFilter, recSearch, invoiceFilter]
   );
 
   const filteredAll = useMemo(() => filterRows(allCountSource), [filterRows, allCountSource]);
@@ -1628,6 +1657,8 @@ export default function TestimonialContentPage() {
                 onSearch={setRecSearch}
                 statusFilter={recFilter}
                 onStatusFilter={setRecFilter}
+                socialFilter={socialFilter}
+                onSocialFilter={setSocialFilter}
                 invoiceFilter={invoiceFilter}
                 onInvoiceFilter={setInvoiceFilter}
                 typeFilter={allTypeFilter}
@@ -1636,6 +1667,7 @@ export default function TestimonialContentPage() {
                 solutionTypes={typeOptions}
                 onTypeChange={handleTypeChange}
                 onStatusChange={handleStatusChange}
+                onSocialStatusChange={handleSocialStatusChange}
                 onDelete={setDeleteTarget}
                 onLinkInvoice={openLinkInvoice}
                 onUnlinkInvoice={handleUnlinkInvoice}
@@ -1781,9 +1813,12 @@ export default function TestimonialContentPage() {
                   onSearch={setRecSearch}
                   statusFilter={recFilter}
                   onStatusFilter={setRecFilter}
+                  socialFilter={socialFilter}
+                  onSocialFilter={setSocialFilter}
                   invoiceFilter={invoiceFilter}
                   onInvoiceFilter={setInvoiceFilter}
                   onStatusChange={handleStatusChange}
+                  onSocialStatusChange={handleSocialStatusChange}
                   onDelete={setDeleteTarget}
                   onLinkInvoice={openLinkInvoice}
                   onUnlinkInvoice={handleUnlinkInvoice}
