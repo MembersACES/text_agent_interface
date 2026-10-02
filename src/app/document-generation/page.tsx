@@ -60,6 +60,8 @@ const SOLAR_ENGAGEMENT_FORM_BUSINESS_DAY_GAP = 2;
 const SOLAR_ENGAGEMENT_INITIAL_EMAIL_SUBJECT =
   "Solar cleaning — quick win to protect performance and your solar investment";
 
+type DocumentSendMailbox = "ACES" | "RSL";
+
 type GmailSendMetadata = {
   messageId: string | null;
   threadId: string | null;
@@ -278,6 +280,7 @@ export default function DocumentGenerationPage() {
     baseMsg: string;
     recipientName: string;
     recipientEmail: string;
+    sender: DocumentSendMailbox;
   } | null>(null);
   const [sendAutonomousBusy, setSendAutonomousBusy] = useState(false);
   const crmOfferIdRef = useRef<number | null>(null);
@@ -686,6 +689,7 @@ export default function DocumentGenerationPage() {
     recipientEmail: string,
     recipientName: string,
     docLink: string | undefined,
+    sender: DocumentSendMailbox,
   ) => {
     const email = session?.user?.email;
     if (!email || !token) return;
@@ -703,6 +707,7 @@ export default function DocumentGenerationPage() {
             form_type: N8N_SEND_ELIGIBLE_ENGAGEMENT_FORM_TYPE,
             recipient_email: recipientEmail,
             recipient_name: recipientName,
+            sender,
           },
           created_by: email,
         }),
@@ -717,6 +722,7 @@ export default function DocumentGenerationPage() {
     recipientName: string,
     recipientEmail: string,
     gmail: GmailSendMetadata,
+    sender: DocumentSendMailbox,
   ): Record<string, unknown> => {
     const info = editableBusinessInfo;
     const ctx = lastClientDocSendContext;
@@ -724,6 +730,7 @@ export default function DocumentGenerationPage() {
     const threadId = (gmail.threadId || "").trim() || null;
     const context: Record<string, unknown> = {
       source: "document_generation_page",
+      sender,
       sequence_type: SOLAR_ENGAGEMENT_FORM_SEQUENCE,
       contact_name: recipientName.trim() || info?.contact_name?.trim() || null,
       contact_email: recipientEmail.trim() || info?.email?.trim() || null,
@@ -760,6 +767,7 @@ export default function DocumentGenerationPage() {
     recipientName: string,
     recipientEmail: string,
     gmail: GmailSendMetadata,
+    sender: DocumentSendMailbox,
   ) => {
     if (!token) throw new Error("Sign in required to start autonomous sequences.");
     if (!gmail.messageId && !gmail.threadId) {
@@ -772,7 +780,7 @@ export default function DocumentGenerationPage() {
       throw new Error("Could not link a CRM offer for this business. Try reloading business info from search.");
     }
     const clientNum = await resolveClientIdForAutonomous();
-    const context = buildSolarAutonomousContext(recipientName, recipientEmail, gmail);
+    const context = buildSolarAutonomousContext(recipientName, recipientEmail, gmail, sender);
     const res = await fetch(`${getAutonomousApiBaseUrl()}/api/autonomous/sequences/start`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -798,9 +806,9 @@ export default function DocumentGenerationPage() {
   const confirmStartEngagementFormSequence = async () => {
     if (!sendAutonomousPrompt) return;
     setSendAutonomousBusy(true);
-    const { messageId, threadId, baseMsg, recipientName, recipientEmail } = sendAutonomousPrompt;
+    const { messageId, threadId, baseMsg, recipientName, recipientEmail, sender } = sendAutonomousPrompt;
     try {
-      await startSolarAutonomousSequence(recipientName, recipientEmail, { messageId, threadId });
+      await startSolarAutonomousSequence(recipientName, recipientEmail, { messageId, threadId }, sender);
       setResult(
         `${baseMsg}\n\n✅ Autonomous sequence started: ${SOLAR_ENGAGEMENT_FORM_EMAIL_COUNT} follow-up emails (every ${SOLAR_ENGAGEMENT_FORM_BUSINESS_DAY_GAP} business days) — see Autonomous Agent.`,
       );
@@ -825,7 +833,7 @@ export default function DocumentGenerationPage() {
     setSendDocumentModalOpen(true);
   };
 
-  const handleSendDocumentSubmit = async () => {
+  const handleSendDocumentSubmit = async (sender: DocumentSendMailbox) => {
     if (!lastClientDocSendContext || !canSendClientDocViaN8n(lastClientDocSendContext)) return;
     const email = sendDocumentRecipientEmail.trim();
     const name = sendDocumentRecipientName.trim();
@@ -863,6 +871,7 @@ export default function DocumentGenerationPage() {
         client_folder_url: rest.client_folder_url,
         sent_by_email: session?.user?.email ?? "",
         sent_by_name: session?.user?.name ?? "",
+        sender,
         timestamp: new Date().toISOString(),
       };
       const res = await fetch(getSendClientDocumentN8nWebhookUrl(), {
@@ -880,13 +889,14 @@ export default function DocumentGenerationPage() {
         }
       }
       if (res.ok) {
-        const baseMsg = `✅ Engagement form emailed to ${email}.`;
+        const baseMsg = `✅ Engagement form emailed to ${email} from the ${sender} inbox.`;
         showToast("Document send workflow completed.", "success");
         setSendDocumentModalOpen(false);
         await recordEngagementFormSentInCrm(
           email,
           name,
           rest.document_link || undefined,
+          sender,
         );
         if (
           engagement_form_type === N8N_SEND_ELIGIBLE_ENGAGEMENT_FORM_TYPE &&
@@ -899,6 +909,7 @@ export default function DocumentGenerationPage() {
             baseMsg,
             recipientName: name,
             recipientEmail: email,
+            sender,
           });
           if (!gmailMeta.messageId && !gmailMeta.threadId) {
             showToast(
@@ -1341,17 +1352,26 @@ export default function DocumentGenerationPage() {
                 type="button"
                 onClick={() => setSendDocumentModalOpen(false)}
                 disabled={sendDocumentSubmitting}
-                className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors order-2 sm:order-1 disabled:opacity-50"
+                className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors order-3 sm:order-1 disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 type="button"
-                onClick={handleSendDocumentSubmit}
+                onClick={() => void handleSendDocumentSubmit("ACES")}
                 disabled={sendDocumentSubmitting}
                 className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors order-1 sm:order-2 disabled:opacity-50"
               >
-                {sendDocumentSubmitting ? "Sending…" : "Send document"}
+                {sendDocumentSubmitting ? "Sending…" : "Send from ACES"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSendDocumentSubmit("RSL")}
+                disabled={sendDocumentSubmitting}
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-colors order-2 sm:order-3 disabled:opacity-50"
+                style={{ backgroundColor: "#B91C1C" }}
+              >
+                {sendDocumentSubmitting ? "Sending…" : "Send from RSL"}
               </button>
             </div>
           </div>
@@ -1369,8 +1389,9 @@ export default function DocumentGenerationPage() {
               Schedule follow-up emails?
             </h3>
             <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-              The engagement form was already emailed via n8n (with attachments). Follow-ups will{" "}
-              <strong>reply on that Gmail thread</strong> — no new emails, no Drive links, no validity dates.{" "}
+              The engagement form was already emailed via n8n (with attachments) from the{" "}
+              <strong>{sendAutonomousPrompt.sender}</strong> inbox. Follow-ups will{" "}
+              <strong>reply on that Gmail thread</strong> from the same inbox — no new emails, no Drive links, no validity dates.{" "}
               <strong>{SOLAR_ENGAGEMENT_FORM_EMAIL_COUNT} emails</strong>, each{" "}
               {SOLAR_ENGAGEMENT_FORM_BUSINESS_DAY_GAP} business days apart (09:00 AEST).
             </p>
