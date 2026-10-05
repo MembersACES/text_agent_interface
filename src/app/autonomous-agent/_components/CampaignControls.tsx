@@ -97,6 +97,8 @@ type CampaignCtx = {
   status: CampaignStatus;
   provenance: string;
   setProvenance: (value: string) => void;
+  includeCalls: boolean;
+  onIncludeCallsChange: (value: boolean) => void;
   dailyCap: string;
   setDailyCap: (value: string) => void;
   sendWindowStart: string;
@@ -203,6 +205,7 @@ export function CampaignWorkspace({
   const [sequenceType, setSequenceType] = useState("");
   const [status, setStatus] = useState<CampaignStatus>("draft");
   const [provenance, setProvenance] = useState("");
+  const [includeCalls, setIncludeCalls] = useState(false);
   const [dailyCap, setDailyCap] = useState("25");
   const [sendWindowStart, setSendWindowStart] = useState("09:00");
   const [sendWindowEnd, setSendWindowEnd] = useState("17:00");
@@ -305,7 +308,7 @@ export function CampaignWorkspace({
     if (campaignId != null && persistedCsv.current === fingerprint) return;
     let cancelled = false;
     const handle = window.setTimeout(() => {
-      void previewCampaignRows(token, headers, rawRows, columnMap)
+      void previewCampaignRows(token, headers, rawRows, columnMap, includeCalls)
         .then((summary) => {
           if (cancelled) return;
           setRowCounts({
@@ -335,7 +338,7 @@ export function CampaignWorkspace({
       cancelled = true;
       window.clearTimeout(handle);
     };
-  }, [token, parsed, headers, rawRows, columnMap, status, campaignId, fail]);
+  }, [token, parsed, headers, rawRows, columnMap, status, campaignId, includeCalls, fail]);
 
   const outboundTypes = useMemo(
     () => types.filter((t) => t.is_active && !isComparisonLinkedTemplate(t)),
@@ -364,6 +367,7 @@ export function CampaignWorkspace({
     setSubject(campaign.first_touch_subject || subject);
     setBody(campaign.first_touch_html || body);
     setProvenance(campaign.provenance_note || "");
+    setIncludeCalls(Boolean(campaign.include_calls));
     setDailyCap(campaign.daily_cap != null ? String(campaign.daily_cap) : "");
     setSendWindowStart(campaign.send_window_start || "09:00");
     setSendWindowEnd(campaign.send_window_end || "17:00");
@@ -410,6 +414,7 @@ export function CampaignWorkspace({
     setSelectedId("new");
     setCampaignId(null);
     setStatus("draft");
+    setIncludeCalls(false);
     setArchived(false);
     setDeleteBlock(null);
     setDeleteTargetId(null);
@@ -437,6 +442,45 @@ export function CampaignWorkspace({
     const listed = campaigns.find((item) => item.id === id);
     if (listed) applyCampaign(listed);
     void loadCampaign(id);
+  }
+
+  // Saved straight away on a saved draft, so ticking it and then going to
+  // test send / Mark ready without pressing Save still takes effect.
+  async function onIncludeCallsChange(next: boolean) {
+    if (status !== "draft") return;
+    setIncludeCalls(next);
+    if (!token || campaignId == null) return;
+    try {
+      await patchCampaign(token, campaignId, { include_calls: next });
+      // Phone checks only apply when calls are on, so the held-row counts
+      // change. Refresh just the counts and rows, not the unsaved email edits.
+      // An unsaved list is re-previewed by the preview effect instead.
+      const listUnsaved = parsed && persistedCsv.current !== csvFingerprint(headers, rawRows, columnMap);
+      const fresh = listUnsaved ? null : await getCampaign(token, campaignId);
+      if (fresh) {
+        setRowCounts({
+          rows: fresh.row_counts?.rows ?? 0,
+          unique_recipients: fresh.row_counts?.unique_recipients ?? 0,
+          pending: fresh.row_counts?.pending ?? 0,
+          sendable: fresh.row_counts?.sendable ?? 0,
+          human_only: fresh.row_counts?.human_only ?? 0,
+          warnings: fresh.row_counts?.warnings ?? 0,
+          test_sends: fresh.row_counts?.test_sends ?? 0,
+        });
+        setShapeWarnings(fresh.shape_warnings ?? []);
+        setServerRows(
+          (fresh.rows ?? []).map((row) => ({
+            ...row,
+            shape_warnings: row.shape_warnings || [],
+            human_only_reason: row.human_only_reason ?? null,
+          })),
+        );
+      }
+      ok(next ? "Call step on: calls and texts will run." : "Call step off: emails only.");
+    } catch (e) {
+      setIncludeCalls(!next);
+      fail(e instanceof Error ? e.message : "Could not save the Call step setting.");
+    }
   }
 
   async function persistCampaign(confirmMidSend = false) {
@@ -469,6 +513,7 @@ export function CampaignWorkspace({
         first_touch_html: body,
         merge_field_map: columnMap,
         provenance_note: provenance,
+        ...(status === "draft" ? { include_calls: includeCalls } : {}),
         daily_cap: dailyCap ? Number(dailyCap) : null,
         send_window_start: sendWindowStart || "09:00",
         send_window_end: sendWindowEnd || "17:00",
@@ -898,6 +943,8 @@ export function CampaignWorkspace({
     status,
     provenance,
     setProvenance,
+    includeCalls,
+    onIncludeCallsChange,
     dailyCap,
     setDailyCap,
     sendWindowStart,
@@ -1039,6 +1086,8 @@ export function CampaignSetupCard() {
     readOnly,
     onSelectCampaign,
     busy,
+    includeCalls,
+    onIncludeCallsChange,
   } = useCampaign();
 
   const visibleCampaigns = campaigns.filter((campaign) =>
@@ -1111,6 +1160,24 @@ export function CampaignSetupCard() {
             ))}
           </Select>
         </div>
+        <label className="flex items-start gap-2 text-sm text-gray-800 dark:text-gray-200">
+          <input
+            type="checkbox"
+            className="mt-1"
+            checked={includeCalls}
+            onChange={(event) => void onIncludeCallsChange(event.target.checked)}
+            disabled={readOnly || busy !== null}
+          />
+          <span>
+            <span className="font-medium">Call step</span>
+            <span className="block text-xs text-gray-500">
+              {includeCalls
+                ? "On: runs the whole sequence, including calls and texts. Rows with a bad phone number are held back."
+                : "Off: emails only. Call and text steps are skipped, and phone numbers are not checked."}
+              {readOnly ? " Locked once the campaign has left draft." : ""}
+            </span>
+          </span>
+        </label>
         {busy === "load" ? <p className="text-xs text-gray-500">Loading campaign…</p> : null}
 
         <div className="rounded-xl border border-gray-200 dark:border-gray-700">

@@ -46,6 +46,7 @@ export type CampaignSummary = {
   first_touch_text: string | null;
   merge_field_map: Record<string, string>;
   provenance_note: string | null;
+  include_calls?: boolean;
   daily_cap: number | null;
   send_window_start: string | null;
   send_window_end: string | null;
@@ -286,6 +287,7 @@ export async function previewCampaignRows(
   headersList: string[],
   rows: string[][],
   column_map: Record<string, string>,
+  include_calls = true,
 ): Promise<{
   rows: number;
   unique_recipients: number;
@@ -302,7 +304,7 @@ export async function previewCampaignRows(
   const res = await fetch(`${base()}/api/autonomous/campaigns/preview-rows`, {
     method: "POST",
     headers: headers(token),
-    body: JSON.stringify({ headers: headersList, rows, column_map }),
+    body: JSON.stringify({ headers: headersList, rows, column_map, include_calls }),
   });
   if (!res.ok) throw new Error(await readError(res, "Could not preview rows"));
   return res.json();
