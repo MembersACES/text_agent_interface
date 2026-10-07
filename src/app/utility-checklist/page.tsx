@@ -228,17 +228,19 @@ function UtilityChecklistForm() {
           `${getApiBaseUrl()}/api/base2/bne-contract-checks?fuel=${fuel}&identifiers=${encodeURIComponent(identifiers)}`,
           { headers: { Authorization: `Bearer ${token}` } },
         );
+        type SheetContractResult = {
+          detail?: string;
+          query_mrin?: string;
+          query_nmi?: string;
+          match_kind?: string;
+          sheet_tab?: string;
+          sheet_id?: string;
+          sheet_gid?: number | string | null;
+          contracts?: { contract_end_date?: string; retailer?: string; mrin?: string; nmi?: string }[];
+        };
         const payload = (await res.json()) as {
           detail?: string;
-          results?: {
-            query_mrin?: string;
-            query_nmi?: string;
-            match_kind?: string;
-            sheet_tab?: string;
-            sheet_id?: string;
-            sheet_gid?: number | string | null;
-            contracts?: { contract_end_date?: string; retailer?: string; mrin?: string; nmi?: string }[];
-          }[];
+          results?: SheetContractResult[];
         };
         if (res.status === 404) {
           payload.results = await Promise.all(
@@ -248,7 +250,7 @@ function UtilityChecklistForm() {
                 ? `${getApiBaseUrl()}/api/base2/bne-gas-contract?mrin=${encodeURIComponent(group.primary.identifier)}`
                 : `${getApiBaseUrl()}/api/base2/bne-electricity-contract?nmi=${encodeURIComponent(group.primary.identifier)}`;
               const single = await fetch(singleUrl, { headers: { Authorization: `Bearer ${token}` } });
-              const body = (await single.json()) as NonNullable<(typeof payload)["results"]>[number];
+              const body = (await single.json()) as SheetContractResult;
               if (!single.ok) throw new Error(body.detail || "Contract sheet lookup failed");
               return body;
             }),
@@ -256,7 +258,7 @@ function UtilityChecklistForm() {
         } else if (!res.ok) {
           throw new Error(payload.detail || "Contract sheet lookup failed");
         }
-        const byQuery = new Map<string, (typeof payload.results)[number]>();
+        const byQuery = new Map<string, SheetContractResult>();
         for (const result of payload.results ?? []) {
           const query = String(result.query_mrin || result.query_nmi || "").trim().toUpperCase();
           if (query) byQuery.set(query, result);
