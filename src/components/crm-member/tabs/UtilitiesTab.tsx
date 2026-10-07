@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useCallback, useEffect } from "react";
+import { useMemo, useState, useCallback, useEffect, useRef } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,6 +13,13 @@ import { getRecordRowIcon } from "../shared/recordRowIcons";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
 import { mapUtilityKey } from "../shared/mapUtilityKey";
+import {
+  accountsForFuel,
+  checklistButtonLabel,
+  writeChecklistSeed,
+  type ChecklistFuel,
+  type UtilityChecklistRecord,
+} from "@/lib/utility-checklist";
 import { getApiBaseUrl, formatDateAustralian, formatDateDDMMYYYY, parseDateDDMMYYYYToISO } from "@/lib/utils";
 import {
   buildDiscrepancyCheckUrl,
@@ -274,6 +281,8 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility, cli
   } | null>(null);
   const [utilityEditLoading, setUtilityEditLoading] = useState(false);
   const [utilityEditError, setUtilityEditError] = useState<string | null>(null);
+  const [utilityChecklists, setUtilityChecklists] = useState<UtilityChecklistRecord[]>([]);
+  const checklistLoadSeq = useRef(0);
 
   const [showDriveModal, setShowDriveModal] = useState(false);
   const [driveFilingType, setDriveFilingType] = useState("");
@@ -454,6 +463,39 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility, cli
     return () => { cancelled = true; };
   }, [token, businessName]);
 
+  const loadUtilityChecklists = useCallback(() => {
+    if (!token || clientId == null || !Number.isFinite(clientId)) {
+      setUtilityChecklists([]);
+      return;
+    }
+    const seq = ++checklistLoadSeq.current;
+    fetch(`${getApiBaseUrl()}/api/clients/${clientId}/utility-checklists`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error("Failed to load checklists"))))
+      .then((data: UtilityChecklistRecord[]) => {
+        if (seq === checklistLoadSeq.current) {
+          setUtilityChecklists(Array.isArray(data) ? data : []);
+        }
+      })
+      .catch(() => {
+        if (seq === checklistLoadSeq.current) setUtilityChecklists([]);
+      });
+  }, [token, clientId]);
+
+  useEffect(() => {
+    loadUtilityChecklists();
+    const refresh = () => {
+      if (document.visibilityState === "visible") loadUtilityChecklists();
+    };
+    window.addEventListener("focus", loadUtilityChecklists);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.removeEventListener("focus", loadUtilityChecklists);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [loadUtilityChecklists]);
+
   const discrepancyByIdentifier = useMemo(() => {
     const map = new Map<string, DiscrepancyRow[]>();
     for (const r of discrepancyRows) {
@@ -606,6 +648,16 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility, cli
     }
   }
 
+  function openUtilityChecklist(fuel: ChecklistFuel) {
+    if (clientId == null || !Number.isFinite(clientId) || !businessName.trim()) return;
+    writeChecklistSeed(clientId, fuel, accountsForFuel(businessInfo as Record<string, unknown> | null, fuel));
+    const params = new URLSearchParams();
+    params.set("clientId", String(clientId));
+    params.set("fuel", fuel);
+    params.set("businessName", businessName.trim());
+    window.open(`/utility-checklist?${params.toString()}`, "_blank", "noopener,noreferrer");
+  }
+
   function handleQuoteRequest(config: UtilityConfigItem, identifier: string) {
     const businessInfoToPass = {
       business_name: businessName,
@@ -755,6 +807,30 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility, cli
                 >
                   Upload invoice or data
                 </Button>
+                {rows.some((row) => row.displayKey.includes("Electricity")) && (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    radius="md"
+                    disabled={clientId == null}
+                    onClick={() => openUtilityChecklist("electricity")}
+                  >
+                    {checklistButtonLabel(utilityChecklists, "electricity")}
+                  </Button>
+                )}
+                {rows.some((row) => row.displayKey.includes("Gas")) && (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    radius="md"
+                    disabled={clientId == null}
+                    onClick={() => openUtilityChecklist("gas")}
+                  >
+                    {checklistButtonLabel(utilityChecklists, "gas")}
+                  </Button>
+                )}
               </>
             }
           />
