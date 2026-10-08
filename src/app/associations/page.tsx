@@ -30,6 +30,7 @@ import {
   fetchAssociationDocuments,
   fetchAssociationTestimonials,
   fetchAssociations,
+  registerAssociationTestimonial,
   syncAssociationsFromDrive,
   updateAssociation,
   uploadAssociationDocument,
@@ -148,7 +149,9 @@ function AssociationsPageInner() {
   const [createEmail, setCreateEmail] = useState("");
   const [createNotes, setCreateNotes] = useState("");
 
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [savingDetails, setSavingDetails] = useState(false);
+  const [registering, setRegistering] = useState(false);
   const [draftStatus, setDraftStatus] = useState<AssociationStatus>("targeting");
   const [draftContact, setDraftContact] = useState("");
   const [draftEmail, setDraftEmail] = useState("");
@@ -389,7 +392,7 @@ function AssociationsPageInner() {
         accessToken,
       );
       setAssociations((prev) => prev.map((row) => (row.id === updated.id ? updated : row)));
-      setNotice(`Saved ${updated.name}.`);
+      setDetailsOpen(false);
     } catch (err: unknown) {
       setPageError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -458,7 +461,7 @@ function AssociationsPageInner() {
     setPendingFile(file);
     setUploadName(stem);
     setUploadError(null);
-    setRegisterTestimonial(false);
+    setRegisterTestimonial(viewingTestimonials);
     setTestimonialSavings("");
   };
 
@@ -494,16 +497,56 @@ function AssociationsPageInner() {
 
   const canPreview = canPreviewFile(selectedFile);
   const driveFolderUrl = currentFolder?.folder_url || selected?.drive_folder_url || "";
-  const nested = Boolean(
-    selected?.drive_folder_id && currentFolderId && currentFolderId !== selected.drive_folder_id,
+  const selectedTestimonial = useMemo(
+    () => testimonials.find((item) => item.file_id === selectedFile?.id) ?? null,
+    [testimonials, selectedFile?.id],
   );
+  const viewingTestimonials = Boolean(
+    selected?.testimonials_folder_id &&
+      (currentFolderId === selected.testimonials_folder_id ||
+        folderPath.some((crumb) => crumb.id === selected.testimonials_folder_id)),
+  );
+  const contactLine = [selected?.contact_name, selected?.contact_email].filter(Boolean).join(" · ");
+
+  const changeStatus = async (next: AssociationStatus) => {
+    if (!token || !selected || next === selected.status) return;
+    setPageError(null);
+    try {
+      const updated = await updateAssociation(token, selected.id, { status: next }, accessToken);
+      setAssociations((prev) => prev.map((row) => (row.id === updated.id ? updated : row)));
+    } catch (err: unknown) {
+      setPageError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const registerSelectedFile = async () => {
+    if (!token || !selected || !selectedFile) return;
+    setRegistering(true);
+    setPageError(null);
+    try {
+      await registerAssociationTestimonial(
+        token,
+        selected.id,
+        selectedFile.id,
+        selectedFile.name,
+        selected.results_note || "",
+        accessToken,
+      );
+      setNotice(`${selectedFile.name} is now a draft testimonial.`);
+      await Promise.all([loadTestimonials(), loadAssociations()]);
+    } catch (err: unknown) {
+      setPageError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRegistering(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
       <PageHeader
         pageName="Associations"
         title="Associations"
-        description="Associations we are targeting or working with. Creating one adds a folder in the shared Drive, with a Testimonials folder for endorsements."
+        description="Pick an association, open its files, and mark an endorsement when it belongs in the testimonial register."
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <Button
@@ -551,16 +594,6 @@ function AssociationsPageInner() {
         }
       />
 
-      <div className="relative min-w-[220px] max-w-md flex-1">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-        <Input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search associations…"
-          className="pl-9"
-        />
-      </div>
-
       {notice ? (
         <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-200">
           {notice}
@@ -585,29 +618,34 @@ function AssociationsPageInner() {
             Retry
           </Button>
         </div>
-      ) : filtered.length === 0 ? (
+      ) : associations.length === 0 ? (
         <EmptyState
           icon={<FolderOpen className="h-10 w-10" />}
-          title={query.trim() ? "No matching associations" : "No associations yet"}
-          description={
-            query.trim()
-              ? "Try another search."
-              : "Create an association to add its Drive folder, or adopt folders that are already in the shared Drive."
-          }
+          title="No associations yet"
+          description="Create an association to add its Drive folder, or adopt folders that are already in the shared Drive."
           action={
-            query.trim() ? undefined : (
-              <Button onClick={() => setCreateOpen(true)} leftIcon={<FolderPlus className="h-4 w-4" />}>
-                New association
-              </Button>
-            )
+            <Button onClick={() => setCreateOpen(true)} leftIcon={<FolderPlus className="h-4 w-4" />}>
+              New association
+            </Button>
           }
         />
       ) : (
         <div className="grid items-start gap-4 lg:grid-cols-[minmax(240px,320px)_1fr]">
           <div className="overflow-hidden rounded-xl border border-stroke bg-white dark:border-dark-3 dark:bg-gray-dark">
-            <div className="border-b border-stroke px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:border-dark-3 dark:text-gray-400">
-              {filtered.length} association{filtered.length === 1 ? "" : "s"}
+            <div className="border-b border-stroke p-2 dark:border-dark-3">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <Input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search associations…"
+                  className="pl-9"
+                />
+              </div>
             </div>
+            {filtered.length === 0 ? (
+              <p className="px-3 py-8 text-center text-sm text-gray-500">No matching associations.</p>
+            ) : (
             <ul className="max-h-[min(70vh,720px)] divide-y divide-stroke overflow-y-auto dark:divide-dark-3">
               {filtered.map((row) => {
                 const isActive = selectedId === row.id;
@@ -653,149 +691,162 @@ function AssociationsPageInner() {
                 );
               })}
             </ul>
+            )}
           </div>
 
           {selected ? (
-            <div className="min-w-0 space-y-4">
-              <div className="rounded-xl border border-stroke bg-white p-4 dark:border-dark-3 dark:bg-gray-dark">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <h2 className="text-base font-semibold text-dark dark:text-white">{selected.name}</h2>
-                    {folderPath.length > 0 ? (
-                      <nav className="mt-1 flex flex-wrap items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
-                        {folderPath.map((crumb, index) => {
-                          const isLast = index === folderPath.length - 1;
-                          const label = index === 0 ? selected.name : crumb.name;
-                          return (
-                            <span key={crumb.id} className="inline-flex min-w-0 items-center gap-1">
-                              {index > 0 ? <ChevronRight className="h-3 w-3 shrink-0 opacity-50" /> : null}
-                              {isLast ? (
-                                <span className="truncate font-medium text-dark dark:text-white">{label}</span>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setCurrentFolderId(crumb.id);
-                                    setUploadError(null);
-                                  }}
-                                  className="truncate hover:text-primary hover:underline"
-                                >
-                                  {label}
-                                </button>
-                              )}
-                            </span>
-                          );
-                        })}
-                      </nav>
+            <div
+              className={cn(
+                "min-w-0 overflow-hidden rounded-xl border bg-white dark:bg-gray-dark",
+                dragOver ? "border-primary" : "border-stroke dark:border-dark-3",
+              )}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragOver(true);
+              }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragOver(false);
+                onPickFiles(e.dataTransfer.files);
+              }}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stroke px-4 py-3 dark:border-dark-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="truncate text-base font-semibold text-dark dark:text-white">{selected.name}</h2>
+                    {selected.endorsed ? (
+                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200">
+                        Endorsed
+                      </span>
                     ) : null}
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => setDetailsOpen(true)}
+                    className="mt-0.5 block max-w-xl truncate text-left text-xs text-gray-500 hover:text-primary hover:underline dark:text-gray-400"
+                  >
+                    {contactLine || selected.results_note
+                      ? [contactLine, selected.results_note].filter(Boolean).join(" — ")
+                      : "Add contact and notes"}
+                  </button>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    aria-label="Association status"
+                    className="rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium dark:border-gray-600 dark:bg-gray-800"
+                    value={selected.status === "working_with" ? "working_with" : "targeting"}
+                    onChange={(e) => void changeStatus(e.target.value as AssociationStatus)}
+                  >
+                    {ASSOCIATION_STATUS_OPTIONS.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  <Button size="sm" variant="secondary" onClick={() => setDetailsOpen(true)}>
+                    Details
+                  </Button>
                   {driveFolderUrl ? (
                     <a
                       href={driveFolderUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-primary hover:underline"
+                      className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
                     >
                       Open in Drive
                       <ExternalLink className="h-3 w-3" />
                     </a>
                   ) : null}
                 </div>
-
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  <label className="block text-sm">
-                    <span className="mb-1 block font-medium text-dark dark:text-white">Status</span>
-                    <select
-                      className={SELECT_CLASS}
-                      value={draftStatus}
-                      onChange={(e) => setDraftStatus(e.target.value as AssociationStatus)}
-                    >
-                      {ASSOCIATION_STATUS_OPTIONS.map((option) => (
-                        <option key={option.id} value={option.id}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <Input
-                    label="Contact"
-                    value={draftContact}
-                    onChange={(e) => setDraftContact(e.target.value)}
-                  />
-                  <Input
-                    label="Email"
-                    type="email"
-                    value={draftEmail}
-                    onChange={(e) => setDraftEmail(e.target.value)}
-                  />
-                  <Textarea
-                    label="Notes"
-                    value={draftNotes}
-                    onChange={(e) => setDraftNotes(e.target.value)}
-                    rows={2}
-                  />
-                  <Textarea
-                    label="Results for the membership"
-                    hint="Used when writing the association endorsement."
-                    value={draftResults}
-                    onChange={(e) => setDraftResults(e.target.value)}
-                    rows={2}
-                    wrapperClassName="sm:col-span-2"
-                  />
-                </div>
-                <div className="mt-3 flex justify-end">
-                  <Button size="sm" onClick={() => void handleSaveDetails()} loading={savingDetails}>
-                    Save details
-                  </Button>
-                </div>
-
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  className="hidden"
-                  onChange={(e) => {
-                    onPickFiles(e.target.files);
-                    e.target.value = "";
-                  }}
-                />
-                <div
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    setDragOver(true);
-                  }}
-                  onDragLeave={() => setDragOver(false)}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    setDragOver(false);
-                    onPickFiles(e.dataTransfer.files);
-                  }}
-                  className={cn(
-                    "mt-4 flex flex-col items-center justify-center rounded-lg border-2 border-dashed px-4 py-6 text-center transition-colors",
-                    dragOver ? "border-primary bg-primary/5" : "border-stroke dark:border-dark-3",
-                  )}
-                >
-                  <Upload className="mb-2 h-5 w-5 text-gray-400" />
-                  <p className="text-sm text-gray-600 dark:text-gray-300">Drop a document here, or</p>
-                  <Button
-                    className="mt-2"
-                    size="sm"
-                    disabled={!selected.drive_folder_id || uploading}
-                    loading={uploading}
-                    leftIcon={<Upload className="h-4 w-4" />}
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    Upload document
-                  </Button>
-                  <p className="mt-2 text-xs text-gray-400">
-                    {nested && currentFolder
-                      ? `Saves into ${currentFolder.name}. Mark it as a testimonial to file it under Testimonials.`
-                      : "You can rename the file before it is saved. PDF, Word, Excel, images — max 50 MB."}
-                  </p>
-                </div>
-                {uploadError ? (
-                  <p className="mt-2 text-sm text-red-600 dark:text-red-400">{uploadError}</p>
-                ) : null}
               </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stroke px-3 py-2 dark:border-dark-3">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <div className="inline-flex rounded-full bg-gray-100 p-0.5 text-xs dark:bg-dark-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCurrentFolderId(selected.drive_folder_id);
+                        setSelectedFileId(null);
+                      }}
+                      className={cn(
+                        "rounded-full px-3 py-1 font-medium",
+                        !viewingTestimonials
+                          ? "bg-white text-dark shadow-sm dark:bg-gray-dark dark:text-white"
+                          : "text-gray-500",
+                      )}
+                    >
+                      Files
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!selected.testimonials_folder_id) return;
+                        setCurrentFolderId(selected.testimonials_folder_id);
+                        setSelectedFileId(null);
+                      }}
+                      className={cn(
+                        "rounded-full px-3 py-1 font-medium",
+                        viewingTestimonials
+                          ? "bg-white text-dark shadow-sm dark:bg-gray-dark dark:text-white"
+                          : "text-gray-500",
+                      )}
+                    >
+                      Testimonials
+                      {selected.testimonial_count ? ` (${selected.testimonial_count})` : ""}
+                    </button>
+                  </div>
+                  {folderPath.length > 1 ? (
+                    <nav className="flex min-w-0 flex-wrap items-center gap-1 text-xs text-gray-500">
+                      {folderPath.map((crumb, index) => {
+                        const isLast = index === folderPath.length - 1;
+                        const label = index === 0 ? selected.name : crumb.name;
+                        return (
+                          <span key={crumb.id} className="inline-flex min-w-0 items-center gap-1">
+                            {index > 0 ? <ChevronRight className="h-3 w-3 shrink-0 opacity-50" /> : null}
+                            {isLast ? (
+                              <span className="truncate font-medium text-dark dark:text-white">{label}</span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setCurrentFolderId(crumb.id)}
+                                className="truncate hover:text-primary hover:underline"
+                              >
+                                {label}
+                              </button>
+                            )}
+                          </span>
+                        );
+                      })}
+                    </nav>
+                  ) : null}
+                </div>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={!selected.drive_folder_id || uploading}
+                  loading={uploading}
+                  leftIcon={<Upload className="h-4 w-4" />}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  Upload
+                </Button>
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                className="hidden"
+                onChange={(e) => {
+                  onPickFiles(e.target.files);
+                  e.target.value = "";
+                }}
+              />
+              {uploadError ? (
+                <p className="border-b border-stroke px-4 py-2 text-sm text-red-600 dark:border-dark-3 dark:text-red-400">
+                  {uploadError}
+                </p>
+              ) : null}
 
               {docsLoading ? (
                 <div className="flex items-center gap-2 py-8 text-sm text-gray-500">
@@ -814,15 +865,12 @@ function AssociationsPageInner() {
                   </button>
                 </div>
               ) : (
-                <div className="grid items-start gap-4 xl:grid-cols-[minmax(220px,280px)_1fr]">
-                  <div className="overflow-hidden rounded-xl border border-stroke bg-white dark:border-dark-3 dark:bg-gray-dark">
-                    <div className="border-b border-stroke px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:border-dark-3 dark:text-gray-400">
-                      {currentFolder?.name || "Documents"}
-                    </div>
+                <div className="grid min-h-[min(68vh,680px)] xl:grid-cols-[minmax(240px,300px)_1fr]">
+                  <div className="overflow-hidden border-stroke xl:border-r dark:border-dark-3">
                     {subfolders.length === 0 && files.length === 0 ? (
                       <p className="px-3 py-8 text-center text-sm text-gray-500">No files in this folder yet.</p>
                     ) : (
-                      <ul className="max-h-[min(50vh,480px)] divide-y divide-stroke overflow-y-auto dark:divide-dark-3">
+                      <ul className="h-[min(68vh,680px)] divide-y divide-stroke overflow-y-auto dark:divide-dark-3">
                         {subfolders.map((folder) => (
                           <li key={folder.id}>
                             <button
@@ -879,8 +927,8 @@ function AssociationsPageInner() {
                   </div>
 
                   {selectedFile ? (
-                    <div className="flex min-h-[min(50vh,480px)] flex-col overflow-hidden rounded-xl border border-stroke bg-white dark:border-dark-3 dark:bg-gray-dark">
-                      <div className="flex flex-wrap items-start justify-between gap-2 border-b border-stroke px-4 py-3 dark:border-dark-3">
+                    <div className="flex min-h-[min(68vh,680px)] flex-col xl:min-h-0">
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stroke px-4 py-2.5 dark:border-dark-3">
                         <div className="min-w-0">
                           <h3 className="truncate text-sm font-semibold text-dark dark:text-white">
                             {selectedFile.name}
@@ -891,18 +939,53 @@ function AssociationsPageInner() {
                             </p>
                           ) : null}
                         </div>
-                        <a
-                          href={selectedFile.web_view_link}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-primary hover:underline"
-                        >
-                          Open in Drive
-                          <ExternalLink className="h-3 w-3" />
-                        </a>
+                        <div className="flex flex-wrap items-center gap-2">
+                          {selectedTestimonial ? (
+                            <select
+                              aria-label={`Status for ${selectedFile.name}`}
+                              value={selectedTestimonial.status}
+                              onChange={(e) => void updateTestimonialStatus(selectedTestimonial.id, e.target.value)}
+                              className="rounded-full border border-gray-200 bg-white px-2 py-1 text-xs dark:border-gray-600 dark:bg-gray-800"
+                            >
+                              {TESTIMONIAL_STATUSES.map((status) => (
+                                <option key={status} value={status}>
+                                  {status}
+                                </option>
+                              ))}
+                            </select>
+                          ) : ["pdf", "doc", "image"].includes(selectedFile.file_type) ? (
+                            <Button
+                              size="sm"
+                              onClick={() => void registerSelectedFile()}
+                              loading={registering}
+                            >
+                              Add to register
+                            </Button>
+                          ) : null}
+                          <a
+                            href={selectedFile.web_view_link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-primary hover:underline"
+                          >
+                            Open
+                            <ExternalLink className="h-3 w-3" />
+                          </a>
+                        </div>
                       </div>
+                      {selectedTestimonial ? (
+                        <p className="border-b border-stroke px-4 py-1.5 text-xs text-gray-500 dark:border-dark-3">
+                          {selectedTestimonial.testimonial_savings || "Draft endorsement."}{" "}
+                          <Link href="/resources/testimonial-content" className="font-medium text-primary hover:underline">
+                            Open register
+                          </Link>
+                        </p>
+                      ) : null}
+                      {testimonialsError ? (
+                        <p className="px-4 py-2 text-xs text-red-600">{testimonialsError}</p>
+                      ) : null}
                       {canPreview ? (
-                        <div className="relative min-h-[420px] flex-1 bg-gray-100 dark:bg-dark-2">
+                        <div className="relative min-h-[480px] flex-1 bg-gray-100 dark:bg-dark-2">
                           <iframe
                             key={selectedFile.id}
                             title={selectedFile.name}
@@ -925,59 +1008,45 @@ function AssociationsPageInner() {
                   )}
                 </div>
               )}
-
-              <div className="rounded-xl border border-stroke bg-white p-4 dark:border-dark-3 dark:bg-gray-dark">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="text-sm font-semibold text-dark dark:text-white">Testimonials</h3>
-                  <Link href="/resources/testimonial-content" className="text-xs font-medium text-primary hover:underline">
-                    Open testimonial register
-                  </Link>
-                </div>
-                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  Endorsements are filed as Association Endorsement and use the same approval steps as member testimonials.
-                </p>
-                {testimonialsError ? (
-                  <p className="mt-3 text-sm text-red-600 dark:text-red-400">{testimonialsError}</p>
-                ) : testimonials.length === 0 ? (
-                  <p className="mt-3 text-sm text-gray-500">
-                    No testimonials yet. Upload a file and mark it as a testimonial.
-                  </p>
-                ) : (
-                  <ul className="mt-3 divide-y divide-stroke dark:divide-dark-3">
-                    {testimonials.map((item) => (
-                      <li key={item.id} className="flex flex-wrap items-center gap-3 py-2.5">
-                        <div className="min-w-0 flex-1">
-                          <a
-                            href={`https://drive.google.com/file/d/${item.file_id}/view`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="block truncate text-sm font-medium text-dark hover:text-primary hover:underline dark:text-white"
-                          >
-                            {item.file_name}
-                          </a>
-                          <p className="truncate text-xs text-gray-500">{item.testimonial_savings || "No results note"}</p>
-                        </div>
-                        <select
-                          aria-label={`Status for ${item.file_name}`}
-                          value={item.status}
-                          onChange={(e) => void updateTestimonialStatus(item.id, e.target.value)}
-                          className="rounded-full border border-gray-200 bg-white px-2 py-1 text-xs dark:border-gray-600 dark:bg-gray-800"
-                        >
-                          {TESTIMONIAL_STATUSES.map((status) => (
-                            <option key={status} value={status}>
-                              {status}
-                            </option>
-                          ))}
-                        </select>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
             </div>
           ) : null}
         </div>
       )}
+
+      <Modal
+        open={detailsOpen}
+        onClose={() => {
+          if (!savingDetails) setDetailsOpen(false);
+        }}
+        title={selected ? selected.name : "Association details"}
+        id="association-details"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setDetailsOpen(false)} disabled={savingDetails}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => void handleSaveDetails()}
+              loading={savingDetails}
+            >
+              Save
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-3">
+          <Input label="Contact" value={draftContact} onChange={(e) => setDraftContact(e.target.value)} />
+          <Input label="Email" type="email" value={draftEmail} onChange={(e) => setDraftEmail(e.target.value)} />
+          <Textarea label="Notes" value={draftNotes} onChange={(e) => setDraftNotes(e.target.value)} rows={3} />
+          <Textarea
+            label="Results for the membership"
+            hint="Shown with the endorsement in the testimonial register."
+            value={draftResults}
+            onChange={(e) => setDraftResults(e.target.value)}
+            rows={3}
+          />
+        </div>
+      </Modal>
 
       <Modal
         open={createOpen}

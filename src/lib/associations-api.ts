@@ -251,6 +251,30 @@ export async function fetchAssociationTestimonials(
   return Array.isArray(data) ? (data as AssociationTestimonial[]) : [];
 }
 
+export async function registerAssociationTestimonial(
+  token: string | undefined,
+  associationId: number,
+  fileId: string,
+  fileName: string,
+  testimonialSavings?: string,
+  accessToken?: string,
+): Promise<AssociationTestimonial> {
+  const res = await fetch(`${getApiBaseUrl()}/api/associations/${associationId}/testimonials`, {
+    method: "POST",
+    headers: authHeaders(token, accessToken, true),
+    body: JSON.stringify({
+      file_id: fileId,
+      file_name: fileName,
+      testimonial_savings: testimonialSavings?.trim() || null,
+    }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(detailMessage(data, `Failed to register testimonial (${res.status})`));
+  }
+  return data as AssociationTestimonial;
+}
+
 export async function uploadAssociationDocument(
   token: string | undefined,
   associationId: number,
