@@ -103,6 +103,7 @@ function mapExample(t: Record<string, unknown>): ExampleItem {
     invoice_number: (t.invoice_number as string | null) ?? null,
     status: (t.status as string | null) ?? null,
     social_status: (t.social_status as string | null) ?? null,
+    association_id: typeof t.association_id === "number" ? t.association_id : null,
     source: (t.source as string | null) ?? null,
     created_at: typeof t.created_at === "string" ? t.created_at : null,
   };

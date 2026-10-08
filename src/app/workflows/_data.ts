@@ -4,6 +4,7 @@ import {
   Factory,
   FileSignature,
   Handshake,
+  Landmark,
   Zap,
   Flame,
   Trash2,
@@ -33,6 +34,7 @@ export const WORKFLOW_CARD_GROUPS: { label: string; cards: WorkflowCard[] }[] = 
     cards: [
       { title: "Google Drive - New Member Creation", description: "Create folder structure and file LOA", href: "/loa-upload", icon: FolderPlus, color: "from-green-500 to-emerald-600" },
       { title: "Distributors", description: "Distributor Drive folders, documents, and uploads", href: "/distributors", icon: Handshake, color: "from-lime-600 to-emerald-700" },
+      { title: "Associations", description: "Association folders, documents, and endorsements", href: "/associations", icon: Landmark, color: "from-sky-600 to-indigo-700" },
       { title: "Distributor Folder Creation", description: "Create distributor folder from agreement", href: "/distributor-folder-creation", icon: FolderPlus, color: "from-lime-500 to-green-600" },
       { title: "Site Profiling", description: "Profile and capture site details", href: "/site-profiling", icon: MapPin, color: "from-teal-500 to-cyan-600" },
       { title: "New Member LOA Generation", description: "Generate new LOA and/or SFA documents", href: "/new-client-loa", icon: FileSignature, color: "from-purple-500 to-pink-600" },

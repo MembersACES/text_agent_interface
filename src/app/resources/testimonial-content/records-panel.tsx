@@ -1,6 +1,7 @@
 "use client";
 
 import { FileText } from "lucide-react";
+import Link from "next/link";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -23,6 +24,7 @@ export type ExampleItem = {
   invoice_number?: string | null;
   status?: string | null;
   social_status?: string | null;
+  association_id?: number | null;
   source?: string | null;
   created_at?: string | null;
 };
@@ -409,6 +411,14 @@ export function TestimonialRecordsPanel({
                           {sheet ? "Sheet register · " : ""}
                           {ex.file_name}
                         </p>
+                        {ex.association_id ? (
+                          <Link
+                            href={`/associations?id=${ex.association_id}`}
+                            className="text-xs font-medium text-primary hover:underline"
+                          >
+                            Open association
+                          </Link>
+                        ) : null}
                       </td>
                       {showType ? (
                         <td className="px-3 py-2.5">
