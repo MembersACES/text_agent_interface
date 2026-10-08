@@ -168,6 +168,9 @@ export function ActivityTab({ timelineEvents }: ActivityTabProps) {
                       {label || "Activity"}
                     </span>
                   </div>
+                  {ev.note && (
+                    <p className="text-gray-700 dark:text-gray-300">{ev.note}</p>
+                  )}
                   <span className="text-xs text-gray-500 dark:text-gray-400">
                     {formatDate(ev.created_at)}
                     {ev.created_by && ` · ${ev.created_by}`}

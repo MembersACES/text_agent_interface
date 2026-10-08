@@ -182,6 +182,8 @@ export default function ClientDetailPage() {
       type: "offer_activity" as const,
       id: `a-${a.id}`,
       created_at: a.created_at,
+      note:
+        typeof a.metadata?.summary === "string" ? a.metadata.summary : undefined,
       activity_type: a.activity_type,
       offer_id: a.offer_id,
       document_link: a.document_link,

@@ -431,6 +431,9 @@ export function MemberSidebar({
                       </>
                     ) : (
                       <>
+                        {ev.note && (
+                          <p className="break-words text-gray-700 dark:text-gray-300">{ev.note}</p>
+                        )}
                         <span className="truncate text-xs text-gray-500 dark:text-gray-400">
                           {formatDate(ev.created_at)}
                           {ev.created_by && ` · ${ev.created_by}`}

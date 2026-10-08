@@ -70,7 +70,7 @@ export function getOfferActivityEventVisual(activityType: string): ActivityEvent
       iconIntent: "purple",
     };
   }
-  if (t.includes("contract") || t === "loa" || t === "service_agreement") {
+  if (t.includes("contract") || t.includes("lodged") || t === "loa" || t === "service_agreement") {
     return {
       icon: FileSignature,
       dotClass: "bg-green",
