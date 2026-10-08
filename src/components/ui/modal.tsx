@@ -10,7 +10,7 @@ export interface ModalProps {
   title?: ReactNode;
   children: ReactNode;
   footer?: ReactNode;
-  size?: "sm" | "default" | "lg";
+  size?: "sm" | "default" | "lg" | "xl";
   className?: string;
   /** Optional id for the dialog element */
   id?: string;
@@ -20,6 +20,7 @@ const sizeClasses = {
   sm: "max-w-sm",
   default: "max-w-md",
   lg: "max-w-lg",
+  xl: "max-w-4xl",
 };
 
 export function Modal({
