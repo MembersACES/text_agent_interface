@@ -91,6 +91,7 @@ export const OFFER_ACTIVITY_TYPES = [
   "solar_cleaning_quote_sent",
   "solar_cleaning_signed_offer",
   "member_document_upload",
+  "signed_agreement_lodged",
 ] as const;
 
 export type OfferActivityType = (typeof OFFER_ACTIVITY_TYPES)[number];
@@ -123,6 +124,7 @@ export const OFFER_ACTIVITY_LABELS: Record<OfferActivityType, string> = {
   solar_cleaning_quote_sent: "Solar panel cleaning quote sent to client",
   solar_cleaning_signed_offer: "Solar panel cleaning signed offer uploaded",
   member_document_upload: "Member document uploaded",
+  signed_agreement_lodged: "Signed agreement lodged with retailer",
 };
 
 export const TESTIMONIAL_STATUSES = [

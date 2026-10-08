@@ -221,68 +221,6 @@ export default function SignedAgreementLodgementPage() {
     };
   }, [token]);
 
-  // Listen for file data from postMessage
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      console.log('📨 Received postMessage:', event.origin, event.data?.type);
-      // Only accept messages from same origin
-      if (event.origin !== window.location.origin) {
-        console.log('⚠️ Rejecting message from different origin:', event.origin);
-        return;
-      }
-      
-      if (event.data && event.data.type === 'LODGEMENT_FILE_TRANSFER' && event.data.fileData) {
-        console.log('📥 Received file data via postMessage!', event.data.fileData);
-        const fileData = event.data.fileData;
-        
-        try {
-          // Convert base64 back to File
-          const base64Data = fileData.data.split(',')[1];
-          const byteCharacters = atob(base64Data);
-          const byteNumbers = new Array(byteCharacters.length);
-          for (let i = 0; i < byteCharacters.length; i++) {
-            byteNumbers[i] = byteCharacters.charCodeAt(i);
-          }
-          const byteArray = new Uint8Array(byteNumbers);
-          const blob = new Blob([byteArray], { type: fileData.type || 'application/pdf' });
-          const restoredFile = new File([blob], fileData.name, { type: fileData.type || 'application/pdf' });
-          
-          console.log('✅ File restored from postMessage:', { name: restoredFile.name, size: restoredFile.size });
-          
-          // Create a FileList using DataTransfer
-          const dataTransfer = new DataTransfer();
-          dataTransfer.items.add(restoredFile);
-          const fileList = dataTransfer.files;
-          
-          // Set the files state
-          setFiles(fileList);
-          
-          // Update the file input
-          setTimeout(() => {
-            const fileInput = document.getElementById("file-input") as HTMLInputElement;
-            if (fileInput) {
-              const dt = new DataTransfer();
-              dt.items.add(restoredFile);
-              fileInput.files = dt.files;
-              const changeEvent = new Event('change', { bubbles: true });
-              fileInput.dispatchEvent(changeEvent);
-              console.log('✅ File input updated from postMessage');
-            }
-          }, 200);
-          
-          // Show success message
-          setResult("✅ File loaded from previous upload. Ready to submit!");
-          setTimeout(() => setResult(""), 5000);
-        } catch (error) {
-          console.error('❌ Error processing file from postMessage:', error);
-        }
-      }
-    };
-    
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
-  }, []);
-
   // Load business name from URL query parameter
   useEffect(() => {
     console.log('🚀 Signed Agreement Lodgement page useEffect running');
@@ -291,9 +229,8 @@ export default function SignedAgreementLodgementPage() {
     const urlContractType = searchParams.get('contractType');
     const urlNmi = searchParams.get('nmi');
     const urlMirn = searchParams.get('mirn');
-    const hasFile = searchParams.get('hasFile') === 'true';
     
-    console.log('📋 URL params:', { urlBusinessName, urlUtilityType, urlContractType, urlNmi, urlMirn, hasFile });
+    console.log('📋 URL params:', { urlBusinessName, urlUtilityType, urlContractType, urlNmi, urlMirn });
     
     if (urlBusinessName) {
       setBusinessName(decodeURIComponent(urlBusinessName));
@@ -310,186 +247,7 @@ export default function SignedAgreementLodgementPage() {
     if (urlMirn) {
       setMirn(decodeURIComponent(urlMirn));
     }
-    
-    // Load file from sessionStorage if available
-    if (hasFile) {
-      console.log('🔍 hasFile is true, attempting to load file from sessionStorage');
-      console.log('🔍 Current URL:', window.location.href);
-      console.log('🔍 All sessionStorage keys:', Object.keys(sessionStorage));
-      
-      // Immediately check if file exists
-      const immediateCheck = sessionStorage.getItem('lodgementFileTransfer');
-      console.log('🔍 Immediate check for file:', !!immediateCheck);
-      
-      if (!immediateCheck) {
-        console.warn('⚠️ File not found in immediate check - this might be a timing issue');
-        // Show user-friendly message
-        setResult("ℹ️ Looking for file from previous upload...");
-      }
-      
-      // Use a longer delay to ensure the file input element exists and React has rendered
-      const timer = setTimeout(() => {
-        try {
-          // Check multiple times with increasing delays to handle timing issues
-          let attempts = 0;
-          const maxAttempts = 3;
-          
-          const tryLoadFile = () => {
-            attempts++;
-            // Try sessionStorage first, then localStorage as fallback
-            let fileDataStr = sessionStorage.getItem('lodgementFileTransfer');
-            if (!fileDataStr) {
-              console.log('🔍 File not in sessionStorage, checking localStorage...');
-              fileDataStr = localStorage.getItem('lodgementFileTransfer');
-              if (fileDataStr) {
-                console.log('✅ File found in localStorage!');
-              }
-            }
-            
-            console.log(`🔍 Attempt ${attempts}: Checking for file in sessionStorage/localStorage:`, !!fileDataStr);
-            
-            // Debug: Check what's actually in sessionStorage
-            if (attempts === 1) {
-              const allKeys = Object.keys(sessionStorage);
-              console.log('🔍 All sessionStorage keys on attempt 1:', allKeys);
-              console.log('🔍 Total sessionStorage size:', JSON.stringify(sessionStorage).length, 'bytes');
-              
-              allKeys.forEach(key => {
-                const value = sessionStorage.getItem(key);
-                console.log(`🔍 Key: "${key}", Value length: ${value?.length || 0}`);
-                
-                // Check if it looks like our file data
-                if (key.includes('lodgement') || key.includes('file') || key.includes('transfer')) {
-                  console.log(`✅ Found relevant key: ${key}`);
-                  try {
-                    const parsed = JSON.parse(value || '{}');
-                    console.log(`   Parsed data keys:`, Object.keys(parsed));
-                    console.log(`   Has 'data' field:`, !!parsed.data);
-                    console.log(`   Has 'name' field:`, !!parsed.name);
-                    console.log(`   Data length:`, parsed.data?.length || 0);
-                  } catch (e) {
-                    console.log(`   Not valid JSON:`, e);
-                  }
-                }
-              });
-              
-              // Also check localStorage as fallback
-              const localStorageKeys = Object.keys(localStorage);
-              console.log('🔍 localStorage keys:', localStorageKeys);
-            }
-            
-            if (fileDataStr) {
-              console.log('✅ File found in sessionStorage!');
-              const fileData = JSON.parse(fileDataStr);
-              console.log('✅ File data found:', { name: fileData.name, size: fileData.size, hasData: !!fileData.data, timestamp: fileData.timestamp });
-              
-              // Check if file data is recent (within 5 minutes)
-              const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
-              console.log('⏰ Time check - now:', Date.now(), 'file timestamp:', fileData.timestamp, 'fiveMinutesAgo:', fiveMinutesAgo);
-              
-              if (fileData.timestamp && fileData.timestamp > fiveMinutesAgo) {
-                console.log('✅ File data is recent, restoring...');
-                // Convert base64 back to File
-                const base64Data = fileData.data.split(',')[1]; // Remove data:type;base64, prefix
-                const byteCharacters = atob(base64Data);
-                const byteNumbers = new Array(byteCharacters.length);
-                for (let i = 0; i < byteCharacters.length; i++) {
-                  byteNumbers[i] = byteCharacters.charCodeAt(i);
-                }
-                const byteArray = new Uint8Array(byteNumbers);
-                const blob = new Blob([byteArray], { type: fileData.type || 'application/pdf' });
-                const restoredFile = new File([blob], fileData.name, { type: fileData.type || 'application/pdf' });
-                
-                console.log('✅ File restored:', { name: restoredFile.name, size: restoredFile.size, type: restoredFile.type });
-                
-                // Create a FileList using DataTransfer
-                const dataTransfer = new DataTransfer();
-                dataTransfer.items.add(restoredFile);
-                const fileList = dataTransfer.files;
-                
-                // Set the files state
-                setFiles(fileList);
-                console.log('✅ Files state set, count:', fileList.length);
-                
-                // Wait a bit more for React to render, then update the file input
-                setTimeout(() => {
-                  const fileInput = document.getElementById("file-input") as HTMLInputElement;
-                  console.log('🔍 Looking for file input element:', !!fileInput);
-                  
-                  if (fileInput) {
-                    // Create a new FileList and assign it
-                    const dt = new DataTransfer();
-                    dt.items.add(restoredFile);
-                    fileInput.files = dt.files;
-                    
-                    console.log('✅ File input updated, files count:', fileInput.files.length);
-                    
-                    // Trigger change event so the UI updates - this will call handleFileChange
-                    const changeEvent = new Event('change', { bubbles: true });
-                    fileInput.dispatchEvent(changeEvent);
-                    
-                    console.log('✅ File change event dispatched');
-                  } else {
-                    console.warn('⚠️ File input element not found, retrying...');
-                    // Retry after another delay
-                    setTimeout(() => {
-                      const retryInput = document.getElementById("file-input") as HTMLInputElement;
-                      if (retryInput) {
-                        const dt = new DataTransfer();
-                        dt.items.add(restoredFile);
-                        retryInput.files = dt.files;
-                        const changeEvent = new Event('change', { bubbles: true });
-                        retryInput.dispatchEvent(changeEvent);
-                        console.log('✅ File input updated on retry');
-                      }
-                    }, 500);
-                  }
-                }, 200);
-                
-                // Clear the sessionStorage and localStorage after use (but wait a bit to ensure it's loaded)
-                setTimeout(() => {
-                  const stillNeeded = sessionStorage.getItem('lodgementFileTransfer') || localStorage.getItem('lodgementFileTransfer');
-                  if (stillNeeded) {
-                    // Only clear if we successfully loaded the file
-                    sessionStorage.removeItem('lodgementFileTransfer');
-                    localStorage.removeItem('lodgementFileTransfer');
-                    console.log('🗑️ Cleared file from sessionStorage and localStorage after successful load');
-                  }
-                }, 3000); // Increased delay before clearing to 3 seconds
-                
-                // Show a message that the file was loaded
-                setResult("✅ File loaded from previous upload. Ready to submit!");
-                setTimeout(() => setResult(""), 5000);
-              } else {
-                // File data is too old, remove it
-                console.log('⚠️ File data is too old, removing');
-                sessionStorage.removeItem('lodgementFileTransfer');
-              }
-            } else if (attempts < maxAttempts) {
-              // File not found, retry after a delay
-              console.log(`⚠️ File not found on attempt ${attempts}, retrying in 200ms...`);
-              setTimeout(tryLoadFile, 200);
-            } else {
-              console.log('⚠️ No file data found in sessionStorage after all attempts');
-              // Show user-friendly message
-              setResult("ℹ️ File not found. Please select the file manually.");
-            }
-          };
-          
-          // Start trying to load the file
-          tryLoadFile();
-        } catch (error) {
-          console.error('❌ Error loading file from sessionStorage:', error);
-          console.error('❌ Error details:', error);
-          sessionStorage.removeItem('lodgementFileTransfer');
-        }
-      }, 300); // Initial delay
-      
-      return () => clearTimeout(timer);
-    } else {
-      console.log('⚠️ hasFile is false, skipping file load');
-    }
-  }, [searchParams]); // Remove handleFileChange from dependencies
+  }, [searchParams]);
 
   // Get utility types based on agreement type
   const getUtilityTypes = () => {
@@ -719,6 +477,9 @@ useEffect(() => {
     
     formData.append("business_name", buildBusinessNameForSubmission());
     formData.append("contract_type", contractType);
+    if (selectedUtilityType) formData.append("utility_type", selectedUtilityType);
+    if (nmi.trim()) formData.append("nmi", nmi.trim());
+    if (mirn.trim()) formData.append("mirn", mirn.trim());
     
     // Set agreement type based on multiple attachments
     const finalAgreementType = multipleAttachments ? "contract_multiple_attachments" : agreementType;

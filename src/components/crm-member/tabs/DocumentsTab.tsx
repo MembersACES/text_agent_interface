@@ -21,6 +21,30 @@ import {
 } from "@/lib/site-photos-api";
 import { SitePhotosGallery } from "./SitePhotosGallery";
 import { BRAND, CONTRACT_STATUS_OPTIONS } from "@/lib/brand";
+import {
+  fetchEmailRecipients,
+  type OperationalEmailRecipient,
+} from "@/lib/operational-email-api";
+import {
+  CONTRACT_UPLOAD_MODE_LABELS,
+  CONTRACT_UTILITY_LABELS,
+  DEFAULT_CONTRACT_UPLOAD_MODE,
+  buildDriveFilingFormData,
+  buildLodgementFormData,
+  filingTypeForUtility,
+  identifierFieldState,
+  identifierKind,
+  identifierLabel,
+  identifierList,
+  identifierWarning,
+  isRecipientEmail,
+  lodgeCheckedByDefault,
+  lodgementBadge,
+  recipientEmailsFromCsv,
+  suppliersForUtility,
+  type ContractUploadMode,
+  type LodgementActivity,
+} from "@/lib/file-and-lodge";
 import { RecordRow, RecordRowOpenAction } from "../shared/RecordRow";
 import { getRecordRowIcon } from "../shared/recordRowIcons";
 import { combineFilesIntoPdf } from "@/lib/combineFiles";
@@ -290,23 +314,86 @@ function MFooter({ onCancel, onSubmit, label, disabled, loading }: {
           disabled={disabled || loading}
           loading={loading}
         >
-          {loading ? "Uploading…" : label}
+          {loading ? (label === "Retry lodgement" ? "Sending…" : "Uploading…") : label}
         </Button>
       )}
     </div>
   );
 }
 
-function FileDropInput({ accept, onChange, file }: { accept?: string; onChange: (f: File | null) => void; file: File | null }) {
+function FileDropInput({ accept, onChange, file, disabled }: { accept?: string; onChange: (f: File | null) => void; file: File | null; disabled?: boolean }) {
   return (
     <div className="rounded-lg border-2 border-dashed border-gray-200 dark:border-gray-700 px-3 py-2.5">
       <input
         type="file"
         accept={accept}
+        disabled={disabled}
         onChange={(e) => onChange(e.target.files?.[0] ?? null)}
         className="block w-full text-xs text-gray-500 file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-medium file:bg-gray-100 dark:file:bg-gray-800 file:text-gray-700 dark:file:text-gray-200 hover:file:bg-gray-200 dark:hover:file:bg-gray-700 file:cursor-pointer file:transition-colors"
       />
       {file && <p className="mt-1 text-[11px] text-gray-400 truncate">{file.name}</p>}
+    </div>
+  );
+}
+
+function LodgeRecipientChips({
+  emails,
+  draft,
+  onDraft,
+  onAdd,
+  onRemove,
+}: {
+  emails: string[];
+  draft: string;
+  onDraft: (value: string) => void;
+  onAdd: () => void;
+  onRemove: (email: string) => void;
+}) {
+  return (
+    <div className="mt-2">
+      <div className="flex flex-wrap gap-1.5">
+        {emails.map((email) => (
+          <span
+            key={email}
+            className="inline-flex max-w-full items-center gap-1 rounded-full border border-blue-200 bg-white px-2 py-0.5 text-xs text-blue-900 dark:border-blue-800 dark:bg-gray-900 dark:text-blue-100"
+          >
+            <span className="truncate">{email}</span>
+            <button
+              type="button"
+              aria-label={`Remove ${email}`}
+              onClick={() => onRemove(email)}
+              className="text-blue-500 hover:text-blue-800 dark:hover:text-blue-200"
+            >
+              ×
+            </button>
+          </span>
+        ))}
+      </div>
+      <div className="mt-2 flex gap-2">
+        <input
+          type="email"
+          value={draft}
+          onChange={(e) => onDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              onAdd();
+            }
+          }}
+          placeholder="Add an email for this send"
+          className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+        />
+        <button
+          type="button"
+          onClick={onAdd}
+          className="rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+        >
+          Add
+        </button>
+      </div>
+      <p className="mt-1.5 text-[11px] text-gray-500 dark:text-gray-400">
+        This send only. The shared recipient list is unchanged.
+      </p>
     </div>
   );
 }
@@ -378,9 +465,22 @@ export function DocumentsTab({
   const [driveBizName, setDriveBizName] = useState("");
   const [driveContractKey, setDriveContractKey] = useState<string | null>(null);
   const [driveContractStatus, setDriveContractStatus] = useState<string>(BRAND.signedContractStatusValue);
-  const [driveContractUpdateMode, setDriveContractUpdateMode] = useState<
-    "replace" | "append" | "append_multiple"
-  >("replace");
+  const [driveContractUpdateMode, setDriveContractUpdateMode] =
+    useState<ContractUploadMode>(DEFAULT_CONTRACT_UPLOAD_MODE);
+  const [driveUtilityChooser, setDriveUtilityChooser] = useState(false);
+  const [driveIdentifier, setDriveIdentifier] = useState("");
+  const [lodgeWithRetailer, setLodgeWithRetailer] = useState(true);
+  const [lodgeSupplier, setLodgeSupplier] = useState("");
+  const [lodgeRecipients, setLodgeRecipients] = useState<string[]>([]);
+  const [lodgeRecipientsTouched, setLodgeRecipientsTouched] = useState(false);
+  const [lodgeRecipientDraft, setLodgeRecipientDraft] = useState("");
+  const [contractRecipients, setContractRecipients] = useState<
+    OperationalEmailRecipient[] | null
+  >(null);
+  const [driveFiled, setDriveFiled] = useState(false);
+  const [driveLodged, setDriveLodged] = useState(false);
+  const [lodgeError, setLodgeError] = useState<string | null>(null);
+  const [lodgementActivities, setLodgementActivities] = useState<LodgementActivity[]>([]);
   const [driveBatchFiles, setDriveBatchFiles] = useState<File[]>([]);
   const [driveFile, setDriveFile] = useState<File | null>(null);
   const [driveLoading, setDriveLoading] = useState(false);
@@ -591,12 +691,6 @@ export function DocumentsTab({
       });
   };
 
-  const CONTRACT_TO_FILING: Record<string, string> = {
-    "C&I Electricity": "signed_CI_E", "SME Electricity": "signed_SME_E",
-    "C&I Gas": "signed_CI_G", "SME Gas": "signed_SME_G",
-    Waste: "signed_WASTE", Oil: "signed_OIL", DMA: "signed_DMA",
-  };
-
   const updateContractStatus = async (
     contractKey: string,
     fileIndex: number,
@@ -664,32 +758,8 @@ export function DocumentsTab({
     return aHas ? -1 : 1;
   });
 
-  const contractType = (k: string) =>
-    ({ "C&I Electricity":"C&I Electricity","SME Electricity":"SME Electricity","C&I Gas":"C&I Gas","SME Gas":"SME Gas",Waste:"Waste",Oil:"Other",DMA:"DMA" }[k] ?? null);
-
-  const utilityType = (k: string) =>
-    ["C&I Electricity","SME Electricity","C&I Gas","SME Gas","Waste","DMA","Other"].includes(k) ? k : null;
-
-  const linkedIdentifierList = (k: string): string[] => {
-    const raw = (info?.Linked_Details as any)?.linked_utilities?.[k];
-    if (!raw) return [];
-    if (typeof raw === "string") {
-      return raw.split(",").map((s: string) => s.trim()).filter(Boolean);
-    }
-    if (Array.isArray(raw)) {
-      return raw.map((v) => String(v ?? "").trim()).filter(Boolean);
-    }
-    return [];
-  };
-
-  const getIdentifier = (k: string): { type: "nmi"|"mirn"|null; value: string } => {
-    const values = linkedIdentifierList(k);
-    if (["C&I Electricity","SME Electricity","DMA"].includes(k) && values.length)
-      return { type: "nmi", value: values[0] };
-    if (["C&I Gas","SME Gas"].includes(k) && values.length)
-      return { type: "mirn", value: values[0] };
-    return { type: null, value: "" };
-  };
+  const linkedIdentifierList = (k: string): string[] =>
+    identifierList((info?.Linked_Details as any)?.linked_utilities?.[k]);
 
   const lodgeEfHref = (kind: "gas" | "electricity") => {
     const p = new URLSearchParams();
@@ -706,13 +776,51 @@ export function DocumentsTab({
     return qs ? `${path}?${qs}` : path;
   };
 
-  const alintaAgreementHref = () => lodgeEfHref("gas");
-  const alintaElectricityHref = () => lodgeEfHref("electricity");
-
   const openLodgeEf = (kind: "gas" | "electricity") => {
     window.open(lodgeEfHref(kind), "_blank", "noopener,noreferrer");
     setShowLodgeEfModal(false);
   };
+
+  useEffect(() => {
+    if (!showDriveModal || !token) return;
+    let cancelled = false;
+    fetchEmailRecipients(token, "signed_contract")
+      .then((data) => {
+        if (!cancelled) setContractRecipients(data.recipients);
+      })
+      .catch(() => {
+        if (!cancelled) setContractRecipients(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [showDriveModal, token]);
+
+  useEffect(() => {
+    if (clientId == null || !token) return;
+    let cancelled = false;
+    fetch(`${getApiBaseUrl()}/api/clients/${clientId}/activities`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(async (res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        if (!cancelled && Array.isArray(data)) setLodgementActivities(data);
+      })
+      .catch(() => {
+        /* badge stays empty */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [clientId, token, driveLodged]);
+
+  useEffect(() => {
+    if (lodgeRecipientsTouched) return;
+    const supplier = suppliersForUtility(driveContractKey || "", contractRecipients).find(
+      (row) => row.key === lodgeSupplier,
+    );
+    setLodgeRecipients(supplier ? recipientEmailsFromCsv(supplier.email) : []);
+  }, [lodgeSupplier, driveContractKey, contractRecipients, lodgeRecipientsTouched]);
 
   // ── Upload handlers ────────────────────────────────────────────────────────
 
@@ -720,9 +828,111 @@ export function DocumentsTab({
     setShowDriveModal(false);
     setDriveFile(null);
     setDriveBatchFiles([]);
-    setDriveContractUpdateMode("replace");
+    setDriveContractUpdateMode(DEFAULT_CONTRACT_UPLOAD_MODE);
     setDriveResult(null);
     setDriveContractKey(null);
+    setDriveUtilityChooser(false);
+    setDriveIdentifier("");
+    setLodgeSupplier("");
+    setLodgeRecipients([]);
+    setLodgeRecipientsTouched(false);
+    setLodgeRecipientDraft("");
+    setDriveFiled(false);
+    setDriveLodged(false);
+    setLodgeError(null);
+  };
+
+  const applyDriveUtility = (key: string) => {
+    setDriveContractKey(key);
+    setDriveFilingType(filingTypeForUtility(key));
+    setDriveIdentifier(identifierFieldState(linkedIdentifierList(key)).value);
+    setLodgeSupplier("");
+    setLodgeRecipients([]);
+    setLodgeRecipientsTouched(false);
+    setLodgeRecipientDraft("");
+  };
+
+  const postDriveFiling = async (filesToUpload: File[]) => {
+    const isSigned = driveFilingType.startsWith("signed_");
+    const single = filesToUpload.length === 1 ? filesToUpload[0] : null;
+    const fd =
+      isSigned && single
+        ? buildDriveFilingFormData({
+            file: single,
+            businessName: driveBizName,
+            filingType: driveFilingType,
+            gdriveUrl: driveUrl,
+            contractStatus: driveContractStatus,
+            contractUpdateMode: driveContractUpdateMode,
+          })
+        : (() => {
+            const body = new FormData();
+            body.append("business_name", driveBizName);
+            body.append("filing_type", driveFilingType);
+            body.append("gdrive_url", driveUrl);
+            if (isSigned) {
+              body.append("contract_status", driveContractStatus);
+              body.append("contract_update_mode", driveContractUpdateMode);
+            }
+            for (const f of filesToUpload) body.append("files", f);
+            return body;
+          })();
+    const res = await fetch(
+      `${getApiBaseUrl()}/api/drive-filing?token=${encodeURIComponent(token)}`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
+      },
+    );
+    let data: unknown = {};
+    try {
+      data = await res.json();
+    } catch {
+      data = {};
+    }
+    if (!res.ok) {
+      throw new Error(formatBackendErrorBody(data) || `Upload failed (${res.status})`);
+    }
+    const ok = data as { status?: string; message?: string; filename?: string };
+    if (ok.status !== "success") {
+      throw new Error(formatBackendErrorBody(data) || "Upload failed");
+    }
+    return ok;
+  };
+
+  const postLodgement = async (file: File) => {
+    const utility = driveContractKey || "";
+    const fd = buildLodgementFormData({
+      file,
+      businessName: driveBizName,
+      supplier: lodgeSupplier,
+      utility,
+      identifierKind: identifierKind(utility),
+      identifier: driveIdentifier,
+      documentLink: driveUrl || undefined,
+      clientId,
+      recipients: lodgeRecipients,
+    });
+    const res = await fetch(`${getApiBaseUrl()}/api/signed-agreement-lodgement`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: fd,
+    });
+    let data: unknown = {};
+    try {
+      data = await res.json();
+    } catch {
+      data = {};
+    }
+    if (!res.ok) {
+      throw new Error(formatBackendErrorBody(data) || `Lodgement failed (${res.status})`);
+    }
+    const payload = data as { status?: string; message?: string };
+    if (payload.status === "error" || (payload.message || "").includes("❌")) {
+      throw new Error(payload.message || "Lodgement failed");
+    }
+    return payload;
   };
 
   const uploadDrive = async () => {
@@ -731,50 +941,40 @@ export function DocumentsTab({
       return;
     }
     const isSigned = driveFilingType.startsWith("signed_");
+    const canLodge =
+      lodgeWithRetailer &&
+      isSigned &&
+      driveContractUpdateMode !== "append_multiple";
+    const retryLodgement = driveFiled && canLodge && !driveLodged;
     const filesToUpload: File[] =
       isSigned && driveContractUpdateMode === "append_multiple"
         ? driveBatchFiles
         : driveFile
           ? [driveFile]
           : [];
-    if (filesToUpload.length === 0) {
+    const lodgeFile = driveFile;
+    if (!retryLodgement && filesToUpload.length === 0) {
       setDriveResult("Please select a file and ensure you are signed in.");
+      return;
+    }
+    if (canLodge && !lodgeSupplier) {
+      setLodgeError("Choose the retailer to lodge with.");
+      return;
+    }
+    if (canLodge && lodgeRecipients.length === 0) {
+      setLodgeError("Add at least one recipient.");
       return;
     }
     setDriveLoading(true);
     setDriveResult(null);
+    if (!retryLodgement) setLodgeError(null);
+    let filedNow = driveFiled;
     try {
-      const fd = new FormData();
-      fd.append("business_name", driveBizName);
-      fd.append("filing_type", driveFilingType);
-      fd.append("gdrive_url", driveUrl);
-      if (isSigned) {
-        fd.append("contract_status", driveContractStatus);
-        fd.append("contract_update_mode", driveContractUpdateMode);
-      }
-      for (const f of filesToUpload) {
-        fd.append("files", f);
-      }
-      const res = await fetch(`${getApiBaseUrl()}/api/drive-filing?token=${encodeURIComponent(token)}`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: fd,
-      });
-      let data: unknown = {};
-      try {
-        data = await res.json();
-      } catch {
-        data = {};
-      }
-      if (!res.ok) {
-        const msg = formatBackendErrorBody(data);
-        setDriveResult(`Error: ${msg}${res.status ? ` (HTTP ${res.status})` : ""}`);
-        showToast(msg, "error");
-        return;
-      }
-      const ok = data as { status?: string; message?: string; filename?: string };
-      if (ok.status === "success") {
-        setDriveResult("File successfully uploaded!");
+      if (!retryLodgement) {
+        const ok = await postDriveFiling(filesToUpload);
+        filedNow = true;
+        setDriveFiled(true);
+        setDriveResult("File successfully filed.");
         showToast("File uploaded successfully.", "success");
         if (
           driveContractKey === "C&I Electricity" ||
@@ -794,14 +994,25 @@ export function DocumentsTab({
             contract_update_mode: driveContractUpdateMode,
           },
         });
-      } else {
-        setDriveResult(`Error: ${formatBackendErrorBody(data)}`);
-        showToast(formatBackendErrorBody(data), "error");
+      }
+      const shouldLodge = canLodge && lodgeFile;
+      if (shouldLodge) {
+        await postLodgement(lodgeFile);
+        setDriveLodged(true);
+        setLodgeError(null);
+        setDriveResult("File successfully filed and lodged.");
+        showToast("Agreement lodged with the retailer.", "success");
+        onMemberUploadLogged?.();
       }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
-      setDriveResult(`Error: ${msg}`);
-      showToast(msg, "error");
+      if (filedNow) {
+        setLodgeError(msg);
+        setDriveResult("Filed. Lodgement did not send.");
+      } else {
+        setDriveResult(`Error: ${msg}`);
+        showToast(msg, "error");
+      }
     } finally {
       setDriveLoading(false);
     }
@@ -1407,6 +1618,32 @@ export function DocumentsTab({
               variant="ghost"
               size="sm"
               radius="md"
+              onClick={() => {
+                const first =
+                  sortedContracts.find((c) => c.items.length > 0)?.key ??
+                  CONTRACT_UTILITY_LABELS[0];
+                setDriveUtilityChooser(true);
+                setDriveBizName(business?.name || businessName || "");
+                setDriveContractStatus(BRAND.signedContractStatusValue);
+                setDriveContractUpdateMode(DEFAULT_CONTRACT_UPLOAD_MODE);
+                setLodgeWithRetailer(true);
+                setDriveResult(null);
+                setDriveFile(null);
+                setDriveBatchFiles([]);
+                setDriveFiled(false);
+                setDriveLodged(false);
+                setLodgeError(null);
+                applyDriveUtility(first);
+                setShowDriveModal(true);
+              }}
+            >
+              File signed agreement
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              radius="md"
               onClick={() => setShowLodgeEfModal(true)}
             >
               Lodge EF
@@ -1476,18 +1713,23 @@ export function DocumentsTab({
                         sortedContracts.flatMap((c) => {
                           const categoryIcon = getRecordRowIcon(c.key);
                           const openFileModal = () => {
-                            setDriveFilingType(
-                              CONTRACT_TO_FILING[c.key] ??
-                                c.key.toLowerCase().replace(/[^a-z0-9]+/g, "_")
+                            setDriveUtilityChooser(false);
+                            setDriveBizName(business?.name || businessName || "");
+                            setDriveContractStatus(BRAND.signedContractStatusValue);
+                            setDriveContractUpdateMode(DEFAULT_CONTRACT_UPLOAD_MODE);
+                            setLodgeWithRetailer(
+                              lodgeCheckedByDefault(BRAND.signedContractStatusValue),
                             );
-                            setDriveBizName(business?.name || "");
-                            setDriveContractKey(c.key);
-                            setDriveContractUpdateMode("replace");
                             setDriveResult(null);
                             setDriveFile(null);
                             setDriveBatchFiles([]);
+                            setDriveFiled(false);
+                            setDriveLodged(false);
+                            setLodgeError(null);
+                            applyDriveUtility(c.key);
                             setShowDriveModal(true);
                           };
+                          const lodgedLabel = lodgementBadge(lodgementActivities, c.key);
 
                           if (c.items.length === 0) {
                             if (!matchesSearch(c.key)) return [];
@@ -1497,11 +1739,15 @@ export function DocumentsTab({
                                 leadingIcon={categoryIcon.icon}
                                 iconIntent={categoryIcon.intent}
                                 title={c.key}
+                                subtitle={
+                                  lodgedLabel ? (
+                                    <Badge intent="info" shape="pill">
+                                      {lodgedLabel}
+                                    </Badge>
+                                  ) : undefined
+                                }
                                 status={contractStatusBadge(undefined, false)}
                                 muted
-                                actions={
-                                  <DocSecondaryBtn onClick={openFileModal}>File</DocSecondaryBtn>
-                                }
                               />
                             );
                           }
@@ -1520,7 +1766,16 @@ export function DocumentsTab({
                                   leadingIcon={categoryIcon.icon}
                                   iconIntent={categoryIcon.intent}
                                   title={title}
-                                  subtitle={uploaded}
+                                  subtitle={
+                                    <>
+                                      {uploaded}
+                                      {lodgedLabel ? (
+                                        <Badge intent="info" shape="pill" className="mt-1">
+                                          {lodgedLabel}
+                                        </Badge>
+                                      ) : null}
+                                    </>
+                                  }
                                   status={
                                     <div className="flex flex-col items-end gap-1">
                                       {contractStatusBadge(item.status, !!item.url)}
@@ -1660,10 +1915,15 @@ export function DocumentsTab({
                                         setDriveFilingType(filingType);
                                         setDriveBizName(business?.name || "");
                                         setDriveContractKey(null);
+                                        setDriveUtilityChooser(false);
                                         setDriveContractUpdateMode("replace");
                                         setDriveBatchFiles([]);
                                         setDriveResult(null);
                                         setDriveFile(null);
+                                        setDriveFiled(false);
+                                        setDriveLodged(false);
+                                        setLodgeError(null);
+                                        setLodgeWithRetailer(false);
                                         setShowDriveModal(true);
                                       }}
                                     >
@@ -1814,32 +2074,45 @@ export function DocumentsTab({
         <MField label="Business">
           <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{driveBizName}</p>
         </MField>
+        {driveUtilityChooser && (
+          <MField label="Utility">
+            <select
+              value={driveContractKey ?? ""}
+              disabled={driveFiled}
+              onChange={(e) => applyDriveUtility(e.target.value)}
+              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+            >
+              {CONTRACT_UTILITY_LABELS.map((label) => (
+                <option key={label} value={label}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </MField>
+        )}
         <MField label="Filing Type">
           <p className="text-sm text-gray-500 font-mono">{driveFilingType}</p>
         </MField>
         {driveFilingType.startsWith("signed_") && (
           <MField label="Upload mode">
             <div className="flex flex-col gap-2 mt-0.5 text-sm text-gray-700 dark:text-gray-300">
-              {(
-                [
-                  ["replace", "Replace contract — overwrites stored file ID(s)"],
-                  ["append", "Add to contract — append one file ID (comma-separated)"],
-                  ["append_multiple", "Multiple files — append all file IDs at once"],
-                ] as const
-              ).map(([mode, label]) => (
+              {(["append", "replace", "append_multiple"] as const).map((mode) => (
                 <label key={mode} className="flex items-start gap-2 cursor-pointer">
                   <input
                     type="radio"
                     name="driveContractMode"
                     checked={driveContractUpdateMode === mode}
+                    disabled={driveFiled}
                     onChange={() => {
                       setDriveContractUpdateMode(mode);
-                      setDriveFile(null);
-                      setDriveBatchFiles([]);
+                      if (!driveFiled) {
+                        setDriveFile(null);
+                        setDriveBatchFiles([]);
+                      }
                     }}
                     className="accent-gray-900 dark:accent-white mt-1"
                   />
-                  <span>{label}</span>
+                  <span>{CONTRACT_UPLOAD_MODE_LABELS[mode]}</span>
                 </label>
               ))}
             </div>
@@ -1850,11 +2123,54 @@ export function DocumentsTab({
             <div className="flex flex-col gap-2 mt-0.5">
               {CONTRACT_STATUS_OPTIONS.map(({ value, label }) => (
                 <label key={value} className="flex items-center gap-2 cursor-pointer text-sm text-gray-700 dark:text-gray-300">
-                  <input type="radio" name="driveStatus" checked={driveContractStatus === value} onChange={() => setDriveContractStatus(value)} className="accent-gray-900 dark:accent-white" />
+                  <input
+                    type="radio"
+                    name="driveStatus"
+                    checked={driveContractStatus === value}
+                    disabled={driveFiled}
+                    onChange={() => {
+                      setDriveContractStatus(value);
+                      if (!driveFiled) setLodgeWithRetailer(lodgeCheckedByDefault(value));
+                    }}
+                    className="accent-gray-900 dark:accent-white"
+                  />
                   {label}
                 </label>
               ))}
             </div>
+          </MField>
+        )}
+        {driveFilingType.startsWith("signed_") && driveContractKey && (
+          <MField label={identifierLabel(identifierKind(driveContractKey))}>
+            {identifierFieldState(linkedIdentifierList(driveContractKey)).useDropdown && (
+              <select
+                value={
+                  identifierFieldState(linkedIdentifierList(driveContractKey)).options.includes(driveIdentifier)
+                    ? driveIdentifier
+                    : ""
+                }
+                onChange={(e) => setDriveIdentifier(e.target.value)}
+                className="mb-2 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+              >
+                <option value="">Choose</option>
+                {identifierFieldState(linkedIdentifierList(driveContractKey)).options.map((id) => (
+                  <option key={id} value={id}>
+                    {id}
+                  </option>
+                ))}
+              </select>
+            )}
+            <input
+              type="text"
+              value={driveIdentifier}
+              onChange={(e) => setDriveIdentifier(e.target.value)}
+              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+            />
+            {identifierWarning(identifierKind(driveContractKey), driveIdentifier) && (
+              <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+                {identifierWarning(identifierKind(driveContractKey), driveIdentifier)}
+              </p>
+            )}
           </MField>
         )}
         <MField
@@ -1889,63 +2205,149 @@ export function DocumentsTab({
               )}
             </div>
           ) : (
-            <FileDropInput onChange={setDriveFile} file={driveFile} />
+            <FileDropInput onChange={setDriveFile} file={driveFile} disabled={driveFiled} />
           )}
         </MField>
-        {driveResult && <Alert msg={driveResult} successStart="File successfully" />}
-        {driveResult?.includes("success") && driveFilingType.startsWith("signed_") && driveContractKey && (
-          <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 p-3">
-            <p className="text-xs font-semibold text-blue-700 dark:text-blue-300 mb-2">Lodge this agreement with the retailer?</p>
-            <a
-              href={(() => {
-                const p = new URLSearchParams();
-                p.set("businessName", driveBizName); p.set("hasFile", "true");
-                const ut = utilityType(driveContractKey); const ct = contractType(driveContractKey);
-                const id = getIdentifier(driveContractKey);
-                if (ut) p.set("utilityType", ut); if (ct) p.set("contractType", ct);
-                if (id.type && id.value) p.set(id.type, id.value);
-                return `/signed-agreement-lodgement?${p.toString()}`;
-              })()}
-              target="_blank" rel="noopener noreferrer"
-              className="text-xs font-semibold text-primary hover:underline"
-            >
-              Lodge Agreement with Retailer →
-            </a>
-            {driveContractKey === "C&I Gas" && (
-              <div className="mt-2">
-                <a
-                  href={alintaAgreementHref()}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs font-semibold text-primary hover:underline"
-                >
-                  Send Alinta gas agreement →
-                </a>
-              </div>
-            )}
-            {driveContractKey === "C&I Electricity" && (
-              <div className="mt-2">
-                <a
-                  href={alintaElectricityHref()}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs font-semibold text-primary hover:underline"
-                >
-                  Send Alinta electricity agreement →
-                </a>
-              </div>
-            )}
-          </div>
+        {driveFilingType.startsWith("signed_") &&
+          driveContractUpdateMode !== "append_multiple" &&
+          driveContractKey && (
+            <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+              <label className="flex items-start gap-2 text-sm text-gray-800 dark:text-gray-200">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 accent-gray-900 dark:accent-white"
+                  checked={lodgeWithRetailer}
+                  disabled={driveFiled}
+                  onChange={(e) => setLodgeWithRetailer(e.target.checked)}
+                />
+                <span>
+                  <span className="font-medium">Also lodge with retailer</span>
+                  <span className="mt-0.5 block text-xs text-gray-500 dark:text-gray-400">
+                    Sends this same file to the supplier after it is filed in Drive.
+                  </span>
+                </span>
+              </label>
+              {lodgeWithRetailer && (
+                <div className="mt-3 space-y-2">
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-300">
+                    Supplier
+                  </label>
+                  <select
+                    value={lodgeSupplier}
+                    disabled={driveFiled}
+                    onChange={(e) => {
+                      setLodgeSupplier(e.target.value);
+                      setLodgeRecipientsTouched(false);
+                      setLodgeRecipientDraft("");
+                    }}
+                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+                  >
+                    <option value="">Select supplier...</option>
+                    {suppliersForUtility(driveContractKey, contractRecipients).map((supplier) => (
+                      <option key={supplier.key} value={supplier.key}>
+                        {supplier.key}
+                      </option>
+                    ))}
+                  </select>
+                  {(() => {
+                    const supplier = suppliersForUtility(driveContractKey, contractRecipients).find(
+                      (row) => row.key === lodgeSupplier,
+                    );
+                    if (!supplier) return null;
+                    return (
+                      <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm dark:border-blue-800 dark:bg-blue-950/40">
+                        <div className="font-medium text-blue-900 dark:text-blue-100">
+                          Will be sent to: {supplier.name}
+                        </div>
+                        <LodgeRecipientChips
+                          emails={lodgeRecipients}
+                          draft={lodgeRecipientDraft}
+                          onDraft={setLodgeRecipientDraft}
+                          onAdd={() => {
+                            const next = lodgeRecipientDraft.trim();
+                            if (!isRecipientEmail(next)) {
+                              setLodgeError("Enter a valid email address.");
+                              return;
+                            }
+                            setLodgeError(null);
+                            setLodgeRecipients((current) =>
+                              current.some((row) => row.toLowerCase() === next.toLowerCase())
+                                ? current
+                                : [...current, next],
+                            );
+                            setLodgeRecipientsTouched(true);
+                            setLodgeRecipientDraft("");
+                          }}
+                          onRemove={(email) => {
+                            setLodgeRecipients((current) => current.filter((row) => row !== email));
+                            setLodgeRecipientsTouched(true);
+                          }}
+                        />
+                        {supplier.isPlaceholder && !lodgeRecipientsTouched ? (
+                          <div className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-amber-700">
+                            Placeholder address — these are the shared-list addresses for this send
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+            </div>
+          )}
+        {(driveFiled || driveLodged) && (
+          <p className="text-xs font-medium text-gray-600 dark:text-gray-300">
+            {driveFiled ? "Filed ✓" : ""}
+            {driveFiled && driveLodged ? " · " : ""}
+            {driveLodged ? "Lodged ✓" : ""}
+          </p>
         )}
+        {lodgeError && (
+          <p className="text-xs text-red-700 dark:text-red-300">{lodgeError}</p>
+        )}
+        {driveResult && <Alert msg={driveResult} successStart="File successfully" />}
         <MFooter
           onCancel={resetDrive}
-          onSubmit={uploadDrive}
-          label="Upload"
-          disabled={
+          onSubmit={
+            driveLodged ||
+            (driveFiled &&
+              !(
+                lodgeWithRetailer &&
+                driveFilingType.startsWith("signed_") &&
+                driveContractUpdateMode !== "append_multiple"
+              ))
+              ? undefined
+              : uploadDrive
+          }
+          label={
+            driveFiled &&
+            lodgeWithRetailer &&
+            !driveLodged &&
             driveFilingType.startsWith("signed_") &&
-            driveContractUpdateMode === "append_multiple"
-              ? driveBatchFiles.length === 0
-              : !driveFile
+            driveContractUpdateMode !== "append_multiple"
+              ? "Retry lodgement"
+              : driveFilingType.startsWith("signed_") &&
+                  driveContractUpdateMode !== "append_multiple" &&
+                  lodgeWithRetailer
+                ? "File and lodge"
+                : driveFilingType.startsWith("signed_")
+                  ? "File"
+                  : "Upload"
+          }
+          disabled={
+            driveLodged ||
+            (driveFiled &&
+              !(
+                lodgeWithRetailer &&
+                driveFilingType.startsWith("signed_") &&
+                driveContractUpdateMode !== "append_multiple"
+              )) ||
+            (driveFiled
+              ? !driveFile
+              : driveFilingType.startsWith("signed_") &&
+                  driveContractUpdateMode === "append_multiple"
+                ? driveBatchFiles.length === 0
+                : !driveFile)
           }
           loading={driveLoading}
         />
