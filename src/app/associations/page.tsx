@@ -15,6 +15,7 @@ import {
   Search,
   Upload,
 } from "lucide-react";
+import { ContactsEditor } from "@/components/associations/ContactsModal";
 import { PageHeader } from "@/components/Layouts/PageHeader";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -27,14 +28,20 @@ import {
   ASSOCIATION_STATUS_OPTIONS,
   associationStatusLabel,
   createAssociation,
+  createAssociationContact,
+  deleteAssociationContact,
+  ensureAssociationContacts,
   fetchAssociationDocuments,
   fetchAssociationTestimonials,
   fetchAssociations,
   registerAssociationTestimonial,
   syncAssociationsFromDrive,
   updateAssociation,
+  updateAssociationContact,
   uploadAssociationDocument,
   type Association,
+  type AssociationContact,
+  type AssociationContactsResponse,
   type AssociationFile,
   type AssociationPathItem,
   type AssociationStatus,
@@ -150,6 +157,13 @@ function AssociationsPageInner() {
   const [createNotes, setCreateNotes] = useState("");
 
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [contacts, setContacts] = useState<AssociationContact[]>([]);
+  const [contactsSheetUrl, setContactsSheetUrl] = useState<string | null>(null);
+  const [contactsLoading, setContactsLoading] = useState(false);
+  const [contactsLoadingLabel, setContactsLoadingLabel] = useState("Loading contacts…");
+  const [contactsError, setContactsError] = useState<string | null>(null);
+  const contactsRequest = useRef(0);
+  const pendingFileId = useRef<string | null>(null);
   const [savingDetails, setSavingDetails] = useState(false);
   const [registering, setRegistering] = useState(false);
   const [draftStatus, setDraftStatus] = useState<AssociationStatus>("targeting");
@@ -263,6 +277,14 @@ function AssociationsPageInner() {
     draftSourceResults,
   ]);
 
+  useEffect(() => {
+    contactsRequest.current += 1;
+    setContacts([]);
+    setContactsSheetUrl(null);
+    setContactsError(null);
+    setContactsLoading(false);
+  }, [selectedId]);
+
   const loadDocuments = useCallback(async () => {
     if (!token || !selectedId) {
       setFiles([]);
@@ -280,7 +302,10 @@ function AssociationsPageInner() {
       setSubfolders(data.folders);
       setFolderPath(data.path);
       setCurrentFolder(data.current_folder ?? null);
-      setSelectedFileId(data.files.length > 0 ? data.files[0].id : null);
+      const preferred = pendingFileId.current;
+      const preferredFile = preferred ? data.files.find((file) => file.id === preferred) : undefined;
+      pendingFileId.current = null;
+      setSelectedFileId(preferredFile?.id ?? (data.files.length > 0 ? data.files[0].id : null));
     } catch (err: unknown) {
       setDocsError(err instanceof Error ? err.message : String(err));
       setFiles([]);
@@ -384,8 +409,9 @@ function AssociationsPageInner() {
         selected.id,
         {
           status: draftStatus,
-          contact_name: draftContact,
-          contact_email: draftEmail,
+          ...(selected.contacts_sheet_id
+            ? {}
+            : { contact_name: draftContact, contact_email: draftEmail }),
           notes: draftNotes,
           results_note: draftResults,
         },
@@ -399,6 +425,112 @@ function AssociationsPageInner() {
       setSavingDetails(false);
     }
   };
+
+  const applyContacts = (associationId: number, requestId: number, data: AssociationContactsResponse) => {
+    if (contactsRequest.current !== requestId) return;
+    setContacts(data.contacts);
+    setContactsSheetUrl(data.contacts_sheet_url || null);
+    setAssociations((prev) =>
+      prev.map((row) =>
+        row.id === associationId
+          ? {
+              ...row,
+              contacts_sheet_id: data.contacts_sheet_id || null,
+              contacts_sheet_url: data.contacts_sheet_url || null,
+              contact_name: data.contact_name,
+              contact_email: data.contact_email,
+            }
+          : row,
+      ),
+    );
+  };
+
+  const openContacts = async () => {
+    if (!token || !selected) return;
+    const associationId = selected.id;
+    const requestId = contactsRequest.current + 1;
+    contactsRequest.current = requestId;
+    setContactsLoading(true);
+    setContactsLoadingLabel(
+      selected.contacts_sheet_id ? "Loading contacts…" : "Creating the contacts sheet…",
+    );
+    setContactsError(null);
+    try {
+      const data = await ensureAssociationContacts(token, associationId, accessToken);
+      applyContacts(associationId, requestId, data);
+    } catch (err: unknown) {
+      if (contactsRequest.current !== requestId) return;
+      setContactsError(err instanceof Error ? err.message : String(err));
+      setContacts([]);
+    } finally {
+      if (contactsRequest.current === requestId) setContactsLoading(false);
+    }
+  };
+
+  const changeContact = async (
+    action: () => Promise<AssociationContactsResponse>,
+  ) => {
+    if (!token || !selected) return;
+    const associationId = selected.id;
+    const requestId = contactsRequest.current;
+    const data = await action();
+    applyContacts(associationId, requestId, data);
+  };
+
+  const focusContacts = async () => {
+    if (!token || !selected) return;
+    let sheetId = selected.contacts_sheet_id;
+    if (!sheetId) {
+      const associationId = selected.id;
+      const requestId = contactsRequest.current + 1;
+      contactsRequest.current = requestId;
+      setContactsLoading(true);
+      setContactsLoadingLabel("Creating the contacts sheet…");
+      setContactsError(null);
+      try {
+        const data = await ensureAssociationContacts(token, associationId, accessToken);
+        applyContacts(associationId, requestId, data);
+        sheetId = data.contacts_sheet_id;
+      } catch (err: unknown) {
+        if (contactsRequest.current !== requestId) return;
+        setContactsError(err instanceof Error ? err.message : String(err));
+        return;
+      } finally {
+        if (contactsRequest.current === requestId) setContactsLoading(false);
+      }
+    }
+    if (!sheetId) return;
+    const root = selected.drive_folder_id;
+    if (root && currentFolderId !== root) {
+      pendingFileId.current = sheetId;
+      setCurrentFolderId(root);
+      return;
+    }
+    if (!files.some((file) => file.id === sheetId)) {
+      pendingFileId.current = sheetId;
+      await loadDocuments();
+      return;
+    }
+    if (selectedFileId === sheetId) {
+      await openContacts();
+      return;
+    }
+    setSelectedFileId(sheetId);
+  };
+
+  const openContactsRef = useRef(openContacts);
+  openContactsRef.current = openContacts;
+  const contactsSheetId = selected?.contacts_sheet_id ?? null;
+  const viewingContactsSheet = Boolean(
+    selectedFile &&
+      selectedFile.file_type === "sheet" &&
+      (selectedFile.id === contactsSheetId || selectedFile.name === "Contacts"),
+  );
+
+  useEffect(() => {
+    if (!token || !viewingContactsSheet) return;
+    void openContactsRef.current();
+  }, [token, viewingContactsSheet]);
 
   const handleSync = async () => {
     if (!token) return;
@@ -747,6 +879,9 @@ function AssociationsPageInner() {
                   <Button size="sm" variant="secondary" onClick={() => setDetailsOpen(true)}>
                     Details
                   </Button>
+                  <Button size="sm" variant="secondary" onClick={() => void focusContacts()}>
+                    {selected.contacts_sheet_id ? "Contacts" : "Add contacts"}
+                  </Button>
                   {driveFolderUrl ? (
                     <a
                       href={driveFolderUrl}
@@ -984,7 +1119,34 @@ function AssociationsPageInner() {
                       {testimonialsError ? (
                         <p className="px-4 py-2 text-xs text-red-600">{testimonialsError}</p>
                       ) : null}
-                      {canPreview ? (
+                      {viewingContactsSheet ? (
+                        <div className="flex-1 overflow-y-auto px-4 py-3">
+                          <ContactsEditor
+                            key={selected?.id}
+                            sheetUrl={contactsSheetUrl || selected?.contacts_sheet_url || null}
+                            contacts={contacts}
+                            loading={contactsLoading}
+                            loadingLabel={contactsLoadingLabel}
+                            error={contactsError}
+                            onAdd={(input) =>
+                              changeContact(() =>
+                                createAssociationContact(token, selected?.id ?? 0, input, accessToken),
+                              )
+                            }
+                            onUpdate={(id, input) =>
+                              changeContact(() =>
+                                updateAssociationContact(token, selected?.id ?? 0, id, input, accessToken),
+                              )
+                            }
+                            onRemove={(id) =>
+                              changeContact(() =>
+                                deleteAssociationContact(token, selected?.id ?? 0, id, accessToken),
+                              )
+                            }
+                            onReload={() => void openContacts()}
+                          />
+                        </div>
+                      ) : canPreview ? (
                         <div className="relative min-h-[480px] flex-1 bg-gray-100 dark:bg-dark-2">
                           <iframe
                             key={selectedFile.id}
@@ -1035,8 +1197,16 @@ function AssociationsPageInner() {
         }
       >
         <div className="space-y-3">
-          <Input label="Contact" value={draftContact} onChange={(e) => setDraftContact(e.target.value)} />
-          <Input label="Email" type="email" value={draftEmail} onChange={(e) => setDraftEmail(e.target.value)} />
+          {selected?.contacts_sheet_id ? (
+            <p className="text-sm text-gray-500">
+              The contact under the name is the primary person in Contacts.
+            </p>
+          ) : (
+            <>
+              <Input label="Contact" value={draftContact} onChange={(e) => setDraftContact(e.target.value)} />
+              <Input label="Email" type="email" value={draftEmail} onChange={(e) => setDraftEmail(e.target.value)} />
+            </>
+          )}
           <Textarea label="Notes" value={draftNotes} onChange={(e) => setDraftNotes(e.target.value)} rows={3} />
           <Textarea
             label="Results for the membership"

@@ -19,6 +19,8 @@ export type Association = {
   drive_folder_id: string | null;
   drive_folder_url: string | null;
   testimonials_folder_id: string | null;
+  contacts_sheet_id: string | null;
+  contacts_sheet_url: string | null;
   contact_name: string | null;
   contact_email: string | null;
   notes: string | null;
@@ -125,6 +127,8 @@ function asAssociation(data: unknown): Association {
     drive_folder_id: row.drive_folder_id ?? null,
     drive_folder_url: row.drive_folder_url ?? null,
     testimonials_folder_id: row.testimonials_folder_id ?? null,
+    contacts_sheet_id: row.contacts_sheet_id ?? null,
+    contacts_sheet_url: row.contacts_sheet_url ?? null,
     contact_name: row.contact_name ?? null,
     contact_email: row.contact_email ?? null,
     notes: row.notes ?? null,
@@ -302,4 +306,134 @@ export async function uploadAssociationDocument(
     throw new Error(detailMessage(data, `Failed to upload (${res.status})`));
   }
   return data as AssociationUploadResult;
+}
+
+export type AssociationContact = {
+  id: string;
+  name: string;
+  role: string;
+  email: string;
+  phone: string;
+  mobile: string;
+  primary: boolean;
+  notes: string;
+};
+
+export type AssociationContactInput = {
+  name?: string;
+  role?: string;
+  email?: string;
+  phone?: string;
+  mobile?: string;
+  primary?: boolean;
+  notes?: string;
+};
+
+export type AssociationContactsResponse = {
+  contacts_sheet_id: string;
+  contacts_sheet_url: string;
+  contact_name: string | null;
+  contact_email: string | null;
+  contacts: AssociationContact[];
+};
+
+function asContact(data: unknown): AssociationContact {
+  const row = (data ?? {}) as Partial<AssociationContact>;
+  return {
+    id: String(row.id ?? ""),
+    name: row.name ?? "",
+    role: row.role ?? "",
+    email: row.email ?? "",
+    phone: row.phone ?? "",
+    mobile: row.mobile ?? "",
+    primary: Boolean(row.primary),
+    notes: row.notes ?? "",
+  };
+}
+
+function asContactsResponse(data: unknown): AssociationContactsResponse {
+  const row = (data ?? {}) as Partial<AssociationContactsResponse> & { contacts?: unknown };
+  return {
+    contacts_sheet_id: row.contacts_sheet_id ?? "",
+    contacts_sheet_url: row.contacts_sheet_url ?? "",
+    contact_name: row.contact_name ?? null,
+    contact_email: row.contact_email ?? null,
+    contacts: Array.isArray(row.contacts) ? row.contacts.map(asContact) : [],
+  };
+}
+
+export async function ensureAssociationContacts(
+  token: string | undefined,
+  associationId: number,
+  accessToken?: string,
+): Promise<AssociationContactsResponse> {
+  const res = await fetch(`${getApiBaseUrl()}/api/associations/${associationId}/contacts/sheet`, {
+    method: "POST",
+    headers: authHeaders(token, accessToken),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(detailMessage(data, `Failed to open contacts (${res.status})`));
+  }
+  return asContactsResponse(data);
+}
+
+export async function createAssociationContact(
+  token: string | undefined,
+  associationId: number,
+  input: AssociationContactInput,
+  accessToken?: string,
+): Promise<AssociationContactsResponse> {
+  const res = await fetch(`${getApiBaseUrl()}/api/associations/${associationId}/contacts`, {
+    method: "POST",
+    headers: authHeaders(token, accessToken, true),
+    body: JSON.stringify(input),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(detailMessage(data, `Failed to add contact (${res.status})`));
+  }
+  return asContactsResponse(data);
+}
+
+export async function updateAssociationContact(
+  token: string | undefined,
+  associationId: number,
+  contactId: string,
+  input: AssociationContactInput,
+  accessToken?: string,
+): Promise<AssociationContactsResponse> {
+  const res = await fetch(
+    `${getApiBaseUrl()}/api/associations/${associationId}/contacts/${encodeURIComponent(contactId)}`,
+    {
+      method: "PATCH",
+      headers: authHeaders(token, accessToken, true),
+      body: JSON.stringify(input),
+    },
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(detailMessage(data, `Failed to update contact (${res.status})`));
+  }
+  return asContactsResponse(data);
+}
+
+export async function deleteAssociationContact(
+  token: string | undefined,
+  associationId: number,
+  contactId: string,
+  accessToken?: string,
+): Promise<AssociationContactsResponse> {
+  const res = await fetch(
+    `${getApiBaseUrl()}/api/associations/${associationId}/contacts/${encodeURIComponent(contactId)}`,
+    {
+      method: "DELETE",
+      headers: authHeaders(token, accessToken),
+    },
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(detailMessage(data, `Failed to remove contact (${res.status})`));
+  }
+  return asContactsResponse(data);
 }
