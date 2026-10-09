@@ -45,6 +45,8 @@ import {
 import { SmeGasStepsTable, SmeGasBillBlock, SmeGasBackendFlag, smeGasRateFromBlocks } from "@/components/base2/SmeGasStepsTable";
 import { smeGasComparisonEnergyRate } from "@/lib/sme-gas-current-rate";
 import { SmeElecOfferTable } from "@/components/base2/SmeElecOfferTable";
+import { CurrentDiscountFields } from "@/components/base2/CurrentDiscountFields";
+import { applyCurrentDiscount, formatDiscountedRate, withUsageDiscount, type CurrentPlanDiscount } from "@/lib/current-plan-discount";
 import {
   extractSmeElecOffer,
   latestSmeElecInvoiceRow,
@@ -149,6 +151,8 @@ interface UtilityComparison {
   smeAlintaSlices?: AlintaPriceSlice[];
   /** SME → SME gas: bill blocks as edited on the step table. Undefined = as extracted. */
   smeGasBillBlocksOverride?: SmeGasBillBlock[];
+  /** Plan discount on the current gas rate and/or daily supply. The letter receives the reduced rates. */
+  smeCurrentDiscount?: CurrentPlanDiscount;
   smeElecComparisonMode?: SmeElecComparisonMode;
   /** SME vs SME: bill charges and hand-typed offer rates. */
   smeElecOffer?: SmeElecOfferDraft;
@@ -1382,8 +1386,8 @@ function buildComparisonSnapshot(
       new_cost: fin.new_cost ?? priced.offerAnnual,
       annual_usage_kwh: draft.annualUsageKwh ?? null,
       bill_period_usage_kwh: draft.billKwh > 0 ? draft.billKwh : null,
-      current_peak_cpkwh: peak?.currentCPerKwh ?? null,
-      current_offpeak_cpkwh: offPeak?.currentCPerKwh ?? null,
+      current_peak_cpkwh: applyCurrentDiscount(peak?.currentCPerKwh, draft.currentDiscount, "usage") ?? null,
+      current_offpeak_cpkwh: applyCurrentDiscount(offPeak?.currentCPerKwh, draft.currentDiscount, "usage") ?? null,
       offer_peak_cpkwh: peak?.offerCPerKwh ?? null,
       offer_offpeak_cpkwh: offPeak?.offerCPerKwh ?? null,
     };
@@ -2760,6 +2764,7 @@ export default function Base2Page() {
       const details = existing.invoiceData?.electricity_sme_invoice_details || existing.invoiceData?.electricity_ci_invoice_details || {};
       if (!draft.invoiceLink && typeof details.invoice_link === "string") draft.invoiceLink = details.invoice_link;
       if (!draft.retailer && typeof details.retailer === "string") draft.retailer = details.retailer;
+      if (existing.smeElecOffer?.currentDiscount) draft.currentDiscount = existing.smeElecOffer.currentDiscount;
       setUtilityComparisons((prev) => prev.map((u) => (
         u.utilityType === "SME Electricity" && u.identifier === identifier
           ? { ...u, smeElecOffer: draft, smeElecOfferLoading: false, smeElecOfferError: error }
@@ -2772,6 +2777,12 @@ export default function Base2Page() {
     }
     const offer = await loadSmeElecOfferDraft(token, identifier, existing.invoiceData);
     apply(offer.draft, offer.error);
+  };
+
+  const updateSmeCurrentDiscount = (identifier: string, discount: CurrentPlanDiscount | undefined) => {
+    setUtilityComparisons((prev) => prev.map((u) => (
+      u.utilityType === "SME Gas" && u.identifier === identifier ? { ...u, smeCurrentDiscount: discount } : u
+    )));
   };
 
   const updateSmeElecOffer = (identifier: string, draft: SmeElecOfferDraft) => {
@@ -2900,7 +2911,10 @@ export default function Base2Page() {
         savings.estimatedAnnualCommission = annualKwh * elecCommKwh;
       }
     } else if (comparison.utilityType.includes('Gas')) {
-      const currentRate = comparison.currentGasRate || 0; const compRate = comparison.comparisonGasRate || 0;
+      const planDiscount = comparison.utilityType === "SME Gas" ? comparison.smeCurrentDiscount : undefined;
+      const currentRate = applyCurrentDiscount(comparison.currentGasRate, planDiscount, "usage") || 0;
+      const currentSupply = applyCurrentDiscount(comparison.currentDailySupply, planDiscount, "supply");
+      const compRate = comparison.comparisonGasRate || 0;
       const periodUsage = comparison.utilityType === "C&I Gas" ? getCiGasEffectiveUsageGJ(comparison) : comparison.utilityType === "SME Gas" && comparison.smeGasComparisonMode === "ci_offer" ? getSmeCiGasEffectiveUsageGJ(comparison) : comparison.gasUsage || comparison.monthlyUsage || 0;
       const annualGJ = resolveGasAnnualUsageGJ(comparison) ?? (periodUsage > 0 ? periodUsage * 12 : undefined);
       if (annualGJ != null && annualGJ > 0) {
@@ -2919,8 +2933,8 @@ export default function Base2Page() {
         savings.currentEnergyAnnualCost = currentAnnualCost;
         savings.offerEnergyAnnualCost = offerAnnualCost;
         savings.supplySavings = 0;
-        if (comparison.currentDailySupply && comparison.comparisonDailySupply) savings.supplySavings = (comparison.currentDailySupply - comparison.comparisonDailySupply) * 365;
-        const totalCurrentAnnual = currentAnnualCost + (comparison.currentDailySupply || 0) * 365;
+        if (currentSupply && comparison.comparisonDailySupply) savings.supplySavings = (currentSupply - comparison.comparisonDailySupply) * 365;
+        const totalCurrentAnnual = currentAnnualCost + (currentSupply || 0) * 365;
         savings.totalAnnualSavings = savings.gasUsageSavingsAnnual + savings.supplySavings;
         savings.totalAnnualSavingsPercent = totalCurrentAnnual > 0 ? (savings.totalAnnualSavings / totalCurrentAnnual) * 100 : 0;
       }
@@ -3310,7 +3324,7 @@ export default function Base2Page() {
           payload.invoice_id = sme?.invoice_number || sme?.invoice_id || "";
           payload.site_address = (typeof sme?.site_address === "string" && sme.site_address) || businessInfo?.site_address || "";
           payload.invoice_number = sme?.invoice_number || "";
-          payload.gas_rate_invoice = util.currentGasRate?.toFixed(4) || "0";
+          payload.gas_rate_invoice = formatDiscountedRate(util.currentGasRate, util.smeCurrentDiscount, "usage", 4);
           const periodGj = util.smeGasInvoicePeriodGJ != null && util.smeGasInvoicePeriodGJ > 0
             ? util.smeGasInvoicePeriodGJ
             : util.gasUsage || util.monthlyUsage || 0;
@@ -3323,7 +3337,7 @@ export default function Base2Page() {
           payload.offer1Type = "smoothed";
           payload.offer1PeriodYears = "1";
           payload.offer1StartDate = new Date().toISOString().split("T")[0];
-          payload.current_daily_supply = util.currentDailySupply?.toFixed(5) || "0";
+          payload.current_daily_supply = formatDiscountedRate(util.currentDailySupply, util.smeCurrentDiscount, "supply", 5);
           payload.comparison_daily_supply = util.comparisonDailySupply?.toFixed(5) || "0";
           payload.sme_gas_sme_comparison = true;
           payload.sme_gas_offer_source = "alinta_businessdeal_flex_group_1";
@@ -3347,18 +3361,21 @@ export default function Base2Page() {
               amount_aud: Number(step.aud.toFixed(2)),
             })),
           }));
-          payload.sme_gas_bill_blocks = (util.smeGasBillBlocksOverride ?? blocks.blocks).map((b) => ({
-            block: b.block,
-            threshold: b.threshold ?? "",
-            mj: b.mj,
-            rate_c_per_mj: b.rateCPerMj ?? null,
-            amount_aud: b.amountAud ?? null,
-          }));
+          payload.sme_gas_bill_blocks = (util.smeGasBillBlocksOverride ?? blocks.blocks).map((b) => {
+            const sent = withUsageDiscount(b, util.smeCurrentDiscount);
+            return {
+              block: sent.block,
+              threshold: sent.threshold ?? "",
+              mj: sent.mj,
+              rate_c_per_mj: sent.rateCPerMj ?? null,
+              amount_aud: sent.amountAud ?? null,
+            };
+          });
           payload.sme_gas_block_rate_unit = "c/MJ";
           if (blocks.block1Consumption != null) payload.sme_gas_block_1_consumption = blocks.block1Consumption.toFixed(3);
-          if (blocks.block1RateCPerMj != null) payload.sme_gas_block_1_rate = blocks.block1RateCPerMj.toFixed(4);
+          if (blocks.block1RateCPerMj != null) payload.sme_gas_block_1_rate = formatDiscountedRate(blocks.block1RateCPerMj, util.smeCurrentDiscount, "usage", 4);
           if (blocks.block2Consumption != null) payload.sme_gas_block_2_consumption = blocks.block2Consumption.toFixed(3);
-          if (blocks.block2RateCPerMj != null) payload.sme_gas_block_2_rate = blocks.block2RateCPerMj.toFixed(4);
+          if (blocks.block2RateCPerMj != null) payload.sme_gas_block_2_rate = formatDiscountedRate(blocks.block2RateCPerMj, util.smeCurrentDiscount, "usage", 4);
           payload.commission_aud_per_gj = util.ciGasCommissionAudPerGj!.toFixed(4);
           payload.commission_unit_gas = "$/GJ";
           if (util.smeGasInvoiceReviewDays != null) payload.invoice_review_days = String(util.smeGasInvoiceReviewDays);
@@ -3384,11 +3401,12 @@ export default function Base2Page() {
           webhookUrl = isRsl ? SME_GAS_CI_RSL_WEBHOOK_URL : "https://membersaces.app.n8n.cloud/webhook/generate-gas-sme-ci-comparaison-b2";
           const sme = util.invoiceData?.gas_sme_invoicedetails;
           payload.mrin = util.identifier; payload.invoice_id = sme?.invoice_number || sme?.invoice_id || ""; payload.site_address = (typeof sme?.site_address === "string" && sme.site_address) || businessInfo?.site_address || ""; payload.invoice_number = sme?.invoice_number || "";
-          payload.gas_rate_invoice = util.currentGasRate?.toFixed(4) || "0";
+          payload.gas_rate_invoice = formatDiscountedRate(util.currentGasRate, util.smeCurrentDiscount, "usage", 4);
           const gasUsageForWebhook = getSmeCiGasEffectiveUsageGJ(util); const gasUsageStr = gasUsageForWebhook > 0 ? gasUsageForWebhook.toFixed(2) : util.gasUsage?.toFixed(2) || util.monthlyUsage?.toFixed(2) || "0";
           payload.gas_usage_invoice = gasUsageStr; payload.total_monthly_usage = gasUsageStr;
           payload.offer1GasRate = util.comparisonGasRate?.toFixed(4) || "0"; payload.offer1Retailer = "Comparison Offer"; payload.offer1Validity = "12 months"; payload.offer1Type = "smoothed"; payload.offer1PeriodYears = "1"; payload.offer1StartDate = new Date().toISOString().split("T")[0];
-          payload.current_daily_supply = util.currentDailySupply?.toFixed(2) || "0"; payload.comparison_daily_supply = util.comparisonDailySupply?.toFixed(2) || "0";
+          payload.current_daily_supply = formatDiscountedRate(util.currentDailySupply, util.smeCurrentDiscount, "supply", 2);
+          payload.comparison_daily_supply = util.comparisonDailySupply?.toFixed(2) || "0";
           payload.sme_gas_ci_comparison = true; payload.sme_gas_bundled_rate_per_gj = util.smeGasBundledRatePerGJ?.toFixed(4) ?? ""; payload.sme_gas_energy_share = util.smeCiEnergyShareOfInvoice?.toFixed(4) ?? ""; payload.sme_gas_postcode = util.smeGasPostcode || ""; payload.sme_gas_invoice_total_stated = util.smeGasTotalExGst?.toFixed(2) ?? ""; payload.sme_gas_invoice_includes_gst = util.smeGasInvoiceTotalIncludesGst === true;
           // Include postcode business labels used to derive the reference energy share
           payload.sme_gas_ci_reference_matched_postcodes = util.smeCiReferenceMatchedPostcodes ?? [];
@@ -4729,6 +4747,23 @@ export default function Base2Page() {
                           <option value="sme_offer">SME vs SME</option>
                           <option value="ci_offer">C&I-style comparison (SME → C&I)</option>
                         </select>
+                        <div className="mt-3">
+                          <CurrentDiscountFields
+                            value={comparison.smeCurrentDiscount}
+                            onChange={(discount) => updateSmeCurrentDiscount(comparison.identifier, discount)}
+                            hint={(() => {
+                              const percent = comparison.smeCurrentDiscount?.percent;
+                              if (!(percent != null && percent > 0)) {
+                                return "Leave this blank unless the plan has a discount on the current rates. It can apply to usage, supply, or both. The letter is sent those rates already reduced.";
+                              }
+                              const gasRate = applyCurrentDiscount(comparison.currentGasRate, comparison.smeCurrentDiscount, "usage");
+                              const supply = applyCurrentDiscount(comparison.currentDailySupply, comparison.smeCurrentDiscount, "supply");
+                              const gasText = gasRate != null && gasRate > 0 ? `$${gasRate.toFixed(4)}/GJ` : "the energy rate";
+                              const supplyText = supply != null && supply > 0 ? `$${supply.toFixed(5)}/day` : "the daily supply";
+                              return `Invoice steps stay as printed. The letter uses ${gasText} and ${supplyText}.`;
+                            })()}
+                          />
+                        </div>
                         {isSmeGasSmeOffer(comparison) && (
                           <div className="mt-3 space-y-3 text-xs text-gray-700">
                             <p className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 leading-snug text-teal-900">
@@ -4826,9 +4861,12 @@ export default function Base2Page() {
                                   slices={comparison.smeAlintaSlices ?? []}
                                   offerUsageGj={comparison.smeGasInvoicePeriodGJ ?? comparison.gasUsage}
                                   onOfferUsageChange={(value) => updateUsage(comparison.utilityType, comparison.identifier, "gasUsage", value)}
-                                  currentRatePerGj={comparison.currentGasRate}
+                                  currentRatePerGj={applyCurrentDiscount(comparison.currentGasRate, comparison.smeCurrentDiscount, "usage")}
                                   offerRatePerGj={comparison.comparisonGasRate}
                                   annualGj={s?.annualUsageGJ}
+                                  annualGjEdited={comparison.smeGasAnnualConsumptionGJ != null && comparison.smeGasAnnualConsumptionGJ > 0}
+                                  onAnnualGjChange={(value) => updateUsage(comparison.utilityType, comparison.identifier, "smeGasAnnualConsumptionGJ", value)}
+                                  onAnnualGjReset={() => updateUsage(comparison.utilityType, comparison.identifier, "smeGasAnnualConsumptionGJ", "")}
                                   annualEnergySaving={s?.gasUsageSavingsAnnual}
                                   currentSupplyPerDay={comparison.currentDailySupply}
                                   offerSupplyPerDay={comparison.comparisonDailySupply}

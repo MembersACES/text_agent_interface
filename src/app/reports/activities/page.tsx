@@ -10,10 +10,15 @@ import { SurfacePanel, FilterInput, FilterSelect, FilterTextarea } from "@/compo
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
 import { ActivityReportSummary } from "@/components/reports/activity-report-summary";
-import { ActivityReportTable } from "@/components/reports/activity-report-table";
+import {
+  ActivityReportTable,
+  activityDeleteTarget,
+  activityReportRowKey,
+  type ActivityDeleteTarget,
+} from "@/components/reports/activity-report-table";
 import { FilterCombobox } from "@/components/reports/filter-combobox";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Download, Inbox } from "lucide-react";
+import { Download, Inbox, Trash2 } from "lucide-react";
 import {
   ACTIVITY_TYPE_FILTER_OPTIONS,
   activityTypeLabel,
@@ -114,10 +119,10 @@ export default function ActivityReportPage() {
   const clientFilterReq = useRef(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<
-    { kind: "offer_activity"; id: number } | { kind: "client_manual"; id: number } | null
-  >(null);
+  const [deleteTargets, setDeleteTargets] = useState<ActivityDeleteTarget[]>([]);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(() => new Set());
+  const lastSelectedIndex = useRef<number | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const [addActivityOpen, setAddActivityOpen] = useState(false);
@@ -294,51 +299,113 @@ export default function ActivityReportPage() {
     }
   }, [token, removeTestConfirm, showToast]);
 
-  const handleDeleteActivity = useCallback(async () => {
-    if (!token || !deleteTarget) return;
-    try {
-      setDeleteSubmitting(true);
-      setDeleteError(null);
-      const url =
-        deleteTarget.kind === "offer_activity"
-          ? `${getApiBaseUrl()}/api/reports/activities/${deleteTarget.id}`
-          : `${getApiBaseUrl()}/api/reports/activities/client-manual/${deleteTarget.id}`;
-      const res = await fetch(url, {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(
-          typeof data.detail === "string"
-            ? data.detail
-            : "Failed to delete activity"
-        );
+  useEffect(() => {
+    setSelectedKeys((prev) => {
+      if (prev.size === 0) return prev;
+      const live = new Set(activities.map(activityReportRowKey));
+      let changed = false;
+      const next = new Set<string>();
+      for (const key of prev) {
+        if (live.has(key)) next.add(key);
+        else changed = true;
       }
-      setActivities((prev) =>
-        prev.filter((a) => {
-          if (deleteTarget.kind === "client_manual") {
-            return a.manual_activity_id !== deleteTarget.id;
+      return changed ? next : prev;
+    });
+  }, [activities]);
+
+  const toggleActivityRow = useCallback((key: string, index: number, shiftKey: boolean) => {
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (shiftKey && lastSelectedIndex.current != null) {
+        const start = Math.min(lastSelectedIndex.current, index);
+        const end = Math.max(lastSelectedIndex.current, index);
+        const select = !prev.has(key);
+        for (let i = start; i <= end; i++) {
+          const row = activities[i];
+          if (!row || !activityDeleteTarget(row)) continue;
+          const rowKey = activityReportRowKey(row);
+          if (select) next.add(rowKey);
+          else next.delete(rowKey);
+        }
+      } else if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+    lastSelectedIndex.current = index;
+  }, [activities]);
+
+  const toggleAllActivities = useCallback(() => {
+    setSelectedKeys((prev) => {
+      const keys = activities.filter((row) => activityDeleteTarget(row)).map(activityReportRowKey);
+      const allOn = keys.length > 0 && keys.every((key) => prev.has(key));
+      return allOn ? new Set() : new Set(keys);
+    });
+    lastSelectedIndex.current = null;
+  }, [activities]);
+
+  const handleDeleteActivity = useCallback(async () => {
+    if (!token || deleteTargets.length === 0) return;
+    setDeleteSubmitting(true);
+    setDeleteError(null);
+    const removed: ActivityDeleteTarget[] = [];
+    const failed: string[] = [];
+    const chunkSize = 6;
+    for (let i = 0; i < deleteTargets.length; i += chunkSize) {
+      const chunk = deleteTargets.slice(i, i + chunkSize);
+      await Promise.all(
+        chunk.map(async (target) => {
+          const url =
+            target.kind === "offer_activity"
+              ? `${getApiBaseUrl()}/api/reports/activities/${target.id}`
+              : `${getApiBaseUrl()}/api/reports/activities/client-manual/${target.id}`;
+          try {
+            const res = await fetch(url, {
+              method: "DELETE",
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            if (!res.ok) {
+              const data = await res.json().catch(() => ({}));
+              throw new Error(typeof data.detail === "string" ? data.detail : "Failed to delete activity");
+            }
+            removed.push(target);
+          } catch (e: unknown) {
+            failed.push(e instanceof Error ? e.message : "Failed to delete activity");
           }
-          return !(
-            (a.manual_activity_id == null || a.manual_activity_id === undefined) &&
-            a.offer_id > 0 &&
-            a.id === deleteTarget.id
-          );
-        })
+        }),
       );
-      setDeleteTarget(null);
-    } catch (e: unknown) {
-      setDeleteError(
-        e instanceof Error ? e.message : "Failed to delete activity"
-      );
-    } finally {
-      setDeleteSubmitting(false);
     }
-  }, [token, deleteTarget]);
+    if (removed.length) {
+      const gone = (row: ActivityItem) => {
+        const target = activityDeleteTarget(row);
+        return target != null && removed.some((item) => item.kind === target.kind && item.id === target.id);
+      };
+      setActivities((prev) => prev.filter((row) => !gone(row)));
+      setSelectedKeys((prev) => {
+        const next = new Set(prev);
+        for (const row of activities) {
+          if (gone(row)) next.delete(activityReportRowKey(row));
+        }
+        return next;
+      });
+    }
+    if (failed.length) {
+      setDeleteError(
+        removed.length
+          ? `Deleted ${removed.length}. ${failed.length} could not be deleted.`
+          : failed[0],
+      );
+      setDeleteTargets((prev) =>
+        prev.filter((target) => !removed.some((item) => item.kind === target.kind && item.id === target.id)),
+      );
+    } else {
+      setDeleteTargets([]);
+      if (removed.length > 1) showToast(`Deleted ${removed.length} activities`, "success");
+    }
+    setDeleteSubmitting(false);
+  }, [token, deleteTargets, activities, showToast]);
 
   useEffect(() => {
     if (!addActivityOpen || !token) return;
@@ -763,15 +830,45 @@ export default function ActivityReportPage() {
           </SurfacePanel>
         ) : (
           <>
-            <p className="text-xs tabular-nums text-gray-500 dark:text-gray-400">
-              Showing <span className="font-semibold text-dark dark:text-white">{activities.length}</span>{" "}
-              activities · max {MAX_ACTIVITIES} per load
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs tabular-nums text-gray-500 dark:text-gray-400">
+                Showing <span className="font-semibold text-dark dark:text-white">{activities.length}</span>{" "}
+                activities · max {MAX_ACTIVITIES} per load
+              </p>
+              {selectedKeys.size > 0 ? (
+                <div className="flex items-center gap-3 rounded-full border border-primary/20 bg-primary/5 py-1 pl-3 pr-1">
+                  <span className="text-xs font-semibold tabular-nums text-dark dark:text-white">
+                    {selectedKeys.size} selected
+                  </span>
+                  <Button
+                    type="button"
+                    variant="danger"
+                    size="sm"
+                    radius="full"
+                    leftIcon={<Trash2 />}
+                    onClick={() => {
+                      const targets = activities
+                        .filter((row) => selectedKeys.has(activityReportRowKey(row)))
+                        .map(activityDeleteTarget)
+                        .filter((target): target is ActivityDeleteTarget => target != null);
+                      if (!targets.length) return;
+                      setDeleteError(null);
+                      setDeleteTargets(targets);
+                    }}
+                  >
+                    Delete
+                  </Button>
+                </div>
+              ) : null}
+            </div>
             <ActivityReportTable
               rows={activities}
+              selectedKeys={selectedKeys}
+              onToggleRow={toggleActivityRow}
+              onToggleAll={toggleAllActivities}
               onDelete={(target) => {
                 setDeleteError(null);
-                setDeleteTarget(target);
+                setDeleteTargets([target]);
               }}
             />
           </>
@@ -956,7 +1053,7 @@ export default function ActivityReportPage() {
             </div>
           </div>
         )}
-        {deleteTarget != null && (
+        {deleteTargets.length > 0 && (
           <div
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
             role="dialog"
@@ -964,11 +1061,12 @@ export default function ActivityReportPage() {
           >
             <div className="mx-2 w-full max-w-md rounded-2xl bg-white p-5 shadow-lg dark:bg-gray-dark">
               <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-2">
-                Delete activity?
+                {deleteTargets.length === 1 ? "Delete activity?" : `Delete ${deleteTargets.length} activities?`}
               </h3>
               <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
-                This will permanently remove this activity record from the database.
-                This action cannot be undone.
+                {deleteTargets.length === 1
+                  ? "This will permanently remove this activity record from the database. This action cannot be undone."
+                  : `This will permanently remove these ${deleteTargets.length} activity records from the database. This action cannot be undone.`}
               </p>
               {deleteError && (
                 <p className="mb-2 text-xs text-red-600 dark:text-red-400">
@@ -980,7 +1078,7 @@ export default function ActivityReportPage() {
                   type="button"
                   onClick={() => {
                     if (deleteSubmitting) return;
-                    setDeleteTarget(null);
+                    setDeleteTargets([]);
                     setDeleteError(null);
                   }}
                   className="px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"
@@ -994,7 +1092,11 @@ export default function ActivityReportPage() {
                   disabled={deleteSubmitting}
                   className="px-3 py-1.5 rounded-md bg-red-600 text-white text-xs font-medium hover:bg-red-700 disabled:opacity-50"
                 >
-                  {deleteSubmitting ? "Deleting..." : "Delete"}
+                  {deleteSubmitting
+                    ? "Deleting..."
+                    : deleteTargets.length === 1
+                      ? "Delete"
+                      : `Delete ${deleteTargets.length}`}
                 </button>
               </div>
             </div>

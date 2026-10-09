@@ -4,6 +4,7 @@ import { ActivityTypeBadge } from "@/components/reports/activity-type-badge";
 import { cn } from "@/lib/utils";
 import { ExternalLink, Trash2 } from "lucide-react";
 import Link from "next/link";
+import { useEffect, useRef } from "react";
 
 export interface ActivityReportRow {
   id: number;
@@ -23,6 +24,16 @@ export function activityReportRowKey(a: ActivityReportRow): string {
   if (a.manual_activity_id != null) return `cm-${a.manual_activity_id}`;
   if (a.task_id) return `task-${a.task_id}-${a.id}`;
   return `${a.activity_type}-${a.id}`;
+}
+
+export type ActivityDeleteTarget =
+  | { kind: "offer_activity"; id: number }
+  | { kind: "client_manual"; id: number };
+
+export function activityDeleteTarget(a: ActivityReportRow): ActivityDeleteTarget | null {
+  if (a.manual_activity_id != null) return { kind: "client_manual", id: a.manual_activity_id };
+  if (a.offer_id > 0) return { kind: "offer_activity", id: a.id };
+  return null;
 }
 
 function formatDate(dateString: string) {
@@ -59,15 +70,35 @@ const tdClass = "px-3 py-3 align-middle";
 
 interface ActivityReportTableProps {
   rows: ActivityReportRow[];
-  onDelete: (target: { kind: "offer_activity"; id: number } | { kind: "client_manual"; id: number }) => void;
+  selectedKeys: ReadonlySet<string>;
+  onToggleRow: (key: string, index: number, shiftKey: boolean) => void;
+  onToggleAll: () => void;
+  onDelete: (target: ActivityDeleteTarget) => void;
 }
 
-export function ActivityReportTable({ rows, onDelete }: ActivityReportTableProps) {
+export function ActivityReportTable({
+  rows,
+  selectedKeys,
+  onToggleRow,
+  onToggleAll,
+  onDelete,
+}: ActivityReportTableProps) {
+  const selectAllRef = useRef<HTMLInputElement>(null);
+  const deletableCount = rows.filter((row) => activityDeleteTarget(row)).length;
+  const selectedCount = rows.filter((row) => selectedKeys.has(activityReportRowKey(row))).length;
+  const allSelected = deletableCount > 0 && selectedCount === deletableCount;
+  const someSelected = selectedCount > 0 && !allSelected;
+
+  useEffect(() => {
+    if (selectAllRef.current) selectAllRef.current.indeterminate = someSelected;
+  }, [someSelected]);
+
   return (
     <div className="overflow-hidden rounded-2xl bg-white shadow-sm dark:bg-gray-dark">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[52rem] table-fixed">
+        <table className="w-full min-w-[54rem] table-fixed">
           <colgroup>
+            <col className="w-[2.75rem]" />
             <col className="w-[10.5rem]" />
             <col className="w-[9.5rem]" />
             <col className="w-[12rem]" />
@@ -78,6 +109,21 @@ export function ActivityReportTable({ rows, onDelete }: ActivityReportTableProps
           </colgroup>
           <thead>
             <tr className="border-b border-gray-100 bg-canvas/60 dark:border-dark-3 dark:bg-dark-2/40">
+              <th scope="col" className={cn(thClass, "pr-0")}>
+                <input
+                  ref={selectAllRef}
+                  type="checkbox"
+                  checked={allSelected}
+                  disabled={deletableCount === 0}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    onToggleAll();
+                  }}
+                  onChange={() => undefined}
+                  aria-label="Select all activities"
+                  className="size-4 rounded border-gray-300 text-primary accent-primary disabled:opacity-40"
+                />
+              </th>
               <th scope="col" className={thClass}>
                 Date
               </th>
@@ -104,7 +150,9 @@ export function ActivityReportTable({ rows, onDelete }: ActivityReportTableProps
           <tbody className="divide-y divide-gray-100 dark:divide-dark-3">
             {rows.map((a, index) => {
               const docHref = documentLinkHref(a.document_link);
-              const canDelete = a.manual_activity_id != null || a.offer_id > 0;
+              const deleteTarget = activityDeleteTarget(a);
+              const rowKey = activityReportRowKey(a);
+              const selected = selectedKeys.has(rowKey);
               const clientLabel = a.business_name ?? (a.client_id ? `Client ${a.client_id}` : "—");
               const detailsLabel =
                 a.offer_id > 0
@@ -115,12 +163,28 @@ export function ActivityReportTable({ rows, onDelete }: ActivityReportTableProps
 
               return (
                 <tr
-                  key={activityReportRowKey(a)}
+                  key={rowKey}
                   className={cn(
                     "pg-fade-up group transition-colors hover:bg-canvas/70 dark:hover:bg-dark-2/50",
+                    selected && "bg-primary/5 hover:bg-primary/10 dark:bg-primary/10",
                     index < 6 && `pg-stagger-${Math.min(index + 1, 6)}`,
                   )}
                 >
+                  <td className={cn(tdClass, "pr-0")}>
+                    {deleteTarget ? (
+                      <input
+                        type="checkbox"
+                        checked={selected}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          onToggleRow(rowKey, index, event.shiftKey);
+                        }}
+                        onChange={() => undefined}
+                        aria-label={`Select ${clientLabel}`}
+                        className="size-4 rounded border-gray-300 text-primary accent-primary"
+                      />
+                    ) : null}
+                  </td>
                   <td className={cn(tdClass, "whitespace-nowrap text-xs tabular-nums text-gray-600 dark:text-gray-400")}>
                     {formatDate(a.created_at)}
                   </td>
@@ -188,16 +252,10 @@ export function ActivityReportTable({ rows, onDelete }: ActivityReportTableProps
                     )}
                   </td>
                   <td className={cn(tdClass, "text-right")}>
-                    {canDelete ? (
+                    {deleteTarget ? (
                       <button
                         type="button"
-                        onClick={() => {
-                          if (a.manual_activity_id != null) {
-                            onDelete({ kind: "client_manual", id: a.manual_activity_id });
-                          } else {
-                            onDelete({ kind: "offer_activity", id: a.id });
-                          }
-                        }}
+                        onClick={() => onDelete(deleteTarget)}
                         className="inline-flex size-8 items-center justify-center rounded-full text-gray-400 opacity-0 transition-all hover:bg-semantic-block/10 hover:text-semantic-block focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 group-hover:opacity-100"
                         aria-label="Delete activity"
                       >
