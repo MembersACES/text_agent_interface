@@ -4864,6 +4864,9 @@ export default function Base2Page() {
                                   currentRatePerGj={applyCurrentDiscount(comparison.currentGasRate, comparison.smeCurrentDiscount, "usage")}
                                   offerRatePerGj={comparison.comparisonGasRate}
                                   annualGj={s?.annualUsageGJ}
+                                  annualGjEdited={comparison.smeGasAnnualConsumptionGJ != null && comparison.smeGasAnnualConsumptionGJ > 0}
+                                  onAnnualGjChange={(value) => updateUsage(comparison.utilityType, comparison.identifier, "smeGasAnnualConsumptionGJ", value)}
+                                  onAnnualGjReset={() => updateUsage(comparison.utilityType, comparison.identifier, "smeGasAnnualConsumptionGJ", "")}
                                   annualEnergySaving={s?.gasUsageSavingsAnnual}
                                   currentSupplyPerDay={comparison.currentDailySupply}
                                   offerSupplyPerDay={comparison.comparisonDailySupply}

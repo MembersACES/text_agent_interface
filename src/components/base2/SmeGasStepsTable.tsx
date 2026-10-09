@@ -178,6 +178,9 @@ export function SmeGasStepsTable({
   currentRatePerGj,
   offerRatePerGj,
   annualGj,
+  annualGjEdited,
+  onAnnualGjChange,
+  onAnnualGjReset,
   annualEnergySaving,
   currentSupplyPerDay,
   offerSupplyPerDay,
@@ -209,6 +212,9 @@ export function SmeGasStepsTable({
   currentRatePerGj?: number;
   offerRatePerGj?: number;
   annualGj?: number;
+  annualGjEdited?: boolean;
+  onAnnualGjChange?: (value: string) => void;
+  onAnnualGjReset?: () => void;
   annualEnergySaving?: number;
   currentSupplyPerDay?: number;
   offerSupplyPerDay?: number;
@@ -402,11 +408,27 @@ export function SmeGasStepsTable({
         </span>
       </div>
 
-      {currentRatePerGj != null && offerRatePerGj != null && annualGj != null && (
+      {currentRatePerGj != null && offerRatePerGj != null && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-teal-200 bg-teal-50/50 px-3 py-2 text-xs text-gray-800">
           <span className="font-semibold">Annual energy</span>
-          <span className="font-mono tabular-nums">
-            (${currentRatePerGj.toFixed(4)} − ${offerRatePerGj.toFixed(4)}) × {annualGj.toLocaleString("en-AU", { maximumFractionDigits: 2 })} GJ/yr
+          <span className="flex flex-wrap items-center gap-1 font-mono tabular-nums">
+            (${currentRatePerGj.toFixed(4)} − ${offerRatePerGj.toFixed(4)}) ×
+            <input
+              type="number"
+              step="0.01"
+              min={0}
+              className={`${cellInput} w-24`}
+              value={annualGj != null && Number.isFinite(annualGj) ? Number(annualGj.toFixed(2)) : ""}
+              onChange={(e) => onAnnualGjChange?.(e.target.value)}
+              readOnly={!onAnnualGjChange}
+              aria-label="Annual usage GJ per year"
+            />
+            GJ/yr
+            {annualGjEdited && onAnnualGjReset && (
+              <button type="button" onClick={onAnnualGjReset} className="font-sans text-[11px] font-normal text-teal-700 underline">
+                Use sheet figure
+              </button>
+            )}
           </span>
           <span className="font-mono font-semibold tabular-nums text-teal-800">
             {annualEnergySaving != null && annualEnergySaving < 0 ? "Increase " : "Saving "}
