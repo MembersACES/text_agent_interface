@@ -51,6 +51,27 @@ export interface AlintaNetworkCard {
 export const ALINTA_SME_GAS_PRODUCT = "BusinessDeal Flex";
 export const ALINTA_SME_GAS_GROUP = "Group 1";
 
+/** Empty bands so a meter with no Group 1 card can still take a portal quote. */
+export function blankPortalTariff(): AlintaTariffOverride {
+  return {
+    blocks: [
+      { mjPerDay: null, rateCPerMj: 0 },
+      { mjPerDay: null, rateCPerMj: 0 },
+    ],
+    supplyCPerDay: 0,
+  };
+}
+
+/** Name for a typed quote when the Group 1 sheet has no card. 524 is Jemena NSW. */
+export function portalNetworkLabel(mirn: string): string {
+  if (mirn.startsWith("524")) return "Jemena Gas Networks (NSW)";
+  if (mirn.startsWith("52")) return "NSW gas network";
+  if (mirn.startsWith("54")) return "Queensland gas network";
+  if (mirn.startsWith("55")) return "Australian Gas Networks (SA)";
+  if (mirn.startsWith("56")) return "Western Australia gas network";
+  return "Portal tariff";
+}
+
 const MULTINET_OFFPEAK_BLOCKS: AlintaBlock[] = [
   { mjPerDay: 250, rateCPerMj: 3.168 },
   { mjPerDay: 750, rateCPerMj: 2.662 },
@@ -432,7 +453,7 @@ export function quoteAlintaSmeGas(input: {
         detail: "This MIRN is not on the Group 1 sheet. 531 is treated as Multinet, 532 as Australian Gas Networks, and 533 as AusNet. That prefix is not always the distributor — Leongatha starts with 531 and is AusNet, and it is non-serviceable. Confirm the network before sending the comparison.",
       });
     }
-  } else {
+  } else if (mirn.startsWith("53")) {
     flags.push({
       id: "manual-network",
       level: "info",
@@ -441,37 +462,45 @@ export function quoteAlintaSmeGas(input: {
     });
   }
 
-  if (!networkId) {
+  const typed = usableTariff(input.tariffOverride);
+  const nonVic = Boolean(mirn) && !mirn.startsWith("53");
+  // A typed portal quote is the offer. Group 1 is Victorian only, so it never fills in for these meters.
+  const offSheet = !networkId || nonVic;
+
+  if (!networkId && !typed) {
     flags.push({
       id: "no-network",
       level: "error",
       title: "No gas network for this MIRN",
-      detail: "It is not on the Alinta Group 1 sheet, and the prefix is not 531, 532, or 533. Choose Multinet, Australian Gas Networks, or AusNet to price an offer. Nothing was applied automatically.",
+      detail: "It is not on the Alinta Group 1 sheet, and the prefix is not 531, 532, or 533. Type the portal quote into the bands below. Nothing was applied automatically.",
     });
     return emptyQuote(flags, "none", input.periodStart ?? null, input.periodEnd ?? null);
   }
 
   // Every card on the Group 1 sheet is a Victorian network. A non-VIC MIRN (e.g. 55 = SA)
   // must not be priced on Victorian rates, even when a network is picked manually.
-  if (mirn && !mirn.startsWith("53")) {
+  if (nonVic && !typed) {
+    const sheetLabel = networkId ? ALINTA_SME_GAS_NETWORKS[networkId].label : "a Victorian network";
     flags.push({
       id: "non-vic-mirn",
       level: "error",
       title: "No Alinta rates for this state",
-      detail: `MIRN ${mirn} is not a Victorian meter (VIC MIRNs start with 53). The Group 1 sheet only has Victorian networks, so ${ALINTA_SME_GAS_NETWORKS[networkId].label} rates would be wrong here. Nothing was priced.`,
+      detail: `MIRN ${mirn} is not a Victorian meter (VIC MIRNs start with 53). The Group 1 sheet only has Victorian networks, so ${sheetLabel} rates would be wrong here. Type the portal quote into the bands below.`,
     });
     return emptyQuote(flags, match, input.periodStart ?? null, input.periodEnd ?? null);
   }
 
-  const card = ALINTA_SME_GAS_NETWORKS[networkId];
-  const typed = usableTariff(input.tariffOverride);
-  if (networkId === "ausnet" && !typed) flags.push(ausnetFlag(mirn));
+  const card = networkId ? ALINTA_SME_GAS_NETWORKS[networkId] : null;
+  const networkLabel = offSheet ? portalNetworkLabel(mirn) : card!.label;
+  if (networkId === "ausnet" && !typed && !offSheet) flags.push(ausnetFlag(mirn));
   if (typed) {
     flags.push({
       id: "portal-tariff",
       level: "info",
       title: "Offer tariff was typed in",
-      detail: "These bands replace BusinessDeal Flex Group 1 for this site. They are what gets priced, including across season boundaries.",
+      detail: offSheet
+        ? `These bands are the portal quote for ${networkLabel}. Group 1 does not cover this meter.`
+        : "These bands replace BusinessDeal Flex Group 1 for this site. They are what gets priced, including across season boundaries.",
     });
   }
 
@@ -486,16 +515,23 @@ export function quoteAlintaSmeGas(input: {
     });
     return {
       ...emptyQuote(flags, match, input.periodStart ?? null, input.periodEnd ?? null),
-      networkId,
-      networkLabel: card.label,
-      product: card.product,
+      networkId: offSheet ? null : networkId,
+      networkLabel,
+      product: card?.product ?? ALINTA_SME_GAS_PRODUCT,
       listedName: listed?.name,
     };
   }
 
+  const sheetCard = card ?? {
+    id: "agn" as const,
+    label: networkLabel,
+    product: ALINTA_SME_GAS_PRODUCT,
+    seasons: [] as AlintaSeason[],
+  };
   const pricingCard: AlintaNetworkCard = typed
     ? {
-        ...card,
+        ...sheetCard,
+        label: networkLabel,
         seasons: [
           {
             id: "custom",
@@ -509,7 +545,7 @@ export function quoteAlintaSmeGas(input: {
           },
         ],
       }
-    : card;
+    : sheetCard;
 
   let start = input.periodStart || null;
   let end = input.periodEnd || null;
@@ -593,9 +629,9 @@ export function quoteAlintaSmeGas(input: {
   const offerDailyAud = pricedDays > 0 ? offerSupplyAud / pricedDays : null;
 
   return {
-    networkId,
-    networkLabel: card.label,
-    product: card.product,
+    networkId: offSheet ? null : networkId,
+    networkLabel,
+    product: card?.product ?? ALINTA_SME_GAS_PRODUCT,
     match,
     listedName: listed?.name,
     serviceable: true,
