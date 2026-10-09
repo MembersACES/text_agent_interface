@@ -9,7 +9,8 @@ export interface CurrentPlanDiscount {
 }
 
 export function discountFactor(discount: CurrentPlanDiscount | undefined, kind: "usage" | "supply"): number {
-  const percent = discount?.percent;
+  if (!discount) return 1;
+  const percent = discount.percent;
   if (percent == null || !Number.isFinite(percent) || percent <= 0) return 1;
   if (discount.target !== "both" && discount.target !== kind) return 1;
   return 1 - Math.min(percent, 100) / 100;
