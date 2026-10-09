@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { CurrentDiscountFields } from "@/components/base2/CurrentDiscountFields";
 import {
   priceSmeElectricity,
   smeElecBillCheck,
@@ -105,6 +106,7 @@ export function SmeElecOfferTable({
 }) {
   const priced = priceSmeElectricity(draft);
   const bill = smeElecBillCheck(draft);
+  const discountOn = draft.currentDiscount?.percent != null && draft.currentDiscount.percent > 0;
   const patch = (next: SmeElecOfferDraft) => onChange(next);
   const currentAmount = (id: string) => bill.currentLines.find((line) => line.id === id);
   const offerAmount = (id: string) => bill.offerLines.find((line) => line.id === id);
@@ -178,6 +180,15 @@ export function SmeElecOfferTable({
           />
         </label>
       </div>
+      <CurrentDiscountFields
+        value={draft.currentDiscount}
+        onChange={(currentDiscount) => patch({ ...draft, currentDiscount })}
+        hint={
+          discountOn
+            ? "Invoice rows stay as printed, so the bill check still matches. Current / yr and the letter use the usage c/kWh and daily supply after this discount. Metering, demand, and feed-in stay as on the bill."
+            : "Leave this blank unless the plan has a discount on the current rates. It can apply to usage, supply, or both. The letter is sent those rates already reduced."
+        }
+      />
       <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
         <table className="w-full text-xs">
           <thead className="bg-gray-50 text-left text-[11px] uppercase tracking-wide text-gray-500">
@@ -322,7 +333,7 @@ export function SmeElecOfferTable({
       )}
       <div className="grid grid-cols-1 gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 sm:grid-cols-3">
         <div>
-          <div className="text-[10px] uppercase tracking-wide text-gray-500">Current / yr</div>
+          <div className="text-[10px] uppercase tracking-wide text-gray-500">{discountOn ? "Current / yr after discount" : "Current / yr"}</div>
           <div className="font-mono text-sm font-semibold tabular-nums text-gray-900">{aud(priced.currentAnnual)}</div>
         </div>
         <div>

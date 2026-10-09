@@ -38,6 +38,22 @@ describe("priceSmeElectricity", () => {
     expect(priced.generateBlockers).toEqual([]);
   });
 
+  it("reduces current usage and supply by the plan discount and leaves the offer and the bill check", () => {
+    const draft = workedExample();
+    draft.currentDiscount = { percent: 10, target: "both" };
+    const priced = priceSmeElectricity(draft);
+    const raw = priceSmeElectricity(workedExample());
+    expect(priced.offerAnnual).toBe(raw.offerAnnual);
+    expect(priced.currentAnnual).toBeLessThan(raw.currentAnnual as number);
+    expect(smeElecBillCheck(draft).currentTotal).toBe(smeElecBillCheck(workedExample()).currentTotal);
+    const fields = smeElecSmeWebhookFields(draft);
+    const lines = fields.sme_electricity_lines as { current_c_per_kwh: number; offer_c_per_kwh: number }[];
+    expect(lines[0].current_c_per_kwh).toBeCloseTo(34.2);
+    expect(lines[0].offer_c_per_kwh).toBe(36.1);
+    expect(fields.current_daily_supply).toBe("1.08");
+    expect(fields.comparison_daily_supply).toBe("1.14");
+  });
+
   it("uses 365 / invoice days when annual kWh is missing", () => {
     const draft = workedExample();
     draft.annualUsageKwh = undefined;

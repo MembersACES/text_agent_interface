@@ -4,6 +4,8 @@
  * Airtable stores supply, solar metering, and demand rates in cents.
  */
 
+import { applyCurrentDiscount, type CurrentPlanDiscount } from "@/lib/current-plan-discount";
+
 export const SME_ELEC_MAX_USAGE_LINES = 6;
 
 export type SmeElecTariffType = "Time of use" | "Flat" | "Stepped";
@@ -67,6 +69,11 @@ export interface SmeElecOfferDraft {
   vdoPercentDiff?: number;
   /** Lowest annual price for this plan, $/year, including GST. */
   lowestAnnualPrice?: number;
+  /**
+   * Plan discount on the current usage c/kWh and/or daily supply.
+   * Invoice rows stay as printed. The annual comparison and the webhook use the reduced rates.
+   */
+  currentDiscount?: CurrentPlanDiscount;
 }
 
 export interface SmeElecPrice {
@@ -457,13 +464,15 @@ export function priceSmeElectricity(draft: SmeElecOfferDraft): SmeElecPrice {
   let offerUsage = 0;
   for (const line of draft.usageLines) {
     if (!(line.kwh > 0)) continue;
-    currentUsage += line.kwh * scale * (line.currentCPerKwh as number) / 100;
+    const currentCents = applyCurrentDiscount(line.currentCPerKwh, draft.currentDiscount, "usage") as number;
+    currentUsage += line.kwh * scale * currentCents / 100;
     offerUsage += line.kwh * scale * (line.offerCPerKwh || 0) / 100;
   }
   let currentFixed = 0;
   let offerFixed = 0;
   if (draft.dailySupply?.currentPerDay != null) {
-    currentFixed += draft.dailySupply.currentPerDay * 365;
+    const currentSupply = applyCurrentDiscount(draft.dailySupply.currentPerDay, draft.currentDiscount, "supply") as number;
+    currentFixed += currentSupply * 365;
     offerFixed += (draft.dailySupply.offerPerDay || 0) * 365;
   }
   if (draft.metering?.currentPerDay != null) {
@@ -630,7 +639,7 @@ export function smeElecSmeWebhookFields(draft: SmeElecOfferDraft): Record<string
     network_tariff_code: draft.networkTariffCode ?? "",
     bill_kwh: String(draft.billKwh),
     annual_usage_kwh: draft.annualUsageKwh != null ? String(draft.annualUsageKwh) : "",
-    current_daily_supply: webhookNumber(draft.dailySupply?.currentPerDay),
+    current_daily_supply: webhookNumber(applyCurrentDiscount(draft.dailySupply?.currentPerDay, draft.currentDiscount, "supply")),
     comparison_daily_supply: webhookNumber(draft.dailySupply?.offerPerDay),
     current_daily_metering: webhookNumber(draft.metering?.currentPerDay),
     comparison_daily_metering: webhookNumber(draft.metering?.offerPerDay),
@@ -658,7 +667,7 @@ export function smeElecSmeWebhookFields(draft: SmeElecOfferDraft): Record<string
     sme_electricity_lines: draft.usageLines.map((line) => ({
       label: line.label,
       kwh: line.kwh,
-      current_c_per_kwh: line.currentCPerKwh ?? 0,
+      current_c_per_kwh: applyCurrentDiscount(line.currentCPerKwh, draft.currentDiscount, "usage") ?? 0,
       offer_c_per_kwh: line.offerCPerKwh,
     })),
   };
