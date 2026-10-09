@@ -37,11 +37,13 @@ import {
   AlintaPriceSlice,
   AlintaTariffOverride,
   extractSmeGasBillPeriod,
+  blankPortalTariff,
   group1Tariff,
   quoteAlintaSmeGas,
   smeInvoiceDailySupplyAud,
 } from "@/lib/alinta-sme-gas";
 import { SmeGasStepsTable, SmeGasBillBlock, SmeGasBackendFlag, smeGasRateFromBlocks } from "@/components/base2/SmeGasStepsTable";
+import { smeGasComparisonEnergyRate } from "@/lib/sme-gas-current-rate";
 import { SmeElecOfferTable } from "@/components/base2/SmeElecOfferTable";
 import {
   extractSmeElecOffer,
@@ -765,8 +767,9 @@ interface SmeGasBlockLines {
 
 /**
  * SME gas invoice → current rates. Block rates on the bill are c/MJ; $/GJ = c/MJ × 10.
- * Uses the backend's checked figures (`normalised.latest`) when present, else the printed
- * block amounts ÷ MJ, else the weighted block rates. Reads all four blocks.
+ * A single-period bill uses the checked rate, which has any separate discount taken off.
+ * A price-change bill uses the latest period's blocks. The checked rate subtracts the
+ * whole-bill discount from that slice and understates what they pay from now on.
  */
 function readSmeGasBlockLines(invoiceData: { gas_sme_invoicedetails?: Record<string, any>; normalised?: any } | null | undefined): SmeGasBlockLines {
   const sme = invoiceData?.gas_sme_invoicedetails;
@@ -790,8 +793,9 @@ function readSmeGasBlockLines(invoiceData: { gas_sme_invoicedetails?: Record<str
   const blockAud = blocks.reduce((sum, b) => sum + (b.amountAud ?? 0), 0);
   const weightedC = blockMj > 0 ? blocks.reduce((sum, b) => sum + b.mj * (b.rateCPerMj ?? 0), 0) / blockMj : 0;
 
-  const normRate = num(norm?.energy_rate_aud_per_gj);
-  const gasRate = normRate ?? (allAmounts && blockMj > 0 ? (blockAud / blockMj) * 1000 : weightedC * 10);
+  const blockRate = allAmounts && blockMj > 0 ? (blockAud / blockMj) * 1000 : weightedC * 10;
+  const priceChange = sme.price_change_on_invoice === true;
+  const gasRate = smeGasComparisonEnergyRate(priceChange, blockRate, num(norm?.energy_rate_aud_per_gj)) ?? 0;
 
   const generalUsageMJ = num(usageData.general_usage_quantity) ?? 0;
   const periodMj = generalUsageMJ > 0 ? generalUsageMJ : blockMj;
@@ -817,7 +821,7 @@ function readSmeGasBlockLines(invoiceData: { gas_sme_invoicedetails?: Record<str
     block2RateCPerMj: b2?.rateCPerMj,
     blocks,
     flags: Array.isArray(norm?.flags) ? norm.flags : [],
-    priceChange: sme.price_change_on_invoice === true,
+    priceChange,
     retailer: typeof sme.retailer === "string" ? sme.retailer : undefined,
     periodLabel: typeof sme.invoice_review_period === "string" ? sme.invoice_review_period : undefined,
     supplyDays: supplyDays > 0 ? supplyDays : undefined,
@@ -974,7 +978,7 @@ function applyAlintaSmeOffer(u: UtilityComparison): UtilityComparison {
 
 function smeGasOfferTariff(u: UtilityComparison): AlintaTariffOverride | undefined {
   if (u.smeAlintaTariffOverride) return u.smeAlintaTariffOverride;
-  if (!u.smeAlintaNetworkId) return undefined;
+  if (!u.smeAlintaNetworkId) return blankPortalTariff();
   const season = [...(u.smeAlintaSlices ?? [])]
     .filter((slice) => slice.seasonId !== "custom")
     .sort((a, b) => b.days - a.days)[0];
@@ -4728,7 +4732,9 @@ export default function Base2Page() {
                         {isSmeGasSmeOffer(comparison) && (
                           <div className="mt-3 space-y-3 text-xs text-gray-700">
                             <p className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 leading-snug text-teal-900">
-                              Starts from Alinta BusinessDeal Flex, Group 1, inc GST. Type the portal quote into the offer bands — those rates are what gets priced, not a flat discount.
+                              {comparison.smeAlintaNetworkId
+                                ? "Starts from Alinta BusinessDeal Flex, Group 1, inc GST. Type the portal quote into the offer bands — those rates are what gets priced, not a flat discount."
+                                : "No Group 1 card for this meter. Type the Alinta portal quote into the bands below. Those rates are what gets priced."}
                               {comparison.smeAlintaNetworkLabel ? ` Network: ${comparison.smeAlintaNetworkLabel}.` : ""}
                               {comparison.smeAlintaListedName ? ` Sheet site: ${comparison.smeAlintaListedName}.` : ""}
                             </p>
@@ -4815,6 +4821,8 @@ export default function Base2Page() {
                                   onOfferTariffReset={() =>
                                     patchSmeAlintaOffer(comparison.identifier, { smeAlintaTariffOverride: undefined }, false)
                                   }
+                                  offerEditorHint={comparison.smeAlintaNetworkId ? undefined : "Type the portal quote. First row is the first MJ/day, then the next band. The last row is the remainder. Add a band for each step on the card."}
+                                  offerResetLabel={comparison.smeAlintaNetworkId ? undefined : "Clear quote"}
                                   slices={comparison.smeAlintaSlices ?? []}
                                   offerUsageGj={comparison.smeGasInvoicePeriodGJ ?? comparison.gasUsage}
                                   onOfferUsageChange={(value) => updateUsage(comparison.utilityType, comparison.identifier, "gasUsage", value)}

@@ -41,11 +41,15 @@ function OfferTariffEditor({
   edited,
   onChange,
   onReset,
+  resetLabel = "Reset to Group 1",
+  hint = "Type the portal quote. First row is the first MJ/day, then the next band. The last row is the remainder. Group 1 is only the starting point.",
 }: {
   tariff: AlintaTariffOverride;
   edited?: boolean;
   onChange: (tariff: AlintaTariffOverride) => void;
   onReset?: () => void;
+  resetLabel?: string;
+  hint?: string;
 }) {
   const write = (blocks: AlintaBlock[], supplyCPerDay = tariff.supplyCPerDay) => {
     onChange({ blocks, supplyCPerDay });
@@ -77,12 +81,10 @@ function OfferTariffEditor({
   return (
     <div className="border-b border-teal-100 bg-teal-50/40 px-3 py-2">
       <div className="mb-1.5 flex items-center justify-between gap-2">
-        <p className="text-[11px] font-normal text-gray-600">
-          Type the portal quote. First row is the first MJ/day, then the next band. The last row is the remainder. Group 1 is only the starting point.
-        </p>
+        <p className="text-[11px] font-normal text-gray-600">{hint}</p>
         {edited && onReset && (
           <button type="button" onClick={onReset} className="shrink-0 text-[11px] font-semibold text-teal-800 underline">
-            Reset to Group 1
+            {resetLabel}
           </button>
         )}
       </div>
@@ -168,6 +170,8 @@ export function SmeGasStepsTable({
   offerTariffEdited,
   onOfferTariffChange,
   onOfferTariffReset,
+  offerEditorHint,
+  offerResetLabel,
   slices,
   offerUsageGj,
   onOfferUsageChange,
@@ -197,6 +201,8 @@ export function SmeGasStepsTable({
   offerTariffEdited?: boolean;
   onOfferTariffChange?: (tariff: AlintaTariffOverride) => void;
   onOfferTariffReset?: () => void;
+  offerEditorHint?: string;
+  offerResetLabel?: string;
   slices: AlintaPriceSlice[];
   offerUsageGj?: number;
   onOfferUsageChange?: (value: string) => void;
@@ -320,6 +326,8 @@ export function SmeGasStepsTable({
               edited={offerTariffEdited}
               onChange={onOfferTariffChange}
               onReset={onOfferTariffReset}
+              hint={offerEditorHint}
+              resetLabel={offerResetLabel}
             />
           )}
           {slices.length === 0 ? (

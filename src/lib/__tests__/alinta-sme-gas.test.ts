@@ -11,6 +11,38 @@ describe("parseDateRange", () => {
 });
 
 describe("quoteAlintaSmeGas state guard", () => {
+  it("prices a typed Jemena quote on an NSW MIRN and does not use the Victorian card", () => {
+    const q = quoteAlintaSmeGas({
+      mirn: "52400205263",
+      periodMj: 133421,
+      invoiceDays: 87,
+      periodStart: "2026-06-09",
+      periodEnd: "2026-09-03",
+      networkOverride: "agn",
+      tariffOverride: {
+        blocks: [
+          { mjPerDay: 20.712, rateCPerMj: 3.784 },
+          { mjPerDay: 20.384, rateCPerMj: 2.948 },
+          { mjPerDay: 49.315, rateCPerMj: 2.871 },
+          { mjPerDay: 2654.794, rateCPerMj: 2.882 },
+          { mjPerDay: 10964.384, rateCPerMj: 2.761 },
+          { mjPerDay: null, rateCPerMj: 2.684 },
+        ],
+        supplyCPerDay: 140.03,
+      },
+    });
+    expect(q.serviceable).toBe(true);
+    expect(q.networkId).toBeNull();
+    expect(q.networkLabel).toBe("Jemena Gas Networks (NSW)");
+    expect(q.offerDailyAud).toBeCloseTo(1.4003, 4);
+    expect(q.slices[0].steps.map((step) => step.rateCPerMj)).toEqual([3.784, 2.948, 2.871, 2.882]);
+    expect(q.flags.some((f) => f.id === "non-vic-mirn" || f.id === "no-network")).toBe(false);
+  });
+  it("still refuses an NSW MIRN with no portal quote", () => {
+    const q = quoteAlintaSmeGas({ mirn: "52400205263", periodMj: 133421, invoiceDays: 87 });
+    expect(q.serviceable).toBe(false);
+    expect(q.flags.some((f) => f.id === "no-network")).toBe(true);
+  });
   it("refuses to price an SA MIRN on the Victorian AGN card, even when picked manually", () => {
     const q = quoteAlintaSmeGas({ mirn: "55102454015", periodMj: 54511, invoiceDays: 90, networkOverride: "agn" });
     expect(q.serviceable).toBe(false);
