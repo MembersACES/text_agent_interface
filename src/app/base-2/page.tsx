@@ -35,7 +35,9 @@ import {
   AlintaGasNetworkId,
   AlintaSmeGasFlag,
   AlintaPriceSlice,
+  AlintaTariffOverride,
   extractSmeGasBillPeriod,
+  group1Tariff,
   quoteAlintaSmeGas,
   smeInvoiceDailySupplyAud,
 } from "@/lib/alinta-sme-gas";
@@ -135,6 +137,9 @@ interface UtilityComparison {
   smeGasPeriodStart?: string;
   smeGasPeriodEnd?: string;
   smeAlintaNetworkOverride?: AlintaGasNetworkId | "auto";
+  smeAlintaNetworkId?: AlintaGasNetworkId;
+  /** Portal quote bands. When set, these replace BusinessDeal Flex Group 1 for this site. */
+  smeAlintaTariffOverride?: AlintaTariffOverride;
   smeAlintaFlags?: AlintaSmeGasFlag[];
   smeAlintaNetworkLabel?: string;
   smeAlintaMatch?: string;
@@ -938,11 +943,13 @@ function applyAlintaSmeOffer(u: UtilityComparison): UtilityComparison {
     periodStart,
     periodEnd,
     networkOverride: override,
+    tariffOverride: u.smeAlintaTariffOverride,
   });
   const next: UtilityComparison = {
     ...u,
     smeGasPeriodStart: periodStart ?? "",
     smeGasPeriodEnd: periodEnd ?? "",
+    smeAlintaNetworkId: quote.networkId ?? undefined,
     smeAlintaFlags: quote.flags,
     smeAlintaNetworkLabel: quote.networkLabel ?? undefined,
     smeAlintaMatch: quote.match,
@@ -963,6 +970,15 @@ function applyAlintaSmeOffer(u: UtilityComparison): UtilityComparison {
     next.ciGasCommissionAudPerGj = SME_SME_GAS_COMMISSION_AUD_PER_GJ;
   }
   return next;
+}
+
+function smeGasOfferTariff(u: UtilityComparison): AlintaTariffOverride | undefined {
+  if (u.smeAlintaTariffOverride) return u.smeAlintaTariffOverride;
+  if (!u.smeAlintaNetworkId) return undefined;
+  const season = [...(u.smeAlintaSlices ?? [])]
+    .filter((slice) => slice.seasonId !== "custom")
+    .sort((a, b) => b.days - a.days)[0];
+  return group1Tariff(u.smeAlintaNetworkId, season?.seasonId);
 }
 
 function notableAlintaFlags(flags: AlintaSmeGasFlag[] | undefined): AlintaSmeGasFlag[] {
@@ -4712,7 +4728,7 @@ export default function Base2Page() {
                         {isSmeGasSmeOffer(comparison) && (
                           <div className="mt-3 space-y-3 text-xs text-gray-700">
                             <p className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 leading-snug text-teal-900">
-                              Alinta BusinessDeal Flex, Group 1, inc GST. The offer is this bill’s MJ/day run through the network’s blocks and seasons. The offer $/GJ in the table is that result, not a flat discount.
+                              Starts from Alinta BusinessDeal Flex, Group 1, inc GST. Type the portal quote into the offer bands — those rates are what gets priced, not a flat discount.
                               {comparison.smeAlintaNetworkLabel ? ` Network: ${comparison.smeAlintaNetworkLabel}.` : ""}
                               {comparison.smeAlintaListedName ? ` Sheet site: ${comparison.smeAlintaListedName}.` : ""}
                             </p>
@@ -4791,6 +4807,14 @@ export default function Base2Page() {
                                   onBlocksChange={(blocks) => updateSmeGasBillBlocks(comparison.identifier, blocks)}
                                   onResetBlocks={() => updateSmeGasBillBlocks(comparison.identifier, undefined)}
                                   networkLabel={comparison.smeAlintaNetworkLabel}
+                                  offerTariff={smeGasOfferTariff(comparison)}
+                                  offerTariffEdited={comparison.smeAlintaTariffOverride != null}
+                                  onOfferTariffChange={(tariff) =>
+                                    patchSmeAlintaOffer(comparison.identifier, { smeAlintaTariffOverride: tariff }, false)
+                                  }
+                                  onOfferTariffReset={() =>
+                                    patchSmeAlintaOffer(comparison.identifier, { smeAlintaTariffOverride: undefined }, false)
+                                  }
                                   slices={comparison.smeAlintaSlices ?? []}
                                   offerUsageGj={comparison.smeGasInvoicePeriodGJ ?? comparison.gasUsage}
                                   onOfferUsageChange={(value) => updateUsage(comparison.utilityType, comparison.identifier, "gasUsage", value)}
@@ -4801,7 +4825,19 @@ export default function Base2Page() {
                                   currentSupplyPerDay={comparison.currentDailySupply}
                                   offerSupplyPerDay={comparison.comparisonDailySupply}
                                   onCurrentSupplyChange={(value) => updateCurrentRate(comparison.utilityType, comparison.identifier, "currentDailySupply", value)}
-                                  onOfferSupplyChange={(value) => updateComparisonRate(comparison.utilityType, comparison.identifier, "comparisonDailySupply", value)}
+                                  onOfferSupplyChange={(value) => {
+                                    const aud = value === "" ? NaN : parseFloat(value);
+                                    const base = smeGasOfferTariff(comparison);
+                                    if (!base || !Number.isFinite(aud)) {
+                                      updateComparisonRate(comparison.utilityType, comparison.identifier, "comparisonDailySupply", value);
+                                      return;
+                                    }
+                                    patchSmeAlintaOffer(
+                                      comparison.identifier,
+                                      { smeAlintaTariffOverride: { ...base, supplyCPerDay: aud * 100 } },
+                                      false,
+                                    );
+                                  }}
                                   annualSupplySaving={s?.supplySavings}
                                   commissionPerGj={comparison.ciGasCommissionAudPerGj}
                                   annualCommission={s?.estimatedAnnualCommission}
