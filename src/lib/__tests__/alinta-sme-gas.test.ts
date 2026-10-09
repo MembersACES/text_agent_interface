@@ -24,6 +24,38 @@ describe("quoteAlintaSmeGas state guard", () => {
   });
 });
 
+describe("typed portal tariff", () => {
+  it("prices the bands you type instead of BusinessDeal Flex Group 1", () => {
+    const input = {
+      mirn: "53216727843",
+      periodMj: 136414,
+      invoiceDays: 58,
+      periodStart: "2026-07-27",
+      periodEnd: "2026-09-22",
+    };
+    const portal = quoteAlintaSmeGas({
+      ...input,
+      tariffOverride: {
+        blocks: [
+          { mjPerDay: 27.4, rateCPerMj: 2.904 },
+          { mjPerDay: 21.9, rateCPerMj: 2.904 },
+          { mjPerDay: null, rateCPerMj: 2.563 },
+        ],
+        supplyCPerDay: 70.378,
+      },
+    });
+    const group1 = quoteAlintaSmeGas(input);
+    expect(portal.serviceable).toBe(true);
+    expect(portal.networkId).toBe("agn");
+    expect(portal.slices).toHaveLength(1);
+    expect(portal.slices[0].seasonLabel).toBe("Portal tariff");
+    expect(portal.slices[0].steps.map((step) => step.rateCPerMj)).toEqual([2.904, 2.904, 2.563]);
+    expect(portal.offerDailyAud).toBeCloseTo(0.70378, 5);
+    expect(group1.slices[0].steps[0].rateCPerMj).toBe(3.828);
+    expect(portal.offerAudPerGj).not.toBeCloseTo(group1.offerAudPerGj ?? 0, 2);
+  });
+});
+
 describe("offer steps", () => {
   it("East Malvern on Multinet peak uses three bands", () => {
     const q = quoteAlintaSmeGas({ mirn: "53102023079", periodMj: 66547, invoiceDays: 63, periodStart: "2026-05-26", periodEnd: "2026-07-27" });

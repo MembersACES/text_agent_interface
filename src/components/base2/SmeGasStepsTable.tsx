@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import type { AlintaPriceSlice } from "@/lib/alinta-sme-gas";
+import type { AlintaBlock, AlintaPriceSlice, AlintaTariffOverride } from "@/lib/alinta-sme-gas";
 
 export interface SmeGasBillBlock {
   block: number;
@@ -36,6 +36,120 @@ const tdR = "px-2 py-1.5 text-right font-mono tabular-nums text-gray-800";
 const cellInput =
   "w-full rounded border border-gray-300 bg-white px-1.5 py-0.5 text-right font-mono text-[11px] tabular-nums focus:outline-none focus:ring-1 focus:ring-teal-400";
 
+function OfferTariffEditor({
+  tariff,
+  edited,
+  onChange,
+  onReset,
+}: {
+  tariff: AlintaTariffOverride;
+  edited?: boolean;
+  onChange: (tariff: AlintaTariffOverride) => void;
+  onReset?: () => void;
+}) {
+  const write = (blocks: AlintaBlock[], supplyCPerDay = tariff.supplyCPerDay) => {
+    onChange({ blocks, supplyCPerDay });
+  };
+
+  const editWidth = (index: number, raw: string) => {
+    const mjPerDay = raw === "" ? null : parseFloat(raw);
+    write(tariff.blocks.map((block, i) => (i === index ? { ...block, mjPerDay: mjPerDay != null && Number.isFinite(mjPerDay) ? mjPerDay : null } : block)));
+  };
+
+  const editRate = (index: number, raw: string) => {
+    const rate = raw === "" ? NaN : parseFloat(raw);
+    write(tariff.blocks.map((block, i) => (i === index ? { ...block, rateCPerMj: Number.isFinite(rate) ? rate : block.rateCPerMj } : block)));
+  };
+
+  const addBand = () => {
+    const remainder = tariff.blocks[tariff.blocks.length - 1] ?? { mjPerDay: null, rateCPerMj: 0 };
+    const heads = tariff.blocks.slice(0, -1);
+    write([...heads, { mjPerDay: 10, rateCPerMj: remainder.rateCPerMj }, { ...remainder, mjPerDay: null }]);
+  };
+
+  const removeBand = (index: number) => {
+    if (tariff.blocks.length <= 1) return;
+    const next = tariff.blocks.filter((_, i) => i !== index);
+    next[next.length - 1] = { ...next[next.length - 1], mjPerDay: null };
+    write(next);
+  };
+
+  return (
+    <div className="border-b border-teal-100 bg-teal-50/40 px-3 py-2">
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <p className="text-[11px] font-normal text-gray-600">
+          Type the portal quote. First row is the first MJ/day, then the next band. The last row is the remainder. Group 1 is only the starting point.
+        </p>
+        {edited && onReset && (
+          <button type="button" onClick={onReset} className="shrink-0 text-[11px] font-semibold text-teal-800 underline">
+            Reset to Group 1
+          </button>
+        )}
+      </div>
+      <table className="w-full text-[11px]">
+        <thead>
+          <tr>
+            <th className={th}>Step</th>
+            <th className={thR}>MJ/day</th>
+            <th className={thR}>c/MJ</th>
+            <th className="w-8" />
+          </tr>
+        </thead>
+        <tbody>
+          {tariff.blocks.map((block, index) => {
+            const last = index === tariff.blocks.length - 1;
+            return (
+              <tr key={index} className="border-t border-teal-100">
+                <td className={td}>{last ? "Remaining" : index === 0 ? "First" : "Next"}</td>
+                <td className={tdR}>
+                  {last ? (
+                    <span className="text-gray-400">rest</span>
+                  ) : (
+                    <input type="number" step="0.001" min={0} className={cellInput} value={block.mjPerDay ?? ""} onChange={(e) => editWidth(index, e.target.value)} />
+                  )}
+                </td>
+                <td className={tdR}>
+                  <input type="number" step="0.0001" min={0} className={cellInput} value={Number.isFinite(block.rateCPerMj) ? block.rateCPerMj : ""} onChange={(e) => editRate(index, e.target.value)} />
+                </td>
+                <td className="px-1 text-right">
+                  {!last && tariff.blocks.length > 1 && (
+                    <button type="button" onClick={() => removeBand(index)} className="text-[11px] text-red-600" aria-label="Remove band">
+                      ×
+                    </button>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+          <tr className="border-t border-teal-100">
+            <td className={td}>Daily charge</td>
+            <td className={tdR} colSpan={2}>
+              <label className="flex items-center justify-end gap-1 text-gray-500">
+                <input
+                  type="number"
+                  step="0.001"
+                  min={0}
+                  className={`${cellInput} w-24`}
+                  value={Number.isFinite(tariff.supplyCPerDay) ? tariff.supplyCPerDay : ""}
+                  onChange={(e) => {
+                    const cents = e.target.value === "" ? 0 : parseFloat(e.target.value);
+                    if (Number.isFinite(cents)) write(tariff.blocks, cents);
+                  }}
+                />
+                c/day
+              </label>
+            </td>
+            <td />
+          </tr>
+        </tbody>
+      </table>
+      <button type="button" onClick={addBand} className="mt-1.5 text-[11px] font-semibold text-teal-800 underline">
+        Add band
+      </button>
+    </div>
+  );
+}
+
 /**
  * SME → SME gas, step by step: the bill's own blocks (editable) next to the Alinta network
  * card's MJ/day bands, then the annual energy line. Every $/GJ on the card can be traced here.
@@ -50,6 +164,10 @@ export function SmeGasStepsTable({
   onBlocksChange,
   onResetBlocks,
   networkLabel,
+  offerTariff,
+  offerTariffEdited,
+  onOfferTariffChange,
+  onOfferTariffReset,
   slices,
   offerUsageGj,
   onOfferUsageChange,
@@ -74,6 +192,11 @@ export function SmeGasStepsTable({
   onBlocksChange?: (blocks: SmeGasBillBlock[]) => void;
   onResetBlocks?: () => void;
   networkLabel?: string;
+  /** Bands currently priced. Group 1 until the portal quote is typed in. */
+  offerTariff?: AlintaTariffOverride;
+  offerTariffEdited?: boolean;
+  onOfferTariffChange?: (tariff: AlintaTariffOverride) => void;
+  onOfferTariffReset?: () => void;
   slices: AlintaPriceSlice[];
   offerUsageGj?: number;
   onOfferUsageChange?: (value: string) => void;
@@ -191,6 +314,14 @@ export function SmeGasStepsTable({
               </label>
             )}
           </div>
+          {offerTariff && onOfferTariffChange && (
+            <OfferTariffEditor
+              tariff={offerTariff}
+              edited={offerTariffEdited}
+              onChange={onOfferTariffChange}
+              onReset={onOfferTariffReset}
+            />
+          )}
           {slices.length === 0 ? (
             <p className="px-3 py-2 text-[11px] text-amber-700">No offer priced. See the note above.</p>
           ) : (

@@ -23,6 +23,13 @@ export interface AlintaBlock {
   rateCPerMj: number;
 }
 
+/** Bands typed from the Alinta quoting portal. Replaces the Group 1 card for this site. */
+export interface AlintaTariffOverride {
+  blocks: AlintaBlock[];
+  /** Daily supply in c/day, the unit the portal shows. */
+  supplyCPerDay: number;
+}
+
 export interface AlintaSeason {
   id: string;
   label: string;
@@ -355,6 +362,27 @@ function ausnetFlag(mirn: string): AlintaSmeGasFlag {
   };
 }
 
+export function group1Tariff(networkId: AlintaGasNetworkId, seasonId?: string): AlintaTariffOverride {
+  const card = ALINTA_SME_GAS_NETWORKS[networkId];
+  const season = card.seasons.find((item) => item.id === seasonId) ?? card.seasons[0];
+  return {
+    blocks: season.blocks.map((block) => ({ mjPerDay: block.mjPerDay, rateCPerMj: block.rateCPerMj })),
+    supplyCPerDay: season.supplyCPerDay,
+  };
+}
+
+function usableTariff(tariff: AlintaTariffOverride | null | undefined): AlintaTariffOverride | null {
+  if (!tariff) return null;
+  const blocks = tariff.blocks.filter((block) => Number.isFinite(block.rateCPerMj) && block.rateCPerMj >= 0);
+  if (blocks.length === 0) return null;
+  const remainder = blocks[blocks.length - 1];
+  const heads = blocks.slice(0, -1).filter((block) => block.mjPerDay != null && block.mjPerDay > 0);
+  return {
+    blocks: [...heads, { mjPerDay: null, rateCPerMj: remainder.rateCPerMj }],
+    supplyCPerDay: Number.isFinite(tariff.supplyCPerDay) && tariff.supplyCPerDay >= 0 ? tariff.supplyCPerDay : 0,
+  };
+}
+
 export function quoteAlintaSmeGas(input: {
   mirn: string;
   periodMj: number;
@@ -362,6 +390,7 @@ export function quoteAlintaSmeGas(input: {
   periodStart?: string | null;
   periodEnd?: string | null;
   networkOverride?: AlintaGasNetworkId | null;
+  tariffOverride?: AlintaTariffOverride | null;
 }): AlintaSmeGasQuote {
   const mirn = normalizeMirn(input.mirn);
   const flags: AlintaSmeGasFlag[] = [];
@@ -435,7 +464,16 @@ export function quoteAlintaSmeGas(input: {
   }
 
   const card = ALINTA_SME_GAS_NETWORKS[networkId];
-  if (networkId === "ausnet") flags.push(ausnetFlag(mirn));
+  const typed = usableTariff(input.tariffOverride);
+  if (networkId === "ausnet" && !typed) flags.push(ausnetFlag(mirn));
+  if (typed) {
+    flags.push({
+      id: "portal-tariff",
+      level: "info",
+      title: "Offer tariff was typed in",
+      detail: "These bands replace BusinessDeal Flex Group 1 for this site. They are what gets priced, including across season boundaries.",
+    });
+  }
 
   const periodMj = input.periodMj;
   const invoiceDays = input.invoiceDays;
@@ -454,6 +492,24 @@ export function quoteAlintaSmeGas(input: {
       listedName: listed?.name,
     };
   }
+
+  const pricingCard: AlintaNetworkCard = typed
+    ? {
+        ...card,
+        seasons: [
+          {
+            id: "custom",
+            label: "Portal tariff",
+            startMonth: 1,
+            startDay: 1,
+            endMonth: 12,
+            endDay: 31,
+            blocks: typed.blocks,
+            supplyCPerDay: typed.supplyCPerDay,
+          },
+        ],
+      }
+    : card;
 
   let start = input.periodStart || null;
   let end = input.periodEnd || null;
@@ -484,14 +540,14 @@ export function quoteAlintaSmeGas(input: {
     for (let cursor = dateFromIso(start); ; cursor = addDays(cursor, 1)) {
       const iso = isoFromParts(cursor.getFullYear(), cursor.getMonth() + 1, cursor.getDate());
       if (!iso || iso > end) break;
-      const season = seasonOn(card, cursor);
+      const season = seasonOn(pricingCard, cursor);
       if (!season) continue;
       dayBuckets.set(season.id, (dayBuckets.get(season.id) ?? 0) + 1);
     }
   } else {
-    const winter = dearestSeason(card);
+    const winter = dearestSeason(pricingCard);
     dayBuckets.set(winter.id, invoiceDays);
-    if (card.seasons.length > 1) {
+    if (pricingCard.seasons.length > 1) {
       flags.push({
         id: "no-bill-dates",
         level: "warning",
@@ -503,7 +559,7 @@ export function quoteAlintaSmeGas(input: {
 
   const mjPerDay = periodMj / pricedDays;
   const slices: AlintaPriceSlice[] = [];
-  for (const season of card.seasons) {
+  for (const season of pricingCard.seasons) {
     const days = dayBuckets.get(season.id) ?? 0;
     if (days <= 0) continue;
     const mj = mjPerDay * days;
