@@ -13,7 +13,7 @@ import { formatBackendErrorBody } from "@/lib/api-errors";
 import { useToast } from "@/components/ui/toast";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Badge } from "@/components/ui/badge";
-import { FileText, Flame, Zap } from "lucide-react";
+import { ChevronDown, FileText, Flame, Zap } from "lucide-react";
 import {
   fetchSitePhotos,
   uploadSitePhotos,
@@ -134,6 +134,13 @@ function sitePhotoStem(filename: string): string {
   if (!match) return base;
   return base.slice(0, -match[0].length);
 }
+
+const ADD_DOCUMENT_OPTIONS: { id: UploadCategory; label: string }[] = [
+  { id: "eoi", label: "Signed EOI" },
+  { id: "engagement", label: "Engagement form" },
+  { id: "additional", label: "Additional document" },
+  { id: "sitePhotos", label: "Site photos" },
+];
 
 const FILTER_CHIPS: { id: DocFilter; label: string }[] = [
   { id: "all", label: "All" },
@@ -434,7 +441,8 @@ export function DocumentsTab({
 
   const [docFilter, setDocFilter] = useState<DocFilter>("all");
   const [searchQuery, setSearchQuery] = useState("");
-  const [uploadCategory, setUploadCategory] = useState<UploadCategory>("additional");
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const addMenuRef = useRef<HTMLDivElement>(null);
   const [eoiRefreshing, setEoiRefreshing] = useState(false);
   const [additionalDocs, setAdditionalDocs] = useState<MemberSimpleDoc[]>([]);
   const [engagementForms, setEngagementForms] = useState<MemberSimpleDoc[]>([]);
@@ -1352,11 +1360,19 @@ export function DocumentsTab({
         : `${filterCounts[docFilter]} document${filterCounts[docFilter] === 1 ? "" : "s"}`;
 
   useEffect(() => {
-    if (docFilter === "eois") setUploadCategory("eoi");
-    else if (docFilter === "engagement") setUploadCategory("engagement");
-    else if (docFilter === "additional") setUploadCategory("additional");
-    else if (docFilter === "sitePhotos") setUploadCategory("sitePhotos");
+    setAddMenuOpen(false);
   }, [docFilter]);
+
+  useEffect(() => {
+    if (!addMenuOpen) return;
+    const onPointerDown = (event: MouseEvent) => {
+      if (addMenuRef.current && !addMenuRef.current.contains(event.target as Node)) {
+        setAddMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, [addMenuOpen]);
 
   const handleRefreshDocuments = () => {
     void fetchEOI();
@@ -1364,16 +1380,16 @@ export function DocumentsTab({
     void fetchSitePhotosList();
   };
 
-  const triggerUpload = () => {
-    if (uploadCategory === "eoi") {
+  const triggerUpload = (category: UploadCategory) => {
+    if (category === "eoi") {
       setShowEOIModal(true);
       return;
     }
-    if (uploadCategory === "engagement") {
+    if (category === "engagement") {
       efRef.current?.click();
       return;
     }
-    if (uploadCategory === "sitePhotos") {
+    if (category === "sitePhotos") {
       setShowSitePhotosModal(true);
       setSitePhotoFiles([]);
       setSitePhotoNames([]);
@@ -1385,6 +1401,42 @@ export function DocumentsTab({
     setAddDocFiles([]);
     setAddDocType("");
     setAddDocResult("");
+  };
+
+  const openFileSignedAgreement = () => {
+    const first =
+      sortedContracts.find((c) => c.items.length > 0)?.key ??
+      CONTRACT_UTILITY_LABELS[0];
+    setDriveUtilityChooser(true);
+    setDriveBizName(business?.name || businessName || "");
+    setDriveContractStatus(BRAND.signedContractStatusValue);
+    setDriveContractUpdateMode(DEFAULT_CONTRACT_UPLOAD_MODE);
+    setLodgeWithRetailer(true);
+    setDriveResult(null);
+    setDriveFile(null);
+    setDriveBatchFiles([]);
+    setDriveFiled(false);
+    setDriveLodged(false);
+    setLodgeError(null);
+    applyDriveUtility(first);
+    setShowDriveModal(true);
+  };
+
+  const openAgreementFollowUp = () => {
+    if (clientId == null || !Number.isFinite(clientId)) return;
+    const p = new URLSearchParams();
+    p.set("clientId", String(clientId));
+    const name = String(rep.contact_name || "").trim();
+    const email = String(contact.email || "").trim();
+    const phone = String(contact.telephone || "").trim();
+    if (name) p.set("contactName", name);
+    if (email) p.set("contactEmail", email);
+    if (phone) p.set("contactPhone", phone);
+    window.open(
+      `/autonomous-agent/agreement-follow-up?${p.toString()}`,
+      "_blank",
+      "noopener,noreferrer",
+    );
   };
 
   const normalizedSearch = searchQuery.trim().toLowerCase();
@@ -1581,97 +1633,147 @@ export function DocumentsTab({
             >
               {eoiRefreshing || wipLoading || sitePhotosLoading ? "Refreshing…" : "Refresh"}
             </Button>
-            {sitePhotosFolderUrl &&
-            (docFilter === "sitePhotos" || uploadCategory === "sitePhotos") ? (
-              <a
-                href={sitePhotosFolderUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs font-medium text-primary hover:underline"
-              >
-                Open folder
-              </a>
+            {docFilter === "all" ? (
+              <div ref={addMenuRef} className="relative">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  radius="md"
+                  aria-expanded={addMenuOpen}
+                  aria-haspopup="menu"
+                  loading={efLoading}
+                  onClick={() => setAddMenuOpen((open) => !open)}
+                >
+                  {efLoading ? "Uploading…" : "Add"}
+                  {efLoading ? null : <ChevronDown className="h-3.5 w-3.5" aria-hidden />}
+                </Button>
+                {addMenuOpen ? (
+                  <div
+                    role="menu"
+                    className="absolute right-0 z-20 mt-1 w-52 rounded-md border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-900"
+                  >
+                    {ADD_DOCUMENT_OPTIONS.map((option) => (
+                      <button
+                        key={option.id}
+                        type="button"
+                        role="menuitem"
+                        className="block w-full px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800"
+                        onClick={() => {
+                          setAddMenuOpen(false);
+                          triggerUpload(option.id);
+                        }}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
             ) : null}
-            <select
-              value={uploadCategory}
-              onChange={(e) => setUploadCategory(e.target.value as UploadCategory)}
-              className="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
-            >
-              <option value="eoi">Signed EOI</option>
-              <option value="engagement">Engagement form</option>
-              <option value="additional">Additional document</option>
-              <option value="sitePhotos">Site photos</option>
-            </select>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              radius="md"
-              onClick={triggerUpload}
-              disabled={efLoading && uploadCategory === "engagement"}
-              loading={efLoading && uploadCategory === "engagement"}
-            >
-              {efLoading && uploadCategory === "engagement" ? "Uploading…" : "Upload"}
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              radius="md"
-              onClick={() => {
-                const first =
-                  sortedContracts.find((c) => c.items.length > 0)?.key ??
-                  CONTRACT_UTILITY_LABELS[0];
-                setDriveUtilityChooser(true);
-                setDriveBizName(business?.name || businessName || "");
-                setDriveContractStatus(BRAND.signedContractStatusValue);
-                setDriveContractUpdateMode(DEFAULT_CONTRACT_UPLOAD_MODE);
-                setLodgeWithRetailer(true);
-                setDriveResult(null);
-                setDriveFile(null);
-                setDriveBatchFiles([]);
-                setDriveFiled(false);
-                setDriveLodged(false);
-                setLodgeError(null);
-                applyDriveUtility(first);
-                setShowDriveModal(true);
-              }}
-            >
-              File signed agreement
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              radius="md"
-              onClick={() => setShowLodgeEfModal(true)}
-            >
-              Lodge EF
-            </Button>
-            {clientId != null && Number.isFinite(clientId) ? (
+            {docFilter === "contracts" ? (
+              <>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  radius="md"
+                  onClick={openFileSignedAgreement}
+                >
+                  File signed agreement
+                </Button>
+                {clientId != null && Number.isFinite(clientId) ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    radius="md"
+                    onClick={openAgreementFollowUp}
+                  >
+                    Agreement follow-up
+                  </Button>
+                ) : null}
+              </>
+            ) : null}
+            {docFilter === "eois" ? (
               <Button
                 type="button"
-                variant="ghost"
+                variant="secondary"
                 size="sm"
                 radius="md"
-                onClick={() => {
-                  const p = new URLSearchParams();
-                  p.set("clientId", String(clientId));
-                  const name = String(rep.contact_name || "").trim();
-                  const email = String(contact.email || "").trim();
-                  const phone = String(contact.telephone || "").trim();
-                  if (name) p.set("contactName", name);
-                  if (email) p.set("contactEmail", email);
-                  if (phone) p.set("contactPhone", phone);
-                  window.open(
-                    `/autonomous-agent/agreement-follow-up?${p.toString()}`,
-                    "_blank",
-                    "noopener,noreferrer",
-                  );
-                }}
+                onClick={() => triggerUpload("eoi")}
               >
-                Agreement follow-up
+                Upload signed EOI
               </Button>
+            ) : null}
+            {docFilter === "engagement" ? (
+              <>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  radius="md"
+                  onClick={() => triggerUpload("engagement")}
+                  disabled={efLoading}
+                  loading={efLoading}
+                >
+                  {efLoading ? "Uploading…" : "Upload engagement form"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  radius="md"
+                  onClick={() => setShowLodgeEfModal(true)}
+                >
+                  Lodge EF
+                </Button>
+                {clientId != null && Number.isFinite(clientId) ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    radius="md"
+                    onClick={openAgreementFollowUp}
+                  >
+                    Agreement follow-up
+                  </Button>
+                ) : null}
+              </>
+            ) : null}
+            {docFilter === "additional" ? (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                radius="md"
+                onClick={() => triggerUpload("additional")}
+              >
+                Upload additional document
+              </Button>
+            ) : null}
+            {docFilter === "sitePhotos" ? (
+              <>
+                {sitePhotosFolderUrl ? (
+                  <a
+                    href={sitePhotosFolderUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs font-medium text-primary hover:underline"
+                  >
+                    Open folder
+                  </a>
+                ) : null}
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  radius="md"
+                  onClick={() => triggerUpload("sitePhotos")}
+                >
+                  Upload photos
+                </Button>
+              </>
             ) : null}
           </div>
         </div>
@@ -1730,6 +1832,17 @@ export function DocumentsTab({
                             setShowDriveModal(true);
                           };
                           const lodgedLabel = lodgementBadge(lodgementActivities, c.key);
+                          const alintaEfKind =
+                            c.key === "C&I Electricity"
+                              ? "electricity"
+                              : c.key === "C&I Gas"
+                                ? "gas"
+                                : null;
+                          const lodgeAlintaEfButton = alintaEfKind ? (
+                            <DocSecondaryBtn onClick={() => openLodgeEf(alintaEfKind)}>
+                              Lodge Alinta EF
+                            </DocSecondaryBtn>
+                          ) : null;
 
                           if (c.items.length === 0) {
                             if (!matchesSearch(c.key)) return [];
@@ -1747,7 +1860,14 @@ export function DocumentsTab({
                                   ) : undefined
                                 }
                                 status={contractStatusBadge(undefined, false)}
-                                muted
+                                actions={
+                                  <>
+                                    <DocSecondaryBtn onClick={openFileModal}>
+                                      File
+                                    </DocSecondaryBtn>
+                                    {lodgeAlintaEfButton}
+                                  </>
+                                }
                               />
                             );
                           }
@@ -1816,9 +1936,12 @@ export function DocumentsTab({
                                         <RecordRowOpenAction href={item.url} />
                                       ) : null}
                                       {idx === 0 ? (
-                                        <DocSecondaryBtn onClick={openFileModal}>
-                                          File
-                                        </DocSecondaryBtn>
+                                        <>
+                                          <DocSecondaryBtn onClick={openFileModal}>
+                                            File
+                                          </DocSecondaryBtn>
+                                          {lodgeAlintaEfButton}
+                                        </>
                                       ) : null}
                                     </>
                                   }
