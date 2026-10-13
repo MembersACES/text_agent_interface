@@ -16,6 +16,7 @@ export const DOCUMENT_LODGEMENT_API_ENDPOINTS = {
   ELECTRICITY_SME: invoiceApi("electricity-sme/process-invoice"),
   GAS_CI: invoiceApi("gas-ci-invoice/process-invoice"),
   GAS_SME: invoiceApi("gas-sme/process-invoice"),
+  LPG: invoiceApi("lpg/process-invoice"),
   GREASE_TRAP: invoiceApi("grease-trap/process-invoice"),
   WATER: invoiceApi("water/process-invoice"),
   CLEANING: invoiceApi("cleaning-invoice/process-invoice"),
