@@ -16,6 +16,7 @@ type UtilityKey =
   | "ELECTRICITY_SME"
   | "GAS_CI"
   | "GAS_SME"
+  | "LPG"
   | "GREASE_TRAP"
   | "WATER"
   | "CLEANING"
@@ -32,6 +33,7 @@ const LABELS: Record<UtilityKey, string> = {
   ELECTRICITY_SME: "ELECTRICITY SME",
   GAS_CI: "GAS C&I",
   GAS_SME: "GAS SME",
+  LPG: "LPG GAS",
   GREASE_TRAP: "GREASE TRAP",
   WATER: "WATER",
   CLEANING: "CLEANING",
@@ -58,6 +60,7 @@ const ACCEPTS: Record<UtilityKey, string> = {
   ELECTRICITY_SME: "application/pdf",
   GAS_CI: "application/pdf",
   GAS_SME: "application/pdf",
+  LPG: "application/pdf",
   GREASE_TRAP: "application/pdf",
   WATER: "application/pdf",
   CLEANING: "application/pdf",
@@ -76,6 +79,7 @@ const FRIENDLY_UPLOAD_LABEL: Record<UtilityKey, string> = {
   ELECTRICITY_SME: "Upload Invoice (PDF)",
   GAS_CI: "Upload Invoice (PDF)",
   GAS_SME: "Upload Invoice (PDF)",
+  LPG: "Upload Invoice (PDF)",
   GREASE_TRAP: "Upload Invoice (PDF)",
   WATER: "Upload Invoice (PDF)",
   CLEANING: "Upload Invoice (PDF)",
@@ -92,6 +96,7 @@ const INVOICE_UTILS: UtilityKey[] = [
   "ELECTRICITY_SME",
   "GAS_CI",
   "GAS_SME",
+  "LPG",
   "GREASE_TRAP",
   "WATER",
   "CLEANING",
