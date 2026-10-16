@@ -3,11 +3,12 @@
 import { useClickOutside } from "@/hooks/use-click-outside";
 import { cn } from "@/lib/utils";
 import { ChevronDown, X } from "lucide-react";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export interface FilterComboboxOption {
   value: string;
   label: string;
+  group?: string;
 }
 
 interface FilterComboboxProps {
@@ -39,18 +40,24 @@ export function FilterCombobox({
   const [query, setQuery] = useState("");
   const [highlight, setHighlight] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
 
   const resolvedLabel = selectedLabel || options.find((o) => o.value === value)?.label || "";
-  const displayValue = open ? query : value ? resolvedLabel : "";
+  const displayValue = query || (value ? resolvedLabel : "");
 
   const filtered = useMemo(() => {
     if (onQueryChange) return options;
     const q = query.trim().toLowerCase();
-    if (!q) return options;
+    if (!q || q === resolvedLabel.trim().toLowerCase()) return options;
     return options.filter(
       (o) => o.label.toLowerCase().includes(q) || o.value.toLowerCase().includes(q),
     );
-  }, [onQueryChange, options, query]);
+  }, [onQueryChange, options, query, resolvedLabel]);
+
+  useEffect(() => {
+    if (!open || !value) return;
+    listRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest" });
+  }, [open, value]);
 
   const close = useCallback(() => {
     setOpen(false);
@@ -115,12 +122,15 @@ export function FilterCombobox({
           aria-haspopup="listbox"
           role="combobox"
           placeholder={placeholder || allLabel}
+          title={value ? resolvedLabel : undefined}
           value={displayValue}
           onFocus={() => {
             setOpen(true);
             setQuery("");
-            setHighlight(0);
+            const selected = options.findIndex((option) => option.value === value);
+            setHighlight(selected >= 0 ? selected + 1 : 0);
             onQueryChange?.("");
+            requestAnimationFrame(() => inputRef.current?.select());
           }}
           onChange={(e) => {
             const next = e.target.value;
@@ -151,8 +161,9 @@ export function FilterCombobox({
       </div>
       {open ? (
         <ul
+          ref={listRef}
           role="listbox"
-          className="absolute z-30 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-stroke bg-white py-1 shadow-md dark:border-dark-3 dark:bg-gray-dark"
+          className="absolute left-0 z-50 mt-1 max-h-80 w-96 max-w-[calc(100vw-2rem)] overflow-auto rounded-lg border border-stroke bg-white py-1 shadow-xl ring-1 ring-black/5 dark:border-dark-3 dark:bg-gray-dark dark:ring-white/10"
         >
           <li>
             <button
@@ -176,16 +187,23 @@ export function FilterCombobox({
           ) : filtered.length === 0 ? (
             <li className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400">No matches</li>
           ) : (
-            filtered.map((option, index) => (
+            filtered.map((option, index) => {
+              const showGroup = Boolean(option.group) && option.group !== filtered[index - 1]?.group;
+              return (
               <li key={option.value}>
+                {showGroup ? (
+                  <div className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                    {option.group}
+                  </div>
+                ) : null}
                 <button
                   type="button"
                   role="option"
                   aria-selected={value === option.value}
                   className={cn(
-                    "w-full truncate px-3 py-2 text-left text-sm text-dark hover:bg-canvas dark:text-white dark:hover:bg-dark-3",
+                    "w-full whitespace-normal bg-white px-3 py-2 text-left text-sm leading-5 text-dark hover:bg-canvas dark:bg-gray-dark dark:text-white dark:hover:bg-dark-3",
                     highlight === index + 1 && "bg-canvas dark:bg-dark-3",
-                    value === option.value && "font-medium",
+                    value === option.value && "bg-primary/10 font-medium text-primary",
                   )}
                   onMouseDown={(e) => {
                     e.preventDefault();
@@ -195,7 +213,8 @@ export function FilterCombobox({
                   {option.label}
                 </button>
               </li>
-            ))
+              );
+            })
           )}
         </ul>
       ) : null}
