@@ -54,6 +54,7 @@ const FALLBACK_SUPPLIERS: { key: string; name: string; email: string; groups: st
   { key: "Origin C&I Gas", name: "Origin C&I", email: "MIContracts@originenergy.com.au, data.quote@fornrg.com", groups: ["C&I Gas"] },
   { key: "Alinta C&I Gas", name: "Alinta", email: "Andrew.Barnes@alintaenergy.com.au, Lewis.Chase@alintaenergy.com.au, Cindy.Ho@alintaenergy.com.au, business@acesolutions.com.au, data.quote@fornrg.com", groups: ["C&I Gas"] },
   { key: "CovaU SME Gas", name: "CovaU", email: "corp.sales@covau.com.au, data.quote@fornrg.com", groups: ["SME Gas"] },
+  { key: "Alinta SME", name: "Alinta SME", email: "Steven.Gordon@alintaenergy.com.au", groups: ["SME Electricity", "SME Gas"] },
   { key: "Veolia Waste", name: "Veolia", email: "ric.luiyf@veolia.com, business@acesolutions.com.au", groups: ["Waste"] },
   { key: "PowerMetric DMA", name: "PowerMetric", email: "accountmanagement@powermetric.com.au, rmorse@powermetric.com.au, data.quote@fornrg.com", groups: ["DMA"] },
   {

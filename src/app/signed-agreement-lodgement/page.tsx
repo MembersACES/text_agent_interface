@@ -17,9 +17,9 @@ interface ContractTypes {
 
 const UTILITY_TYPES = {
   "C&I Electricity": ["Origin C&I Electricity", "Momentum C&I Electricity", "Alinta C&I Electricity", "Other"],
-  "SME Electricity": ["Origin SME Electricity", "BlueNRG SME Electricity", "Other"],
+  "SME Electricity": ["Origin SME Electricity", "BlueNRG SME Electricity", "Alinta SME", "Other"],
   "C&I Gas": ["Origin C&I Gas", "Alinta C&I Gas", "Other"],
-  "SME Gas": ["CovaU SME Gas", "Other"],
+  "SME Gas": ["CovaU SME Gas", "Alinta SME", "Other"],
   "Waste": ["Veolia Waste", "Other"],
   "DMA": ["PowerMetric DMA", "Other"],
   "Other": ["Other"]
@@ -79,6 +79,10 @@ const CONTRACT_EMAIL_MAPPINGS: Record<string, { name: string; email: string }> =
   "Alinta C&I Gas": {
     name: "Alinta",
     "email": "Andrew.Barnes@alintaenergy.com.au, Lewis.Chase@alintaenergy.com.au, Cindy.Ho@alintaenergy.com.au, business@acesolutions.com.au, data.quote@fornrg.com"
+  },
+  "Alinta SME": {
+    name: "Alinta SME",
+    email: "Steven.Gordon@alintaenergy.com.au"
   },
   "Other": {
     name: "Other",

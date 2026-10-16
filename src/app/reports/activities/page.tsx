@@ -35,6 +35,32 @@ const CUSTOM_ACTIVITY_TYPES = new Set([
   "testimonial_activity",
   "client_manual_activity",
 ]);
+const TASK_ACTIVITY_TYPES = new Set(["task_created", "task_edited", "task_completed"]);
+
+function includeOfferActivities(activityType: string): boolean {
+  if (!activityType) return true;
+  return !CUSTOM_ACTIVITY_TYPES.has(activityType);
+}
+
+function includeTestimonials(activityType: string): boolean {
+  if (!activityType) return true;
+  return activityType === "testimonial_activity";
+}
+
+function includeTasks(activityType: string): boolean {
+  if (!activityType) return true;
+  return TASK_ACTIVITY_TYPES.has(activityType);
+}
+
+function includeManual(activityType: string): boolean {
+  if (!activityType) return true;
+  return activityType === "client_manual_activity";
+}
+
+function includeNotes(activityType: string): boolean {
+  if (!activityType) return true;
+  return activityType === "note_added";
+}
 
 /** Offer / utility category for client manual activities (must match backend keys). */
 const CLIENT_MANUAL_OFFER_TYPE_OPTIONS: { value: string; label: string }[] = [
@@ -589,6 +615,7 @@ export default function ActivityReportPage() {
       setLoading(false);
       return;
     }
+    let cancelled = false;
     const fetchActivities = async () => {
       try {
         setLoading(true);
@@ -596,28 +623,38 @@ export default function ActivityReportPage() {
         const params = new URLSearchParams();
         params.set("limit", String(MAX_ACTIVITIES));
         if (filterClientId) params.set("client_id", filterClientId);
-        if (filterActivityType && !CUSTOM_ACTIVITY_TYPES.has(filterActivityType)) {
+        if (filterActivityType && includeOfferActivities(filterActivityType)) {
           params.set("activity_type", filterActivityType);
         }
         params.set("created_after", effectiveAfter);
         params.set("created_before", effectiveBefore);
         const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+        const base = getApiBaseUrl();
+        const query = params.toString();
         const [offerRes, testimonialsRes, tasksHistoryRes, manualRes] = await Promise.all([
-          fetch(`${getApiBaseUrl()}/api/reports/activities/list?${params.toString()}`, { headers }),
-          fetch(`${getApiBaseUrl()}/api/reports/activities/testimonials?${params.toString()}`, { headers }),
-          fetch(`${getApiBaseUrl()}/api/reports/activities/tasks?${params.toString()}`, { headers }),
-          fetch(`${getApiBaseUrl()}/api/reports/activities/client-manual?${params.toString()}`, { headers }),
+          includeOfferActivities(filterActivityType)
+            ? fetch(`${base}/api/reports/activities/list?${query}`, { headers })
+            : Promise.resolve(null),
+          includeTestimonials(filterActivityType)
+            ? fetch(`${base}/api/reports/activities/testimonials?${query}`, { headers })
+            : Promise.resolve(null),
+          includeTasks(filterActivityType)
+            ? fetch(`${base}/api/reports/activities/tasks?${query}`, { headers })
+            : Promise.resolve(null),
+          includeManual(filterActivityType)
+            ? fetch(`${base}/api/reports/activities/client-manual?${query}`, { headers })
+            : Promise.resolve(null),
         ]);
 
-        if (!offerRes.ok) {
+        if (offerRes && !offerRes.ok) {
           const data = await offerRes.json().catch(() => ({}));
           throw new Error(data.detail || "Failed to load activities");
         }
         const [offerData, testimonialsData, tasksHistoryData, manualData] = await Promise.all([
-          offerRes.json().catch(() => []),
-          testimonialsRes.ok ? testimonialsRes.json().catch(() => []) : Promise.resolve([]),
-          tasksHistoryRes.ok ? tasksHistoryRes.json().catch(() => []) : Promise.resolve([]),
-          manualRes.ok ? manualRes.json().catch(() => []) : Promise.resolve([]),
+          offerRes ? offerRes.json().catch(() => []) : Promise.resolve([]),
+          testimonialsRes?.ok ? testimonialsRes.json().catch(() => []) : Promise.resolve([]),
+          tasksHistoryRes?.ok ? tasksHistoryRes.json().catch(() => []) : Promise.resolve([]),
+          manualRes?.ok ? manualRes.json().catch(() => []) : Promise.resolve([]),
         ]);
         let list: ActivityItem[] = [
           ...(Array.isArray(offerData) ? offerData : []),
@@ -627,66 +664,71 @@ export default function ActivityReportPage() {
         ];
 
         const clientIdNum = filterClientId ? parseInt(filterClientId, 10) : 0;
-        let clientName: string | null =
-          clientIdNum && filterClient?.id === clientIdNum ? filterClient.business_name : null;
-        if (clientIdNum && !clientName) {
-          try {
-            const cr = await fetch(`${getApiBaseUrl()}/api/clients/${clientIdNum}`, {
+        if (includeNotes(filterActivityType) && clientIdNum) {
+          let clientName: string | null =
+            filterClient?.id === clientIdNum ? filterClient.business_name : null;
+          if (!clientName) {
+            try {
+              const cr = await fetch(`${base}/api/clients/${clientIdNum}`, {
+                headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+              });
+              if (cr.ok) {
+                const client = await cr.json();
+                clientName = client?.business_name ?? "—";
+              }
+            } catch {
+              clientName = "—";
+            }
+          }
+
+          if (clientName) {
+            const notesRes = await fetch(`${base}/api/clients/${clientIdNum}/notes`, {
               headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
             });
-            if (cr.ok) {
-              const client = await cr.json();
-              clientName = client?.business_name ?? "—";
+            const afterDate = new Date(effectiveAfter);
+            const beforeEnd = new Date(effectiveBefore);
+            beforeEnd.setDate(beforeEnd.getDate() + 1);
+
+            if (notesRes.ok) {
+              const notes: Array<{ id: number; note: string; user_email: string; created_at: string }> = await notesRes.json();
+              (Array.isArray(notes) ? notes : []).forEach((n) => {
+                const created = new Date(n.created_at);
+                if (created >= afterDate && created < beforeEnd) {
+                  list.push({
+                    id: -n.id,
+                    offer_id: 0,
+                    client_id: clientIdNum,
+                    business_name: clientName,
+                    activity_type: "note_added",
+                    document_link: null,
+                    created_at: n.created_at,
+                    created_by: n.user_email ?? null,
+                    offer_display: n.note?.split("\n")[0]?.slice(0, 50) ?? "Note",
+                  });
+                }
+              });
             }
-          } catch {
-            clientName = "—";
           }
         }
-
-        if (clientIdNum && clientName) {
-          const notesRes = await fetch(`${getApiBaseUrl()}/api/clients/${clientIdNum}/notes`, {
-            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-          });
-          const afterDate = new Date(effectiveAfter);
-          const beforeEnd = new Date(effectiveBefore);
-          beforeEnd.setDate(beforeEnd.getDate() + 1);
-
-          if (notesRes.ok) {
-            const notes: Array<{ id: number; note: string; user_email: string; created_at: string }> = await notesRes.json();
-            (Array.isArray(notes) ? notes : []).forEach((n) => {
-              const created = new Date(n.created_at);
-              if (created >= afterDate && created < beforeEnd && (!filterActivityType || filterActivityType === "note_added")) {
-                list.push({
-                  id: -n.id,
-                  offer_id: 0,
-                  client_id: clientIdNum,
-                  business_name: clientName,
-                  activity_type: "note_added",
-                  document_link: null,
-                  created_at: n.created_at,
-                  created_by: n.user_email ?? null,
-                  offer_display: n.note?.split("\n")[0]?.slice(0, 50) ?? "Note",
-                });
-              }
-            });
-          }
-          list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-          if (filterActivityType === "note_added") list = list.filter((a) => a.activity_type === "note_added");
-        }
-        if (filterActivityType && CUSTOM_ACTIVITY_TYPES.has(filterActivityType)) {
+        if (filterActivityType) {
           list = list.filter((a) => a.activity_type === filterActivityType);
         }
         list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
-        setActivities(list);
+        if (!cancelled) setActivities(list);
       } catch (e: any) {
-        setError(e.message || "Failed to load activities");
-        setActivities([]);
+        if (!cancelled) {
+          setError(e.message || "Failed to load activities");
+          setActivities([]);
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
     fetchActivities();
+    return () => {
+      cancelled = true;
+    };
   }, [token, filterClientId, filterActivityType, effectiveAfter, effectiveBefore, activitiesVersion, filterClient]);
 
   const summaryStats = useMemo(() => {
