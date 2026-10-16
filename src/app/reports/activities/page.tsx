@@ -760,7 +760,7 @@ export default function ActivityReportPage() {
           loading={loading}
         />
 
-        <SurfacePanel className="pg-fade-up pg-stagger-2 p-4">
+        <SurfacePanel className="relative z-30 pg-fade-up pg-stagger-2 p-4">
           <div className="flex flex-wrap items-end gap-2">
             <FilterCombobox
               value={filterClientId}
@@ -788,6 +788,7 @@ export default function ActivityReportPage() {
               allLabel="All types"
               placeholder="Search types…"
               ariaLabel="Filter by activity type"
+              className="sm:w-72"
               options={ACTIVITY_TYPE_FILTER_OPTIONS}
               onChange={(next) => setFilters({ activity_type: next })}
             />

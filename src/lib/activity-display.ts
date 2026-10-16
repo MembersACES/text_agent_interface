@@ -28,18 +28,72 @@ export function activityTypeLabel(type: string): string {
   return OFFER_ACTIVITY_LABELS[type as OfferActivityType] ?? type.replace(/_/g, " ");
 }
 
-export const ACTIVITY_TYPE_FILTER_OPTIONS: { value: string; label: string }[] = [
-  { value: "note_added", label: activityTypeLabel("note_added") },
-  { value: "task_created", label: activityTypeLabel("task_created") },
-  { value: "task_edited", label: activityTypeLabel("task_edited") },
-  { value: "task_completed", label: activityTypeLabel("task_completed") },
-  { value: "testimonial_activity", label: activityTypeLabel("testimonial_activity") },
-  { value: "client_manual_activity", label: "Manual activity (client)" },
-  ...OFFER_ACTIVITY_TYPES.map((type) => ({
-    value: type,
-    label: activityTypeLabel(type),
-  })),
+const ACTIVITY_TYPE_GROUPS: { group: string; types: string[] }[] = [
+  {
+    group: "Requests",
+    types: ["quote_request", "data_request", "alinta_agreement_requested", "contract_requested"],
+  },
+  {
+    group: "Agreements",
+    types: [
+      "engagement_form",
+      "engagement_form_signed",
+      "contract_received",
+      "contract_sent_for_signing",
+      "contract_signed_lodged",
+      "signed_agreement_lodged",
+      "loa",
+      "service_agreement",
+      "eoi",
+    ],
+  },
+  {
+    group: "Reviews",
+    types: [
+      "base2_review",
+      "comparison",
+      "dma_review_generated",
+      "dma_email_sent",
+      "discrepancy_email_sent",
+      "ghg_offer",
+      "solution_presentation",
+    ],
+  },
+  {
+    group: "Invoices",
+    types: [
+      "one_month_savings_invoice",
+      "new_revenue_invoice",
+      "solar_cleaning_quote_generated",
+      "solar_cleaning_quote_sent",
+      "solar_cleaning_signed_offer",
+    ],
+  },
+  {
+    group: "Other",
+    types: [
+      "note_added",
+      "task_created",
+      "task_edited",
+      "task_completed",
+      "testimonial_activity",
+      "client_manual_activity",
+      "manual_document",
+      "manual_activity",
+      "member_document_upload",
+    ],
+  },
 ];
+
+export const ACTIVITY_TYPE_FILTER_OPTIONS: { value: string; label: string; group: string }[] =
+  ACTIVITY_TYPE_GROUPS.flatMap(({ group, types }) =>
+    types.map((type) => ({
+      value: type,
+      label:
+        type === "client_manual_activity" ? "Manual activity (client)" : activityTypeLabel(type),
+      group,
+    })),
+  );
 
 export function formatActivityTimestamp(iso: string): string {
   try {
