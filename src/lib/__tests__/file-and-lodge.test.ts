@@ -103,6 +103,19 @@ describe("file and lodge", () => {
     ]);
   });
 
+  it("offers Alinta SME on SME electricity and SME gas", () => {
+    const electricity = suppliersForUtility("SME Electricity", null).find((row) => row.key === "Alinta SME");
+    const gas = suppliersForUtility("SME Gas", null).find((row) => row.key === "Alinta SME");
+    expect(electricity).toMatchObject({
+      name: "Alinta SME",
+      email: "Steven.Gordon@alintaenergy.com.au",
+    });
+    expect(gas).toMatchObject({
+      name: "Alinta SME",
+      email: "Steven.Gordon@alintaenergy.com.au",
+    });
+  });
+
   it("badges the latest lodgement for that utility", () => {
     const label = lodgementBadge(
       [
