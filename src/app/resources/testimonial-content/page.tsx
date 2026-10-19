@@ -13,6 +13,7 @@ import {
   DEFAULT_TESTIMONIAL_SOLUTION_CONTENT,
   SOLUTION_TYPE_LABELS,
   emptyItem,
+  solutionFamilyFields,
   type TestimonialSolutionContentItem,
 } from "@/lib/testimonial-solution-content";
 import { TESTIMONIAL_CONTENT_SOURCE_HEADER, type TestimonialContentSource } from "@/lib/testimonial-content-source";
@@ -637,6 +638,7 @@ export default function TestimonialContentPage() {
   const selectedItem = list.find((item) => item.solution_type === selectedSolutionType);
   const selectedLabel =
     selectedItem?.solution_type_label ?? SOLUTION_TYPE_LABELS[selectedSolutionType] ?? selectedSolutionType;
+  const selectedFamily = solutionFamilyFields(selectedSolutionType).solution_family;
   const selectedSnap = selectedItem ? snapshotCopy(selectedItem) : "";
   const isDirty = selectedItem ? dirty.isDirty(selectedSnap) : false;
   const saveBlocked = contentSource === "defaults";
@@ -1596,6 +1598,9 @@ export default function TestimonialContentPage() {
             <p className="mt-2 text-xs text-gray-400">
               Internal id <code className="text-gray-500">{selectedSolutionType}</code> — used by the generator, not
               shown to members.
+              {selectedFamily
+                ? ` Title on the PDF: ${selectedFamily} - ${selectedLabel}.`
+                : ` Title on the PDF: - ${selectedLabel}.`}
             </p>
           </div>
           ) : null}
