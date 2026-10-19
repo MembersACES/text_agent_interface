@@ -81,8 +81,8 @@ export const INVOICING_STREAM_GROUPS: Array<{
 export const INVOICING_STREAMS: InvoicingStream[] = [
   {
     id: "origin-gas",
-    title: "Origin Gas",
-    shortLabel: "Origin Gas",
+    title: "Origin C&I Gas",
+    shortLabel: "Origin C&I Gas",
     group: "retailer",
     cadence: "Recurring",
     driveCategory: "origin_ci_gas",
@@ -103,8 +103,8 @@ export const INVOICING_STREAMS: InvoicingStream[] = [
   },
   {
     id: "origin-elec",
-    title: "Origin Electricity",
-    shortLabel: "Origin Elec",
+    title: "Origin C&I Electricity",
+    shortLabel: "Origin C&I Electricity",
     group: "retailer",
     cadence: "Recurring",
     driveCategory: "origin_ci_electricity",
@@ -125,8 +125,8 @@ export const INVOICING_STREAMS: InvoicingStream[] = [
   },
   {
     id: "alinta-gas",
-    title: "Alinta Gas",
-    shortLabel: "Alinta Gas",
+    title: "Alinta C&I Gas",
+    shortLabel: "Alinta C&I Gas",
     group: "retailer",
     cadence: "Recurring",
     driveCategory: "alinta_ci_gas",
@@ -147,7 +147,7 @@ export const INVOICING_STREAMS: InvoicingStream[] = [
   {
     id: "alinta-ci-elec",
     title: "Alinta C&I Electricity",
-    shortLabel: "Alinta C&I Elec",
+    shortLabel: "Alinta C&I Electricity",
     group: "retailer",
     cadence: "Recurring",
     driveCategory: "alinta_ci_electricity",
@@ -175,7 +175,10 @@ export const INVOICING_STREAMS: InvoicingStream[] = [
     sheet: {
       sheetIdOrUrl:
         "https://docs.google.com/spreadsheets/d/1cqoC1xBYmAlPtA4-perDkpRPnbJg7ZWkRfzAhkyZfuo/edit?gid=0#gid=0",
-      tabs: [{ name: "Sheet1", gid: "0", shortLabel: "Signed" }],
+      tabs: [
+        { name: "Gas", gid: "0" },
+        { name: "Electricity", gid: "1639613357" },
+      ],
     },
   },
   {
@@ -213,7 +216,7 @@ export const INVOICING_STREAMS: InvoicingStream[] = [
   {
     id: "momentum-ci-elec",
     title: "Momentum C&I Electricity",
-    shortLabel: "Momentum C&I Elec",
+    shortLabel: "Momentum C&I Electricity",
     group: "retailer",
     cadence: "Recurring",
     driveCategory: "momentum_ci_electricity",

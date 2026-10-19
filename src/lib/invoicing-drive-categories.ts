@@ -55,7 +55,7 @@ export const INVOICING_DRIVE_CATEGORIES: InvoicingDriveCategory[] = [
   {
     key: "alinta_ci_electricity",
     label: "Alinta C&I Electricity",
-    shortLabel: "Alinta C&I Elec",
+    shortLabel: "Alinta C&I Electricity",
     group: "retailer",
   },
   {
@@ -67,7 +67,7 @@ export const INVOICING_DRIVE_CATEGORIES: InvoicingDriveCategory[] = [
   {
     key: "origin_ci_electricity",
     label: "Origin C&I Electricity",
-    shortLabel: "Origin C&I Elec",
+    shortLabel: "Origin C&I Electricity",
     group: "retailer",
   },
   {
@@ -85,7 +85,7 @@ export const INVOICING_DRIVE_CATEGORIES: InvoicingDriveCategory[] = [
   {
     key: "momentum_ci_electricity",
     label: "Momentum C&I Electricity",
-    shortLabel: "Momentum C&I Elec",
+    shortLabel: "Momentum C&I Electricity",
     group: "retailer",
   },
 ];
