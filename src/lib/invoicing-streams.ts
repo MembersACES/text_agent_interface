@@ -7,6 +7,7 @@ export type InvoicingStreamId =
   | "origin-elec"
   | "alinta-gas"
   | "alinta-ci-elec"
+  | "alinta-sme"
   | "trojan-oil"
   | "era"
   | "momentum-ci-elec"
@@ -162,6 +163,19 @@ export const INVOICING_STREAMS: InvoicingStream[] = [
         { name: "Commission Up to Date", gid: "0" },
         { name: "Already Invoiced", gid: "1411900023" },
       ],
+    },
+  },
+  {
+    id: "alinta-sme",
+    title: "Alinta SME",
+    shortLabel: "Alinta SME",
+    group: "retailer",
+    cadence: "Recurring",
+    defaultTabGid: "0",
+    sheet: {
+      sheetIdOrUrl:
+        "https://docs.google.com/spreadsheets/d/1cqoC1xBYmAlPtA4-perDkpRPnbJg7ZWkRfzAhkyZfuo/edit?gid=0#gid=0",
+      tabs: [{ name: "Sheet1", gid: "0", shortLabel: "Signed" }],
     },
   },
   {
