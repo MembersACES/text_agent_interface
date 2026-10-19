@@ -4,7 +4,7 @@ import React, { useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { notifyUtilityLinkedPostProcess, type UtilityLinkedNotifyDetail } from "@/lib/utility-linked-notify";
 import { getUtilityKeyFields } from "@/lib/utility-key-fields";
-import { buildDataRequestSummary, type DataRequestSummary } from "@/lib/data-request";
+import { applyNetworkDataRequest, buildDataRequestSummary, type DataRequestSummary } from "@/lib/data-request";
 import { getApiBaseUrl } from "@/lib/utils";
 import { useAuthToken } from "@/lib/use-auth-token";
 import { MemberAcesSheetPreview } from "@/components/MemberAcesSheetPreview";
@@ -286,6 +286,7 @@ export default function UtilityLinkingPage() {
         business_name: dataRequestSummary.businessName,
         supplier_name: dataRequestSummary.retailer,
         request_type: dataRequestSummary.requestType,
+        network_data_request: dataRequestSummary.networkDataRequest === true,
       };
       if (dataRequestSummary.param !== "business_name") {
         body.details = dataRequestSummary.identifier;
@@ -499,6 +500,9 @@ export default function UtilityLinkingPage() {
             onClose={() => setDataRequestSummary(null)}
             onConfirm={() => void sendDataRequest()}
             onRetailerChange={(retailer) => setDataRequestSummary((s) => (s ? { ...s, retailer } : s))}
+            onNetworkDataRequestChange={(enabled) =>
+              setDataRequestSummary((s) => (s ? applyNetworkDataRequest(s, enabled) : s))
+            }
           />
           <DataRequestResultModal result={dataRequestResult} onClose={() => setDataRequestResult(null)} />
 

@@ -38,6 +38,7 @@ export type MemberFolderCreateResult = {
   warnings?: string[];
   n8n_fallback_used?: boolean;
   n8n_fallback_ok?: boolean;
+  loa_record_id?: string | null;
   loa_candidates?: LoaCandidate[];
   error?: string;
   airtable?: Record<string, unknown>;

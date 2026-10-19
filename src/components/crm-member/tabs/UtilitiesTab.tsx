@@ -11,6 +11,8 @@ import { Button } from "@/components/ui/button";
 import { RecordRow } from "../shared/RecordRow";
 import { getRecordRowIcon } from "../shared/recordRowIcons";
 import { Modal } from "@/components/ui/modal";
+import { NetworkDataRequestOption } from "@/components/NetworkDataRequestOption";
+import { applyNetworkDataRequest, GAS_DATA_REQUEST_NETWORKS } from "@/lib/data-request";
 import { useToast } from "@/components/ui/toast";
 import { mapUtilityKey } from "../shared/mapUtilityKey";
 import {
@@ -200,6 +202,8 @@ interface DataRequestSummary {
   requestType: string;
   param: string;
   details: string;
+  networkDataRequest?: boolean;
+  retailerRequestName?: string;
 }
 
 type DiscrepancyRow = {
@@ -617,6 +621,7 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility, cli
         business_name: dataRequestSummary.businessName,
         supplier_name: dataRequestSummary.retailer,
         request_type: dataRequestSummary.requestType,
+        network_data_request: dataRequestSummary.networkDataRequest === true,
       };
       if (dataRequestSummary.param !== "business_name") {
         body.details = dataRequestSummary.identifier;
@@ -1402,7 +1407,10 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility, cli
             </button>
             <button
               type="button"
-              disabled={dataRequestLoading}
+              disabled={
+                dataRequestLoading ||
+                (dataRequestSummary?.networkDataRequest === true && !dataRequestSummary.retailer.trim())
+              }
               onClick={confirmDataRequest}
               className="px-4 py-2 rounded bg-primary text-white font-semibold hover:bg-primary/90 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -1418,7 +1426,9 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility, cli
               <span className="ml-2">{dataRequestSummary.businessName}</span>
             </div>
             <div>
-              <label className="font-semibold block mb-1">Retailer:</label>
+              <label className="font-semibold block mb-1">
+                {dataRequestSummary.networkDataRequest ? "Network:" : "Retailer:"}
+              </label>
               <select
                 value={dataRequestSummary.retailer || ""}
                 onChange={(e) =>
@@ -1428,9 +1438,12 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility, cli
                 }
                 className="w-full px-3 py-2 border-2 border-gray-400 dark:border-gray-500 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
-                <option value="">Select a retailer...</option>
+                <option value="">
+                  {dataRequestSummary.networkDataRequest ? "Select a network..." : "Select a retailer..."}
+                </option>
                 {(() => {
                   const requestType = dataRequestSummary.requestType;
+                  const networkRequest = dataRequestSummary.networkDataRequest === true;
                   const isCI =
                     requestType === "electricity_ci" || requestType === "gas_ci";
                   const isSME =
@@ -1469,7 +1482,13 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility, cli
                   ];
                   return (
                     <>
-                      {isCI && (
+                      {networkRequest &&
+                        GAS_DATA_REQUEST_NETWORKS.map((network) => (
+                          <option key={network.label} value={network.label}>
+                            {network.label}
+                          </option>
+                        ))}
+                      {!networkRequest && isCI && (
                         <optgroup label="C&I Electricity & Gas">
                           {ciRetailers.map((retailer) => (
                             <option key={retailer} value={retailer}>
@@ -1478,7 +1497,7 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility, cli
                           ))}
                         </optgroup>
                       )}
-                      {isSME && (
+                      {!networkRequest && isSME && (
                         <optgroup label="SME Electricity & Gas">
                           {smeRetailers.map((retailer) => (
                             <option key={retailer} value={retailer}>
@@ -1487,7 +1506,7 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility, cli
                           ))}
                         </optgroup>
                       )}
-                      {isWaste && (
+                      {!networkRequest && isWaste && (
                         <optgroup label="Waste">
                           {wasteRetailers.map((retailer) => (
                             <option key={retailer} value={retailer}>
@@ -1496,7 +1515,7 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility, cli
                           ))}
                         </optgroup>
                       )}
-                      {(isOil || (!isCI && !isSME && !isWaste)) && (
+                      {!networkRequest && (isOil || (!isCI && !isSME && !isWaste)) && (
                         <>
                           <optgroup label="C&I Electricity & Gas">
                             {ciRetailers.map((retailer) => (
@@ -1524,7 +1543,8 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility, cli
                       <optgroup label="Other">
                         <option value="Other">Other Supplier</option>
                       </optgroup>
-                      {dataRequestSummary.retailer &&
+                      {!networkRequest &&
+                        dataRequestSummary.retailer &&
                         !allRetailers.includes(dataRequestSummary.retailer) &&
                         dataRequestSummary.retailer !== "Other" && (
                           <option value={dataRequestSummary.retailer}>
@@ -1542,8 +1562,22 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility, cli
             </div>
             <div>
               <span className="font-semibold">Request Type:</span>{" "}
-              <span className="ml-2">{dataRequestSummary.requestType}</span>
+              <span className="ml-2">
+                {dataRequestSummary.requestType}
+                {dataRequestSummary.networkDataRequest ? " — network" : ""}
+              </span>
             </div>
+            {dataRequestSummary.requestType === "gas_ci" ? (
+              <NetworkDataRequestOption
+                checked={dataRequestSummary.networkDataRequest === true}
+                selectedNetwork={dataRequestSummary.retailer}
+                onChange={(enabled) =>
+                  setDataRequestSummary((s) =>
+                    s ? applyNetworkDataRequest(s, enabled) : s
+                  )
+                }
+              />
+            ) : null}
           </div>
         )}
       </Modal>

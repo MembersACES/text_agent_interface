@@ -2,6 +2,7 @@
 
 import React, { useCallback, useState } from "react";
 import { getApiBaseUrl } from "@/lib/utils";
+import type { ClientStage } from "@/constants/crm";
 import { type CrmLink, isCrmLinkMatched } from "@/lib/crm-link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +22,8 @@ interface CrmLinkBannerProps {
   primaryContactEmail?: string | null;
   gdriveFolderUrl?: string | null;
   token: string;
+  /** Applied only when creating a new member. Linking an existing member leaves its stage unchanged. */
+  createStage?: ClientStage;
   onLinked: (clientId: number) => void;
   onUnlinked?: () => void;
 }
@@ -32,6 +35,7 @@ export function CrmLinkBanner({
   primaryContactEmail,
   gdriveFolderUrl,
   token,
+  createStage,
   onLinked,
   onUnlinked,
 }: CrmLinkBannerProps) {
@@ -67,6 +71,7 @@ export function CrmLinkBanner({
             gdrive_folder_url: gdriveFolderUrl || undefined,
             client_id: clientId ?? undefined,
             reassign: reassign || undefined,
+            stage: clientId == null ? createStage : undefined,
           }),
         });
         if (!res.ok) {
@@ -81,7 +86,7 @@ export function CrmLinkBanner({
         setLinking(false);
       }
     },
-    [rid, businessName, primaryContactEmail, gdriveFolderUrl, token, onLinked],
+    [rid, businessName, primaryContactEmail, gdriveFolderUrl, token, createStage, onLinked],
   );
 
   const unlinkFromMember = useCallback(async () => {

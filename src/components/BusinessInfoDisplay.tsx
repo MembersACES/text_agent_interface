@@ -22,6 +22,8 @@ import { ShareFolderModal, SharedFolderStatusCard } from "@/components/ShareFold
 import { defaultShareEmail } from "@/lib/share-folder-api";
 import { BRAND, CONTRACT_STATUS_OPTIONS } from "@/lib/brand";
 import { Modal } from "@/components/ui/modal";
+import { NetworkDataRequestOption } from "@/components/NetworkDataRequestOption";
+import { applyNetworkDataRequest, GAS_DATA_REQUEST_NETWORKS } from "@/lib/data-request";
 import { Button } from "@/components/ui/button";
 import { formatCurrencyAmount, hasMdqOverrun, parseMdqOverrun } from "@/lib/discrepancy-utils";
 
@@ -261,6 +263,8 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
     param: string;
     tool: string;
     details: string;
+    networkDataRequest?: boolean;
+    retailerRequestName?: string;
   }>(null);
   const [dataRequestLoading, setDataRequestLoading] = useState(false);
   const [dataRequestResult, setDataRequestResult] = useState<string | null>(null);
@@ -4445,7 +4449,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                 <h3 className="text-lg font-semibold text-gray-800 mb-4">Confirm Data Request</h3>
                 <div className="mb-3"><span className="font-semibold">Business Name:</span> <span className="ml-2">{dataRequestSummary.businessName}</span></div>
                 <div className="mb-3">
-                  <label className="font-semibold block mb-1">Retailer:</label>
+                  <label className="font-semibold block mb-1">{dataRequestSummary.networkDataRequest ? "Network:" : "Retailer:"}</label>
                   <select
                     value={dataRequestSummary.retailer || ''}
                     onChange={(e) => {
@@ -4456,9 +4460,10 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                     }}
                     className="w-full px-3 py-2 border-2 border-gray-400 rounded-md bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   >
-                    <option value="">Select a retailer...</option>
+                    <option value="">{dataRequestSummary.networkDataRequest ? "Select a network..." : "Select a retailer..."}</option>
                     {(() => {
                       const requestType = dataRequestSummary.requestType;
+                      const networkRequest = dataRequestSummary.networkDataRequest === true;
                       const isCI = requestType === 'electricity_ci' || requestType === 'gas_ci';
                       const isSME = requestType === 'electricity_sme' || requestType === 'gas_sme';
                       const isWaste = requestType === 'waste';
@@ -4471,28 +4476,32 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                       
                       return (
                         <>
-                          {isCI && (
+                          {networkRequest &&
+                            GAS_DATA_REQUEST_NETWORKS.map((network) => (
+                              <option key={network.label} value={network.label}>{network.label}</option>
+                            ))}
+                          {!networkRequest && isCI && (
                             <optgroup label="C&I Electricity & Gas">
                               {ciRetailers.map(retailer => (
                                 <option key={retailer} value={retailer}>{retailer}</option>
                               ))}
                             </optgroup>
                           )}
-                          {isSME && (
+                          {!networkRequest && isSME && (
                             <optgroup label="SME Electricity & Gas">
                               {smeRetailers.map(retailer => (
                                 <option key={retailer} value={retailer}>{retailer}</option>
                               ))}
                             </optgroup>
                           )}
-                          {isWaste && (
+                          {!networkRequest && isWaste && (
                             <optgroup label="Waste">
                               {wasteRetailers.map(retailer => (
                                 <option key={retailer} value={retailer}>{retailer}</option>
                               ))}
                             </optgroup>
                           )}
-                          {(isOil || (!isCI && !isSME && !isWaste)) && (
+                          {!networkRequest && (isOil || (!isCI && !isSME && !isWaste)) && (
                             <>
                               <optgroup label="C&I Electricity & Gas">
                                 {ciRetailers.map(retailer => (
@@ -4514,7 +4523,7 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                           <optgroup label="Other">
                             <option value="Other">Other Supplier</option>
                           </optgroup>
-                          {dataRequestSummary.retailer && 
+                          {!networkRequest && dataRequestSummary.retailer && 
                             !allRetailers.includes(dataRequestSummary.retailer) && 
                             dataRequestSummary.retailer !== 'Other' && (
                               <option value={dataRequestSummary.retailer}>{dataRequestSummary.retailer} (Current)</option>
@@ -4526,7 +4535,20 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                   </select>
                 </div>
                 <div className="mb-3"><span className="font-semibold">Identifier:</span> <span className="ml-2">{dataRequestSummary.identifier}</span></div>
-                <div className="mb-3"><span className="font-semibold">Request Type:</span> <span className="ml-2">{dataRequestSummary.requestType}</span></div>
+                <div className="mb-3"><span className="font-semibold">Request Type:</span> <span className="ml-2">{dataRequestSummary.requestType}{dataRequestSummary.networkDataRequest ? " — network" : ""}</span></div>
+                {dataRequestSummary.requestType === "gas_ci" ? (
+                  <div className="mb-3">
+                    <NetworkDataRequestOption
+                      checked={dataRequestSummary.networkDataRequest === true}
+                      selectedNetwork={dataRequestSummary.retailer}
+                      onChange={(enabled) =>
+                        setDataRequestSummary((current) =>
+                          current ? applyNetworkDataRequest(current, enabled) : current
+                        )
+                      }
+                    />
+                  </div>
+                ) : null}
                 <div className="flex justify-end space-x-2 mt-6">
                   <button
                     className="px-4 py-2 border border-gray-300 rounded text-gray-700 bg-white hover:bg-gray-100 focus:outline-none"
@@ -4539,14 +4561,15 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                   </button>
                   <button
                     className="px-4 py-2 rounded bg-primary text-white font-semibold hover:bg-primary/90 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
-                    disabled={dataRequestLoading}
+                    disabled={dataRequestLoading || (dataRequestSummary.networkDataRequest === true && !dataRequestSummary.retailer.trim())}
                     onClick={async () => {
                       setDataRequestLoading(true);
                       try {
                         const body: any = {
                           business_name: dataRequestSummary.businessName,
                           supplier_name: dataRequestSummary.retailer,
-                          request_type: dataRequestSummary.requestType
+                          request_type: dataRequestSummary.requestType,
+                          network_data_request: dataRequestSummary.networkDataRequest === true,
                         };
                         
                         if (dataRequestSummary.param !== "business_name") {
