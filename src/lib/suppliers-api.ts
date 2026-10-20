@@ -92,11 +92,13 @@ export async function fetchSupplierFolders(
 export async function fetchSupplierDocuments(
   token: string | undefined,
   folderId: string,
+  scope: "folders" | "files" | "all" = "all",
 ): Promise<SupplierDocumentsResponse> {
-  const res = await fetch(
+  const u = new URL(
     `${getApiBaseUrl()}/api/suppliers/${encodeURIComponent(folderId)}/files`,
-    { headers: authHeaders(token) },
   );
+  if (scope !== "all") u.searchParams.set("scope", scope);
+  const res = await fetch(u.toString(), { headers: authHeaders(token) });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     throw new Error(detailMessage(data, `Failed to load documents (${res.status})`));

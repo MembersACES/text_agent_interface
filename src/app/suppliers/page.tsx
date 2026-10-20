@@ -125,7 +125,9 @@ function SuppliersPageInner() {
   const [folderPath, setFolderPath] = useState<SupplierPathItem[]>([]);
   const [currentFolder, setCurrentFolder] = useState<SupplierPathItem | null>(null);
   const [docsLoading, setDocsLoading] = useState(false);
+  const [filesLoading, setFilesLoading] = useState(false);
   const [docsError, setDocsError] = useState<string | null>(null);
+  const [filesError, setFilesError] = useState<string | null>(null);
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
   const [sheetTabs, setSheetTabs] = useState<SupplierSheetTab[]>([]);
   const [sheetTabGid, setSheetTabGid] = useState<string | null>(null);
@@ -137,6 +139,7 @@ function SuppliersPageInner() {
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [uploadName, setUploadName] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderRequest = useRef(0);
   const [createOpen, setCreateOpen] = useState(false);
   const [createName, setCreateName] = useState("");
   const [creating, setCreating] = useState(false);
@@ -202,30 +205,47 @@ function SuppliersPageInner() {
       setSelectedMeta(null);
       setFolderPath([]);
       setCurrentFolder(null);
-      setSelectedFileId(null);
+      setDocsLoading(false);
+      setFilesLoading(false);
       return;
     }
+    const requestId = folderRequest.current + 1;
+    folderRequest.current = requestId;
+    const folderId = currentFolderId;
     setDocsLoading(true);
+    setFilesLoading(true);
     setDocsError(null);
+    setFilesError(null);
     setUploadError(null);
+    setSubfolders([]);
+    setFiles([]);
+    setFolderPath([]);
+    let foldersReady = false;
     try {
-      const data = await fetchSupplierDocuments(token, currentFolderId);
-      setFiles(data.files);
-      setSubfolders(data.folders);
-      setSelectedMeta(data.supplier);
-      setFolderPath(data.path);
-      setCurrentFolder(data.current_folder ?? null);
-      setSelectedFileId(data.files.length > 0 ? data.files[0].id : null);
-    } catch (err: unknown) {
-      setDocsError(err instanceof Error ? err.message : String(err));
-      setFiles([]);
-      setSubfolders([]);
-      setSelectedMeta(null);
-      setFolderPath([]);
-      setCurrentFolder(null);
-      setSelectedFileId(null);
-    } finally {
+      const folderData = await fetchSupplierDocuments(token, folderId, "folders");
+      if (folderRequest.current !== requestId) return;
+      setSubfolders(folderData.folders);
+      setSelectedMeta(folderData.supplier);
+      setFolderPath(folderData.path);
+      setCurrentFolder(folderData.current_folder ?? null);
+      foldersReady = true;
       setDocsLoading(false);
+      const fileData = await fetchSupplierDocuments(token, folderId, "files");
+      if (folderRequest.current !== requestId) return;
+      setFiles(fileData.files);
+      setSelectedFileId((current) =>
+        current && fileData.files.some((file) => file.id === current) ? current : null,
+      );
+    } catch (err: unknown) {
+      if (folderRequest.current !== requestId) return;
+      const message = err instanceof Error ? err.message : String(err);
+      if (foldersReady) setFilesError(message);
+      else setDocsError(message);
+    } finally {
+      if (folderRequest.current === requestId) {
+        setDocsLoading(false);
+        setFilesLoading(false);
+      }
     }
   }, [token, currentFolderId]);
 
@@ -456,16 +476,16 @@ function SuppliersPageInner() {
         <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200">
           Sign in to view supplier folders.
         </p>
-      ) : listLoading && suppliers.length === 0 ? (
+      ) : listLoading && suppliers.length === 0 && !selectedId ? (
         <Skeleton className="h-64 w-full rounded-xl" />
-      ) : listError ? (
+      ) : listError && !selectedId ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200">
           <p className="font-medium">{listError}</p>
           <Button className="mt-2" variant="secondary" onClick={() => void loadSuppliers()}>
             Retry
           </Button>
         </div>
-      ) : suppliers.length === 0 ? (
+      ) : suppliers.length === 0 && !selectedId ? (
         <EmptyState
           icon={<FolderOpen className="h-10 w-10" />}
           title="No supplier folders"
@@ -490,7 +510,9 @@ function SuppliersPageInner() {
                   All suppliers
                 </button>
                 <h2 className="mt-1 truncate text-sm font-semibold text-dark dark:text-white">
-                  {selectedMeta?.name || "Supplier"}
+                  {selectedMeta?.name ||
+                    suppliers.find((row) => row.id === selectedId)?.name ||
+                    "Supplier"}
                 </h2>
                 {folderPath.length > 1 ? (
                   <nav className="mt-1 flex flex-wrap items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
@@ -593,7 +615,7 @@ function SuppliersPageInner() {
                         {uploadNotice}
                       </p>
                     ) : null}
-                    {visibleFolders.length === 0 && visibleFiles.length === 0 ? (
+                    {visibleFolders.length === 0 && visibleFiles.length === 0 && !filesLoading ? (
                       <p className="px-3 py-8 text-center text-sm text-gray-500">
                         {folderQuery ? "Nothing in this folder matches." : "This folder is empty."}
                       </p>
@@ -645,8 +667,17 @@ function SuppliersPageInner() {
                             </li>
                           );
                         })}
+                        {filesLoading ? (
+                          <li className="flex items-center gap-2 px-3 py-2.5 text-xs text-gray-500">
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            Loading files…
+                          </li>
+                        ) : null}
                       </ul>
                     )}
+                    {filesError ? (
+                      <p className="px-3 py-2 text-xs text-red-600 dark:text-red-400">{filesError}</p>
+                    ) : null}
                   </>
                 )
               ) : filtered.length === 0 ? (
@@ -750,9 +781,7 @@ function SuppliersPageInner() {
             ) : (
               <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-gray-500">
                 {insideSupplier
-                  ? docsLoading
-                    ? "Loading documents…"
-                    : "Select a file to preview it here."
+                  ? "Select a file to preview it."
                   : "Select a supplier to browse its folders."}
               </div>
             )}
