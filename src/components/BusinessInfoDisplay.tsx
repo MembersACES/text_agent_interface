@@ -23,7 +23,7 @@ import { defaultShareEmail } from "@/lib/share-folder-api";
 import { BRAND, CONTRACT_STATUS_OPTIONS } from "@/lib/brand";
 import { Modal } from "@/components/ui/modal";
 import { NetworkDataRequestOption } from "@/components/NetworkDataRequestOption";
-import { applyNetworkDataRequest, GAS_DATA_REQUEST_NETWORKS } from "@/lib/data-request";
+import { applyNetworkDataRequest, GAS_DATA_REQUEST_NETWORKS, networkDataRequestFields } from "@/lib/data-request";
 import { Button } from "@/components/ui/button";
 import { formatCurrencyAmount, hasMdqOverrun, parseMdqOverrun } from "@/lib/discrepancy-utils";
 
@@ -264,6 +264,8 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
     tool: string;
     details: string;
     networkDataRequest?: boolean;
+    networkDataHistoryYears?: number;
+    testSend?: boolean;
     retailerRequestName?: string;
   }>(null);
   const [dataRequestLoading, setDataRequestLoading] = useState(false);
@@ -4448,8 +4450,9 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
               <div className="bg-white rounded-lg p-8 min-w-[400px] shadow-lg focus:outline-none" tabIndex={-1}>
                 <h3 className="text-lg font-semibold text-gray-800 mb-4">Confirm Data Request</h3>
                 <div className="mb-3"><span className="font-semibold">Business Name:</span> <span className="ml-2">{dataRequestSummary.businessName}</span></div>
+                {dataRequestSummary.networkDataRequest !== true ? (
                 <div className="mb-3">
-                  <label className="font-semibold block mb-1">{dataRequestSummary.networkDataRequest ? "Network:" : "Retailer:"}</label>
+                  <label className="font-semibold block mb-1">Retailer:</label>
                   <select
                     value={dataRequestSummary.retailer || ''}
                     onChange={(e) => {
@@ -4534,16 +4537,35 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                     })()}
                   </select>
                 </div>
+                ) : null}
                 <div className="mb-3"><span className="font-semibold">Identifier:</span> <span className="ml-2">{dataRequestSummary.identifier}</span></div>
                 <div className="mb-3"><span className="font-semibold">Request Type:</span> <span className="ml-2">{dataRequestSummary.requestType}{dataRequestSummary.networkDataRequest ? " — network" : ""}</span></div>
                 {dataRequestSummary.requestType === "gas_ci" ? (
                   <div className="mb-3">
                     <NetworkDataRequestOption
                       checked={dataRequestSummary.networkDataRequest === true}
+                      identifier={dataRequestSummary.identifier}
                       selectedNetwork={dataRequestSummary.retailer}
+                      years={dataRequestSummary.networkDataHistoryYears}
+                      testSend={dataRequestSummary.testSend === true}
                       onChange={(enabled) =>
                         setDataRequestSummary((current) =>
                           current ? applyNetworkDataRequest(current, enabled) : current
+                        )
+                      }
+                      onNetworkChange={(network) =>
+                        setDataRequestSummary((current) =>
+                          current ? { ...current, retailer: network } : current
+                        )
+                      }
+                      onYearsChange={(years) =>
+                        setDataRequestSummary((current) =>
+                          current ? { ...current, networkDataHistoryYears: years } : current
+                        )
+                      }
+                      onTestSendChange={(enabled) =>
+                        setDataRequestSummary((current) =>
+                          current ? { ...current, testSend: enabled } : current
                         )
                       }
                     />
@@ -4569,7 +4591,11 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                           business_name: dataRequestSummary.businessName,
                           supplier_name: dataRequestSummary.retailer,
                           request_type: dataRequestSummary.requestType,
-                          network_data_request: dataRequestSummary.networkDataRequest === true,
+                          ...networkDataRequestFields(
+                            dataRequestSummary.networkDataRequest,
+                            dataRequestSummary.networkDataHistoryYears,
+                            dataRequestSummary.testSend,
+                          ),
                         };
                         
                         if (dataRequestSummary.param !== "business_name") {
