@@ -28,7 +28,96 @@ export type DataRequestSummary = {
   invoiceUrl?: string | null;
   /** Where this request came from - shown in the modal so the sender has context. */
   context?: string;
+  /** C&I gas only. Sends the network meter-data email instead of the retailer one. */
+  networkDataRequest?: boolean;
+  /** Retailer to restore when the network checkbox is turned off. */
+  retailerRequestName?: string;
 };
+
+/** Gas networks a C&I network data request can be addressed to. Longest MIRN prefix wins. */
+export const GAS_DATA_REQUEST_NETWORKS = [
+  {
+    label: "Jemena Gas Networks (NSW)",
+    prefixes: ["52"],
+    note: "Sent to customerrelations@jemena.com.au, with data.quote@fornrg.com copied in.",
+  },
+  {
+    label: "Australian Gas Networks",
+    prefixes: ["55", "532"],
+    note: "Sent to agnl@agig.com.au (general enquiries, not confirmed for meter data), with data.quote@fornrg.com copied in.",
+  },
+  {
+    label: "Multinet Gas",
+    prefixes: ["531"],
+    note: "Sent to mgservicedesk@agig.com.au (general enquiries, not confirmed for meter data), with data.quote@fornrg.com copied in.",
+  },
+  {
+    label: "AusNet Gas",
+    prefixes: ["533"],
+    note: "Sent to meterdata@ausnetservices.com.au (published for electricity; gas is unconfirmed), with data.quote@fornrg.com copied in.",
+  },
+  {
+    label: "Allgas (APA)",
+    prefixes: [],
+    note: "Sent to connectionsqld@apa.com.au (the only published address), with data.quote@fornrg.com copied in.",
+  },
+  {
+    label: "Evoenergy",
+    prefixes: [],
+    note: "No data inbox is published. This goes to data.quote@fornrg.com to lodge via the Evoenergy enquiry form or 13 23 86.",
+  },
+  {
+    label: "ATCO Gas",
+    prefixes: ["56"],
+    note: "No email is published. This goes to data.quote@fornrg.com to send on. Phone 08 6163 5000.",
+  },
+  {
+    label: "TasGas Networks",
+    prefixes: [],
+    note: "No email is published. This goes to data.quote@fornrg.com to send on. Phone 1800 770 018.",
+  },
+] as const;
+
+export function gasNetworkLabelForMirn(mirn: string): string | null {
+  const digits = (mirn || "").replace(/\D/g, "");
+  let best: { label: string; length: number } | null = null;
+  for (const network of GAS_DATA_REQUEST_NETWORKS) {
+    for (const prefix of network.prefixes) {
+      if (!prefix || !digits.startsWith(prefix)) continue;
+      if (!best || prefix.length > best.length) {
+        best = { label: network.label, length: prefix.length };
+      }
+    }
+  }
+  return best?.label ?? null;
+}
+
+export function gasNetworkRequestNote(label: string): string | null {
+  return GAS_DATA_REQUEST_NETWORKS.find((network) => network.label === label)?.note ?? null;
+}
+
+export function applyNetworkDataRequest<
+  T extends {
+    retailer: string;
+    identifier: string;
+    networkDataRequest?: boolean;
+    retailerRequestName?: string;
+  },
+>(summary: T, enabled: boolean): T {
+  if (!enabled) {
+    return {
+      ...summary,
+      networkDataRequest: false,
+      retailer: summary.retailerRequestName ?? summary.retailer,
+    };
+  }
+  return {
+    ...summary,
+    networkDataRequest: true,
+    retailerRequestName: summary.retailerRequestName ?? summary.retailer,
+    retailer: gasNetworkLabelForMirn(summary.identifier) ?? "",
+  };
+}
 
 /** Everyone on the To/CC line already, whatever the retailer. */
 export const DATA_REQUEST_INTERNAL_CC = "data.quote@fornrg.com";

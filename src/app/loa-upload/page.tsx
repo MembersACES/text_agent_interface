@@ -13,7 +13,9 @@ import {
   type UtilityInvoiceUploadKey,
   postLoaDocument,
 } from '@/lib/invoice-api-endpoints';
-import { createMemberFolder, type LoaCandidate } from '@/lib/member-folder-api';
+import { createMemberFolder, type LoaCandidate, type MemberFolderCreateResult } from '@/lib/member-folder-api';
+import { CrmLinkBanner } from '@/components/member-profile';
+import { type CrmLink } from '@/lib/crm-link';
 import { MemberAcesSheetPreview } from '@/components/MemberAcesSheetPreview';
 import { UtilityInvoiceUploadBar } from '@/components/UtilityInvoiceUploadBar';
 import {
@@ -37,6 +39,23 @@ const UTILITY_OPTIONS = {
   GREASE_TRAP: "GREASE TRAP",
   WATER: "WATER",
 };
+
+function contactEmailFromBusinessDetails(details: Record<string, unknown> | null | undefined): string {
+  if (!details) return "";
+  const preferred = ["Contact  Email  :", "Contact Email", "Contact Email:", "Email"];
+  for (const key of preferred) {
+    const value = details[key];
+    if (typeof value === "string" && value.includes("@")) return value.trim();
+  }
+  for (const [key, value] of Object.entries(details)) {
+    if (!/email/i.test(key)) continue;
+    if (typeof value === "string" && value.includes("@")) return value.trim();
+  }
+  return "";
+}
+
+const CRM_CREATE_REASON =
+  "LOA is filed. Create a Qualified CRM member, or link an existing member.";
 
 function LoaStepShell({
   title,
@@ -100,6 +119,10 @@ export default function LoaUploadPage() {
   const [selectedUtilitySheetRow, setSelectedUtilitySheetRow] = useState<number | null>(null);
   const selectedUtilitySheetRef = useRef<number | null>(null);
   const [utilitySheetPreviewRefreshKey, setUtilitySheetPreviewRefreshKey] = useState(0);
+  const [crmRecordId, setCrmRecordId] = useState("");
+  const [crmFolderUrl, setCrmFolderUrl] = useState("");
+  const [crmLink, setCrmLink] = useState<CrmLink | null>(null);
+  const [crmUnavailableReason, setCrmUnavailableReason] = useState<string | null>(null);
 
   // Step 1: Upload LOA document
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -254,11 +277,42 @@ export default function LoaUploadPage() {
     setStep(5);
   };
 
+  const clearCrmOffer = () => {
+    setCrmRecordId("");
+    setCrmFolderUrl("");
+    setCrmLink(null);
+    setCrmUnavailableReason(null);
+  };
+
+  const rememberCrmOffer = (result: MemberFolderCreateResult) => {
+    const recordId = String(result.loa_record_id || "").trim();
+    if (result.n8n_fallback_used || !recordId) {
+      clearCrmOffer();
+      setCrmUnavailableReason(
+        result.n8n_fallback_used
+          ? "This folder was created through the fallback path, which does not return an LOA record. Open Get member profile once the LOA record is available to create the CRM member."
+          : "No Airtable LOA record matched this business, so a CRM member cannot be created from this step.",
+      );
+      return;
+    }
+    setCrmRecordId(recordId);
+    setCrmFolderUrl(result.folder_url || "");
+    setCrmUnavailableReason(null);
+    setCrmLink({
+      status: "no_match",
+      client_id: null,
+      record_id: recordId,
+      reason: CRM_CREATE_REASON,
+      candidates: [],
+    });
+  };
+
   const runMemberFolderCreate = async (stateName: string, stateId: string, loaRecordId?: string) => {
     setStep(6);
     setLoading(true);
     setAuthError(false);
     setLoaCandidates([]);
+    clearCrmOffer();
     try {
       const result = await createMemberFolder(token, {
         business_name: businessDetails?.['Business Name'] || '',
@@ -293,6 +347,7 @@ export default function LoaUploadPage() {
       setFolderResult(
         `✅ Member folder created${result.folder_created ? '' : ' (existing folder reused)'}.${extra}${loaNote}${wipNote}${warn}`,
       );
+      rememberCrmOffer(result);
       setTimeout(() => {
         setShowUtilityPrompt(true);
       }, 1500);
@@ -446,6 +501,48 @@ export default function LoaUploadPage() {
       setUtilitySheetPreviewRefreshKey((k) => k + 1);
       setUtilityRefreshing(false);
     }
+  };
+
+  const renderCrmOffer = () => {
+    if (crmLink && crmRecordId) {
+      return (
+        <div className="mt-6">
+          <CrmLinkBanner
+            crmLink={crmLink}
+            recordId={crmRecordId}
+            businessName={String(businessDetails?.["Business Name"] || "")}
+            primaryContactEmail={contactEmailFromBusinessDetails(businessDetails)}
+            gdriveFolderUrl={crmFolderUrl || null}
+            token={token}
+            createStage="qualified"
+            onLinked={(clientId) => {
+              setCrmLink({
+                status: "matched",
+                client_id: clientId,
+                record_id: crmRecordId,
+                reason: "CRM member linked by LOA record ID",
+                candidates: [],
+              });
+            }}
+            onUnlinked={() => {
+              setCrmLink({
+                status: "no_match",
+                client_id: null,
+                record_id: crmRecordId,
+                reason: CRM_CREATE_REASON,
+                candidates: [],
+              });
+            }}
+          />
+        </div>
+      );
+    }
+    if (crmUnavailableReason) {
+      return (
+        <p className="mt-6 text-sm text-gray-600 dark:text-gray-400">{crmUnavailableReason}</p>
+      );
+    }
+    return null;
   };
 
   // UI rendering by step
@@ -614,6 +711,8 @@ export default function LoaUploadPage() {
           </div>
         )}
         
+        {!loading && renderCrmOffer()}
+
         {showUtilityPrompt && (
           <div className="mt-6 rounded-xl border border-stroke bg-primary/5 p-4 dark:border-dark-3">
             <p className="mb-3">Would you like to link a utility for this client?</p>
@@ -775,6 +874,7 @@ export default function LoaUploadPage() {
               </ul>
             </div>
           )}
+          {renderCrmOffer()}
         </div>
         <div className="mt-6 space-y-3">
           {businessDetails && (

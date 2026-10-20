@@ -4,6 +4,7 @@ import {
   Building2,
   CalendarClock,
   CheckSquare,
+  Factory,
   FileText,
   FileUp,
   GitBranch,
@@ -62,6 +63,7 @@ export const MAIN_NAV: NavLinkItem[] = [
   { title: "Base 1 Hub", url: "/base-1", icon: BarChart3 },
   { title: "Distributors", url: "/distributors", icon: Handshake },
   { title: "Associations", url: "/associations", icon: Landmark },
+  { title: "Suppliers", url: "/suppliers", icon: Factory },
   { title: "Plus ES DMA", url: "/plus-es-dma", icon: FileText },
 ];
 

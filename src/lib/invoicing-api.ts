@@ -56,6 +56,31 @@ export async function fetchCommissionFiguresClientCount(
   return body.client_count;
 }
 
+export type AlintaSmeTabSummary = {
+  name: string;
+  gid: string;
+  rowCount: number;
+  annualSavings: number | null;
+};
+
+export async function fetchAlintaSmeSummary(
+  token: string | undefined
+): Promise<AlintaSmeTabSummary[]> {
+  const { ok, body } = await getJson(
+    `${getApiBaseUrl()}/api/invoicing/alinta-sme-summary`,
+    token
+  );
+  if (!ok || !Array.isArray(body.tabs)) throw new Error("alinta_sme_summary_failed");
+  return (body.tabs as Record<string, unknown>[])
+    .filter((tab) => typeof tab.name === "string" && typeof tab.gid === "string")
+    .map((tab) => ({
+      name: tab.name as string,
+      gid: tab.gid as string,
+      rowCount: typeof tab.row_count === "number" ? tab.row_count : 0,
+      annualSavings: typeof tab.annual_savings === "number" ? tab.annual_savings : null,
+    }));
+}
+
 export async function fetchTrojanUniqueClientCount(
   token: string | undefined
 ): Promise<number> {

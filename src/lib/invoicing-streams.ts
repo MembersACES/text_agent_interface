@@ -176,8 +176,15 @@ export const INVOICING_STREAMS: InvoicingStream[] = [
       sheetIdOrUrl:
         "https://docs.google.com/spreadsheets/d/1cqoC1xBYmAlPtA4-perDkpRPnbJg7ZWkRfzAhkyZfuo/edit?gid=0#gid=0",
       tabs: [
-        { name: "Gas", gid: "0" },
-        { name: "Electricity", gid: "1639613357" },
+        { name: "Unsigned SME - SME", gid: "2103454500" },
+        { name: "Signed SME Gas", gid: "0" },
+        { name: "Signed SME Electricity", gid: "1639613357" },
+        { name: "Unsigned SME - C&I", gid: "1057395512" },
+        { name: "Gas C&I Agreement Request Sent", gid: "410278855" },
+        { name: "Correct Gas C&I Offer Recieved", gid: "1811987718" },
+        { name: "Electricity C&I Agreement Request Sent", gid: "1767363874" },
+        { name: "Correct Electricity C&I Offer Recieved", gid: "1466981509" },
+        { name: "Signed SME - C&I", gid: "857794033" },
       ],
     },
   },

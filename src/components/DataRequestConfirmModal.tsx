@@ -1,9 +1,11 @@
 "use client";
 
 import { Modal } from "@/components/ui/modal";
+import { NetworkDataRequestOption } from "@/components/NetworkDataRequestOption";
 import {
   CI_DATA_REQUEST_RETAILERS,
   DATA_REQUEST_INTERNAL_CC,
+  GAS_DATA_REQUEST_NETWORKS,
   SME_DATA_REQUEST_RETAILERS,
   WASTE_DATA_REQUEST_RETAILERS,
   type DataRequestSummary,
@@ -15,6 +17,7 @@ type DataRequestConfirmModalProps = {
   onClose: () => void;
   onConfirm: () => void;
   onRetailerChange: (retailer: string) => void;
+  onNetworkDataRequestChange?: (enabled: boolean) => void;
 };
 
 export function DataRequestConfirmModal({
@@ -23,8 +26,10 @@ export function DataRequestConfirmModal({
   onClose,
   onConfirm,
   onRetailerChange,
+  onNetworkDataRequestChange,
 }: DataRequestConfirmModalProps) {
   const requestType = summary?.requestType ?? "";
+  const networkRequest = requestType === "gas_ci" && summary?.networkDataRequest === true;
   const isCI = requestType === "electricity_ci" || requestType === "gas_ci";
   const isSME = requestType === "electricity_sme" || requestType === "gas_sme";
   const isWaste = requestType === "waste";
@@ -67,14 +72,20 @@ export function DataRequestConfirmModal({
             <span className="ml-2">{summary.businessName}</span>
           </div>
           <div>
-            <label className="font-semibold block mb-1">Retailer:</label>
+            <label className="font-semibold block mb-1">{networkRequest ? "Network:" : "Retailer:"}</label>
             <select
               value={summary.retailer || ""}
               onChange={(e) => onRetailerChange(e.target.value)}
               className="w-full px-3 py-2 border-2 border-gray-400 dark:border-gray-500 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
-              <option value="">Select a retailer...</option>
-              {isCI && (
+              <option value="">{networkRequest ? "Select a network..." : "Select a retailer..."}</option>
+              {networkRequest &&
+                GAS_DATA_REQUEST_NETWORKS.map((network) => (
+                  <option key={network.label} value={network.label}>
+                    {network.label}
+                  </option>
+                ))}
+              {!networkRequest && isCI && (
                 <optgroup label="C&I Electricity & Gas">
                   {CI_DATA_REQUEST_RETAILERS.map((retailer) => (
                     <option key={retailer} value={retailer}>
@@ -83,7 +94,7 @@ export function DataRequestConfirmModal({
                   ))}
                 </optgroup>
               )}
-              {isSME && (
+              {!networkRequest && isSME && (
                 <optgroup label="SME Electricity & Gas">
                   {SME_DATA_REQUEST_RETAILERS.map((retailer) => (
                     <option key={retailer} value={retailer}>
@@ -92,7 +103,7 @@ export function DataRequestConfirmModal({
                   ))}
                 </optgroup>
               )}
-              {isWaste && (
+              {!networkRequest && isWaste && (
                 <optgroup label="Waste">
                   {WASTE_DATA_REQUEST_RETAILERS.map((retailer) => (
                     <option key={retailer} value={retailer}>
@@ -101,7 +112,7 @@ export function DataRequestConfirmModal({
                   ))}
                 </optgroup>
               )}
-              {!isCI && !isSME && !isWaste && (
+              {!networkRequest && !isCI && !isSME && !isWaste && (
                 <>
                   <optgroup label="C&I Electricity & Gas">
                     {CI_DATA_REQUEST_RETAILERS.map((retailer) => (
@@ -129,7 +140,8 @@ export function DataRequestConfirmModal({
               <optgroup label="Other">
                 <option value="Other">Other Supplier</option>
               </optgroup>
-              {summary.retailer &&
+              {!networkRequest &&
+                summary.retailer &&
                 !(allRetailers as readonly string[]).includes(summary.retailer) &&
                 summary.retailer !== "Other" && (
                   <option value={summary.retailer}>
@@ -144,14 +156,25 @@ export function DataRequestConfirmModal({
           </div>
           <div>
             <span className="font-semibold">Request Type:</span>{" "}
-            <span className="ml-2">{summary.requestType}</span>
+            <span className="ml-2">
+              {summary.requestType}
+              {networkRequest ? " — network" : ""}
+            </span>
           </div>
+
+          {requestType === "gas_ci" && onNetworkDataRequestChange ? (
+            <NetworkDataRequestOption
+              checked={networkRequest}
+              selectedNetwork={summary.retailer}
+              onChange={onNetworkDataRequestChange}
+            />
+          ) : null}
 
           {summary.context ? (
             <div className="text-xs text-gray-500 dark:text-gray-400">{summary.context}</div>
           ) : null}
 
-          {summary.missingMonths && summary.missingMonths.length > 0 ? (
+          {!networkRequest && summary.missingMonths && summary.missingMonths.length > 0 ? (
             <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-900/50 dark:bg-amber-950/30">
               <div className="font-semibold text-amber-900 dark:text-amber-200">
                 Asking for {summary.missingMonths.length} missing month
@@ -184,6 +207,9 @@ export function DataRequestConfirmModal({
                 copy in <span className="font-mono">{DATA_REQUEST_INTERNAL_CC}</span>
               </li>
               <li>attach the Letter of Authority on file</li>
+              {networkRequest ? (
+                <li>ask for 36 months of interval and meter-read data, plus MDQ, MHQ, and tariff</li>
+              ) : null}
               <li>
                 {summary.invoiceUrl ? (
                   <>

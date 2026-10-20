@@ -11,10 +11,12 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
+  fetchAlintaSmeSummary,
   fetchCommissionFiguresClientCount,
   fetchOriginReadySummary,
   fetchRetailerSheetTabs,
   fetchTrojanUniqueClientCount,
+  type AlintaSmeTabSummary,
 } from "@/lib/invoicing-api";
 import {
   formatAud,
@@ -48,6 +50,10 @@ export function InvoicingWorkspace({
   const [liveTabs, setLiveTabs] = useState<{ name: string; gid: string }[] | null>(
     null
   );
+  const [alintaSummary, setAlintaSummary] = useState<AlintaSmeTabSummary[] | null>(
+    null
+  );
+  const [alintaSummaryLoading, setAlintaSummaryLoading] = useState(false);
   const [metricText, setMetricText] = useState<string | null>(null);
   const [metricLoading, setMetricLoading] = useState(false);
   const [metricError, setMetricError] = useState(false);
@@ -55,16 +61,23 @@ export function InvoicingWorkspace({
   const [sheetOpen, setSheetOpen] = useState(stream.group !== "direct");
   const isDirect = stream.group === "direct";
 
-  const tabs = useMemo(
-    () => mergeSheetTabs(stream.sheet?.tabs ?? [], liveTabs),
-    [stream.sheet?.tabs, liveTabs]
-  );
+  const tabs = useMemo(() => {
+    if (stream.id === "alinta-sme" && liveTabs?.length) {
+      return liveTabs.map((tab) => ({ name: tab.name, gid: tab.gid }));
+    }
+    return mergeSheetTabs(stream.sheet?.tabs ?? [], liveTabs);
+  }, [stream.id, stream.sheet?.tabs, liveTabs]);
 
   const effectiveGid =
     activeTabGid ??
     stream.defaultTabGid ??
     tabs.find((tab) => tab.gid)?.gid ??
     undefined;
+
+  const activeAlinta =
+    stream.id === "alinta-sme"
+      ? (alintaSummary?.find((tab) => tab.gid === effectiveGid) ?? null)
+      : null;
 
   const previewUrl = stream.sheet
     ? toEmbedUrl(stream.sheet.sheetIdOrUrl, effectiveGid)
@@ -77,9 +90,32 @@ export function InvoicingWorkspace({
     setPdfsOpen(isDirect ? false : Boolean(stream.driveCategory));
     setSheetOpen(!isDirect);
     setLiveTabs(null);
+    setAlintaSummary(null);
+    setAlintaSummaryLoading(false);
     setMetricText(null);
     setMetricError(false);
   }, [stream.id, stream.driveCategory, isDirect]);
+
+  useEffect(() => {
+    if (stream.id !== "alinta-sme" || !token) return;
+    let cancelled = false;
+    setAlintaSummaryLoading(true);
+    (async () => {
+      try {
+        const summary = await fetchAlintaSmeSummary(token);
+        if (cancelled) return;
+        setAlintaSummary(summary);
+        setLiveTabs(summary.map((tab) => ({ name: tab.name, gid: tab.gid })));
+      } catch {
+        if (!cancelled) setAlintaSummary(null);
+      } finally {
+        if (!cancelled) setAlintaSummaryLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [stream.id, token]);
 
   useEffect(() => {
     if (!stream.retailerKey || !token) return;
@@ -194,6 +230,8 @@ export function InvoicingWorkspace({
                 </span>
               ) : metricError ? (
                 "Couldn’t load totals — open the sheet to continue."
+              ) : activeAlinta?.annualSavings != null ? (
+                `${activeAlinta.rowCount} ${activeAlinta.rowCount === 1 ? "site" : "sites"} on this tab`
               ) : (
                 metricText ??
                 (isDirect
@@ -244,6 +282,24 @@ export function InvoicingWorkspace({
               <FileSpreadsheet className="h-3.5 w-3.5" aria-hidden />
               Sheet
             </button>
+          ) : null}
+          {stream.id === "alinta-sme" &&
+          (alintaSummaryLoading || activeAlinta?.annualSavings != null) ? (
+            <div className="rounded-lg border border-stroke bg-white px-3 py-1 text-right dark:border-dark-3 dark:bg-dark-2">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                Annual savings
+              </p>
+              <p className="text-sm font-bold tabular-nums text-dark dark:text-white">
+                {alintaSummaryLoading && activeAlinta?.annualSavings == null ? (
+                  <span className="inline-flex items-center gap-1.5 font-medium text-gray-500">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Loading
+                  </span>
+                ) : (
+                  formatAud(activeAlinta?.annualSavings ?? 0)
+                )}
+              </p>
+            </div>
           ) : null}
           {openUrl ? (
             <a

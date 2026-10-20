@@ -24,6 +24,7 @@ import {
   DataRequestResultModal,
 } from "@/components/DataRequestConfirmModal";
 import {
+  applyNetworkDataRequest,
   buildGapDataRequestSummary,
   canRequestDataForUtility,
   type DataRequestSummary,
@@ -186,6 +187,7 @@ export default function DataDisclosurePage() {
         business_name: request.businessName,
         supplier_name: request.retailer,
         request_type: request.requestType,
+        network_data_request: request.networkDataRequest === true,
         details: request.identifier,
         missing_months: request.missingMonths ?? [],
         invoice_url: request.invoiceUrl ?? null,
@@ -581,6 +583,9 @@ export default function DataDisclosurePage() {
         onConfirm={sendRequest}
         onRetailerChange={(retailer) =>
           setRequest((s) => (s ? { ...s, retailer } : s))
+        }
+        onNetworkDataRequestChange={(enabled) =>
+          setRequest((s) => (s ? applyNetworkDataRequest(s, enabled) : s))
         }
       />
       <DataRequestResultModal
