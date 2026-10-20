@@ -25,11 +25,13 @@ import {
   createSupplierFolder,
   fetchSupplierDocuments,
   fetchSupplierFolders,
+  fetchSupplierSheetTabs,
   uploadSupplierDocument,
   type SupplierCategory,
   type SupplierFile,
   type SupplierFolder,
   type SupplierPathItem,
+  type SupplierSheetTab,
 } from "@/lib/suppliers-api";
 
 const CATEGORY_FILTERS: { id: "all" | SupplierCategory; label: string }[] = [
@@ -73,6 +75,16 @@ function fileTypeLabel(fileType: string): string {
     default:
       return "File";
   }
+}
+
+function isGoogleSheet(file: SupplierFile | null): boolean {
+  return file?.mime_type === "application/vnd.google-apps.spreadsheet";
+}
+
+function sheetPreviewUrl(fileId: string, gid?: string | null): string {
+  const base = `https://docs.google.com/spreadsheets/d/${fileId}/preview`;
+  if (!gid) return base;
+  return `${base}?gid=${gid}#gid=${gid}`;
 }
 
 function canPreviewFile(file: SupplierFile | null): boolean {
@@ -120,6 +132,9 @@ function SuppliersPageInner() {
   const [docsLoading, setDocsLoading] = useState(false);
   const [docsError, setDocsError] = useState<string | null>(null);
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
+  const [sheetTabs, setSheetTabs] = useState<SupplierSheetTab[]>([]);
+  const [sheetTabGid, setSheetTabGid] = useState<string | null>(null);
+  const [sheetTabsLoading, setSheetTabsLoading] = useState(false);
 
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -247,6 +262,39 @@ function SuppliersPageInner() {
     () => files.find((f) => f.id === selectedFileId) ?? null,
     [files, selectedFileId],
   );
+  const selectedIsSheet = isGoogleSheet(selectedFile);
+  const selectedSheetId = selectedIsSheet ? selectedFile?.id ?? null : null;
+
+  useEffect(() => {
+    if (!token || !selectedSheetId) {
+      setSheetTabs([]);
+      setSheetTabGid(null);
+      setSheetTabsLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setSheetTabsLoading(true);
+    (async () => {
+      try {
+        const tabs = await fetchSupplierSheetTabs(token, selectedSheetId);
+        if (cancelled) return;
+        setSheetTabs(tabs);
+        setSheetTabGid((current) =>
+          current && tabs.some((tab) => tab.gid === current) ? current : (tabs[0]?.gid ?? null),
+        );
+      } catch {
+        if (!cancelled) {
+          setSheetTabs([]);
+          setSheetTabGid(null);
+        }
+      } finally {
+        if (!cancelled) setSheetTabsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [token, selectedSheetId]);
 
   const handleUpload = useCallback(
     async (file: File, displayName: string) => {
@@ -353,7 +401,7 @@ function SuppliersPageInner() {
       <PageHeader
         pageName="Suppliers"
         title="Suppliers"
-        description="Energy, waste, and other supplier folders from Google Drive. Open a supplier to view forms and upload new documents."
+        description="Energy, waste, and other supplier folders from Google Drive. Open a supplier to browse folders, preview sheets, and upload documents."
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <Button
@@ -706,13 +754,53 @@ function SuppliersPageInner() {
                       </a>
                     </div>
                     {canPreview ? (
-                      <div className="relative min-h-[420px] flex-1 bg-gray-100 dark:bg-dark-2">
-                        <iframe
-                          key={selectedFile.id}
-                          title={selectedFile.name}
-                          src={selectedFile.preview_url || ""}
-                          className="absolute inset-0 h-full w-full border-0"
-                        />
+                      <div className="flex min-h-[420px] flex-1 flex-col bg-gray-100 dark:bg-dark-2">
+                        {selectedIsSheet && (sheetTabsLoading || sheetTabs.length > 0) ? (
+                          <div className="flex flex-wrap items-center gap-1.5 border-b border-stroke bg-white px-3 py-2 dark:border-dark-3 dark:bg-gray-dark">
+                            {sheetTabsLoading && sheetTabs.length === 0 ? (
+                              <span className="inline-flex items-center gap-1.5 text-[11px] text-gray-500">
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                Loading tabs…
+                              </span>
+                            ) : (
+                              sheetTabs.map((tab) => {
+                                const isActive = tab.gid === sheetTabGid;
+                                return (
+                                  <button
+                                    key={tab.gid}
+                                    type="button"
+                                    onClick={() => setSheetTabGid(tab.gid)}
+                                    title={tab.name}
+                                    className={cn(
+                                      "rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors",
+                                      isActive
+                                        ? "bg-dark text-white dark:bg-white dark:text-dark"
+                                        : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-dark-2 dark:text-gray-300 dark:hover:bg-dark-3",
+                                    )}
+                                  >
+                                    {tab.name}
+                                  </button>
+                                );
+                              })
+                            )}
+                          </div>
+                        ) : null}
+                        <div className="relative min-h-[420px] flex-1">
+                          <iframe
+                            key={
+                              selectedIsSheet
+                                ? `${selectedFile.id}-${sheetTabGid ?? "sheet"}`
+                                : selectedFile.id
+                            }
+                            title={selectedFile.name}
+                            src={
+                              selectedIsSheet
+                                ? sheetPreviewUrl(selectedFile.id, sheetTabGid)
+                                : selectedFile.preview_url || ""
+                            }
+                            className="absolute inset-0 h-full w-full border-0"
+                          />
+                        </div>
                       </div>
                     ) : (
                       <div className="flex flex-1 items-center justify-center px-4 py-12 text-center text-sm text-gray-500">

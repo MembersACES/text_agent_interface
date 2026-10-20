@@ -43,6 +43,11 @@ export type SupplierDocumentsResponse = {
   files: SupplierFile[];
 };
 
+export type SupplierSheetTab = {
+  name: string;
+  gid: string;
+};
+
 export type SupplierUploadResult = {
   id: string;
   name: string;
@@ -123,6 +128,27 @@ export async function createSupplierFolder(
     throw new Error(detailMessage(data, `Failed to create folder (${res.status})`));
   }
   return data as SupplierFolder & { created: boolean };
+}
+
+export async function fetchSupplierSheetTabs(
+  token: string | undefined,
+  fileId: string,
+): Promise<SupplierSheetTab[]> {
+  const res = await fetch(
+    `${getApiBaseUrl()}/api/suppliers/files/${encodeURIComponent(fileId)}/tabs`,
+    { headers: authHeaders(token) },
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(detailMessage(data, `Failed to load sheet tabs (${res.status})`));
+  }
+  const tabs = Array.isArray(data.tabs) ? data.tabs : [];
+  return tabs
+    .filter(
+      (tab: { name?: unknown; gid?: unknown }) =>
+        typeof tab?.name === "string" && typeof tab?.gid === "string",
+    )
+    .map((tab: { name: string; gid: string }) => ({ name: tab.name, gid: tab.gid }));
 }
 
 export async function uploadSupplierDocument(
