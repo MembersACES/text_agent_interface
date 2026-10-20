@@ -4463,10 +4463,10 @@ export default function BusinessInfoDisplay({ info, onLinkUtility, setInfo }: Bu
                     }}
                     className="w-full px-3 py-2 border-2 border-gray-400 rounded-md bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   >
-                    <option value="">{dataRequestSummary.networkDataRequest ? "Select a network..." : "Select a retailer..."}</option>
+                    <option value="">Select a retailer...</option>
                     {(() => {
                       const requestType = dataRequestSummary.requestType;
-                      const networkRequest = dataRequestSummary.networkDataRequest === true;
+                      const networkRequest = false;
                       const isCI = requestType === 'electricity_ci' || requestType === 'gas_ci';
                       const isSME = requestType === 'electricity_sme' || requestType === 'gas_sme';
                       const isWaste = requestType === 'waste';
