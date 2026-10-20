@@ -1,11 +1,12 @@
 "use client";
+
 import React, { useState, useRef, useEffect } from "react";
-import { MessageSquare, X, Send, ArrowRight, ExternalLink } from "lucide-react";
+import { MessageSquare, X, Send, ExternalLink } from "lucide-react";
 import { useRouter, usePathname } from "next/navigation";
-import { linkifyPages } from "@/lib/floatingagent/utils/linkifyPages";
+import { starterPrompts, type StarterPrompt } from "@/lib/floatingagent/catalog";
 
 const WELCOME_MESSAGE =
-  "Hi! I can search clients, show your tasks, summarize the CRM pipeline, and point you to the right pages. Try \"My tasks\", \"Find client Acme\", \"CRM summary\", or \"How do I generate an EOI?\"";
+  "I can find a member, show your tasks, summarise the CRM pipeline or the unsigned utility sites, check the autonomous queue, and open the right page — including a member's documents or utilities.";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -14,9 +15,24 @@ interface ChatMessage {
   suggestedLinks?: { label: string; href: string }[] | null;
 }
 
+function RichText({ text }: { text: string }) {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  return (
+    <>
+      {parts.map((part, index) =>
+        part.startsWith("**") && part.endsWith("**") ? (
+          <strong key={index}>{part.slice(2, -2)}</strong>
+        ) : (
+          <span key={index}>{part}</span>
+        )
+      )}
+    </>
+  );
+}
+
 export default function FloatingAgentChat() {
   const router = useRouter();
-  const pathname = usePathname();
+  const pathname = usePathname() ?? "/";
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     if (typeof window === "undefined") return [];
@@ -28,148 +44,204 @@ export default function FloatingAgentChat() {
     }
   });
   const [input, setInput] = useState("");
+  const [pending, setPending] = useState(false);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const prompts = starterPrompts(pathname);
 
-  // 💾 Save chat to session storage whenever it updates
   useEffect(() => {
     sessionStorage.setItem("floatingAgentChat", JSON.stringify(messages));
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // 🧭 Handle link clicks from assistant replies
-  useEffect(() => {
-    const handleLinkClick = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (target.tagName === "A" && target.getAttribute("href")?.startsWith("/")) {
-        e.preventDefault();
-        const href = target.getAttribute("href");
-        router.push(href!); // Navigate without closing chat
-      }
-    };
-    document.addEventListener("click", handleLinkClick);
-    return () => document.removeEventListener("click", handleLinkClick);
-  }, [router]);
-
-  // 🚀 Send message to the Floating Agent API
-  async function sendMessage() {
-    if (!input.trim()) return;
-    const userMsg: ChatMessage = { role: "user", text: input };
+  async function sendText(text: string) {
+    const trimmed = text.trim();
+    if (!trimmed || pending) return;
+    const userMsg: ChatMessage = { role: "user", text: trimmed };
+    const history = messages.slice(-6).map((item) => ({
+      role: item.role,
+      content: item.text,
+    }));
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
-
-    const history = messages.slice(-5).map((m) => ({
-      role: m.role,
-      content: m.text,
-    }));
+    setPending(true);
 
     try {
       const res = await fetch("/api/floatingagent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          message: userMsg.text,
-          currentPath: pathname ?? undefined,
+          message: trimmed,
+          currentPath: pathname,
           history,
         }),
       });
-      const data = await res.json();
-      setMessages((prev) => [...prev, data]);
+      const data = (await res.json().catch(() => null)) as ChatMessage | null;
+      if (!data?.text) {
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", text: "Something went wrong while fetching a reply." },
+        ]);
+        return;
+      }
+      setMessages((prev) => [...prev, { ...data, role: "assistant" }]);
     } catch (err) {
       console.error("Error sending message:", err);
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", text: "⚠️ Sorry, something went wrong while fetching a reply." },
+        { role: "assistant", text: "Something went wrong while fetching a reply." },
       ]);
+    } finally {
+      setPending(false);
     }
+  }
+
+  function usePrompt(prompt: StarterPrompt) {
+    if (prompt.fillOnly) {
+      setInput(prompt.text);
+      inputRef.current?.focus();
+      return;
+    }
+    void sendText(prompt.text);
+  }
+
+  function clearChat() {
+    setMessages([]);
+    sessionStorage.removeItem("floatingAgentChat");
   }
 
   return (
     <>
-      {/* Floating Button */}
       <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="fixed bottom-6 right-6 z-50 bg-emerald-600 text-white p-4 rounded-full shadow-lg hover:bg-emerald-700 transition"
+        type="button"
+        onClick={() => setIsOpen((open) => !open)}
+        aria-label={isOpen ? "Close assistant" : "Open assistant"}
+        aria-expanded={isOpen}
+        className="fixed bottom-4 right-4 z-50 rounded-full bg-primary p-4 text-white shadow-lg transition hover:bg-primary-hover sm:bottom-6 sm:right-6"
       >
         {isOpen ? <X size={20} /> : <MessageSquare size={20} />}
       </button>
 
-      {/* Chat Window */}
       {isOpen && (
-        <div className="fixed bottom-24 right-8 z-50 w-[460px] h-[620px] bg-white border border-gray-200 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
-          {/* Chat Header */}
-          <div className="bg-emerald-600 text-white px-4 py-3 font-semibold text-lg flex items-center justify-between">
-            Carbon Zero Assistant 💬
-            <button
-              onClick={() => setIsOpen(false)}
-              className="text-white hover:text-gray-200 transition"
-            >
-              <X size={22} />
-            </button>
+        <div
+          role="dialog"
+          aria-label="Carbon Zero Assistant"
+          className="fixed bottom-20 right-4 z-50 flex h-[min(40rem,calc(100vh-7rem))] w-[min(26rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-stroke bg-white shadow-2xl dark:border-dark-3 dark:bg-gray-dark sm:right-8"
+        >
+          <div className="flex items-center justify-between bg-primary px-4 py-3 text-white">
+            <p className="text-base font-semibold">Carbon Zero Assistant</p>
+            <div className="flex items-center gap-3">
+              {messages.length > 0 && (
+                <button
+                  type="button"
+                  onClick={clearChat}
+                  className="text-sm font-medium text-white/80 hover:text-white"
+                >
+                  Clear
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setIsOpen(false)}
+                aria-label="Close assistant"
+                className="text-white hover:text-white/80"
+              >
+                <X size={20} />
+              </button>
+            </div>
           </div>
 
-          {/* Chat Messages */}
-          <div className="flex-1 p-5 overflow-y-auto space-y-4 text-[15px] leading-relaxed">
+          <div className="flex-1 space-y-4 overflow-y-auto p-4 text-sm leading-relaxed">
             {messages.length === 0 && (
-              <div className="bg-gray-100 text-gray-800 p-4 rounded-2xl max-w-[90%] whitespace-pre-line">
-                {WELCOME_MESSAGE}
+              <div className="max-w-[95%] rounded-2xl bg-gray-100 p-4 text-dark dark:bg-dark-2 dark:text-white">
+                <p className="whitespace-pre-line">{WELCOME_MESSAGE}</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {prompts.map((prompt) => (
+                    <button
+                      key={prompt.label}
+                      type="button"
+                      onClick={() => usePrompt(prompt)}
+                      className="rounded-full border border-primary/30 px-3 py-1 text-xs font-medium text-primary hover:bg-primary/10"
+                    >
+                      {prompt.label}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
             {messages.map((msg, i) => (
               <div key={i}>
                 <div
-                  className={`p-4 rounded-2xl max-w-[90%] whitespace-pre-line ${
+                  className={`max-w-[95%] whitespace-pre-line rounded-2xl p-4 ${
                     msg.role === "user"
-                      ? "bg-emerald-600 text-white ml-auto self-end"
-                      : "bg-gray-100 text-gray-800"
+                      ? "ml-auto bg-primary text-white"
+                      : "bg-gray-100 text-dark dark:bg-dark-2 dark:text-white"
                   }`}
-                  dangerouslySetInnerHTML={{
-                    __html:
-                      msg.role === "assistant"
-                        ? linkifyPages(msg.text)
-                        : msg.text,
-                  }}
-                />
-                {msg.suggestedLinks && msg.suggestedLinks.length > 0 ? (
-                  <div className="ml-3 mt-2 flex flex-wrap gap-2">
-                    {msg.suggestedLinks.map((link, j) => (
+                >
+                  {msg.role === "assistant" ? <RichText text={msg.text} /> : msg.text}
+                </div>
+                {msg.role === "assistant" && msg.suggestedLinks && msg.suggestedLinks.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {msg.suggestedLinks.map((link) => (
                       <button
-                        key={j}
+                        key={link.href}
+                        type="button"
                         onClick={() => router.push(link.href)}
-                        className="text-sm text-emerald-700 font-medium inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-emerald-200 hover:bg-emerald-50 transition"
+                        className="inline-flex items-center gap-1 rounded-lg border border-primary/30 px-2.5 py-1.5 text-sm font-medium text-primary hover:bg-primary/10"
                       >
-                        <ExternalLink className="w-3.5 h-3.5" />
+                        <ExternalLink className="h-3.5 w-3.5" />
                         {link.label}
                       </button>
                     ))}
                   </div>
-                ) : msg.suggestedPage ? (
-                  <button
-                    onClick={() => router.push(msg.suggestedPage!)}
-                    className="ml-3 mt-2 text-sm text-emerald-700 font-medium flex items-center hover:underline"
-                  >
-                    <ArrowRight className="w-4 h-4 mr-1" /> Go to page
-                  </button>
-                ) : null}
+                )}
               </div>
             ))}
+            {pending && (
+              <div className="max-w-[95%] rounded-2xl bg-gray-100 p-4 text-dark dark:bg-dark-2 dark:text-dark-6">
+                Looking that up…
+              </div>
+            )}
             <div ref={chatEndRef} />
           </div>
 
-          {/* Input Bar */}
-          <div className="p-4 border-t flex items-center space-x-2">
+          {messages.length > 0 && (
+            <div className="flex gap-2 overflow-x-auto border-t border-stroke px-4 py-2 dark:border-dark-3">
+              {prompts.map((prompt) => (
+                <button
+                  key={prompt.label}
+                  type="button"
+                  disabled={pending}
+                  onClick={() => usePrompt(prompt)}
+                  className="shrink-0 rounded-full border border-stroke px-3 py-1 text-xs font-medium text-dark hover:border-primary/50 hover:text-primary disabled:opacity-50 dark:border-dark-3 dark:text-dark-7"
+                >
+                  {prompt.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className="flex items-center gap-2 border-t border-stroke p-3 dark:border-dark-3">
             <input
+              ref={inputRef}
               type="text"
-              placeholder="Type your message..."
+              placeholder="Ask about a member, task, or page…"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-              className="flex-1 border border-gray-300 rounded-xl px-4 py-2.5 text-[15px] focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void sendText(input);
+              }}
+              disabled={pending}
+              className="flex-1 rounded-xl border border-stroke bg-transparent px-4 py-2.5 text-sm text-dark focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-60 dark:border-dark-3 dark:text-white"
             />
             <button
-              onClick={sendMessage}
-              className="bg-emerald-600 text-white p-3 rounded-xl hover:bg-emerald-700 transition"
+              type="button"
+              onClick={() => void sendText(input)}
+              disabled={pending || !input.trim()}
+              aria-label="Send message"
+              className="rounded-xl bg-primary p-3 text-white transition hover:bg-primary-hover disabled:opacity-50"
             >
-              <Send size={20} />
+              <Send size={18} />
             </button>
           </div>
         </div>

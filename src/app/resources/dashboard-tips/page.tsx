@@ -275,19 +275,19 @@ export default function DashboardTipsPage() {
             Floating Agent
           </h2>
           <p className="text-gray-700 dark:text-gray-300 mb-3">
-            Use the chat bubble (bottom-right) to ask in plain language: search clients, see your
-            tasks, get a CRM or pipeline summary, or ask &quot;Where do I…?&quot; for navigation
-            help. See the{" "}
+            Use the chat bubble (bottom-right) to find a member, see your tasks, summarise the CRM
+            or the unsigned utility pipeline, check the autonomous queue, or ask &quot;Where do I…?&quot;.
+            On an open member it can jump to Documents, Utilities, and the other tabs. See the{" "}
             <Link href="/resources/floating-agent" className="text-primary hover:underline">
               Floating Agent
             </Link>{" "}
-            guide for example phrases and more details.
+            guide for the pages it knows.
           </p>
           <p className="text-gray-700 dark:text-gray-300 text-sm">
-            Try asking things like: <span className="italic">&quot;Find client Acme&quot;</span>,{" "}
-            <span className="italic">&quot;My tasks due today&quot;</span>, or{" "}
+            Try asking things like: <span className="italic">&quot;Find member Acme&quot;</span>,{" "}
+            <span className="italic">&quot;My tasks&quot;</span>, or{" "}
             <span className="italic">
-              &quot;Where do I upload a signed agreement?&quot;
+              &quot;How many unsigned gas sites are there?&quot;
             </span>
             .
           </p>
