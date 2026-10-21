@@ -26,6 +26,7 @@ import {
 import {
   applyNetworkDataRequest,
   buildGapDataRequestSummary,
+  networkDataRequestFields,
   canRequestDataForUtility,
   type DataRequestSummary,
 } from "@/lib/data-request";
@@ -187,7 +188,11 @@ export default function DataDisclosurePage() {
         business_name: request.businessName,
         supplier_name: request.retailer,
         request_type: request.requestType,
-        network_data_request: request.networkDataRequest === true,
+        ...networkDataRequestFields(
+          request.networkDataRequest,
+          request.networkDataHistoryYears,
+          request.testSend,
+        ),
         details: request.identifier,
         missing_months: request.missingMonths ?? [],
         invoice_url: request.invoiceUrl ?? null,
@@ -586,6 +591,12 @@ export default function DataDisclosurePage() {
         }
         onNetworkDataRequestChange={(enabled) =>
           setRequest((s) => (s ? applyNetworkDataRequest(s, enabled) : s))
+        }
+        onNetworkDataHistoryYearsChange={(years) =>
+          setRequest((s) => (s ? { ...s, networkDataHistoryYears: years } : s))
+        }
+        onTestSendChange={(enabled) =>
+          setRequest((s) => (s ? { ...s, testSend: enabled } : s))
         }
       />
       <DataRequestResultModal

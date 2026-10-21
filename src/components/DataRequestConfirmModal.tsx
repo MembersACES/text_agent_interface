@@ -5,9 +5,9 @@ import { NetworkDataRequestOption } from "@/components/NetworkDataRequestOption"
 import {
   CI_DATA_REQUEST_RETAILERS,
   DATA_REQUEST_INTERNAL_CC,
-  GAS_DATA_REQUEST_NETWORKS,
   SME_DATA_REQUEST_RETAILERS,
   WASTE_DATA_REQUEST_RETAILERS,
+  networkDataHistoryLabel,
   type DataRequestSummary,
 } from "@/lib/data-request";
 
@@ -18,6 +18,8 @@ type DataRequestConfirmModalProps = {
   onConfirm: () => void;
   onRetailerChange: (retailer: string) => void;
   onNetworkDataRequestChange?: (enabled: boolean) => void;
+  onNetworkDataHistoryYearsChange?: (years: number) => void;
+  onTestSendChange?: (enabled: boolean) => void;
 };
 
 export function DataRequestConfirmModal({
@@ -27,6 +29,8 @@ export function DataRequestConfirmModal({
   onConfirm,
   onRetailerChange,
   onNetworkDataRequestChange,
+  onNetworkDataHistoryYearsChange,
+  onTestSendChange,
 }: DataRequestConfirmModalProps) {
   const requestType = summary?.requestType ?? "";
   const networkRequest = requestType === "gas_ci" && summary?.networkDataRequest === true;
@@ -71,21 +75,16 @@ export function DataRequestConfirmModal({
             <span className="font-semibold">Business Name:</span>{" "}
             <span className="ml-2">{summary.businessName}</span>
           </div>
+          {!networkRequest ? (
           <div>
-            <label className="font-semibold block mb-1">{networkRequest ? "Network:" : "Retailer:"}</label>
+            <label className="font-semibold block mb-1">Retailer:</label>
             <select
               value={summary.retailer || ""}
               onChange={(e) => onRetailerChange(e.target.value)}
               className="w-full px-3 py-2 border-2 border-gray-400 dark:border-gray-500 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
-              <option value="">{networkRequest ? "Select a network..." : "Select a retailer..."}</option>
-              {networkRequest &&
-                GAS_DATA_REQUEST_NETWORKS.map((network) => (
-                  <option key={network.label} value={network.label}>
-                    {network.label}
-                  </option>
-                ))}
-              {!networkRequest && isCI && (
+              <option value="">Select a retailer...</option>
+              {isCI && (
                 <optgroup label="C&I Electricity & Gas">
                   {CI_DATA_REQUEST_RETAILERS.map((retailer) => (
                     <option key={retailer} value={retailer}>
@@ -94,7 +93,7 @@ export function DataRequestConfirmModal({
                   ))}
                 </optgroup>
               )}
-              {!networkRequest && isSME && (
+              {isSME && (
                 <optgroup label="SME Electricity & Gas">
                   {SME_DATA_REQUEST_RETAILERS.map((retailer) => (
                     <option key={retailer} value={retailer}>
@@ -103,7 +102,7 @@ export function DataRequestConfirmModal({
                   ))}
                 </optgroup>
               )}
-              {!networkRequest && isWaste && (
+              {isWaste && (
                 <optgroup label="Waste">
                   {WASTE_DATA_REQUEST_RETAILERS.map((retailer) => (
                     <option key={retailer} value={retailer}>
@@ -112,7 +111,7 @@ export function DataRequestConfirmModal({
                   ))}
                 </optgroup>
               )}
-              {!networkRequest && !isCI && !isSME && !isWaste && (
+              {!isCI && !isSME && !isWaste && (
                 <>
                   <optgroup label="C&I Electricity & Gas">
                     {CI_DATA_REQUEST_RETAILERS.map((retailer) => (
@@ -140,8 +139,7 @@ export function DataRequestConfirmModal({
               <optgroup label="Other">
                 <option value="Other">Other Supplier</option>
               </optgroup>
-              {!networkRequest &&
-                summary.retailer &&
+              {summary.retailer &&
                 !(allRetailers as readonly string[]).includes(summary.retailer) &&
                 summary.retailer !== "Other" && (
                   <option value={summary.retailer}>
@@ -150,6 +148,7 @@ export function DataRequestConfirmModal({
                 )}
             </select>
           </div>
+          ) : null}
           <div>
             <span className="font-semibold">Identifier:</span>{" "}
             <span className="ml-2">{summary.identifier}</span>
@@ -165,8 +164,14 @@ export function DataRequestConfirmModal({
           {requestType === "gas_ci" && onNetworkDataRequestChange ? (
             <NetworkDataRequestOption
               checked={networkRequest}
+              identifier={summary.identifier}
               selectedNetwork={summary.retailer}
+              years={summary.networkDataHistoryYears}
+              testSend={summary.testSend === true}
               onChange={onNetworkDataRequestChange}
+              onNetworkChange={onRetailerChange}
+              onYearsChange={onNetworkDataHistoryYearsChange ?? (() => undefined)}
+              onTestSendChange={onTestSendChange ?? (() => undefined)}
             />
           ) : null}
 
@@ -199,16 +204,27 @@ export function DataRequestConfirmModal({
           <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-800/50">
             <div className="font-semibold">This email will</div>
             <ul className="mt-1 list-disc space-y-0.5 pl-5 text-xs">
-              <li>
-                go to{" "}
-                <span className="font-medium">{summary.retailer || "(pick a retailer)"}</span>
-              </li>
-              <li>
-                copy in <span className="font-mono">{DATA_REQUEST_INTERNAL_CC}</span>
-              </li>
+              {summary.testSend ? (
+                <li>
+                  go only to <span className="font-mono">{DATA_REQUEST_INTERNAL_CC}</span>
+                </li>
+              ) : (
+                <>
+                  <li>
+                    go to{" "}
+                    <span className="font-medium">{summary.retailer || "(pick a retailer)"}</span>
+                  </li>
+                  <li>
+                    copy in <span className="font-mono">{DATA_REQUEST_INTERNAL_CC}</span>
+                  </li>
+                </>
+              )}
               <li>attach the Letter of Authority on file</li>
               {networkRequest ? (
-                <li>ask for 36 months of interval and meter-read data, plus MDQ, MHQ, and tariff</li>
+                <li>
+                  ask for {networkDataHistoryLabel(summary.networkDataHistoryYears)} of interval
+                  and meter-read data, plus MDQ, MHQ, and tariff
+                </li>
               ) : null}
               <li>
                 {summary.invoiceUrl ? (

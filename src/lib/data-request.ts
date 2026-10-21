@@ -30,6 +30,10 @@ export type DataRequestSummary = {
   context?: string;
   /** C&I gas only. Sends the network meter-data email instead of the retailer one. */
   networkDataRequest?: boolean;
+  /** Years of interval and meter-read history a network request asks for. 1–10. */
+  networkDataHistoryYears?: number;
+  /** Send the email only to data quote, and not to the network or retailer. */
+  testSend?: boolean;
   /** Retailer to restore when the network checkbox is turned off. */
   retailerRequestName?: string;
 };
@@ -96,12 +100,45 @@ export function gasNetworkRequestNote(label: string): string | null {
   return GAS_DATA_REQUEST_NETWORKS.find((network) => network.label === label)?.note ?? null;
 }
 
+/** How far back a C&I gas network data request can ask. */
+export const NETWORK_DATA_HISTORY_YEAR_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
+
+/** Matches the email this request used to send: 36 months. */
+export const DEFAULT_NETWORK_DATA_HISTORY_YEARS = 3;
+
+export function clampNetworkDataHistoryYears(years: number | undefined): number {
+  if (years == null || !Number.isInteger(years) || years < 1 || years > 10) {
+    return DEFAULT_NETWORK_DATA_HISTORY_YEARS;
+  }
+  return years;
+}
+
+export function networkDataHistoryLabel(years: number | undefined): string {
+  const count = clampNetworkDataHistoryYears(years);
+  return count === 1 ? "1 year" : `${count} years`;
+}
+
+export function networkDataRequestFields(
+  enabled: boolean | undefined,
+  years: number | undefined,
+  testSend?: boolean,
+): { network_data_request: boolean; data_years?: number; test_send?: boolean } {
+  const test = testSend === true ? { test_send: true as const } : {};
+  if (enabled !== true) return { network_data_request: false, ...test };
+  return {
+    network_data_request: true,
+    data_years: clampNetworkDataHistoryYears(years),
+    ...test,
+  };
+}
+
 export function applyNetworkDataRequest<
   T extends {
     retailer: string;
     identifier: string;
     networkDataRequest?: boolean;
     retailerRequestName?: string;
+    networkDataHistoryYears?: number;
   },
 >(summary: T, enabled: boolean): T {
   if (!enabled) {
@@ -116,6 +153,7 @@ export function applyNetworkDataRequest<
     networkDataRequest: true,
     retailerRequestName: summary.retailerRequestName ?? summary.retailer,
     retailer: gasNetworkLabelForMirn(summary.identifier) ?? "",
+    networkDataHistoryYears: clampNetworkDataHistoryYears(summary.networkDataHistoryYears),
   };
 }
 

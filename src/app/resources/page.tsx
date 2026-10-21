@@ -157,6 +157,16 @@ const RESOURCES: Resource[] = [
     category: "Supplier Portal",
     portalGroup: "Plus ES Portal",
   },
+  {
+    name: "Alinta SME Portal",
+    link: "https://salestool.alintaenergy.com.au/",
+    email: "morgan.h@acesolutions.com.au",
+    password: "rb4Yz3P@BT2QUQ7",
+    notes: "Alinta SME sales tool login.",
+    env: "production",
+    category: "Supplier Portal",
+    portalGroup: "Alinta SME Portal",
+  },
 ];
 
 
@@ -184,12 +194,14 @@ function ResourceCard({
   visiblePasswords,
   onTogglePassword,
   onCopy,
+  hideCategory = false,
 }: {
   resource: Resource;
   index: number;
   visiblePasswords: Set<number>;
   onTogglePassword: (i: number) => void;
   onCopy: (text: string, type: string) => void;
+  hideCategory?: boolean;
 }) {
   const [notesExpanded, setNotesExpanded] = useState(false);
   const isPasswordVisible = visiblePasswords.has(index);
@@ -212,7 +224,7 @@ function ResourceCard({
         <h3 className="text-dark dark:text-white font-semibold text-sm leading-snug pr-1">
           {resource.name}
         </h3>
-        {resource.category && (
+        {resource.category && !hideCategory && (
           <span
             className={cn(
               "shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded-full leading-tight max-w-[9rem] truncate",
@@ -365,16 +377,6 @@ export default function ResourcesPage() {
 
   const dashboardResources = filteredResources.filter((r) => r.dashboardLink);
   const supplierPortalResources = filteredResources.filter((r) => r.portalGroup);
-  const supplierPortalGroups = useMemo(() => {
-    const groups = new Map<string, Resource[]>();
-    for (const resource of supplierPortalResources) {
-      const group = resource.portalGroup!;
-      const existing = groups.get(group) ?? [];
-      existing.push(resource);
-      groups.set(group, existing);
-    }
-    return Array.from(groups.entries());
-  }, [supplierPortalResources]);
   const productionResources = filteredResources.filter(
     (r) => !r.dashboardLink && !r.portalGroup && r.env === "production"
   );
@@ -474,7 +476,7 @@ export default function ResourcesPage() {
       </section>
 
       {/* Supplier Portals — retailer / broker logins grouped by portal */}
-      {supplierPortalGroups.length > 0 && (
+      {supplierPortalResources.length > 0 && (
         <section>
           <div className="flex flex-wrap items-center gap-2 mb-2">
             <div className="flex items-center gap-1.5 bg-sky-50 dark:bg-sky-900/25 border border-sky-200 dark:border-sky-800 rounded-md px-2 py-1">
@@ -488,27 +490,21 @@ export default function ResourcesPage() {
           <p className="text-xs text-gray-500 dark:text-gray-400 mb-3 -mt-0.5">
             Retailer and broker portal links with login credentials.
           </p>
-          <div className="space-y-4">
-            {supplierPortalGroups.map(([groupName, resources]) => (
-              <div key={groupName}>
-                <h3 className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">{groupName}</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {resources.map((resource) => {
-                    const idx = getResourceIndex(resource);
-                    return (
-                      <ResourceCard
-                        key={idx}
-                        resource={resource}
-                        index={idx}
-                        visiblePasswords={visiblePasswords}
-                        onTogglePassword={togglePasswordVisibility}
-                        onCopy={copyToClipboard}
-                      />
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+            {supplierPortalResources.map((resource) => {
+              const idx = getResourceIndex(resource);
+              return (
+                <ResourceCard
+                  key={idx}
+                  resource={resource}
+                  index={idx}
+                  hideCategory
+                  visiblePasswords={visiblePasswords}
+                  onTogglePassword={togglePasswordVisibility}
+                  onCopy={copyToClipboard}
+                />
+              );
+            })}
           </div>
         </section>
       )}

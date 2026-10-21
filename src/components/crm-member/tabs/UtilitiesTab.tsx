@@ -12,7 +12,7 @@ import { RecordRow } from "../shared/RecordRow";
 import { getRecordRowIcon } from "../shared/recordRowIcons";
 import { Modal } from "@/components/ui/modal";
 import { NetworkDataRequestOption } from "@/components/NetworkDataRequestOption";
-import { applyNetworkDataRequest, GAS_DATA_REQUEST_NETWORKS } from "@/lib/data-request";
+import { applyNetworkDataRequest, GAS_DATA_REQUEST_NETWORKS, networkDataRequestFields } from "@/lib/data-request";
 import { useToast } from "@/components/ui/toast";
 import { mapUtilityKey } from "../shared/mapUtilityKey";
 import {
@@ -203,6 +203,8 @@ interface DataRequestSummary {
   param: string;
   details: string;
   networkDataRequest?: boolean;
+  networkDataHistoryYears?: number;
+  testSend?: boolean;
   retailerRequestName?: string;
 }
 
@@ -621,7 +623,11 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility, cli
         business_name: dataRequestSummary.businessName,
         supplier_name: dataRequestSummary.retailer,
         request_type: dataRequestSummary.requestType,
-        network_data_request: dataRequestSummary.networkDataRequest === true,
+        ...networkDataRequestFields(
+          dataRequestSummary.networkDataRequest,
+          dataRequestSummary.networkDataHistoryYears,
+          dataRequestSummary.testSend,
+        ),
       };
       if (dataRequestSummary.param !== "business_name") {
         body.details = dataRequestSummary.identifier;
@@ -1425,10 +1431,9 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility, cli
               <span className="font-semibold">Business Name:</span>{" "}
               <span className="ml-2">{dataRequestSummary.businessName}</span>
             </div>
+            {dataRequestSummary.networkDataRequest !== true ? (
             <div>
-              <label className="font-semibold block mb-1">
-                {dataRequestSummary.networkDataRequest ? "Network:" : "Retailer:"}
-              </label>
+              <label className="font-semibold block mb-1">Retailer:</label>
               <select
                 value={dataRequestSummary.retailer || ""}
                 onChange={(e) =>
@@ -1438,12 +1443,10 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility, cli
                 }
                 className="w-full px-3 py-2 border-2 border-gray-400 dark:border-gray-500 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
-                <option value="">
-                  {dataRequestSummary.networkDataRequest ? "Select a network..." : "Select a retailer..."}
-                </option>
+                <option value="">Select a retailer...</option>
                 {(() => {
                   const requestType = dataRequestSummary.requestType;
-                  const networkRequest = dataRequestSummary.networkDataRequest === true;
+                  const networkRequest = false;
                   const isCI =
                     requestType === "electricity_ci" || requestType === "gas_ci";
                   const isSME =
@@ -1556,6 +1559,7 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility, cli
                 })()}
               </select>
             </div>
+            ) : null}
             <div>
               <span className="font-semibold">Identifier:</span>{" "}
               <span className="ml-2">{dataRequestSummary.identifier}</span>
@@ -1570,11 +1574,25 @@ export function UtilitiesTab({ businessInfo, setBusinessInfo, onLinkUtility, cli
             {dataRequestSummary.requestType === "gas_ci" ? (
               <NetworkDataRequestOption
                 checked={dataRequestSummary.networkDataRequest === true}
+                identifier={dataRequestSummary.identifier}
                 selectedNetwork={dataRequestSummary.retailer}
+                years={dataRequestSummary.networkDataHistoryYears}
+                testSend={dataRequestSummary.testSend === true}
                 onChange={(enabled) =>
                   setDataRequestSummary((s) =>
                     s ? applyNetworkDataRequest(s, enabled) : s
                   )
+                }
+                onNetworkChange={(network) =>
+                  setDataRequestSummary((s) => (s ? { ...s, retailer: network } : s))
+                }
+                onYearsChange={(years) =>
+                  setDataRequestSummary((s) =>
+                    s ? { ...s, networkDataHistoryYears: years } : s
+                  )
+                }
+                onTestSendChange={(enabled) =>
+                  setDataRequestSummary((s) => (s ? { ...s, testSend: enabled } : s))
                 }
               />
             ) : null}

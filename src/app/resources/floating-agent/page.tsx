@@ -1,53 +1,112 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import { Breadcrumb } from "@/components/ui/breadcrumb";
-import { MessageSquare, Search, ListTodo, BarChart3, HelpCircle } from "lucide-react";
+import { MessageSquare, Search, ListTodo, BarChart3, Bot, MapPinned } from "lucide-react";
+import { catalogGroups, MEMBER_JOBS } from "@/lib/floatingagent/catalog";
+
+const SKILLS = [
+  {
+    icon: Search,
+    title: "Find a member",
+    detail: "“Find member Acme”, “Who is Harbour Lights”, “Open Northside Group”.",
+  },
+  {
+    icon: ListTodo,
+    title: "Tasks",
+    detail: "“My tasks”, “What’s due”, or “What tasks are on this member?” while their record is open.",
+  },
+  {
+    icon: BarChart3,
+    title: "Two different pipelines",
+    detail: "“CRM summary” is member stages. “How many unsigned gas sites?” is the unsigned utility pipeline.",
+  },
+  {
+    icon: Bot,
+    title: "Autonomous queue",
+    detail: "“Summarise the autonomous queue”, or ask where campaigns and agreement follow-up live.",
+  },
+  {
+    icon: MapPinned,
+    title: "Member tabs",
+    detail: "On an open member, ask for documents, site photos, utilities, offers, savings, solutions, or climate.",
+  },
+  {
+    icon: MessageSquare,
+    title: "Where do I…",
+    detail: "Ask in plain language. The reply includes a button to the page it looked up.",
+  },
+];
 
 export default function FloatingAgentPage() {
+  const groups = catalogGroups();
+
   return (
     <div className="space-y-6">
       <Breadcrumb />
 
       <div>
-        <h1 className="text-heading-3 font-bold text-dark dark:text-white mb-2">Floating Agent</h1>
+        <h1 className="mb-2 text-heading-3 font-bold text-dark dark:text-white">Floating Agent</h1>
         <p className="text-body-sm text-gray-600 dark:text-gray-400">
-          Use the Carbon Zero Assistant (chat bubble in the bottom-right) to search clients, view tasks, and get help navigating the dashboard.
+          The Carbon Zero Assistant sits in the bottom-right of the dashboard. It looks up live CRM, task, unsigned-pipeline, and autonomous-queue data, and it only links to pages that exist in the app.
         </p>
       </div>
 
-      <div className="rounded-xl border border-stroke dark:border-dark-3 bg-white dark:bg-gray-dark p-6 space-y-6">
-        <p className="text-dark dark:text-white">
-          The Floating Agent can help you with:
+      <div className="grid gap-4 md:grid-cols-2">
+        {SKILLS.map((skill) => {
+          const Icon = skill.icon;
+          return (
+            <div
+              key={skill.title}
+              className="rounded-xl border border-stroke bg-white p-5 dark:border-dark-3 dark:bg-gray-dark"
+            >
+              <div className="mb-2 flex items-center gap-2 text-dark dark:text-white">
+                <Icon className="h-5 w-5 text-primary" />
+                <h2 className="font-semibold">{skill.title}</h2>
+              </div>
+              <p className="text-sm text-gray-700 dark:text-gray-300">{skill.detail}</p>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="rounded-xl border border-stroke bg-white p-6 dark:border-dark-3 dark:bg-gray-dark">
+        <h2 className="mb-2 font-semibold text-dark dark:text-white">On an open member</h2>
+        <p className="mb-3 text-sm text-gray-600 dark:text-gray-400">
+          Ask while you are on the member record. The assistant opens the matching tab.
         </p>
-        <ul className="space-y-3 text-gray-700 dark:text-gray-300">
-          <li className="flex items-start gap-3">
-            <Search className="h-5 w-5 text-primary shrink-0 mt-0.5" />
-            <span><strong>Search clients</strong> — e.g. &quot;Find client Acme&quot;, &quot;Who is [name]&quot;, &quot;Open [business name]&quot;</span>
-          </li>
-          <li className="flex items-start gap-3">
-            <ListTodo className="h-5 w-5 text-primary shrink-0 mt-0.5" />
-            <span><strong>My tasks</strong> — &quot;My tasks&quot;, &quot;What&apos;s due&quot;, &quot;Overdue tasks&quot;</span>
-          </li>
-          <li className="flex items-start gap-3">
-            <ListTodo className="h-5 w-5 text-primary shrink-0 mt-0.5" />
-            <span><strong>Tasks for a client</strong> — &quot;Tasks for [client name]&quot;, &quot;What&apos;s pending for [name]&quot;</span>
-          </li>
-          <li className="flex items-start gap-3">
-            <BarChart3 className="h-5 w-5 text-primary shrink-0 mt-0.5" />
-            <span><strong>CRM / pipeline summary</strong> — &quot;CRM summary&quot;, &quot;Pipeline&quot;, &quot;How many leads?&quot;</span>
-          </li>
-          <li className="flex items-start gap-3">
-            <HelpCircle className="h-5 w-5 text-primary shrink-0 mt-0.5" />
-            <span><strong>Navigation &amp; help</strong> — &quot;Where do I upload an agreement?&quot;, &quot;How do I generate an EOI?&quot;, &quot;Solution Range&quot;</span>
-          </li>
+        <ul className="grid gap-2 sm:grid-cols-2">
+          {MEMBER_JOBS.map((job) => (
+            <li key={job.tab} className="text-sm text-gray-700 dark:text-gray-300">
+              <span className="font-medium text-dark dark:text-white">{job.label}.</span> {job.description}
+            </li>
+          ))}
         </ul>
-        <p className="text-sm text-gray-600 dark:text-gray-400">
-          CRM and task features require you to be signed in. When the agent returns results, use the suggested links to jump straight to the relevant page (e.g. a client profile or the Tasks page).
-        </p>
-        <p className="text-sm text-gray-600 dark:text-gray-400">
-          Open the chat with the <MessageSquare className="inline h-4 w-4 align-middle mx-0.5" /> button in the bottom-right corner of the app.
-        </p>
+      </div>
+
+      <div className="space-y-6">
+        <h2 className="text-lg font-semibold text-dark dark:text-white">Pages it can open</h2>
+        {groups.map((group) => (
+          <section
+            key={group.group}
+            className="rounded-xl border border-stroke bg-white p-6 dark:border-dark-3 dark:bg-gray-dark"
+          >
+            <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              {group.group}
+            </h3>
+            <ul className="grid gap-3 sm:grid-cols-2">
+              {group.entries.map((entry) => (
+                <li key={entry.path}>
+                  <Link href={entry.path} className="font-medium text-primary hover:underline">
+                    {entry.title}
+                  </Link>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">{entry.description}</p>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
       </div>
     </div>
   );

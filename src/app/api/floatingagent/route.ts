@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { chatLLM } from "@/lib/floatingagent/llm";
-import { runTool } from "@/lib/floatingagent/tools";
+import { chatWithTools } from "@/lib/floatingagent/llm";
 
 export async function POST(req: Request) {
   try {
@@ -10,6 +9,13 @@ export async function POST(req: Request) {
     const message = typeof body.message === "string" ? body.message : "";
     const currentPath = typeof body.currentPath === "string" ? body.currentPath : undefined;
     const history = Array.isArray(body.history) ? body.history : undefined;
+
+    if (!message.trim()) {
+      return NextResponse.json(
+        { role: "assistant", text: "Ask me to find a member, show your tasks, or point you to a page." },
+        { status: 400 }
+      );
+    }
 
     const session = await getServerSession(authOptions);
     const authToken =
@@ -19,34 +25,23 @@ export async function POST(req: Request) {
 
     const requestHost = req.headers.get("host") ?? undefined;
 
-    console.log("🟢 FloatingAgent received:", message);
-
-    const toolContext = { authToken, currentPath, history, requestHost };
-
-    const toolResponse = await runTool(message, toolContext);
-    if (toolResponse) {
-      return NextResponse.json({
-        role: "assistant",
-        text: toolResponse.message,
-        suggestedPage: toolResponse.suggestedPage ?? null,
-        suggestedLinks: toolResponse.suggestedLinks ?? null,
-      });
-    }
-
-    const reply = await chatLLM(message, {
-      currentPath: toolContext.currentPath,
-      history: toolContext.history,
-      toolContext: { authToken: toolContext.authToken },
+    const reply = await chatWithTools(message, {
+      currentPath,
+      history,
+      toolContext: { authToken, requestHost },
     });
-    console.log("🤖 LLM reply:", reply);
 
-    return NextResponse.json({ role: "assistant", text: reply });
+    return NextResponse.json({
+      role: "assistant",
+      text: reply.text,
+      suggestedPage: reply.suggestedPage ?? null,
+      suggestedLinks: reply.suggestedLinks ?? null,
+    });
   } catch (error) {
-    console.error("❌ FloatingAgent error:", error);
+    console.error("Floating agent error:", error);
     return NextResponse.json(
-      { role: "assistant", text: "⚠️ Something went wrong." },
+      { role: "assistant", text: "Something went wrong." },
       { status: 500 }
     );
   }
 }
-
