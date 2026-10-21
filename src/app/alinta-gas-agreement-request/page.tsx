@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { ToolPageLayout } from "@/components/Layouts/ToolPageLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { estimateMdqGj, formatMdq, parseQuantity } from "@/lib/alinta-gas-mdq";
 import { getApiBaseUrl } from "@/lib/utils";
 import { isGoogleReauthError, reauthWithGoogle } from "@/lib/google-reauth";
 
@@ -81,6 +82,11 @@ function sourceClass(field: DraftField | undefined): string {
   return "text-gray-400";
 }
 
+function mdqFollowsCpq(field: DraftField | undefined): boolean {
+  if (!field?.value?.trim()) return true;
+  return Boolean(field.estimated) || field.source === "estimated" || field.source === "missing";
+}
+
 function AlintaGasAgreementRequestPageInner() {
   const { data: session } = useSession();
   const searchParams = useSearchParams();
@@ -132,11 +138,30 @@ function AlintaGasAgreementRequestPageInner() {
   const updateField = (key: string, value: string) => {
     setDraft((prev) => {
       if (!prev) return prev;
+      const fields: Record<string, DraftField> = {
+        ...prev.fields,
+        [key]: { value, source: "manual", estimated: false },
+      };
+      if (key === "cpq_gj" && mdqFollowsCpq(prev.fields.mdq_gj)) {
+        const cpq = parseQuantity(value);
+        const mdq = cpq == null ? null : estimateMdqGj(cpq);
+        fields.mdq_gj =
+          mdq == null
+            ? { value: "", source: "missing", estimated: false }
+            : { value: formatMdq(mdq), source: "estimated", estimated: true };
+      }
+      return { ...prev, fields };
+    });
+  };
+
+  const applyAlintaMdq = (value: string) => {
+    setDraft((prev) => {
+      if (!prev) return prev;
       return {
         ...prev,
         fields: {
           ...prev.fields,
-          [key]: { value, source: "manual", estimated: false },
+          mdq_gj: { value, source: "estimated", estimated: true },
         },
       };
     });
@@ -241,6 +266,9 @@ function AlintaGasAgreementRequestPageInner() {
       {fields.map(({ key, label }) => {
         const field = draft?.fields?.[key];
         const wide = key === "address";
+        const cpq = key === "mdq_gj" ? parseQuantity(fieldValue(draft, "cpq_gj")) : null;
+        const alintaMdq = cpq == null ? null : estimateMdqGj(cpq);
+        const currentMdq = parseQuantity(field?.value ?? "");
         return (
           <div key={key} className={wide ? "sm:col-span-2" : undefined}>
             <label className="mb-1 flex items-baseline justify-between gap-2 text-sm font-medium text-gray-700 dark:text-gray-200">
@@ -263,6 +291,18 @@ function AlintaGasAgreementRequestPageInner() {
                 onChange={(e) => updateField(key, e.target.value)}
               />
             )}
+            {alintaMdq != null && currentMdq !== alintaMdq ? (
+              <p className="mt-1 text-xs text-gray-500">
+                Alinta calc: {formatMdq(alintaMdq)}
+                <button
+                  type="button"
+                  className="ml-2 font-medium text-primary hover:underline"
+                  onClick={() => applyAlintaMdq(formatMdq(alintaMdq))}
+                >
+                  Use this
+                </button>
+              </p>
+            ) : null}
           </div>
         );
       })}
