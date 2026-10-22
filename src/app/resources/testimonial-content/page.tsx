@@ -54,6 +54,13 @@ import {
   type ExampleItem,
   type InvoiceFilter,
 } from "./records-panel";
+import {
+  SocialDraftModal,
+  SocialDraftsNotice,
+  type SocialDraftFile,
+  type SocialDraftMatch,
+  type SocialDraftsPayload,
+} from "./social-drafts";
 
 const INPUT_CLASS =
   "w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary/20 focus:border-primary";
@@ -590,6 +597,11 @@ export default function TestimonialContentPage() {
   const [examples, setExamples] = useState<ExampleItem[]>([]);
   const [examplesLoading, setExamplesLoading] = useState(false);
   const [examplesError, setExamplesError] = useState<string | null>(null);
+  const [socialDrafts, setSocialDrafts] = useState<SocialDraftsPayload | null>(null);
+  const [socialDraftsLoading, setSocialDraftsLoading] = useState(false);
+  const [socialDraftsError, setSocialDraftsError] = useState<string | null>(null);
+  const [openDraft, setOpenDraft] = useState<SocialDraftFile | SocialDraftMatch | null>(null);
+  const [approvingDraft, setApprovingDraft] = useState(false);
 
   const [members, setMembers] = useState<CrmMember[]>([]);
   const [membersLoading, setMembersLoading] = useState(false);
@@ -805,6 +817,48 @@ export default function TestimonialContentPage() {
   useEffect(() => {
     fetchExamples();
   }, [fetchExamples]);
+
+  const fetchSocialDrafts = useCallback(async () => {
+    setSocialDraftsLoading(true);
+    setSocialDraftsError(null);
+    try {
+      const res = await fetch("/api/testimonials/social-drafts");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSocialDrafts(null);
+        setSocialDraftsError(typeof data.error === "string" ? data.error : "Couldn't load LinkedIn drafts.");
+        return;
+      }
+      const payload = data as SocialDraftsPayload;
+      setSocialDrafts(payload);
+      setSocialDraftsError(payload.error || null);
+    } catch {
+      setSocialDrafts(null);
+      setSocialDraftsError("Couldn't load LinkedIn drafts.");
+    } finally {
+      setSocialDraftsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchSocialDrafts();
+  }, [fetchSocialDrafts]);
+
+  const socialDraftsById = useMemo(() => {
+    const map = new Map<number, SocialDraftMatch>();
+    for (const draft of socialDrafts?.drafts ?? []) map.set(draft.testimonial_id, draft);
+    return map;
+  }, [socialDrafts]);
+
+  const openSocialDraft = (row: ExampleItem) => {
+    const draft = socialDraftsById.get(row.id);
+    if (draft) setOpenDraft(draft);
+  };
+
+  const openDraftRow =
+    openDraft && "testimonial_id" in openDraft
+      ? examples.find((row) => row.id === openDraft.testimonial_id) ?? null
+      : null;
 
   useEffect(() => {
     if (!selectedMember?.business_name) {
@@ -1122,7 +1176,7 @@ export default function TestimonialContentPage() {
     }
   };
 
-  const handleSocialStatusChange = async (id: number, socialStatus: string) => {
+  const handleSocialStatusChange = async (id: number, socialStatus: string, successMessage?: string) => {
     try {
       const res = await fetch(`/api/testimonials/${id}`, {
         method: "PATCH",
@@ -1133,13 +1187,23 @@ export default function TestimonialContentPage() {
       if (!res.ok) {
         const detail = typeof data.error === "string" ? data.error : "Failed to update social post.";
         showToast(detail, "error");
-        return;
+        return false;
       }
       applyPatchedRow(id, data as Record<string, unknown>);
-      showToast(socialStatus ? "Social post updated." : "Social post cleared.", "success");
+      showToast(successMessage ?? (socialStatus ? "Social post updated." : "Social post cleared."), "success");
+      return true;
     } catch {
       showToast("Failed to update social post.", "error");
+      return false;
     }
+  };
+
+  const handleApproveDraft = async () => {
+    if (!openDraft || !("testimonial_id" in openDraft)) return;
+    setApprovingDraft(true);
+    const ok = await handleSocialStatusChange(openDraft.testimonial_id, "Ready to post", "Marked ready to post.");
+    setApprovingDraft(false);
+    if (ok) setOpenDraft(null);
   };
 
   const patchType = async (id: number, typeId: string) => {
@@ -1649,6 +1713,13 @@ export default function TestimonialContentPage() {
                   </div>
                 </div>
               ) : null}
+              <SocialDraftsNotice
+                loading={socialDraftsLoading}
+                loadError={socialDraftsError}
+                payload={socialDrafts}
+                onRetry={() => fetchSocialDrafts()}
+                onOpenFile={setOpenDraft}
+              />
               <TestimonialRecordsPanel
                 rows={filteredAll}
                 countSource={allCountSource}
@@ -1679,6 +1750,8 @@ export default function TestimonialContentPage() {
                 onUnlinkInvoice={handleUnlinkInvoice}
                 onOpenInvoice={handleOpenInvoice}
                 onMarkNoInvoice={handleMarkNoInvoice}
+                onViewDraft={openSocialDraft}
+                hasSocialDraft={(row) => socialDraftsById.has(row.id)}
                 headerAction={
                   <Button type="button" size="sm" onClick={openAddModal}>
                     <Plus className="size-3.5" />
@@ -1830,6 +1903,8 @@ export default function TestimonialContentPage() {
                   onUnlinkInvoice={handleUnlinkInvoice}
                   onOpenInvoice={handleOpenInvoice}
                   onMarkNoInvoice={handleMarkNoInvoice}
+                  onViewDraft={openSocialDraft}
+                  hasSocialDraft={(row) => socialDraftsById.has(row.id)}
                   footerNote={`Showing ${filteredCollected.length} of ${collectedForType.length} filed for ${selectedLabel}. Files open in Google Drive.`}
                 />
               </div>
@@ -2143,6 +2218,14 @@ export default function TestimonialContentPage() {
         </p>
         {addOpen ? renderAddForm() : null}
       </Modal>
+
+      <SocialDraftModal
+        draft={openDraft}
+        row={openDraftRow}
+        approving={approvingDraft}
+        onClose={() => !approvingDraft && setOpenDraft(null)}
+        onApprove={() => void handleApproveDraft()}
+      />
     </div>
   );
 }
