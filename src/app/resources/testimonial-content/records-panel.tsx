@@ -198,6 +198,8 @@ export function TestimonialRecordsPanel({
   onUnlinkInvoice,
   onOpenInvoice,
   onMarkNoInvoice,
+  onViewDraft,
+  hasSocialDraft,
   headerAction,
   footerNote,
 }: {
@@ -230,6 +232,8 @@ export function TestimonialRecordsPanel({
   onUnlinkInvoice: (row: ExampleItem) => void;
   onOpenInvoice?: (row: ExampleItem) => void;
   onMarkNoInvoice?: (row: ExampleItem) => void;
+  onViewDraft?: (row: ExampleItem) => void;
+  hasSocialDraft?: (row: ExampleItem) => boolean;
   headerAction?: ReactNode;
   footerNote: string;
 }) {
@@ -551,25 +555,37 @@ export function TestimonialRecordsPanel({
                         </div>
                       </td>
                       <td className="px-3 py-2.5">
-                        {isApprovedTestimonial(ex) ? (
-                          <select
-                            value={ex.social_status ?? ""}
-                            onChange={(e) => onSocialStatusChange(ex.id, e.target.value)}
-                            aria-label={`Social post for ${ex.business_name}`}
-                            className="max-w-full rounded-full border border-gray-200 bg-white px-2 py-1 text-xs dark:border-gray-600 dark:bg-gray-800"
-                          >
-                            <option value="">Not started</option>
-                            {SOCIAL_POST_STATUSES.map((status) => (
-                              <option key={status} value={status}>
-                                {status}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          <span className="text-xs text-gray-400" title="Approve the testimonial before tracking a social post">
-                            —
-                          </span>
-                        )}
+                        <div className="flex flex-col items-start gap-1">
+                          {hasSocialDraft?.(ex) ? (
+                            <button
+                              type="button"
+                              onClick={() => onViewDraft?.(ex)}
+                              className="text-xs font-semibold text-primary hover:underline"
+                              aria-label={`View LinkedIn draft for ${ex.business_name}`}
+                            >
+                              View draft
+                            </button>
+                          ) : null}
+                          {isApprovedTestimonial(ex) ? (
+                            <select
+                              value={ex.social_status ?? ""}
+                              onChange={(e) => onSocialStatusChange(ex.id, e.target.value)}
+                              aria-label={`Social post for ${ex.business_name}`}
+                              className="max-w-full rounded-full border border-gray-200 bg-white px-2 py-1 text-xs dark:border-gray-600 dark:bg-gray-800"
+                            >
+                              <option value="">Not started</option>
+                              {SOCIAL_POST_STATUSES.map((status) => (
+                                <option key={status} value={status}>
+                                  {status}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span className="text-xs text-gray-400" title="Approve the testimonial before tracking a social post">
+                              —
+                            </span>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
